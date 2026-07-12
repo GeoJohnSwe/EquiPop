@@ -1,0 +1,83 @@
+cff-version: 1.2.0
+message: "If you use EquiPop in your research, please cite the software report below and the methods papers relevant to the functions you use."
+title: "EquiPop (Python)"
+type: software
+authors:
+  - family-names: "Östh"
+    given-names: "John"
+    orcid: "https://orcid.org/0000-0002-4536-9229"
+license: MIT
+repository-code: "https://github.com/GeoJohnSwe/EquiPop"
+version: 1.0.0
+preferred-citation:
+  type: report
+  title: "Introducing the EquiPop software: An application for the calculation of k-nearest neighbour contexts/neighbourhoods"
+  authors:
+    - family-names: "Östh"
+      given-names: "John"
+  year: 2014
+  institution:
+    name: "Uppsala University, Department of Social and Economic Geography"
+  location:
+    name: "Uppsala, Sweden"
+references:
+  - type: article
+    title: "Measuring the scale of segregation using k-nearest neighbor aggregates"
+    authors:
+      - family-names: "Östh"
+        given-names: "John"
+      - family-names: "Clark"
+        given-names: "William A. V."
+      - family-names: "Malmberg"
+        given-names: "Bo"
+    journal: "Geographical Analysis"
+    volume: 47
+    issue: 1
+    start: 34
+    end: 49
+    year: 2015
+  - type: article
+    title: "A new way of determining distance decay parameters in spatial interaction models with application to job accessibility analysis in Sweden"
+    authors:
+      - family-names: "Östh"
+        given-names: "John"
+      - family-names: "Lyhagen"
+        given-names: "Johan"
+      - family-names: "Reggiani"
+        given-names: "Aura"
+    journal: "European Journal of Transport and Infrastructure Research"
+    volume: 16
+    issue: 2
+    start: 344
+    end: 363
+    year: 2016
+  - type: generic
+    title: "Integrating infrastructure and accessibility in measures of bespoke neighbourhoods"
+    authors:
+      - family-names: "Östh"
+        given-names: "John"
+      - family-names: "Türk"
+        given-names: "Umut"
+    year: 2020
+    collection-title: "Handbook of Urban Segregation"
+    publisher:
+      name: "Edward Elgar Publishing"
+    start: 378
+    end: 394
+  - type: article
+    title: "Spatial proximity and accessibility patterns of X-minute cities"
+    authors:
+      - family-names: "Türk"
+        given-names: "Umut"
+      - family-names: "Östh"
+        given-names: "John"
+      - family-names: "Kourtit"
+        given-names: "Karima"
+      - family-names: "Nijkamp"
+        given-names: "Peter"
+    journal: "Journal of Urban Mobility"
+    volume: 9
+    year: 2026
+    identifiers:
+      - type: other
+        value: "100239"
