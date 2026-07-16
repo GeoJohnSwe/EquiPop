@@ -144,3 +144,179 @@ to protect the Dist_k semantics. Academic-niche value acknowledged, but
 the marginal cost on top of 4b is near zero, so include it.
 Priority: 4a first (needs the DEM the user is sourcing), 4b/4c as one
 small batch after.
+
+
+## v1.2.0 updates (this session)
+- ~~#4a DEM slope-asymmetric directional friction~~ DONE in v1.2.0
+  (tobler + linear via SLOPE_MODELS; Malta-validated; "valley tax"
+  asymmetry finding recorded). Square grids only - hexagonal slope
+  rides on the parked hex-friction 6-neighbour graph.
+- #11 substrate progress: `origins=` subset option now exists on both
+  graph engines (friction + slope). Still needed for #11: reach modes,
+  match-table segmentation, chaining orchestrator. #12 still BEFORE #11.
+- #4b + #4c (node distance offsets) remain parked, unchanged verdicts.
+- NEW small idea (parked): windowed DEM reading in dem_to_cell_altitude
+  for national-scale rasters (Malta-size reads whole array fine).
+- NEW small idea (parked): slope-model parameter sweep helper
+  (lambda_up sensitivity reporting) once #12's neighbourhood menu lands.
+
+
+## Session additions (post-v1.2.0, recorded without coding)
+
+- **#12 EXPANDED - neighbourhood definition menu, now with parity
+  checklist.** Goal restated: everything available for k must exist
+  for metric radius r (and where meaningful, friction tau). Checklist
+  to tick at build time: fast engine (KD-tree ball query) | ring
+  engine (stopping rule swap) | stats engine (all three exactness
+  tiers) | decay (r-bounded and the unbounded decayed sum) | friction
+  + slope (tau_values = effort isochrones) | segregation profile over
+  r | area aggregation | maps | RunLog column definitions | Stata
+  bridge (r() option) | hex. Decisions to record when building:
+  naming scheme (proposal: N_r500 style), empty-radius convention
+  (N=0 is a valid partial result, never nothing), tau semantics under
+  real-valued slope effort. Note: ties VANISH under r (cells within r
+  included wholly) - document as a simplification, not a change.
+  STILL BEFORE #11. Recommended as next build.
+
+- **#13 (NEW) Cookbook: 10-20 complete A-to-Z scenario scripts.**
+  Runnable scripts in examples/cookbook/ against small bundled
+  fixtures + a COOKBOOK.md index; CI smoke-runs them so documentation
+  cannot rot. Candidate scenarios: (1) CSV -> decay analysis -> map;
+  (2) SPSS register -> segregation profile -> area aggregation;
+  (3) WorldPop rasters -> elderly context; (4) OSM pbf -> POI
+  accessibility; (5) wrong-CRS shapefile rescue; (6) friction with
+  water barriers; (7) DEM slopes -> valley-tax map; (8) grid vs hex
+  MAUP experiment; (9) individual data with missings -> stats engine;
+  (10) weighted/aggregated in-data; (11) the Stata round trip;
+  (12) RunLog-driven reproduction; (13) national-scale tactics;
+  (14+) radius variants of 1/3/7 - BLOCKED ON #12. Grows with the
+  package; partial delivery acceptable.
+
+- **#14 (NEW) Spatial autocorrelation module: Moran's I and
+  Getis-Ord, global + local, multiscalar.** Weights matrices born
+  from our own engines: binary kNN, distance band (needs #12),
+  decay-weighted via the five half-life models, friction/slope
+  effort-weighted (novel). Profile-across-k pattern alongside
+  seg_profile. Components: W builder, global I and G, local LISA and
+  Gi/Gi*, permutation inference (conditional permutation for local -
+  a real computational piece, plan chunked/seeded). Mandatory loud
+  warning in docs + RunLog: autocorrelation of R_k columns measures
+  an already-smoothed surface (overlapping neighbourhoods induce
+  correlation by construction) - legitimate but must be understood.
+  Validation: known answers cross-checked against PySAL esda on
+  fixtures. SEQUENCE AFTER #12 (weights builder should speak the full
+  neighbourhood menu from birth).
+
+
+## Session additions (round 2, recorded without coding - NEXT ROUND items)
+
+- **#4a-RT (NEXT ROUND) Round-trip slope effort.** `roundtrip=True` on
+  run_knn_slope: two Dijkstra passes per origin (graph + transpose =
+  cheapest return path, which may differ from outbound - correct),
+  summed, reported as PER-LEG AVERAGE (sum/2) so flat DEM regresses
+  exactly to one-way values (regression test extends). No new cost
+  models needed: convexity gives p(s)+p(-s) >= 2p(0) for both tobler
+  (2.031 at +-5%, 2.419 at +-10%, 3.433 at +-20%) and linear
+  (2+(lu+ld)|s|) - varied terrain automatically costs more round-trip,
+  the requested physics. Cost 2x runtime. k stays raw-count-defined.
+
+- **decay: gamma-parameterised shifted power (NEXT ROUND).** Audit
+  verdict on current power model: half-life is EXACT via the +1m
+  shift (w(d)=(d+1)^b, b=ln.5/ln(h+1)) BUT the shift is a hidden
+  1-metre reference scale forcing an ultra-heavy tail (h=1000 =>
+  exponent -0.10; w(10h)=0.40, w(100km)=0.32). Fix: add
+  w(d) = (1 + (2^(1/g)-1) d/h)^(-g) - exact half-life at h for ANY
+  tail exponent g (verified g=0.5,1,2,5); g=1 is w=1/(1+d/h).
+  Keep current model reproducible as legacy special case. Document
+  the tail table (negexp vs power) in the manual.
+
+- **#15 (NEW) Access potential & the opportunity horizon.**
+  Theory recorded: uniform POI density + negexp gives marginal access
+  a(r) = 2*pi*rho * r*exp(-|b|r) - a Gamma(2) density (chi^2, 4 df,
+  up to scale; the user's conjecture confirmed exactly); peak at
+  r* = 1/|b| = h/ln2 ~= 1.4427h ("the opportunity horizon");
+  cumulative A(R) = (2 pi rho/b^2)[1-(1+|b|R)exp(-|b|R)].
+  Components: (a) access_potential surface (Hansen 1959 potential
+  accessibility - claim the classical name) from ALL grid/hex
+  midpoints incl. unpopulated (zero-mass origin rows on origins=
+  machinery); (b) POI-placement surplus surface = REVERSE potential
+  sum_i pop_i * w(d(i,x)) - ONE kernel pass, on regular grids a
+  convolution => FFT whole-surface in O(n log n), NO ITERATIONS
+  (iterations only for competition effects - 2SFCA crowding /
+  doubly-constrained - which is #11 territory, optional); (c) greedy
+  sequential placement is submodular => lazy-greedy with (1-1/e)
+  near-optimality guarantee, no combinatorial search; (d) later:
+  friction/slope effort replaces Euclidean d (geometry term becomes
+  empirical ring mass), per-individual decay components.
+  Related models to keep in view: Huff choice, Reilly breaking-point,
+  Wilson entropy family, p-median/MCLP consuming our surfaces.
+  Natural sequence: after #12 (needs the neighbourhood menu's
+  unbounded decayed-sum mode as substrate).
+
+
+## v1.3.0 updates (this session)
+- ~~#12 Neighbourhood definition menu~~ DONE in v1.3.0, INCLUDING the
+  area family (k / r / tau / unbounded decayed sum / AREA - the
+  teaching triad k-r-area is now complete in one package). Parity
+  checklist ticked except: ring-engine r (redundant - documented
+  mathematical equivalence with the stats engine); hex needs no
+  change (same engines). Stata: r() live in bridge (pytest) + ado
+  (in-Stata untested until next user run).
+- NEW parked: weighted quantiles/Gini for area_stats value statistics
+  (weights currently apply to N and binary T/R only - loud note in
+  docstring).
+- NEW parked: r/tau variants in the ring engine IF a decay-at-radius
+  use case appears (decayed sums already live in the fast engine).
+- Unblocked by this release: #13 cookbook radius scenarios, #14
+  weights matrices (kNN + distance-band + decay all available), #15
+  (unbounded decayed sum = the access_potential substrate), #11.
+
+
+## v1.4.0 updates (this session)
+- ~~#4a-RT round-trip slopes~~ DONE (per-leg average; flat==one-way
+  exact; known-answer + symmetry + convexity pytest).
+- ~~decay: gamma-parameterised shifted power~~ DONE (exact half-life
+  any gamma; legacy kept; horizon analytic, INFINITE for gamma<=1).
+- ~~#15 access potential & opportunity horizon~~ DONE (FFT
+  potential_surface exact-on-grid, surplus = reverse potential,
+  effort_potential incl. round-trip; Malta: full-island surfaces in
+  1.4 s, optimal next-POI at Birkirkara-Msida, terrain access tax
+  2.6% mean / 15.9% max, frontier-vs-core finding, coming-home
+  penalty p95 6.9%). PARKED from #15: greedy sequential placement
+  helper (submodular, 1-1/e); Huff/Reilly/Wilson/p-median remain
+  a recorded modelling menu; competition = #11.
+- Next natural: #11 kFCA (all substrates now exist) or #14
+  autocorrelation; #13 cookbook grows alongside.
+
+
+## v1.5.0 updates (this session)
+- ~~gamma-figure~~ DONE (examples/cookbook_01_gamma_decay.py - #13
+  entry 01; negexp dashed reference as endorsed; horizons drawn:
+  g=2 -> 4.83 km, g=4 -> 3.52 km, negexp 2.89, g<=1 infinite).
+- ~~#11 kFCA/ELMO-3SFCA (module)~~ DONE: reach modes decay/r/k/effort
+  (round-trip capable), 2SFCA + 3SFCA, doubly-constrained balancing
+  (margin scaling for imbalanced markets + GAUGE FIXING of factor
+  scale - both loud, both tested), match-table orchestrator.
+  **REAL-DATA ACT PENDING RE-UPLOAD** of People.sav + LowEduJobs.sav
+  (uploads failed to reach the container this round); the joint-
+  isometry anonymiser is ready and self-checked, so headline run +
+  shareable fixture are one command after re-upload.
+- NOTE: mystery *_synthetic.sav files found in session outputs were
+  REJECTED (jobs coordinates spanned 900 km for one municipality -
+  geometry not trustworthy); nothing was built on them.
+- NEW parked: kFCA reach where k counts OWN-side mass (competition
+  catchments) as an alternative convention - decide with real data.
+- NEW parked: FCA congestion maps + Stata bridge exposure of fca().
+
+
+## v1.5.1 updates (real-data act)
+- #11 REAL-DATA ACT DONE: municipality labour market run (2SFCA/3SFCA/
+  kFCA/balanced), education-gap map, congestion map; fixture +
+  checkpoint regression in suite (isometry-proven identical);
+  synthetic .sav pair delivered for sharing (full files, jobs
+  Sweden-wide as in the original).
+- User's "simple solution" steps 1-4 confirmed == method="2sfca"
+  (the default); J column added so step 1 is a first-class output.
+- NEW parked: per-cell effective-pressure output (J/A) as a named
+  column; commuting half-life estimation from observed flows (would
+  need a flows file); kFCA own-side-mass convention decision.

@@ -19,9 +19,16 @@ from scipy.spatial import cKDTree
 from .cells import CellData
 
 
-def run_knn_counts(cd: CellData, k_values: list[int],
+def _lab(x) -> str:
+    """Compact numeric label: 500 -> '500', 2.5 -> '2.5'."""
+    return f"{x:g}"
+
+
+def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                    m_neighbors: int = 4096,
-                   chunk: int = 4096) -> pd.DataFrame:
+                   chunk: int = 4096,
+                   r_values: list[float] | None = None,
+                   decay=None, decay_eps: float = 1e-6) -> pd.DataFrame:
     """
     k-NN counts/ratios for every cell in cd, vectorised.
 
@@ -35,8 +42,13 @@ def run_knn_counts(cd: CellData, k_values: list[int],
     <var>_local, and per k: N_k, T_<var>_k, R_<var>_k, Dist_k,
     plus SumN and MaxDistance.
     """
-    k_values = sorted(k_values)
-    kmax = k_values[-1]
+    k_values = sorted(k_values or [])
+    r_values = sorted(r_values or [])
+    kmax = k_values[-1] if k_values else 0
+    rmax = r_values[-1] if r_values else 0.0
+    trunc = decay.truncation_radius(decay_eps) if decay is not None else 0.0
+    if not (k_values or r_values or decay):
+        raise ValueError("give k_values, r_values and/or decay")
     n_cells = len(cd)
     m = min(m_neighbors, n_cells)
     pts = np.c_[cd.E.astype(float), cd.N.astype(float)]
@@ -45,7 +57,12 @@ def run_knn_counts(cd: CellData, k_values: list[int],
     pop = cd.n.astype(float)
     grp = {v: cd.binary_sums[v].astype(float) for v in bvars}
 
-    print(f"[fast] {n_cells} cells, k = {k_values}, "
+    modes = []
+    if k_values: modes.append(f"k = {k_values}")
+    if r_values: modes.append(f"r = {r_values} m")
+    if decay is not None:
+        modes.append(f"decayed sum (trunc {trunc:,.0f} m at eps {decay_eps})")
+    print(f"[fast] {n_cells} cells, {' | '.join(modes)}, "
           f"fast pass with m = {m} neighbour cells")
     rows = []
     stragglers = 0
@@ -56,7 +73,9 @@ def run_knn_counts(cd: CellData, k_values: list[int],
         cpop = np.cumsum(pop[idx], axis=1)
         cgrp = {v: np.cumsum(grp[v][idx], axis=1) for v in bvars}
         for r, oi in enumerate(oi_range):
-            if cpop[r, -1] < kmax and dist.shape[1] < n_cells:
+            covered = dist[r, -1]
+            if ((cpop[r, -1] < kmax or covered < rmax or covered < trunc)
+                    and dist.shape[1] < n_cells):
                 stragglers += 1
                 d2, i2 = tree.query(pts[oi], k=n_cells)
                 _solve(d2[None, :], i2[None, :], [oi])
@@ -82,6 +101,26 @@ def run_knn_counts(cd: CellData, k_values: list[int],
                     rec[f"R_{v}_{k}"] = cgrp[v][r][pos] / cp[pos]
                 rec[f"Dist_{k}"] = float(dd[pos])
                 last = pos
+            for rv in r_values:            # radius: all cells within rv,
+                pos = int(np.searchsorted(dd, rv, side="right")) - 1
+                lab = _lab(rv)             # included wholly (no ties by
+                rec[f"N_r{lab}"] = cp[pos]  # construction)
+                for v in bvars:
+                    rec[f"T_{v}_r{lab}"] = cgrp[v][r][pos]
+                    rec[f"R_{v}_r{lab}"] = (cgrp[v][r][pos] / cp[pos]
+                                            if cp[pos] > 0 else np.nan)
+                last = max(last, pos)
+            if decay is not None:          # unbounded decayed sum,
+                pos = int(np.searchsorted(dd, trunc, side="right"))
+                w = decay.weight_vec(dd[:pos])
+                pw = pop[idx[r, :pos]] * w
+                nd = float(pw.sum())
+                rec["ND_inf"] = nd
+                for v in bvars:
+                    td = float((grp[v][idx[r, :pos]] * w).sum())
+                    rec[f"TD_{v}_inf"] = td
+                    rec[f"RD_{v}_inf"] = td / nd if nd > 0 else np.nan
+                last = max(last, pos - 1)
             rec["SumN"] = cp[last]
             rec["MaxDistance"] = float(dd[last])
             rows.append(rec)

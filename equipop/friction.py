@@ -124,8 +124,8 @@ class FrictionGrid:
         print(f"[friction] grid domain {self.nx} x {self.ny} = {n} cells")
 
         def idx(x, y):
-            return ((np.asarray(x) - x0) // u) * self.ny \
-                 + ((np.asarray(y) - y0) // u)
+            return (((np.asarray(x) - x0) // u) * self.ny
+                    + ((np.asarray(y) - y0) // u)).astype(np.int64)
 
         # --- per-node arrays ---
         self.friction = np.full(n, default_friction, dtype=np.int64)
@@ -168,6 +168,96 @@ class FrictionGrid:
         return d[:, self.pop_idx]
 
 
+def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
+                     tau_values=None):
+    """Shared origin loop: count cells in included-round order from a
+    prepared grid (FrictionGrid or SlopeGrid). Tie convention: equal
+    rounds form one atomic ring, as everywhere in EquiPop.
+
+    origins : optional array of ROW indices into pop - compute results
+    only for these origins (destination mass stays complete). Serves
+    origin-subset workflows (validation subsamples, kFCA, backlog #11)."""
+    k_values = sorted(k_values or [])
+    tau_values = sorted(tau_values or [])
+    if not (k_values or tau_values):
+        raise ValueError("give k_values and/or tau_values")
+    n_pop = len(grid.pop_idx)
+    origins = np.arange(n_pop) if origins is None else np.asarray(origins)
+    n_org = len(origins)
+    ca, cg = grid.count_all[grid.pop_idx], grid.count_group[grid.pop_idx]
+    results = []
+
+    for start in range(0, n_org, chunk):
+        sel = slice(start, min(start + chunk, n_org))
+        rounds = grid.rounds_from(grid.pop_idx[origins[sel]])
+
+        for r_i, oi in enumerate(origins[sel.start:sel.stop]):
+            rr = rounds[r_i]
+            order = np.argsort(rr, kind="stable")
+            rec = {
+                "Id": pop[id_col].iloc[oi] if id_col else oi,
+                "EastWest": int(grid.pop_x[oi]),
+                "NorthSouth": int(grid.pop_y[oi]),
+                "CountAllLocal": ca[oi],
+                "CountGroupLocal": cg[oi],
+            }
+            sum_all = sum_grp = 0.0
+            dist_m = rounds_now = 0.0
+            pending = list(k_values)
+            pending_tau = list(tau_values)
+
+            def rec_tau(tv):     # effort isochrone: everything within tv
+                lab = f"tau{tv:g}"
+                rec[f"N_{lab}"] = sum_all
+                rec[f"T_{lab}"] = sum_grp
+                rec[f"R_{lab}"] = (sum_grp / sum_all if sum_all
+                                   else np.nan)
+
+            j = 0
+            while j < n_pop and (pending or pending_tau):
+                r0 = rr[order[j]]
+                if not np.isfinite(r0):
+                    break
+                while pending_tau and pending_tau[0] < r0 - 1e-9:
+                    rec_tau(pending_tau.pop(0))
+                ring = []
+                while j < n_pop and rr[order[j]] == r0:
+                    ring.append(order[j]); j += 1
+                for ci in ring:
+                    sum_all += ca[ci]; sum_grp += cg[ci]
+                # distance to the LAST cell of the ring (any tie member)
+                dist_m = float(np.hypot(grid.pop_x[ring[-1]] - grid.pop_x[oi],
+                                        grid.pop_y[ring[-1]] - grid.pop_y[oi]))
+                rounds_now = float(r0)
+                while pending and sum_all >= pending[0]:
+                    k = pending.pop(0)
+                    rec[f"N_{k}"] = sum_all
+                    rec[f"T_{k}"] = sum_grp
+                    rec[f"R_{k}"] = sum_grp / sum_all
+                    rec[f"Dist_{k}"] = dist_m
+                    rec[f"Rounds_{k}"] = rounds_now
+            for tv in pending_tau:  # isochrone swallows all reachable
+                rec_tau(tv)
+            for k in pending:      # unreached: partial (spec section 12)
+                rec[f"N_{k}"] = sum_all
+                rec[f"T_{k}"] = sum_grp
+                rec[f"R_{k}"] = sum_grp / sum_all if sum_all else np.nan
+                rec[f"Dist_{k}"] = dist_m
+                rec[f"Rounds_{k}"] = rounds_now
+            rec["SumN"] = sum_all
+            rec["MaxDistance"] = dist_m
+            results.append(rec)
+        print(f"[friction] {min(start+chunk, n_org)}/{n_org} origins done")
+
+    out = pd.DataFrame(results)
+    fixed = ["Id", "EastWest", "NorthSouth", "CountAllLocal",
+             "CountGroupLocal", "SumN", "MaxDistance"]
+    per_k = [f"{p}_{k}" for k in k_values
+             for p in ("N", "T", "R", "Dist", "Rounds")]
+    per_tau = [f"{p}_tau{tv:g}" for tv in tau_values for p in ("N", "T", "R")]
+    return out[fixed + per_k + per_tau]
+
+
 def run_knn_friction(
     pop: pd.DataFrame,
     k_values: list[int],
@@ -178,6 +268,8 @@ def run_knn_friction(
     count_group_col: str = "count_group",
     id_col: str | None = None,
     chunk: int = 250,
+    origins=None,
+    tau_values: list[float] | None = None,
 ) -> pd.DataFrame:
     """
     Friction-aware k-NN for aggregated cell data.
@@ -196,70 +288,14 @@ def run_knn_friction(
     Dist_k remains the straight-line Cartesian distance to the cell
     where k was reached, as in the original EquiPop output.
     """
-    k_values = sorted(k_values)
     if fr is not None:
         coverage_warning(pop, fr)
     grid = FrictionGrid(pop, fr, unit_size, default_friction,
                         count_all_col, count_group_col)
 
-    u = int(unit_size)
-    origin_nodes = grid.pop_idx
-    n_org = len(origin_nodes)
-    ca, cg = grid.count_all[grid.pop_idx], grid.count_group[grid.pop_idx]
-    results = []
-
-    for start in range(0, n_org, chunk):
-        sel = slice(start, min(start + chunk, n_org))
-        rounds = grid.rounds_from(origin_nodes[sel])   # (chunk, n_pop)
-
-        for r_i, oi in enumerate(range(sel.start, sel.stop)):
-            rr = rounds[r_i]
-            order = np.argsort(rr, kind="stable")
-            rec = {
-                "Id": pop[id_col].iloc[oi] if id_col else oi,
-                "EastWest": int(grid.pop_x[oi]),
-                "NorthSouth": int(grid.pop_y[oi]),
-                "CountAllLocal": ca[oi],
-                "CountGroupLocal": cg[oi],
-            }
-            sum_all = sum_grp = 0.0
-            dist_m = rounds_now = 0.0
-            pending = list(k_values)
-            j = 0
-            while j < n_org and pending:
-                r0 = rr[order[j]]
-                if not np.isfinite(r0):
-                    break
-                ring = []
-                while j < n_org and rr[order[j]] == r0:
-                    ring.append(order[j]); j += 1
-                for ci in ring:
-                    sum_all += ca[ci]; sum_grp += cg[ci]
-                # distance to the LAST cell of the ring (any tie member)
-                dist_m = float(np.hypot(grid.pop_x[ring[-1]] - grid.pop_x[oi],
-                                        grid.pop_y[ring[-1]] - grid.pop_y[oi]))
-                rounds_now = float(r0)
-                while pending and sum_all >= pending[0]:
-                    k = pending.pop(0)
-                    rec[f"N_{k}"] = sum_all
-                    rec[f"T_{k}"] = sum_grp
-                    rec[f"R_{k}"] = sum_grp / sum_all
-                    rec[f"Dist_{k}"] = dist_m
-                    rec[f"Rounds_{k}"] = rounds_now
-            for k in pending:      # unreached: partial (spec section 12)
-                rec[f"N_{k}"] = sum_all
-                rec[f"T_{k}"] = sum_grp
-                rec[f"R_{k}"] = sum_grp / sum_all if sum_all else np.nan
-                rec[f"Dist_{k}"] = dist_m
-                rec[f"Rounds_{k}"] = rounds_now
-            rec["SumN"] = sum_all
-            rec["MaxDistance"] = dist_m
-            results.append(rec)
-        print(f"[friction] {min(start+chunk, n_org)}/{n_org} origins done")
-
-    out = pd.DataFrame(results)
-    fixed = ["Id", "EastWest", "NorthSouth", "CountAllLocal",
-             "CountGroupLocal", "SumN", "MaxDistance"]
-    per_k = [f"{p}_{k}" for k in k_values
-             for p in ("N", "T", "R", "Dist", "Rounds")]
-    return out[fixed + per_k]
+    if fr is not None:
+        coverage_warning(pop, fr)
+    grid = FrictionGrid(pop, fr, unit_size, default_friction,
+                        count_all_col, count_group_col)
+    return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
+                            tau_values)

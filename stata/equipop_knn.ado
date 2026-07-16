@@ -5,8 +5,9 @@
 *! package installed in that Python:  pip install equipop
 *!
 *! Syntax:
-*!   equipop_knn, x(varname) y(varname) treat(varlist) k(numlist) ///
-*!                [unit(#) weight(varname) replace]
+*!   equipop_knn, x(varname) y(varname) treat(varlist) ///
+*!                [k(numlist) r(numlist) unit(#) weight(varname) replace]
+*! Give k() and/or r(): r() are metric radii -> N_r<r>, T_<v>_r<r>, R_<v>_r<r>.
 *!
 *! Example:
 *!   use stata_test_data, clear
@@ -16,22 +17,39 @@
 program define equipop_knn
     version 17
     syntax , X(varname numeric) Y(varname numeric) ///
-             TREAT(varlist numeric) K(numlist integer >0) ///
-             [Unit(real 100) Weight(varname numeric) REPLACE]
+             TREAT(varlist numeric) ///
+             [K(numlist integer >0) R(numlist >0) ///
+              Unit(real 100) Weight(varname numeric) REPLACE]
+
+    if "`k'" == "" & "`r'" == "" {
+        display as error "give k() and/or r()"
+        exit 198
+    }
 
     * drop pre-existing result variables if replace was asked
     if "`replace'" != "" {
-        foreach kk of numlist `k' {
-            capture drop N_`kk' Dist_`kk'
-            foreach v of varlist `treat' {
-                capture drop T_`v'_`kk' R_`v'_`kk'
+        if "`k'" != "" {
+            foreach kk of numlist `k' {
+                capture drop N_`kk' Dist_`kk'
+                foreach v of varlist `treat' {
+                    capture drop T_`v'_`kk' R_`v'_`kk'
+                }
+            }
+        }
+        if "`r'" != "" {
+            foreach rr of numlist `r' {
+                local rl : subinstr local rr "." "_", all
+                capture drop N_r`rr'
+                foreach v of varlist `treat' {
+                    capture drop T_`v'_r`rr' R_`v'_r`rr'
+                }
             }
         }
     }
 
-    python: _equipop_knn("`x'", "`y'", "`treat'", "`k'", `unit', "`weight'")
+    python: _equipop_knn("`x'", "`y'", "`treat'", "`k'", `unit', "`weight'", "`r'")
     display as result "equipop_knn: done - new variables added " ///
-        "(N_*, Dist_*, T_*, R_* for k = `k')"
+        "(N_*, Dist_*, T_*, R_* for k = `k' r = `r')"
 end
 
 version 17
@@ -42,7 +60,7 @@ python:
 from sfi import Data, SFIToolkit
 import numpy as np
 
-def _equipop_knn(xvar, yvar, treatvars, klist, unit, wvar):
+def _equipop_knn(xvar, yvar, treatvars, klist, unit, wvar, rlist=""):
     try:
         from equipop.stata_bridge import knn_to_rows
     except ImportError:
@@ -60,9 +78,11 @@ def _equipop_knn(xvar, yvar, treatvars, klist, unit, wvar):
     x, y = col(xvar), col(yvar)
     treats = {v: col(v) for v in treatvars.split()}
     ks = [int(t) for t in klist.split()]
+    rs = [float(t) for t in rlist.split()]
     w = col(wvar) if wvar else None
 
-    res = knn_to_rows(x, y, ks, treat=treats, weight=w, unit_size=unit)
+    res = knn_to_rows(x, y, ks, treat=treats, weight=w, unit_size=unit,
+                      r_values=rs)
 
     for name, arr in res.items():
         if name in [Data.getVarName(i) for i in range(Data.getVarCount())]:

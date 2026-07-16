@@ -119,3 +119,76 @@ def aggregate_output(
     print(f"[area] {len(df)} origin cells -> {len(out)} areas "
           f"('{label}', how={how})")
     return out
+
+
+# ------------------------------------------------------------------
+# Area-based statistics: the third neighbourhood family (k / r / AREA)
+# ------------------------------------------------------------------
+from .stats import BINARY_STATS, VALUE_STATS, PREFIX
+
+
+def area_stats(df, area_col: str,
+               binary_vars: list[str] | None = None,
+               value_vars: list[str] | None = None,
+               stats: dict | None = None,
+               weight_col: str | None = None):
+    """
+    Per-AREA statistics from individual-level rows: the administrative
+    member of the neighbourhood-definition menu (k fixes population,
+    r fixes geometry, AREA fixes administration).
+
+    df          : individual rows; area_col holds the belonging ID
+                  (municipality code etc. - use assign_zones() first
+                  if you start from polygons).
+    binary_vars : 0/1 group variables -> T_<v>, R_<v> per area.
+    value_vars  : continuous variables -> Mean/Med/Gini/... + Nv_<v>.
+    stats       : per-variable statistic lists as in run_knn_stats;
+                  defaults: binary ["ratio"], value ["mean","median","gini"].
+    weight_col  : persons represented per row (aggregated in-data).
+                  Applies to N and binary T/R; VALUE statistics are
+                  computed over rows unweighted (weighted quantiles
+                  are a recorded backlog item - loud, not silent).
+
+    NO Dist_/Rounds_ columns exist here - areas do not expand, so
+    there is nothing to measure; the columns are honestly absent.
+    Rows with missing area ID are excluded LOUDLY and reported.
+    """
+    import numpy as np
+    import pandas as pd
+    binary_vars = binary_vars or []
+    value_vars = value_vars or []
+    stats = stats or {}
+    for v in binary_vars:
+        stats.setdefault(v, ["ratio"])
+    for v in value_vars:
+        stats.setdefault(v, ["mean", "median", "gini"])
+
+    unassigned = df[area_col].isna()
+    if unassigned.any():
+        print(f"[area] {int(unassigned.sum())} rows with no {area_col} "
+              "excluded (outside all areas?) - the Stockholm precedent: "
+              "check, do not panic")
+    d = df[~unassigned]
+    w = (d[weight_col].to_numpy(float) if weight_col
+         else np.ones(len(d)))
+
+    out = []
+    for aid, g in d.groupby(area_col, sort=True):
+        gw = (g[weight_col].to_numpy(float) if weight_col
+              else np.ones(len(g)))
+        rec = {"AreaId": aid, "N": float(gw.sum())}
+        for v in binary_vars:
+            t = float((g[v].to_numpy(float) * gw).sum())
+            rec[f"T_{v}"] = t
+            for s in stats[v]:
+                rec[f"{PREFIX[s]}_{v}"] = BINARY_STATS[s](rec["N"], t)
+        for v in value_vars:
+            x = g[v].to_numpy(float)
+            x = x[np.isfinite(x)]
+            rec[f"Nv_{v}"] = int(len(x))
+            for s in stats[v]:
+                rec[f"{PREFIX[s]}_{v}"] = VALUE_STATS[s](x)
+        out.append(rec)
+    res = pd.DataFrame(out)
+    print(f"[area] {len(res)} areas, N total = {res['N'].sum():,.0f}")
+    return res

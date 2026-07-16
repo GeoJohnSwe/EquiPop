@@ -20,9 +20,10 @@ from .cells import build_cells
 from .fastcounts import run_knn_counts
 
 
-def knn_to_rows(x, y, k_values, treat: dict | None = None,
+def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
-                m_neighbors: int = 4096) -> dict:
+                m_neighbors: int = 4096,
+                r_values=None) -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
 
@@ -30,7 +31,8 @@ def knn_to_rows(x, y, k_values, treat: dict | None = None,
     ----------
     x, y      : 1-D arrays of metric coordinates (one row = one
                 individual or one weighted record).
-    k_values  : list of k thresholds.
+    k_values  : list of k thresholds (optional if r_values given).
+    r_values  : optional metric radii -> N_r<r>, T_<v>_r<r>, R_<v>_r<r>.
     treat     : {name: 1-D array} of numeric treatment variables
                 (0/1 per individual, or counts if weighted rows).
     weight    : optional 1-D array - population represented by each
@@ -75,15 +77,19 @@ def knn_to_rows(x, y, k_values, treat: dict | None = None,
                   n=g["_w"].to_numpy(),
                   binary_sums={v: g[v].to_numpy(float) for v in treat},
                   value_arrays={}, unit_size=unit_size)
-    res = run_knn_counts(cd, sorted(k_values), m_neighbors=m_neighbors)
+    k_values = sorted(k_values or [])
+    r_values = sorted(r_values or [])
+    res = run_knn_counts(cd, k_values, m_neighbors=m_neighbors,
+                         r_values=r_values)
 
     # map cell results back to every individual row
     res = res.set_index(["EastWest", "NorthSouth"])
     keys = list(zip(cells["_E"], cells["_N"]))
-    out_cols = ([f"N_{k}" for k in k_values]
+    labs = [f"r{r:g}" for r in r_values]
+    out_cols = ([f"N_{k}" for k in k_values + labs]
                 + [f"Dist_{k}" for k in k_values]
-                + [f"T_{v}_{k}" for v in treat for k in k_values]
-                + [f"R_{v}_{k}" for v in treat for k in k_values])
+                + [f"T_{v}_{k}" for v in treat for k in k_values + labs]
+                + [f"R_{v}_{k}" for v in treat for k in k_values + labs])
     out = {}
     vidx = np.flatnonzero(valid.to_numpy())
     for c in out_cols:

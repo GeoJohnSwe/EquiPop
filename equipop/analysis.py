@@ -243,6 +243,7 @@ def run_knn_stats(
     k_values: list[int],
     stats: dict[str, list[str]],
     max_radius_units: int | None = None,
+    r_values: list[float] | None = None,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis with user-selected statistics per variable.
@@ -276,7 +277,10 @@ def run_knn_stats(
       per value  var:       Nv_{var}_{k} (count of valid values)
     Unreached k-levels receive partial results, as in run_knn().
     """
-    k_values = sorted(k_values)
+    k_values = sorted(k_values or [])
+    r_values = sorted(r_values or [])
+    if not (k_values or r_values):
+        raise ValueError("give k_values and/or r_values")
 
     bin_vars = [v for v in stats if v in cd.binary_sums]
     val_vars = [v for v in stats if v in cd.value_arrays]
@@ -296,7 +300,8 @@ def run_knn_stats(
                                  f"Available: {list(VALUE_STATS)}")
 
     m = len(cd)
-    print(f"[stats] {m} cells, k = {k_values}")
+    print(f"[stats] {m} cells, k = {k_values}" +
+          (f", r = {r_values} m" if r_values else ""))
     print(f"[stats] binary vars: {bin_vars} | value vars: {val_vars}")
 
     results = []
@@ -323,24 +328,32 @@ def run_knn_stats(
         val_chunks = {v: [] for v in val_vars}
         dist_m = 0.0
         pending = list(k_values)
+        pending_r = list(r_values)
 
-        def record(k: int):
-            rec[f"N_{k}"] = sum_n
-            rec[f"Dist_{k}"] = dist_m
+        def record(k, suffix=None, with_dist=True):
+            suffix = f"{k}" if suffix is None else suffix
+            rec[f"N_{suffix}"] = sum_n
+            if with_dist:
+                rec[f"Dist_{suffix}"] = dist_m
             for v in bin_vars:
                 for s in stats[v]:
-                    rec[f"{PREFIX[s]}_{v}_{k}"] = BINARY_STATS[s](sum_n, bin_t[v])
+                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = BINARY_STATS[s](sum_n, bin_t[v])
             for v in val_vars:
                 x = (np.concatenate(val_chunks[v])
                      if val_chunks[v] else np.empty(0))
-                rec[f"Nv_{v}_{k}"] = len(x)
+                rec[f"Nv_{v}_{suffix}"] = len(x)
                 for s in stats[v]:
-                    rec[f"{PREFIX[s]}_{v}_{k}"] = VALUE_STATS[s](x)
+                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = VALUE_STATS[s](x)
 
         # walk cells in distance order, atomically per equal-distance ring
+        def record_r(rv):
+            record(rv, suffix=f"r{rv:g}", with_dist=False)
+
         j = 0
-        while j < m and pending:
+        while j < m and (pending or pending_r):
             d = dist[order[j]]
+            while pending_r and pending_r[0] < d - 1e-9:
+                record_r(pending_r.pop(0))   # radius closes BEFORE this ring
             if max_radius_units is not None and d > max_radius_units * cd.unit_size:
                 break
             # gather the full ring of cells at this exact distance
@@ -362,6 +375,8 @@ def run_knn_stats(
 
         for k in pending:          # unreached: partial results
             record(k)
+        for rv in pending_r:       # radius reaches beyond data: whole set
+            record_r(rv)
         rec["SumN"] = sum_n
         rec["MaxDistance"] = dist_m
         results.append(rec)
