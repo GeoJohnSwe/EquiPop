@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "equipop"
-version = "1.7.0"
+version = "1.8.1"
 description = "k-nearest neighbour contexts/neighbourhoods on gridded and hexagonal data: bespoke neighbourhoods, friction growth, distance decay, statistics and segregation measures"
 readme = "README.md"
 license = {text = "MIT"}
@@ -16,7 +16,7 @@ dependencies = ["pandas>=2.0", "numpy>=1.24", "scipy>=1.10", "pyproj>=3.4"]
 geo = ["geopandas>=0.14", "pyogrio", "rasterio"]
 io = ["openpyxl", "pyarrow", "pyreadstat"]
 viz = ["matplotlib", "jenkspy"]
-test = ["pytest", "openpyxl"]
+test = ["pytest", "openpyxl", "pyarrow", "rasterio"]
 
 [project.urls]
 Homepage = "https://github.com/GeoJohnSwe/EquiPop"

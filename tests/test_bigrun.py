@@ -4,6 +4,7 @@ import os
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from equipop.cells import CellData
 from equipop.decay import Decay
@@ -35,6 +36,7 @@ def test_origins_subset_exact():
 
 def test_tiled_equals_untiled_exactly(tmp_path):
     """THE golden validation: same numbers, different packaging."""
+    pytest.importorskip("pyarrow")
     cd = _cd()
     dec = Decay(model="negexp", half_life_m=1500.0)
     out = str(tmp_path / "run")
@@ -55,6 +57,7 @@ def test_tiled_equals_untiled_exactly(tmp_path):
 
 
 def test_resume_skips_done_and_repairs_missing(tmp_path):
+    pytest.importorskip("pyarrow")
     cd = _cd(1200, seed=5)
     out = str(tmp_path / "run")
     man1 = run_knn_counts_tiled(cd, k_values=[30], out_dir=out,

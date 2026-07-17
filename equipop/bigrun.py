@@ -61,6 +61,11 @@ def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
     parquet. Returns the manifest dict (also written progressively to
     out_dir/manifest.json). Results are EXACTLY those of an untiled
     run - only the packaging differs."""
+    try:
+        import pyarrow  # noqa: F401 - parquet engine for the tiles
+    except ImportError:
+        raise ImportError("[bigrun] tile-and-flush writes parquet and "
+                          "needs pyarrow: pip install pyarrow")
     os.makedirs(out_dir, exist_ok=True)
     mpath = os.path.join(out_dir, "manifest.json")
 

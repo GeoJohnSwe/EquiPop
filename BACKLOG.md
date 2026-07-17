@@ -366,3 +366,27 @@ small batch after.
   density-estimated halos (>100M cells).
 - Board next: #16 propensity FCA (2x2 runnable on delivered data) or
   #14 autocorrelation; user-side: tag v1.6.0 + this v1.7.0 release.
+
+
+## v1.8.0 progress (Book session 1)
+- #19 underway: Gridby generator (planted truths PYTEST-ENFORCED:
+  gradient recovered, river isochrone bites, hill peak exact, jobs
+  cluster share), equipop.datasets loader (gridby/municipality/
+  berlin/stata_test), chapters 1+2+4 written in docs/book/ with two
+  cookbook figure scripts (02, 03), compile pipeline + first .docx
+  sample this session. Next book bites: ch 13+16 (Stata Journal
+  feeders), then Part II.
+
+
+## v1.8.1 (CI fix round)
+- Root cause of the reported pytest/GitHub errors FOUND AND
+  REPRODUCED without needing the logs: test extras lacked pyarrow
+  (bigrun parquet) - failed on every clean env; also rasterio absent
+  meant the DEM test never actually ran on CI. Fixed (extras +
+  importorskip + helpful bigrun error). Verified three ways: bare
+  env 44+3skip, +pyarrow 46+1skip, full 47/47.
+- WATCH: rasterio/NumPy2.5 DeprecationWarning (upstream, cosmetic).
+- REMINDER: GitHub main is STILL at 1.6.0 - pushes for 1.7.0/1.8.x
+  have not left the local machine; the 1.8.1 zip supersedes all -
+  ONE swap-commit-push-tag carries everything, CI should then show
+  47 green x 2 Pythons.
