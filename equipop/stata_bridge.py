@@ -103,3 +103,142 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     print(f"[stata] returning {len(out)} new variables for "
           f"{n_rows} observations")
     return out
+
+
+# =====================================================================
+# #17 - THE DISPATCHER: one row-alignment layer for every engine.
+# dispatch(engine, x, y, ...) -> dict of row-aligned arrays, so the
+# single ado equipop_run.ado can expose the whole toolbox to Stata.
+# =====================================================================
+
+def _snap(x, y, unit):
+    half = unit / 2.0
+    E = (np.floor(np.asarray(x, float) / unit) * unit + half)
+    N = (np.floor(np.asarray(y, float) / unit) * unit + half)
+    return E.astype(np.int64), N.astype(np.int64)
+
+
+def _map_back(res, keys, cols, valid, n_rows):
+    """Cell-level frame -> row-aligned dict (NaN for invalid rows)."""
+    res = res.set_index(["EastWest", "NorthSouth"]) \
+        if "EastWest" in res.columns else res.set_index(["x", "y"])
+    vidx = np.flatnonzero(valid)
+    out = {}
+    for c in cols:
+        col = np.full(n_rows, np.nan)
+        col[vidx] = res.loc[keys, c].to_numpy(dtype=float)
+        out[c] = col
+    return out
+
+
+def dispatch(engine: str, x, y, unit_size: float = 100.0,
+             treat: dict | None = None, weight=None,
+             k_values=None, r_values=None, tau_values=None,
+             # stats engine:
+             values: dict | None = None, stats: dict | None = None,
+             # slope / friction:
+             dem: str | None = None, model: str = "tobler",
+             roundtrip: bool = False, friction_file: str | None = None,
+             # fca:
+             supply_file: str | None = None, demand_arr=None,
+             supply_x: str = "x", supply_y: str = "y",
+             supply_col: str = "supply", half_life_m: float | None = None,
+             reach: str = "decay", method: str = "2sfca",
+             k_fca: float | None = None, r_fca: float | None = None,
+             **extra) -> dict:
+    """
+    One entry point, five engines, row-aligned results:
+
+    engine="counts"   -> knn_to_rows (k/r, multiple treatments, weight)
+    engine="stats"    -> run_knn_stats (values+stats dicts, k/r)
+    engine="friction" -> run_knn_friction (k/tau, one treat, fr file)
+    engine="slope"    -> run_knn_slope (k/tau, DEM, model, roundtrip)
+    engine="fca"      -> fca (demand = the rows; supply from a FILE;
+                         returns A and J mapped to rows)
+
+    Everything computable is here (pytest-covered); the ado only moves
+    arrays over sfi and calls this.
+    """
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    n_rows = len(x)
+    valid = np.isfinite(x) & np.isfinite(y)
+
+    if engine == "counts":
+        return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
+                           unit_size=unit_size, r_values=r_values)
+
+    if engine == "stats":
+        from .analysis import run_knn_stats
+        values = values or {}
+        df = pd.DataFrame({"_x": x, "_y": y})
+        for v, arr in values.items():
+            a = np.asarray(arr, float)
+            a = np.where(a > 8.9e307, np.nan, a)
+            df[v] = a
+        dv = df[valid]
+        cd = build_cells(dv, "_x", "_y", value_vars=list(values),
+                         unit_size=unit_size)
+        st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
+                           stats=stats or {v: ["mean", "median", "gini"]
+                                           for v in values})
+        E, N = _snap(dv["_x"], dv["_y"], unit_size)
+        cols = [c for c in st.columns
+                if c.split("_")[0] in ("N", "Nv", "Dist", "Mean", "Med",
+                                       "Gini", "SD", "SE", "R", "T")]
+        return _map_back(st, list(zip(E, N)), cols, valid, n_rows)
+
+    if engine in ("friction", "slope"):
+        from .io import read_table
+        tr = (np.zeros(n_rows) if not treat
+              else np.asarray(next(iter(treat.values())), float))
+        w = np.ones(n_rows) if weight is None else np.asarray(weight, float)
+        df = pd.DataFrame({"x": x, "y": y, "count_all": w,
+                           "count_group": np.where(tr > 8.9e307, 0, tr) * w})
+        dv = df[valid]
+        E, N = _snap(dv["x"], dv["y"], unit_size)
+        pop = (dv.assign(x=E.astype(float) , y=N.astype(float))
+               .groupby(["x", "y"], as_index=False).sum())
+        fr = read_table(friction_file) if friction_file else None
+        if engine == "slope":
+            from .slope import run_knn_slope
+            res = run_knn_slope(pop, k_values or [], altitude=dem,
+                                model=model, fr=fr, unit_size=unit_size,
+                                tau_values=tau_values,
+                                roundtrip=roundtrip, **extra)
+        else:
+            from .friction import run_knn_friction
+            res = run_knn_friction(pop, k_values or [], fr=fr,
+                                   unit_size=unit_size,
+                                   tau_values=tau_values)
+        cols = [c for c in res.columns if c.split("_")[0]
+                in ("N", "T", "R", "Dist", "Rounds")]
+        return _map_back(res, list(zip(E, N)), cols, valid, n_rows)
+
+    if engine == "fca":
+        from .fca import fca
+        from .decay import Decay
+        try:
+            from .io import read_table
+            sup = read_table(supply_file)
+        except Exception:
+            sup = (pd.read_csv(supply_file) if supply_file.endswith(".csv")
+                   else pd.read_stata(supply_file))
+        sup = sup.rename(columns={supply_x: "x", supply_y: "y"})
+        d_arr = np.asarray(demand_arr, float)
+        d_arr = np.where(d_arr > 8.9e307, np.nan, d_arr)
+        df = pd.DataFrame({"x": x, "y": y, "_D": d_arr})
+        ok = valid & np.isfinite(df["_D"])
+        dv = df[ok]
+        E, N = _snap(dv["x"], dv["y"], unit_size)
+        dem_cells = (dv.assign(x=E.astype(float), y=N.astype(float))
+                     .groupby(["x", "y"], as_index=False).sum())
+        dec = (Decay(model="negexp", half_life_m=half_life_m)
+               if half_life_m else None)
+        d_out, _ = fca(dem_cells, sup, "_D", supply_col, decay=dec,
+                       reach=reach, method=method, k=k_fca, r=r_fca)
+        return _map_back(d_out, list(zip(E, N)), ["A", "J"],
+                         ok.to_numpy() if hasattr(ok, "to_numpy") else ok,
+                         n_rows)
+
+    raise ValueError(f"unknown engine '{engine}' - use counts / stats "
+                     "/ friction / slope / fca")

@@ -320,3 +320,36 @@ small batch after.
 - NEW parked: per-cell effective-pressure output (J/A) as a named
   column; commuting half-life estimation from observed flows (would
   need a flows file); kFCA own-side-mass convention decision.
+
+
+## v1.6.0 updates (this session)
+- ~~#17 generic Stata dispatcher~~ DONE (dispatch() + equipop_run.ado,
+  five engines, fca-first as planned; sfi-stub verbatim-validated;
+  in-Stata maiden run = user-side action). FUNCTION_MATRIX.md now in
+  repo docs/ (SB row spans FC/ST/FR/SL/FA). GitHub-fetch workflow
+  PROVEN this session (clone of tag v1.5.1, 38/38 before build).
+
+- **#18 (NEW, designed) CONTINENTAL SCALE - very large data
+  (user: 16M coordinates run in old EquiPop; Europe-wide 100 m
+  grids; memory is the constraint, not time).** Arithmetic: Europe
+  bbox ~5000x4500 km at 100 m = ~2.25 BILLION domain cells - engines
+  must NEVER materialize domain-sized arrays; populated cells from
+  16M coords (~10M unique) fit RAM comfortably (KD-tree ~GBs).
+  Architecture per engine:
+  (a) fastcounts: chunked KD-tree already streams; add TILE-AND-FLUSH
+      (absorbs the parked item): process origin tiles, write parquet
+      per tile, float32 outputs, uint32 counts; k-NN has NO a-priori
+      radius bound -> per-tile halo from local density estimate with
+      the EXISTING straggler re-query as exactness guarantee (seams
+      exact by construction, not by hope).
+  (b) graph engines: restrict domain to inhabited + corridor cells
+      (sparse node set), or tile Dijkstra with halo = tau_max *
+      max-edge-cost bound; hex same when hex-friction lands.
+  (c) FFT potential: tiled overlap-add with kernel-radius halo -
+      mathematically EXACT, memory = tile + halo only.
+  (d) fca: supply-side tiling with decay-truncation halos.
+  (e) I/O: memory-mapped/parquet chunks in, progressive RunLog with
+      per-tile md5 manifest + resumable rerun() (absorbs the parked
+      rerun()-from-meta idea), float32 by default at this scale.
+  Priority order: (a) first - matches the user's 16M k-NN use case;
+  validation: tiled run == untiled run EXACTLY on a mid-size fixture.

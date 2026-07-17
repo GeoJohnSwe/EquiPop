@@ -144,3 +144,24 @@ datasets, compute a subsample first: `origins=np.arange(0, len(cells), 10)`.
 - Anything else: the error text is your friend; the computation lives
   in `equipop.stata_bridge` and is pytest-covered, so problems are
   almost always environment (which Python, missing rasterio), not math.
+
+
+## NEW in 1.6 - one command, the whole toolbox: equipop_run
+
+```stata
+* counts (as equipop_knn, same options):
+equipop_run, engine(counts) x(X) y(Y) treat(HighEdu) k(200) r(500) replace
+* value statistics among the k nearest:
+equipop_run, engine(stats) x(X) y(Y) values(Income) stats(mean gini) k(400) replace
+* slopes (DEM path; roundtrip optional):
+equipop_run, engine(slope) x(X) y(Y) treat(HighEdu) k(400) tau(8) ///
+    dem("C:\data\dem.tif") roundtrip replace
+* FCA - your data = demand, supply from a file; returns A and J:
+equipop_run, engine(fca) x(X) y(Y) demandvar(Workers) ///
+    supply("C:\data\jobs.csv") supplycol(Jobs) halflife(3000) replace
+regress outcome A
+```
+
+A and J arrive row-aligned: A = jobs-per-worker after competition,
+J = the competition-blind potential, J/A = effective competitor mass.
+The old equipop_knn keeps working unchanged.
