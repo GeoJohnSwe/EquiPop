@@ -28,10 +28,15 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                    m_neighbors: int = 4096,
                    chunk: int = 4096,
                    r_values: list[float] | None = None,
-                   decay=None, decay_eps: float = 1e-6) -> pd.DataFrame:
+                   decay=None, decay_eps: float = 1e-6,
+                   origins=None) -> pd.DataFrame:
     """
     k-NN counts/ratios for every cell in cd, vectorised.
 
+    origins : optional array of CELL indices - compute results only
+        for these origins; the tree and destination mass stay GLOBAL,
+        so per-origin results are exactly those of a full run (the
+        tile-and-flush substrate, #18).
     m_neighbors : how many nearest CELLS are fetched per origin in the
         fast pass. Origins whose cumulative population within
         m_neighbors cells does not reach max(k) are automatically
@@ -125,8 +130,10 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
             rec["MaxDistance"] = float(dd[last])
             rows.append(rec)
 
-    for start in range(0, n_cells, chunk):
-        sel = np.arange(start, min(start + chunk, n_cells))
+    origins = np.arange(n_cells) if origins is None \
+        else np.asarray(origins)
+    for start in range(0, len(origins), chunk):
+        sel = origins[start:min(start + chunk, len(origins))]
         dist, idx = tree.query(pts[sel], k=m, workers=-1)
         _solve(dist, idx, sel)
     if stragglers:

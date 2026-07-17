@@ -1,4 +1,4 @@
-# EquiPop 1.5 — The Beginner's Manual
+# EquiPop 1.7 — The Beginner's Manual
 
 *A complete, gentle guide to using EquiPop with no prior Python
 experience beyond copy-pasting. Every section stands alone and every
@@ -465,3 +465,21 @@ Sharing sensitive point data? `examples/make_synthetic_jobs_people.py`
 moves both files with ONE rigid transform - every distance (also
 BETWEEN the files) is exactly preserved, so results reproduce, while
 locations are gone. It refuses to write if its self-check fails.
+
+## 19. NEW in 1.7 - very large runs: tile-and-flush
+
+Millions of coordinates? Same engine, different packaging:
+
+```python
+from equipop.bigrun import run_knn_counts_tiled, load_tiled
+run_knn_counts_tiled(cd, k_values=[100, 1600], out_dir="run_se",
+                     tile_m=50_000)          # 50 km tiles -> parquet
+df = load_tiled("run_se", columns=["EastWest","NorthSouth","R_g_1600"])
+```
+
+Each tile is computed against the FULL dataset (results are exactly
+those of one big run), written to disk, and released - a 16-million-
+point national run needs a few GB of RAM and a coffee break, not a
+server. If the computer dies mid-run, start the same call again:
+`resume=True` (the default) continues from the last finished tile,
+and every tile is md5-checked when you load.

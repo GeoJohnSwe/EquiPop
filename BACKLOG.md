@@ -353,3 +353,16 @@ small batch after.
       rerun()-from-meta idea), float32 by default at this scale.
   Priority order: (a) first - matches the user's 16M k-NN use case;
   validation: tiled run == untiled run EXACTLY on a mid-size fixture.
+
+
+## v1.7.0 updates (this session)
+- ~~#18a tile-and-flush (fast engine)~~ DONE: origins= on fastcounts,
+  bigrun module (parquet tiles, manifest+md5, resume), golden
+  tiled==untiled test, 250k-origin/1.5GB demo, ~2h extrapolation for
+  the 16M use case. Absorbs the old parked tile-and-flush item.
+- #18b-e remain parked until data demands them: graph-engine corridor
+  subgraphs / halo Dijkstra; overlap-add FFT tiling; fca supply
+  tiling; mmap/parquet ingestion; true domain tiling with
+  density-estimated halos (>100M cells).
+- Board next: #16 propensity FCA (2x2 runnable on delivered data) or
+  #14 autocorrelation; user-side: tag v1.6.0 + this v1.7.0 release.
