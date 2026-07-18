@@ -390,3 +390,22 @@ small batch after.
   have not left the local machine; the 1.8.1 zip supersedes all -
   ONE swap-commit-push-tag carries everything, CI should then show
   47 green x 2 Pythons.
+
+
+## v1.9.0 updates (this session)
+- ~~#14 spatial autocorrelation~~ DONE (weights from the menu, I/LISA/
+  Gi* esda-cross-validated, multiscalar profile, loud smoothed-surface
+  warning, Gridby ch.11 figure). NEW small parked: dispatcher engine
+  "lisa" (row-aligned Ii/quad/p to Stata - Stata Journal candidate);
+  hex weights (6-neighbour) when hex-friction lands; permutation
+  chunking for national-scale LISA (#18 family).
+- Board next: #16 propensity FCA, Book chapters 13+16, or #7 QGIS.
+
+
+## v1.9.1 (Book-per-release round)
+- CONVENTION ADOPTED: every release = zip + manual + backlog + BOOK
+  (compiled docx, version-stamped). Locally: docs/book/build.sh. On
+  CI: the new "book" job uploads EquiPop_Book.docx as an artifact on
+  every push (find it: Actions -> run -> Artifacts, bottom of page).
+- Chapter 11 written (4 chapters compiled of 20; ~9 pages - Part II
+  will thicken the volume). Next bites: ch 13 + 16.

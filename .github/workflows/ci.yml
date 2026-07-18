@@ -13,3 +13,22 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e .[test]
       - run: pytest -q
+
+  book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pip install -e .[test,viz]
+      - run: |
+          for f in examples/cookbook_0*.py; do PYTHONPATH=. python "$f"; done
+      - run: cd docs/book && npm install --silent docx && EQP_VERSION=$(grep -m1 version ../../pyproject.toml | cut -d'"' -f2) node build_book.js ch*.md EquiPop_Book.docx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EquiPop_Book
+          path: docs/book/EquiPop_Book.docx

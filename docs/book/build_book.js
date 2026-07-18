@@ -13,7 +13,7 @@ children.push(new D.Paragraph({
   children: [new D.TextRun("EquiPop: The Book")]}));
 children.push(new D.Paragraph({
   children: [new D.TextRun({italics: true,
-    text: "Sample compile - chapters 1, 2 and 4 (of 20). " +
+    text: "Compiled from the repository sources - version " + (process.env.EQP_VERSION || "dev") + ". " +
           "Every example runs; every figure has a script."})]}));
 
 for (const f of files) {
