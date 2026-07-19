@@ -433,3 +433,33 @@ small batch after.
 - Writing/coding split adopted: next WRITING session = Part II
   chapters (5-7); next CODING session = kFCA k_side both-sides +
   divergence experiment (awaits nothing) or RunLog audit.
+
+
+## v1.12.0 updates (kFCA both-sides round)
+- ~~kFCA continuation~~ DONE (k_side incl. "both"; A_ksupply/A_kdemand
+  per user naming; divergence experiment: corr 0.329 on the
+  municipality - conventions measure different geographies).
+- Small parked: expose k_side in dispatcher/ado fca engine.
+- ch5-7 pack merged into repo; Book at 9 chapters.
+
+## GIS & stats-software bridges (feasibility discussion, FOR LATER)
+- #7a QGIS Processing provider: HIGH feasibility, first target.
+  QGIS runs Python; pip-install equipop into its interpreter, wrap
+  engines as Processing algorithms -> appears in the Toolbox, chains
+  with all QGIS tools. #7b full Plugin (GUI dialogs, plugin
+  repository distribution) builds on 7a.
+- #21 ArcGIS Pro Python toolbox (.pyt): HIGH technical feasibility -
+  Pro is conda-based Python; a thin .pyt wraps the same engines
+  (glue-only, all math stays in the tested package). Constraint:
+  arcpy cannot run in CI (licence) -> validate the glue via a stub,
+  exactly the Stata discipline.
+- #22 SPSS: MEDIUM. Path A: SPSS Statistics Python integration /
+  extension command mirroring equipop_run. Path B (zero-maintenance,
+  available TODAY): documented .sav round trip - read .sav, compute,
+  write .sav back (pyreadstat already in the io extras); a Book
+  appendix recipe rather than code.
+- R: an R version predates EquiPop; a thin reticulate wrapper would
+  expose the Python package natively in R - LOW effort, note kept.
+- Shared principle for ALL bridges (the Stata lesson): hosts get
+  GLUE ONLY; mathematics lives in the pip package where pytest
+  guards it; every glue layer gets a stub validation.

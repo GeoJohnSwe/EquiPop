@@ -109,7 +109,7 @@ def _effort_matrix(demand, supply, altitude, model, roundtrip,
 
 
 def _weights(demand, supply, decay, reach, r, k, eps,
-             effort_kw) -> np.ndarray:
+             effort_kw, k_side: str = "union") -> np.ndarray:
     dx = demand.iloc[:, 0].to_numpy(float)
     dy = demand.iloc[:, 1].to_numpy(float)
     sx = supply.iloc[:, 0].to_numpy(float)
@@ -143,9 +143,23 @@ def _weights(demand, supply, decay, reach, r, k, eps,
             raise ValueError("reach='k' needs k")
         d_mass = demand["_D"].to_numpy()
         s_mass = supply["_S"].to_numpy()
-        m_d = _k_mask(D, s_mass, k)          # homes gather k jobs
-        m_s = _k_mask(D.T, d_mass, k).T      # workplaces gather k people
-        W = (m_d | m_s).astype(float)        # inside either catchment
+        if k_side in ("supply", "union", "intersection", "both"):
+            m_d = _k_mask(D, s_mass, k)      # homes gather k SUPPLY mass
+        if k_side in ("demand", "union", "intersection", "both"):
+            m_s = _k_mask(D.T, d_mass, k).T  # workplaces gather k DEMAND
+        if k_side == "supply":
+            W = m_d.astype(float)
+        elif k_side == "demand":
+            W = m_s.astype(float)
+        elif k_side == "intersection":
+            W = (m_d & m_s).astype(float)
+        else:                                 # union (default, legacy)
+            W = (m_d | m_s).astype(float)
+        uncovered = int((W.sum(axis=0) == 0).sum())
+        if uncovered:
+            print(f"[fca] k_side='{k_side}': {uncovered} supply cells "
+                  "in NOBODY's catchment - their mass drops out "
+                  "(conservation is over covered supply only)")
         if decay is not None:
             W *= decay.weight_vec(D)
     else:
@@ -158,7 +172,7 @@ def fca(demand: pd.DataFrame, supply: pd.DataFrame,
         demand_col: str, supply_col: str,
         decay=None, reach: str = "decay",
         r: float | None = None, k: float | None = None,
-        method: str = "2sfca", balance: int = 0, tol: float = 1e-10,
+        k_side: str = "union", method: str = "2sfca", balance: int = 0, tol: float = 1e-10,
         x_col: str = "x", y_col: str = "y", eps: float = 1e-6,
         # effort-reach extras:
         altitude=None, model: str = "tobler", roundtrip: bool = True,
@@ -176,10 +190,35 @@ def fca(demand: pd.DataFrame, supply: pd.DataFrame,
     dem["_D"] = dem[demand_col].astype(float)
     sup["_S"] = sup[supply_col].astype(float)
 
+    if reach == "k" and k_side == "both":
+        # BOTH-SIDES run (user convention): fixed k of SUPPLY mass and
+        # fixed k of DEMAND mass as parallel outputs A_ksupply/A_kdemand.
+        outs = {}
+        for tag, side in (("ksupply", "supply"), ("kdemand", "demand")):
+            outs[tag] = fca(demand, supply, demand_col, supply_col,
+                            decay=decay, reach="k", r=r, k=k,
+                            k_side=side, method=method, balance=balance,
+                            tol=tol, x_col=x_col, y_col=y_col, eps=eps,
+                            altitude=altitude, model=model,
+                            roundtrip=roundtrip, unit_size=unit_size,
+                            fr=fr, chunk=chunk, **model_params)
+        d_out = demand.copy()
+        s_out = supply.copy()
+        for tag in ("ksupply", "kdemand"):
+            d_res, s_res = outs[tag]
+            for c in ("A", "J"):
+                if c in d_res:
+                    d_out[f"{c}_{tag}"] = d_res[c].to_numpy()
+            for c in ("R", "C"):
+                if c in s_res:
+                    s_out[f"{c}_{tag}"] = s_res[c].to_numpy()
+        return d_out, s_out
+
     W = _weights(dem, sup, decay, reach, r, k, eps,
                  dict(altitude=altitude, model=model,
                       roundtrip=roundtrip, unit_size=unit_size,
-                      fr=fr, chunk=chunk, **model_params))
+                      fr=fr, chunk=chunk, **model_params),
+                 k_side=k_side)
     Dm = dem["_D"].to_numpy()
     Sm = sup["_S"].to_numpy()
     print(f"[fca] {len(dem)} demand x {len(sup)} supply cells, "
@@ -287,9 +326,11 @@ def fca_segments(demand: pd.DataFrame, supply: pd.DataFrame,
         args = {**kw, **seg}
         print(f"[fca] === segment '{name}' ===")
         d_res, s_res = fca(demand, supply, **args)
-        demand_out[f"A_{name}"] = d_res["A"].to_numpy()
-        if "J" in d_res:
-            demand_out[f"J_{name}"] = d_res["J"].to_numpy()
+        for c in d_res.columns:
+            if c == "A" or c == "J":
+                demand_out[f"{c}_{name}"] = d_res[c].to_numpy()
+            elif c.startswith(("A_k", "J_k")):
+                demand_out[f"{c}_{name}"] = d_res[c].to_numpy()
         rc = "C" if args.get("balance", 0) else "R"
         supply_out[f"{rc}_{name}"] = s_res[rc].to_numpy()
     return demand_out, supply_out

@@ -212,3 +212,53 @@ def test_propensity_cell_mode_matches_group_when_uniform():
                            {"a": "Sa", "b": "Sb"}, decay=dec)
     assert np.allclose(dc["A"], dg["A_g"], rtol=1e-12)
     assert np.allclose(dc["J"], dg["J_g"], rtol=1e-12)
+
+
+def test_kfca_sides_brute_force_and_both():
+    """k_side='supply': one home, supplies at 100/200/300 m with mass
+    3/3/3, k=5 -> catchment = nearest two (cum 3, 6 >= 5). Pressure on
+    each covered supply = home demand (10); R = mass/10; A = sum R
+    over the catchment = 0.6. k_side='demand': each workplace gathers
+    k=5 of DEMAND mass -> one home suffices (10 >= 5), so ALL THREE
+    workplaces link the home: A = 0.9. 'both' returns the pair."""
+    from equipop.fca import fca
+    demand = pd.DataFrame({"x": [0.0], "y": [0.0], "D": [10.0]})
+    supply = pd.DataFrame({"x": [100.0, 200.0, 300.0],
+                           "y": [0.0, 0.0, 0.0],
+                           "S": [3.0, 3.0, 3.0]})
+    ds, _ = fca(demand, supply, "D", "S", reach="k", k=5,
+                k_side="supply")
+    assert np.isclose(ds["A"][0], 0.6)
+    dd, _ = fca(demand, supply, "D", "S", reach="k", k=5,
+                k_side="demand")
+    assert np.isclose(dd["A"][0], 0.9)
+    db, sb = fca(demand, supply, "D", "S", reach="k", k=5,
+                 k_side="both")
+    assert np.isclose(db["A_ksupply"][0], 0.6)
+    assert np.isclose(db["A_kdemand"][0], 0.9)
+    assert "R_ksupply" in sb and "R_kdemand" in sb
+    assert np.isclose(db["J_ksupply"][0], 6.0)     # sees 2 supplies
+    assert np.isclose(db["J_kdemand"][0], 9.0)     # seen by all 3
+
+
+def test_kfca_union_is_default_and_both_matches_singles():
+    rng = np.random.default_rng(21)
+    demand = pd.DataFrame({"x": rng.uniform(0, 3000, 60),
+                           "y": rng.uniform(0, 3000, 60),
+                           "D": rng.uniform(1, 6, 60)})
+    supply = pd.DataFrame({"x": rng.uniform(0, 3000, 25),
+                           "y": rng.uniform(0, 3000, 25),
+                           "S": rng.uniform(1, 12, 25)})
+    from equipop.fca import fca
+    d_def, _ = fca(demand, supply, "D", "S", reach="k", k=40)
+    d_uni, _ = fca(demand, supply, "D", "S", reach="k", k=40,
+                   k_side="union")
+    assert np.allclose(d_def["A"], d_uni["A"])          # legacy safe
+    d_b, _ = fca(demand, supply, "D", "S", reach="k", k=40,
+                 k_side="both")
+    d_s, _ = fca(demand, supply, "D", "S", reach="k", k=40,
+                 k_side="supply")
+    d_d, _ = fca(demand, supply, "D", "S", reach="k", k=40,
+                 k_side="demand")
+    assert np.allclose(d_b["A_ksupply"], d_s["A"], rtol=1e-12)
+    assert np.allclose(d_b["A_kdemand"], d_d["A"], rtol=1e-12)
