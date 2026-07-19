@@ -1,6 +1,6 @@
 *! equipop_run.ado - EquiPop 1.6: ONE command, the whole toolbox.
 *! Syntax:
-*!   equipop_run, engine(counts|stats|friction|slope|fca) x() y() [...]
+*!   equipop_run, engine(counts|stats|friction|slope|fca|lisa) x() y() [...]
 *! Engines and their options:
 *!   counts   : treat(varlist) k(numlist) r(numlist) [weight()]
 *!   stats    : values(varlist) k(numlist) r(numlist) [stats(string)]
@@ -10,6 +10,9 @@
 *!   fca      : demandvar(varname) supply(path.csv/.dta/.sav)
 *!              supplycol(name) halflife(#) [reach(decay|r|k)
 *!              kfca(#) rfca(#) method(2sfca|3sfca)] -> A, J
+*!   lisa     : values(varname) [k(#) = weight-knn, wperm(#)]
+*!              -> LISA_<v>_Ii, LISA_<v>_quad (1=HH 2=LL 3=HL 4=LH),
+*!                 LISA_<v>_p  (on cell means, loud)
 *! Common: unit(#) weight(varname) replace
 *! All results come back ROW-ALIGNED as new variables.
 
@@ -23,7 +26,7 @@ program define equipop_run
          DEMANDvar(varname numeric) SUPPLY(string) ///
          SUPPLYCOL(string) SUPPLYX(string) SUPPLYY(string) ///
          HALFlife(real 0) REACH(string) METHOD(string) ///
-         KFCA(real 0) RFCA(real 0) REPLACE]
+         KFCA(real 0) RFCA(real 0) WPERM(real 199) REPLACE]
 
     if "`model'" == ""     local model "tobler"
     if "`reach'" == ""     local reach "decay"
@@ -39,7 +42,7 @@ program define equipop_run
         "`weight'", "`dem'", "`model'", `rt', "`friction'",         ///
         "`demandvar'", "`supply'", "`supplycol'", "`supplyx'",      ///
         "`supplyy'", `halflife', "`reach'", "`method'", `kfca',     ///
-        `rfca', `rep')
+        `rfca', `rep', `wperm')
 end
 
 python:
@@ -55,7 +58,7 @@ def _col(v):
 def _equipop_run(engine, xv, yv, treatv, valuesv, statss, ks, rs,
                  taus, unit, wv, dem, model, rt, fricf, demv, supf,
                  supcol, supx, supy, hl, reach, method, kfca, rfca,
-                 rep):
+                 rep, wperm=199):
     kw = dict(unit_size=float(unit))
     kw["k_values"] = [int(t) for t in ks.split()] or None
     kw["r_values"] = [float(t) for t in rs.split()] or None
@@ -64,6 +67,12 @@ def _equipop_run(engine, xv, yv, treatv, valuesv, statss, ks, rs,
         kw["treat"] = {v: _col(v) for v in treatv.split()}
     if wv:
         kw["weight"] = _col(wv)
+    if engine == "lisa":
+        vals = {v: _col(v) for v in valuesv.split()}
+        kw["values"] = vals
+        kw["w_k"] = int(ks.split()[0]) if ks.split() else 8
+        kw["k_values"] = None
+        kw["permutations"] = int(wperm)
     if engine == "stats":
         vals = {v: _col(v) for v in valuesv.split()}
         kw["values"] = vals

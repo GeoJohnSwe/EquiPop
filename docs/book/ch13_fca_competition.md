@@ -2,39 +2,70 @@
 
 ## The idea
 
-Access potential (chapter 12) counts what you can reach. But jobs,
-school places and GP appointments are **rival**: what I take, you
-cannot. The floating-catchment family (FCA) prices that rivalry in
-one pass — no iteration. The algorithm in plain words, exactly as a
-researcher first sketched it on paper: (1) from each home, the
-decayed sum of reachable jobs; (2) from each workplace, the decayed
-search pressure aimed at it; (3) deflate each workplace's jobs by its
-pressure — offer 5 jobs under pressure 10 and the *competed-for*
-stock is 0.5; (4) re-sum from each home using competed-for stocks.
-That is `method="2sfca"`, the default, and its two outputs carry the
-whole story: **A**, the jobs-per-worker actually available to you,
-and **J**, step (1)'s competition-blind potential — so **J/A is the
-effective competitor mass you face per visible job**.
+The access measures of chapter 12 count what you can reach. But many
+of the things worth reaching — jobs, school places, appointments at
+a clinic — are **rival**: what I take, you cannot have. A town where
+everyone can *reach* five hundred jobs but ten thousand people are
+reaching for them is not a town of good access. The floating-
+catchment family of methods (FCA, for *Floating Catchment Area*)
+prices that rivalry, and it does so in one straightforward pass, no
+iteration, no equilibrium-solving.
 
-Different people compete in different markets. The binary version is
-the *match table* (`fca_segments`): low-educated workers versus
-low-education jobs, everyone versus everything. But real search is
-not binary — and this is where the **propensity matrix M** enters:
-M[g][c] is the share of group g's search aimed at job category c.
-Identity M reproduces the binary walls exactly (regression-tested to
-1e-12); anything else lets markets leak into each other.
+The algorithm is best understood exactly as a researcher first
+sketched it on paper, in four steps. **Step one:** from each home,
+sum up the reachable jobs, letting distant ones count less (the
+distance-decay idea of chapter 7). **Step two:** turn the telescope
+around — from each *workplace*, sum up the search pressure aimed at
+it: how many decay-weighted job-seekers can reach this place?
+**Step three:** deflate. A workplace offering 5 jobs under a
+pressure of 10 seekers has, per seeker, only 5 ÷ 10 = 0.5
+*competed-for* jobs to give. **Step four:** return to the homes and
+re-do step one, but summing the competed-for stocks instead of the
+raw ones. The result, called **A**, is each home's jobs-per-worker
+*actually available once everyone else is also reaching*. Step
+one's raw sum is kept too, under the name **J** — and comparing
+them is illuminating: J is what you can see, A is what you can get,
+and J divided by A tells you how many effective competitors stand
+between you and each visible job.
+
+So far, one big market. But real people compete in *segments*: a
+job requiring a medical degree is not part of everyone's market.
+The simple version handles this with a **match table** — run the
+analysis once for low-educated workers against low-education jobs,
+once for everyone else against the rest, walls between the markets.
+The refined version, and the subject of this chapter's second half,
+replaces the walls with a **propensity matrix**, written M. Each
+row of M belongs to a group of workers; each column to a category
+of jobs; and each entry is the share of that group's job search
+aimed at that category. A row like (0.85, 0.15) says: this group
+directs 85 % of its search at the first category and 15 % at the
+second. One special case is worth pausing on. Suppose the matrix
+says every group searches only within "its own" category — a 1 in
+each row's own column, 0 everywhere else (mathematicians call this
+shape an *identity matrix*). With that table, the propensity method
+gives exactly the same numbers as the walls version — not roughly
+the same, but the same to more decimal places than the computer can
+meaningfully print, and an automatic test re-checks this agreement
+every time the software changes, so the two can never quietly drift
+apart. The moment any entry departs from 0 or 1, the walls become
+porous, and the markets begin to influence each other's competition.
 
 ![Access with market walls, and what cross-competition changes](figs/ch13_propensity.png)
 
-On the anonymised municipality (real register structure), the walls
-scenario gives low-educated workers A = 0.154 jobs per worker. Let
-merely 15 % of their search cross into the other market — while 25 %
-of educated search invades theirs — and A_low almost **doubles** to
-0.301: reaching a richer adjacent market outweighs the invasion of
-one's own poor one. The map on the right shows *where* that gain
-lands. The scenario's M is illustrative, and that is the refrain of
-this chapter: **the matrix is the model** — estimate it, don't
-assume it.
+The figure runs on the anonymised municipality data — a real Swedish
+register whose coordinates were rigidly moved to protect privacy
+while keeping every distance intact. Under the walls scenario,
+low-educated workers face a stark market: A = 0.154, roughly one
+available job for every six and a half seekers. The right panel
+shows what happens under an *illustrative* propensity matrix in
+which 15 % of low-educated search crosses into the other market
+while 25 % of educated search invades theirs: low-educated access
+nearly **doubles**, to 0.301. Reaching even a modest slice of the
+richer adjacent market outweighs the extra invasion of one's own
+poorer one — the walls themselves were a large part of the penalty.
+The map shows *where* the gain lands. And here the chapter's
+refrain must be said plainly: that matrix was **chosen for the
+figure**, not estimated from behaviour. The matrix *is* the model.
 
 ## Cook it
 
@@ -52,45 +83,62 @@ M = pd.DataFrame([[0.85, 0.15], [0.25, 0.75]],
 d, s = fca_propensity(p, j, M,
         {"low": "LowEdu_sum", "oth": "Other_sum"},
         {"lowjob": "LowEdu_jobs", "othjob": "Other_jobs"}, decay=dec)
-# d: A_low, A_oth, J_low, J_oth   s: R_lowjob, R_othjob
+# d gains A_low, A_oth, J_low, J_oth ;  s gains R_lowjob, R_othjob
 ```
+
+Reading the call: the two dictionaries name which column holds each
+group's workers and each category's jobs; `M` is the search table;
+and the decay object sets how fast distance fades relevance (here,
+a job 3 kilometres away counts half). The outputs follow the story
+above — one A and one J per group of workers, one competed-for
+ratio R per category of jobs.
 
 ## The dials
 
-`reach` from the neighbourhood menu (decay / r / kFCA / effort with a
-DEM and round trips); `method="3sfca"` for demand-splitting;
-`balance=` for the doubly-constrained market-clearing variant;
-`cell_propensity=True` for spatially varying propensities (below).
+`reach` picks the neighbourhood definition from chapter 4's menu
+(decay, radius, the fixed-mass kFCA catchments, or travel effort
+over a terrain model with the round trip home included);
+`method="3sfca"` adds a further refinement in which demand first
+splits itself across reachable options; `balance=` switches to a
+market-clearing variant for readers with an economics background;
+and `cell_propensity=True` unlocks the spatially varying version of
+M described next.
 
 ## Under the hood
 
-**Estimating M.** Two recommended estimators. *(c)* Your existing
-per-category regressions (OLS/logit, multilevel): predict each
-person's probability of holding each category, **strip the area
-effects from the prediction** — geography belongs to the FCA, not to
-M, and keeping both double-counts space — then row-normalize: each
-row is a search allocation summing to 1 (the convention that keeps A
-in jobs-per-worker and groups comparable). *(f)* The **propensity
-field**: don't average predictions into one matrix per group at all —
-average them per *cell*, and pass the per-cell probability columns
-with `cell_propensity=True`. In a segregated town, where you live
-predicts what you search for; the field lets M vary over the map at
-zero extra engine cost. A cross-tab of observed job-holding is the
-assumption-free baseline — but it measures *realized allocation
-under the current matching regime*, not search intent; name which
-one your question needs.
-
-Mechanics worth knowing: rows of M are loudly normalized if they
-don't sum to 1; structural zeros (ineligibility) are respected;
-demand cells reaching no supply get A = 0 with a count, never a
-silent NaN; and the doubly-constrained mode documents two textbook
-omissions — supply-margin scaling for imbalanced markets, and the
-gauge freedom of the balancing factors.
+**Where should M come from?** Two estimators are recommended, and
+one honest baseline. The baseline is the observed cross-table: among
+employed members of each group, the shares actually holding each
+job category. It requires no model at all — but be clear about what
+it measures: the *outcome* of past matching, complete with any
+exclusion built into it, not what people would search for in an
+open market. The first recommended estimator, (c), reuses
+regressions you may already have: predict each person's probability
+of holding each category, then divide each group's vector by its
+sum so it adds to one. One warning matters here: if your regression
+included area effects (as multilevel models do), **strip them from
+the prediction** — geography is the FCA's job, and keeping it in M
+as well would count the same space twice. The second estimator,
+(f), is the ambitious one: do not average the predictions into one
+matrix per group at all. Average them per *map square* instead, and
+pass the per-square probability columns with `cell_propensity=True`.
+In a segregated town, where you live predicts what you search for;
+this "propensity field" lets the matrix vary across the map, and
+the engine carries it at no extra cost. Housekeeping is loud as
+always: rows that do not sum to one are normalized with a printed
+notice; a genuinely impossible match (an entry of exactly zero)
+stays impossible; and a home that can reach no supply at all
+receives A = 0 with a printed count, never a silently missing
+value.
 
 ## Pitfalls
 
-The +95 % above is a *scenario*, not a finding — its M was chosen for
-the figure. With an estimated M the number is research; without one
-it is sensitivity analysis. Both are legitimate, and confusing them
-is not. And remember J: reporting A without J hides how much of the
-change is competition rather than reach.
+The +95 % in the figure is a *scenario*, not a finding: its matrix
+was invented to make the mechanism visible. With a matrix estimated
+from your own data, the same computation becomes research; without
+one, it is sensitivity analysis. Both are legitimate — confusing
+them is not, and every caption should say which one it is. A second
+habit worth forming: never report A without J beside it. A alone
+cannot tell the reader whether a change came from geography (more
+jobs within reach) or from competition (the same jobs, fewer rivals)
+— the pair can.

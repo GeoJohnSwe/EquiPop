@@ -240,5 +240,39 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                          ok.to_numpy() if hasattr(ok, "to_numpy") else ok,
                          n_rows)
 
+    if engine == "lisa":
+        from .autocorr import build_weights, local_morans
+        vals = values or {}
+        if len(vals) != 1:
+            raise ValueError("engine='lisa' wants exactly one value "
+                             "column in values=")
+        vname, arr = next(iter(vals.items()))
+        a = np.asarray(arr, float)
+        a = np.where(a > 8.9e307, np.nan, a)
+        df = pd.DataFrame({"x": x, "y": y, "v": a})
+        ok = valid & np.isfinite(df["v"])
+        dv = df[ok]
+        E, N = _snap(dv["x"], dv["y"], unit_size)
+        cells = (dv.assign(E=E, N=N).groupby(["E", "N"], as_index=False)
+                 .agg(v=("v", "mean"), n=("v", "size")))
+        if (cells["n"] > 1).any():
+            print(f"[stata] {int((cells.n > 1).sum())} cells hold "
+                  "several rows - LISA runs on CELL MEANS (loudly)")
+        W = build_weights(cells["E"], cells["N"], mode="knn",
+                          k=int(extra.get("w_k", 8)))
+        res = local_morans(cells["v"], W,
+                           permutations=int(extra.get("permutations",
+                                                      199)))
+        res["quadcode"] = res["quad"].map(
+            {"HH": 1, "LL": 2, "HL": 3, "LH": 4}).astype(float)
+        res["EastWest"] = cells["E"].to_numpy()
+        res["NorthSouth"] = cells["N"].to_numpy()
+        out = _map_back(res, list(zip(E, N)),
+                        ["Ii", "quadcode", "p"], ok.to_numpy()
+                        if hasattr(ok, "to_numpy") else ok, n_rows)
+        return {f"LISA_{vname}_Ii": out["Ii"],
+                f"LISA_{vname}_quad": out["quadcode"],
+                f"LISA_{vname}_p": out["p"]}
+
     raise ValueError(f"unknown engine '{engine}' - use counts / stats "
-                     "/ friction / slope / fca")
+                     "/ friction / slope / fca / lisa")

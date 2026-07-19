@@ -422,3 +422,14 @@ small batch after.
 - AWAITING USER: estimated M from their regressions (area effects
   stripped, per ch13) -> rerun the municipality act as RESEARCH, not
   scenario; candidate Stata Journal exhibit.
+
+
+## v1.11.0 (Voice + lisa round)
+- Book style guide EXECUTED on ch01/02/04/11/13; ch16 born in the
+  register; sample-approved voice now the volume's voice.
+- ~~lisa dispatcher engine~~ DONE (Stata Journal exhibit ready:
+  equipop_run, engine(lisa) x() y() values(R_HighEdu_400) -> LISA
+  variables for spmap/regress).
+- Writing/coding split adopted: next WRITING session = Part II
+  chapters (5-7); next CODING session = kFCA k_side both-sides +
+  divergence experiment (awaits nothing) or RunLog audit.

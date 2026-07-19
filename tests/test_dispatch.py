@@ -75,3 +75,27 @@ def test_dispatch_fca_matches_direct(tmp_path):
     ref = dd.set_index(["x", "y"])["A"]
     got = out["A"][ok]
     assert np.allclose(got, ref.loc[list(zip(E, N))].to_numpy(), rtol=1e-12)
+
+
+def test_dispatch_lisa_matches_direct():
+    from equipop.autocorr import build_weights, local_morans
+    x, y, rng = _pts(500, seed=12)
+    v = 0.01 * np.nan_to_num(x) + rng.normal(0, 3, len(x))
+    out = dispatch("lisa", x, y, values={"v": v}, w_k=8,
+                   permutations=49)
+    assert len(out["LISA_v_Ii"]) == len(x)
+    assert np.isnan(out["LISA_v_Ii"][:3]).all()
+    ok = np.isfinite(x)
+    E = (np.floor(x[ok] / 100) * 100 + 50).astype(int)
+    N = (np.floor(y[ok] / 100) * 100 + 50).astype(int)
+    cells = (pd.DataFrame({"E": E, "N": N, "v": v[ok]})
+             .groupby(["E", "N"], as_index=False)["v"].mean())
+    W = build_weights(cells.E, cells.N, "knn", k=8)
+    ref = local_morans(cells.v, W, permutations=9)
+    got = pd.DataFrame({"E": E, "N": N,
+                        "Ii": out["LISA_v_Ii"][ok]}).drop_duplicates(
+        ["E", "N"]).sort_values(["E", "N"])
+    assert np.allclose(got.Ii.to_numpy(),
+                       ref.assign(E=cells.E, N=cells.N)
+                       .sort_values(["E", "N"]).Ii.to_numpy(),
+                       rtol=1e-9)
