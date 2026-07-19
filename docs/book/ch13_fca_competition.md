@@ -131,6 +131,38 @@ stays impossible; and a home that can reach no supply at all
 receives A = 0 with a printed count, never a silently missing
 value.
 
+**Both sides of k.** One dial deserves its own passage, because it
+turns out to hide a research question. Chapter 4's fixed-mass
+neighbourhoods appear here as the kFCA reach: catchments that grow
+until they contain k units of mass. The quiet question is: k units
+of *whose* mass? Setting `k_side="supply"` means every worker
+weighs their nearest 500 *jobs*, wherever those are — everyone
+faces the same menu of options, and the ground it covers floats.
+Setting `k_side="demand"` reverses the telescope: every *workplace*
+weighs its nearest 500 workers — each employer has a recruitment
+pool of fixed size, and access at a home reflects how many such
+pools it belongs to. Both are reasonable stories about how labour
+markets work; they simply are not the same story. Setting
+`k_side="both"` computes the pair in one call, returning
+`A_ksupply` and `A_kdemand` side by side (the names carry the
+anchored mass, so they read correctly whether the "supply" is
+jobs, clinics or school places).
+
+![Two conventions, and where they disagree](figs/kfca_divergence.png)
+
+How different can two reasonable conventions be? On the anonymised
+municipality, very: the two access maps correlate at only 0.33,
+and for a typical home the two numbers differ by about 0.29 — on
+an access level averaging 0.63, which is to say the convention
+choice moves the answer by roughly half its size, even though both
+versions conserve the same municipal total. The divergence map on
+the right shows the disagreement's geography: red where fixed
+recruitment pools flatter a home, blue where a fixed job menu
+does. The lesson is the propensity lesson in different clothing:
+what looks like a technical setting is a model of behaviour, and
+when two defensible models disagree this much, the disagreement
+itself belongs in the paper.
+
 ## Pitfalls
 
 The +95 % in the figure is a *scenario*, not a finding: its matrix

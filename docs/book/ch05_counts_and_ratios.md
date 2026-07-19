@@ -27,11 +27,13 @@ metres, which is not a by-product but a finding in its own right:
 it is the physical size of a 400-person world, small where the town
 is dense and vast where it is not.
 
-One more idea completes the picture: **weighted rows**. Register
-data sometimes arrives pre-aggregated — one row meaning "27 persons
-with these properties at this location" rather than one row per
-person. A weight column tells the engine exactly that, and every
-count and share behaves as if the 27 rows had been written out.
+One more idea completes the picture: **pre-aggregated data**.
+Register extracts often arrive with one row meaning "27 persons with
+these properties in this square" rather than one row per person. The
+cell format of chapter 2 is built for exactly this: the counts
+simply *become* the cell masses, and every result behaves as if the
+27 rows had been written out one by one. The example below shows the
+direct route.
 
 ![The same town at three magnifications](figs/ch05_triptych.png)
 
@@ -50,26 +52,30 @@ often several.
 ## Cook it
 
 The call below computes two group markers at three scales in one
-pass, on the Gridby data from chapter 1, and demonstrates the
-weight option with the town's pre-aggregated squares (each row of
-`p` already represents `count_all` persons — exactly the weighted
-situation described above, which is why `build_cells` was told so).
+pass, on the Gridby data from chapter 1. Gridby's people table is
+pre-aggregated — each row is a square carrying `count_all` persons —
+so the counts go straight in as cell masses via `CellData`, with one
+summed column per marker:
 
 ```python
 from equipop.datasets import load
-from equipop.cells import build_cells
+from equipop.cells import CellData
 from equipop.fastcounts import run_knn_counts
 
 g = load("gridby")
-p = g["people"].copy()
-p["minority"] = p["count_group"]          # marker 1
-p["majority"] = p["count_all"] - p["count_group"]   # marker 2
-
-cd = build_cells(p, "x", "y", unit_size=100,
-                 binary_vars=["minority", "majority"],
-                 weight_col="count_all")
+p = g["people"]
+cd = CellData(E=p.x.to_numpy(), N=p.y.to_numpy(),
+              n=p.count_all.to_numpy(),
+              binary_sums={
+                  "minority": p.count_group.to_numpy(),
+                  "majority": (p.count_all - p.count_group).to_numpy()},
+              value_arrays={}, unit_size=100.0)
 out = run_knn_counts(cd, k_values=[50, 400, 1600])
 ```
+
+(If your data is one row per person instead, `build_cells` from
+chapter 2 does the aggregation for you — the two routes meet in the
+same `CellData` and the engines cannot tell them apart.)
 
 The result carries `R_minority_50` through `R_majority_1600` — six
 share columns from one spatial search, because the engine finds

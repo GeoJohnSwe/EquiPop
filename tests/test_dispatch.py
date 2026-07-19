@@ -99,3 +99,24 @@ def test_dispatch_lisa_matches_direct():
                        ref.assign(E=cells.E, N=cells.N)
                        .sort_values(["E", "N"]).Ii.to_numpy(),
                        rtol=1e-9)
+
+
+def test_dispatch_counts_decay_matches_direct():
+    from equipop.cells import build_cells
+    from equipop.fastcounts import run_knn_counts
+    from equipop.decay import Decay
+    x, y, rng = _pts(300, seed=17)
+    g = rng.integers(0, 2, len(x)).astype(float)
+    out = dispatch("counts", x, y, k_values=[25], treat={"g": g},
+                   half_life_m=800.0)
+    assert "ND_inf" in out and "RD_g_inf" in out
+    ok = np.isfinite(x)
+    df = pd.DataFrame({"x": x[ok], "y": y[ok], "g": g[ok]})
+    cd = build_cells(df, "x", "y", binary_vars=["g"], unit_size=100)
+    ref = run_knn_counts(cd, [25],
+                         decay=Decay(model="negexp", half_life_m=800.0))
+    E = (np.floor(x[ok]/100)*100+50); N = (np.floor(y[ok]/100)*100+50)
+    r = ref.set_index(["EastWest", "NorthSouth"])
+    assert np.allclose(out["ND_inf"][ok],
+                       r.loc[list(zip(E, N))]["ND_inf"].to_numpy(),
+                       rtol=1e-10)

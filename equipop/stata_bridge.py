@@ -23,7 +23,7 @@ from .fastcounts import run_knn_counts
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
                 m_neighbors: int = 4096,
-                r_values=None) -> dict:
+                r_values=None, decay=None) -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
 
@@ -80,7 +80,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
     res = run_knn_counts(cd, k_values, m_neighbors=m_neighbors,
-                         r_values=r_values)
+                         r_values=r_values, decay=decay)
 
     # map cell results back to every individual row
     res = res.set_index(["EastWest", "NorthSouth"])
@@ -90,6 +90,11 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 + [f"Dist_{k}" for k in k_values]
                 + [f"T_{v}_{k}" for v in treat for k in k_values + labs]
                 + [f"R_{v}_{k}" for v in treat for k in k_values + labs])
+    if decay is not None:                    # unbounded decayed sums
+        out_cols += [c for c in ("ND_inf",)
+                     + tuple(f"TD_{v}_inf" for v in treat)
+                     + tuple(f"RD_{v}_inf" for v in treat)
+                     if c in res.columns]
     out = {}
     vidx = np.flatnonzero(valid.to_numpy())
     for c in out_cols:
@@ -164,8 +169,15 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
     valid = np.isfinite(x) & np.isfinite(y)
 
     if engine == "counts":
+        dec = None
+        if half_life_m:
+            from .decay import Decay
+            dec = Decay(model=extra.get("decay_model", "negexp"),
+                        half_life_m=half_life_m,
+                        gamma=extra.get("gamma"))
         return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
-                           unit_size=unit_size, r_values=r_values)
+                           unit_size=unit_size, r_values=r_values,
+                           decay=dec)
 
     if engine == "stats":
         from .analysis import run_knn_stats

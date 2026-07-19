@@ -463,3 +463,14 @@ small batch after.
 - Shared principle for ALL bridges (the Stata lesson): hosts get
   GLUE ONLY; mathematics lives in the pip package where pytest
   guards it; every glue layer gets a stub validation.
+
+
+## v1.13.0 updates (#21 ArcGIS opener)
+- ~~#21 first release~~ DONE: 3 tools (user's priorities 1+2 first-
+  class, friction included as the ready door), stub-validated glue,
+  guide. MAIDEN RUN user-side: add .pyt in Pro, Tool 1 on any point
+  layer. Future #21b: LISA + FCA tools (after maiden feedback),
+  symbology presets, tool 3 accepting a polyline barrier layer
+  (auto-rasterize rivers/roads to friction cells - natural next).
+- Decay now flows through the counts ROW path everywhere (Stata ado
+  inherits it free via dispatch - expose halflife() option: small).
