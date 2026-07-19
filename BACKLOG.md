@@ -409,3 +409,16 @@ small batch after.
   every push (find it: Actions -> run -> Artifacts, bottom of page).
 - Chapter 11 written (4 chapters compiled of 20; ~9 pages - Part II
   will thicken the volume). Next bites: ch 13 + 16.
+
+
+## v1.10.0 updates (#16 round)
+- ~~#16 propensity match-table FCA~~ DONE (group + cell modes,
+  estimators (c)+(f) as user chose; identity regression free; ch13 +
+  cookbook_05 on the register fixture; Book compiled).
+- kFCA continuation UPDATED per user: parametrize k_side AND return
+  BOTH sides side-by-side (A_kjobs, A_kworkers) - "having them both
+  could be interesting in analyses". Queued with the divergence-map
+  experiment.
+- AWAITING USER: estimated M from their regressions (area effects
+  stripped, per ch13) -> rerun the municipality act as RESEARCH, not
+  scenario; candidate Stata Journal exhibit.

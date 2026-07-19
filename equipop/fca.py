@@ -293,3 +293,107 @@ def fca_segments(demand: pd.DataFrame, supply: pd.DataFrame,
         rc = "C" if args.get("balance", 0) else "R"
         supply_out[f"{rc}_{name}"] = s_res[rc].to_numpy()
     return demand_out, supply_out
+
+
+# =====================================================================
+# #16 - PROPENSITY MATCH-TABLE FCA: from binary segments to
+# probabilistic competition. Two modes:
+#   GROUP mode: demand groups g with propensity matrix M[g][c] over
+#     supply categories c (rows = search allocation, sum to 1).
+#   CELL mode: per-cell propensity columns (spatially varying M -
+#     "propensity fields", estimator (f)).
+# Math (2SFCA logic throughout, one pass, no iteration):
+#   P_j^c = sum_i w_ij * sum_g M[g,c] D_i^g      (pressure on c at j)
+#   R_j^c = S_j^c / P_j^c                        (competed-for supply)
+#   A_i^g = sum_c M[g,c] * sum_j w_ij R_j^c      (group access at i)
+#   J_i^g = sum_c M[g,c] * sum_j w_ij S_j^c      (competition-blind)
+# Identity M with groups == categories reproduces fca_segments
+# EXACTLY (regression-tested).
+# =====================================================================
+
+def fca_propensity(demand: pd.DataFrame, supply: pd.DataFrame,
+                   M, demand_cols, supply_cols,
+                   decay=None, reach: str = "decay",
+                   r: float | None = None, k: float | None = None,
+                   x_col: str = "x", y_col: str = "y",
+                   cell_propensity: bool = False,
+                   demand_total: str | None = None,
+                   eps: float = 1e-6):
+    """
+    GROUP mode (cell_propensity=False):
+      demand_cols : {group: column of group demand} e.g.
+                    {"low": "LowEdu_sum", "other": "Other_sum"}
+      supply_cols : {category: column} e.g. {"lowjob": "LowEdu_jobs",
+                    "otherjob": "Other_jobs"}
+      M : DataFrame (index=groups, columns=categories) of search
+          propensities. Rows are LOUDLY normalized to sum to 1.
+      -> demand gains A_<g>, J_<g>; supply gains R_<c>.
+
+    CELL mode (cell_propensity=True, estimator (f)):
+      demand_total : column of total searchers per cell.
+      demand_cols  : {category: propensity column} - per-cell vectors
+                     (your regression predictions averaged to cells;
+                     strip area effects - geography belongs HERE).
+      -> demand gains A, J; supply gains R_<c>.
+    """
+    dem = demand.copy()
+    sup = supply.copy()
+    dem["_D"] = 1.0; sup["_S"] = 1.0          # placeholders for _weights
+    W = _weights(dem.rename(columns={x_col: "x", y_col: "y"}),
+                 sup.rename(columns={x_col: "x", y_col: "y"}),
+                 decay, reach, r, k, eps, {})
+    cats = list(supply_cols)
+    S = np.column_stack([sup[supply_cols[c]].to_numpy(float)
+                         for c in cats])                    # (ns, C)
+
+    if cell_propensity:
+        if demand_total is None:
+            raise ValueError("cell mode needs demand_total")
+        D = dem[demand_total].to_numpy(float)               # (nd,)
+        P = np.column_stack([dem[demand_cols[c]].to_numpy(float)
+                             for c in cats])                # (nd, C)
+        rs = P.sum(1, keepdims=True)
+        if not np.allclose(rs[rs[:, 0] > 0], 1.0, atol=1e-6):
+            print("[fca] cell propensities do not sum to 1 -> "
+                  "normalizing rows LOUDLY (zero rows stay zero)")
+            P = np.divide(P, rs, out=np.zeros_like(P), where=rs > 0)
+        press = W.T @ (P * D[:, None])                      # (ns, C)
+        R = np.divide(S, press, out=np.zeros_like(S), where=press > 0)
+        WR = W @ R                                          # (nd, C)
+        WS = W @ S
+        out_d = demand.copy()
+        out_d["A"] = (P * WR).sum(1)
+        out_d["J"] = (P * WS).sum(1)
+        out_s = supply.copy()
+        for ci, c in enumerate(cats):
+            out_s[f"R_{c}"] = R[:, ci]
+        print(f"[fca] propensity (CELL mode): {len(cats)} categories, "
+              f"A mean {out_d['A'].mean():.4f}")
+        return out_d, out_s
+
+    groups = list(demand_cols)
+    Mdf = pd.DataFrame(M) if not isinstance(M, pd.DataFrame) else M
+    Mm = Mdf.loc[groups, cats].to_numpy(float)              # (G, C)
+    rs = Mm.sum(1, keepdims=True)
+    if not np.allclose(rs, 1.0, atol=1e-9):
+        print(f"[fca] M rows sum to {rs.ravel().round(4)} -> "
+              "normalizing to 1 LOUDLY (search allocation convention)")
+        Mm = Mm / rs
+    D = np.column_stack([dem[demand_cols[g]].to_numpy(float)
+                         for g in groups])                  # (nd, G)
+    press = W.T @ (D @ Mm)                                  # (ns, C)
+    R = np.divide(S, press, out=np.zeros_like(S), where=press > 0)
+    WR = W @ R
+    WS = W @ S
+    out_d = demand.copy()
+    for gi, g in enumerate(groups):
+        out_d[f"A_{g}"] = WR @ Mm[gi]
+        out_d[f"J_{g}"] = WS @ Mm[gi]
+    out_s = supply.copy()
+    for ci, c in enumerate(cats):
+        out_s[f"R_{c}"] = R[:, ci]
+    print(f"[fca] propensity (GROUP mode): {len(groups)} groups x "
+          f"{len(cats)} categories; A means "
+          + ", ".join(f"{g}={out_d[f'A_{g}'][D[:,gi]>0].mean():.3f}"
+                      for gi, g in enumerate(groups)))
+    return out_d, out_s

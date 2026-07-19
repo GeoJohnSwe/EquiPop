@@ -133,3 +133,82 @@ def test_real_labour_market_fixture_regression():
     gap = (d.A_low / np.maximum(d.A_all, 1e-9))[(w > 0)
                                                 & (d.LowEdu_sum > 0)]
     assert np.isclose(np.median(gap), 0.241364, atol=1e-5)
+
+
+def test_propensity_identity_reproduces_segments():
+    """M = identity with groups == categories must equal fca_segments
+    EXACTLY - the regression that came free with the design."""
+    rng = np.random.default_rng(6)
+    demand = pd.DataFrame({"x": rng.uniform(0, 2000, 40),
+                           "y": rng.uniform(0, 2000, 40),
+                           "low": rng.uniform(1, 5, 40),
+                           "oth": rng.uniform(1, 5, 40)})
+    supply = pd.DataFrame({"x": rng.uniform(0, 2000, 15),
+                           "y": rng.uniform(0, 2000, 15),
+                           "lowjob": rng.uniform(1, 10, 15),
+                           "othjob": rng.uniform(1, 10, 15)})
+    dec = Decay(model="negexp", half_life_m=600.0)
+    from equipop.fca import fca_propensity
+    M = pd.DataFrame([[1.0, 0.0], [0.0, 1.0]],
+                     index=["glow", "goth"], columns=["clow", "coth"])
+    dP, sP = fca_propensity(demand, supply, M,
+                            {"glow": "low", "goth": "oth"},
+                            {"clow": "lowjob", "coth": "othjob"},
+                            decay=dec)
+    dS, sS = fca_segments(demand, supply,
+                          [{"name": "l", "demand_col": "low",
+                            "supply_col": "lowjob"},
+                           {"name": "o", "demand_col": "oth",
+                            "supply_col": "othjob"}], decay=dec)
+    assert np.allclose(dP["A_glow"], dS["A_l"], rtol=1e-12)
+    assert np.allclose(dP["A_goth"], dS["A_o"], rtol=1e-12)
+    assert np.allclose(dP["J_glow"], dS["J_l"], rtol=1e-12)
+    assert np.allclose(sP["R_clow"], sS["R_l"], rtol=1e-12)
+
+
+def test_propensity_hand_computed_cross_competition():
+    """1 demand cell, 2 supply cells at equal distance, w = 1.
+    D = [low 10, oth 20]; S = [lowjob 6, othjob 12] (one per cell).
+    M = [[.8,.2],[.1,.9]].
+    Pressure: clow = 10*.8 + 20*.1 = 10 ; coth = 10*.2 + 20*.9 = 20.
+    R: clow = 6/10 = .6 ; coth = 12/20 = .6.
+    A_low = .8*.6 + .2*.6 = .6 ; A_oth = .1*.6 + .9*.6 = .6.
+    J_low = .8*6 + .2*12 = 7.2 ; J_oth = .1*6 + .9*12 = 11.4."""
+    from equipop.fca import fca_propensity
+    demand = pd.DataFrame({"x": [0.0], "y": [0.0],
+                           "low": [10.0], "oth": [20.0]})
+    supply = pd.DataFrame({"x": [100.0, 0.0], "y": [0.0, 100.0],
+                           "lowjob": [6.0, 0.0], "othjob": [0.0, 12.0]})
+    M = pd.DataFrame([[0.8, 0.2], [0.1, 0.9]],
+                     index=["low", "oth"], columns=["clow", "coth"])
+    d, s = fca_propensity(demand, supply, M,
+                          {"low": "low", "oth": "oth"},
+                          {"clow": "lowjob", "coth": "othjob"},
+                          reach="r", r=150.0)
+    assert np.isclose(d["A_low"][0], 0.6) and np.isclose(d["A_oth"][0], 0.6)
+    assert np.isclose(d["J_low"][0], 7.2) and np.isclose(d["J_oth"][0], 11.4)
+    assert np.allclose(s["R_clow"], [0.6, 0.0])
+
+
+def test_propensity_cell_mode_matches_group_when_uniform():
+    """Uniform per-cell propensities == one-group GROUP mode."""
+    from equipop.fca import fca_propensity
+    rng = np.random.default_rng(9)
+    demand = pd.DataFrame({"x": rng.uniform(0, 2000, 30),
+                           "y": rng.uniform(0, 2000, 30),
+                           "D": rng.uniform(1, 6, 30)})
+    demand["p_a"], demand["p_b"] = 0.3, 0.7
+    supply = pd.DataFrame({"x": rng.uniform(0, 2000, 12),
+                           "y": rng.uniform(0, 2000, 12),
+                           "Sa": rng.uniform(1, 8, 12),
+                           "Sb": rng.uniform(1, 8, 12)})
+    dec = Decay(model="negexp", half_life_m=500.0)
+    dc, _ = fca_propensity(demand, supply, None,
+                           {"a": "p_a", "b": "p_b"},
+                           {"a": "Sa", "b": "Sb"}, decay=dec,
+                           cell_propensity=True, demand_total="D")
+    M = pd.DataFrame([[0.3, 0.7]], index=["g"], columns=["a", "b"])
+    dg, _ = fca_propensity(demand, supply, M, {"g": "D"},
+                           {"a": "Sa", "b": "Sb"}, decay=dec)
+    assert np.allclose(dc["A"], dg["A_g"], rtol=1e-12)
+    assert np.allclose(dc["J"], dg["J_g"], rtol=1e-12)
