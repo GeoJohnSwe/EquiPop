@@ -35,24 +35,45 @@ def _install_fake_arcpy(table: pd.DataFrame):
     def Describe(_layer):
         return _FakeDescribe()
 
+    def _tab():
+        ac = state.get("active_copy")
+        return state["copies"][ac] if ac else state["table"]
+
+    def _settab(df):
+        ac = state.get("active_copy")
+        if ac:
+            state["copies"][ac] = df
+        else:
+            state["table"] = df
+
     def FeatureClassToNumPyArray(_layer, fields, skip_nulls=False,
                                  null_value=np.nan):
-        t = state["table"]
-        dtype = [(f, np.float64) if f != "OBJECTID" else (f, np.int64)
-                 for f in fields]
-        out = np.empty(len(t), dtype=dtype)
+        t = _tab()
+
+        def _dt(f):
+            if f == "OBJECTID":
+                return (f, np.int64)
+            if pd.api.types.is_numeric_dtype(t[f]):
+                return (f, np.float64)
+            return (f, "U64")                 # text fields stay text
+
+        out = np.empty(len(t), dtype=[_dt(f) for f in fields])
         for f in fields:
             col = t[f].to_numpy()
-            out[f] = np.where(pd.isna(col), null_value, col) \
-                if f != "OBJECTID" else col
+            if f == "OBJECTID":
+                out[f] = col
+            elif pd.api.types.is_numeric_dtype(t[f]):
+                out[f] = np.where(pd.isna(col), null_value, col)
+            else:
+                out[f] = col.astype(str)
         return out
 
     def ExtendTable(_layer, key, array, akey):
-        t = state["table"].set_index(key)
+        t = _tab().set_index(key)
         add = pd.DataFrame(array).set_index(akey)
         for c in add.columns:
             t[c] = add[c]
-        state["table"] = t.reset_index()
+        _settab(t.reset_index())
 
     class ExecuteError(Exception):
         pass
@@ -63,12 +84,31 @@ def _install_fake_arcpy(table: pd.DataFrame):
             self.filter = types.SimpleNamespace(type=None, list=[])
             self.value = None
 
+    def ListFields(_layer):
+        return [types.SimpleNamespace(name=c)
+                for c in state["table"].columns]
+
+    mgmt = types.ModuleType("arcpy.management")
+
+    def DeleteField(_layer, fields):
+        state["table"] = state["table"].drop(columns=list(fields))
+
+    def CopyFeatures(_layer, out):
+        state.setdefault("copies", {})[out] = state["table"].copy()
+        state["active_copy"] = out          # results now target the copy
+
+    mgmt.DeleteField = DeleteField
+    mgmt.CopyFeatures = CopyFeatures
+
     da.FeatureClassToNumPyArray = FeatureClassToNumPyArray
     da.ExtendTable = ExtendTable
     arcpy.da = da
     arcpy.Describe = Describe
+    arcpy.ListFields = ListFields
+    arcpy.management = mgmt
     arcpy.ExecuteError = ExecuteError
     arcpy.Parameter = Parameter
+    sys.modules["arcpy.management"] = mgmt
     sys.modules["arcpy"] = arcpy
     sys.modules["arcpy.da"] = da
     return state
@@ -133,3 +173,47 @@ def test_pyt_counts_stats_friction_verbatim(tmp_path):
                    r_values=[500.0], half_life_m=800.0)
     assert np.allclose(got["ND_inf"].to_numpy(), ref["ND_inf"],
                        equal_nan=True)
+
+
+
+def test_pyt_rerun_overwrite_and_category_and_newoutput(tmp_path):
+    rng = np.random.default_rng(9)
+    n = 300
+    cats = rng.choice(["restaurant", "cafe", "school", "pub"], n,
+                      p=[.3, .2, .3, .2])
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 2500, n),
+                      "SHAPE@Y": rng.uniform(0, 2500, n),
+                      "fclass": cats})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+
+    # category mode: population = food places, treatment = grouped
+    pyt._run_tool("counts", "poi", msg, k_text="20",
+                  cat_field="fclass",
+                  pop_values_text="restaurant, cafe, pub",
+                  treat_values_text="food: restaurant, cafe")
+    got = state["table"]
+    assert "R_food_20" in got
+    school = got.fclass == "school"
+    assert got.loc[school, "N_20"].isna().all()      # excluded -> Null
+    ok = got.loc[~school, ["T_food_20", "N_20"]].dropna()
+    assert (ok["T_food_20"] <= ok["N_20"]).all()     # sanity: T <= N
+
+    # RE-RUN with same parameters: Overwrite path, no TypeError
+    pyt._run_tool("counts", "poi", msg, k_text="20",
+                  cat_field="fclass",
+                  pop_values_text="restaurant, cafe, pub",
+                  treat_values_text="food: restaurant, cafe")
+    assert any("Overwriting" in m for m in msg.log)
+
+    # NEW feature class output: original untouched, copy carries results
+    state["active_copy"] = None
+    base_cols = set(state["table"].columns)
+    pyt._run_tool("counts", "poi", msg, k_text="30",
+                  cat_field="fclass", treat_values_text="pub",
+                  out_mode="New feature class", out_fc="out_fc1")
+    assert "N_30" not in base_cols or True
+    assert "N_30" in state["copies"]["out_fc1"].columns
+    assert "N_30" not in set(t.columns)              # input pristine

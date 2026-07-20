@@ -474,3 +474,14 @@ small batch after.
   (auto-rasterize rivers/roads to friction cells - natural next).
 - Decay now flows through the counts ROW path everywhere (Stata ado
   inherits it free via dispatch - expose halflife() option: small).
+
+
+## v1.14.0 (#21b - the field-tested toolbox)
+- ~~#21b~~ DONE, all spec items incl. category mode + categorical
+  package factory. John's two observations resolved: Dist_k =
+  floating radius (now self-explaining), T>N = counts-without-
+  population (now auto-hinted + honest labels).
+- REMAINING #21 family: Stata catvar()/treatvalues() options (the
+  factory is waiting), per-parameter metadata XML sidecars (polish),
+  LISA + FCA tools (#21c), polyline-barrier auto-rasterizer.
+- Book at 14 chapters, riding this release.

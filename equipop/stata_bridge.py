@@ -79,6 +79,16 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                   value_arrays={}, unit_size=unit_size)
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
+    if treat and weight is None:
+        for _v, _a in treat.items():
+            _fin = _a[np.isfinite(_a)]
+            if len(_fin) and np.nanmax(_fin) > 1:
+                print(f"[bridge] HINT: group '{_v}' holds COUNTS "
+                      "(values > 1) but no population/weight field is "
+                      "set - N will count ROWS while T sums persons, "
+                      "so shares can exceed 1. Set the Population "
+                      "field (weight) to the total-persons column.")
+                break
     res = run_knn_counts(cd, k_values, m_neighbors=m_neighbors,
                          r_values=r_values, decay=decay)
 

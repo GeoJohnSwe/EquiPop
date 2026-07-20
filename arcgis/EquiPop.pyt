@@ -41,7 +41,10 @@ def _field(name):
 def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_text="", half_life=0.0, decay_model="negexp",
-              friction_table=None, unit=100.0):
+              friction_table=None, unit=100.0,
+              cat_field=None, pop_values_text="", treat_values_text="",
+              existing="Overwrite", out_mode="Append to input",
+              out_fc=None):
     """The single glue path all three tools share (stub-validated)."""
     from equipop.stata_bridge import dispatch
 
@@ -56,8 +59,20 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "Shapefile input: field names truncate to 10 characters - "
             "a file geodatabase layer is strongly recommended.")
 
+    if out_mode.startswith("New"):
+        if not out_fc:
+            raise arcpy.ExecuteError("New feature class chosen - "
+                                     "please set the output name/path.")
+        arcpy.management.CopyFeatures(layer, out_fc)
+        messages.addMessage(f"Copied input to {out_fc}; results go "
+                            "there, input untouched.")
+        layer = out_fc
+        desc = arcpy.Describe(layer)
+        oid = desc.OIDFieldName
+
     fields = [oid, "SHAPE@X", "SHAPE@Y"] + list(treat_fields) \
-        + list(value_fields) + ([weight_field] if weight_field else [])
+        + list(value_fields) + ([weight_field] if weight_field else []) \
+        + ([cat_field] if cat_field else [])
     arr = arcpy.da.FeatureClassToNumPyArray(
         layer, fields, skip_nulls=False, null_value=np.nan)
     x = np.asarray(arr["SHAPE@X"], float)
@@ -67,6 +82,19 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(f"{n_missing} rows with missing coordinates"
                             " -> Null results (EquiPop convention).")
 
+    if cat_field:
+        from equipop.categorical import categories_to_binary
+        pop_vals = [v.strip() for v in pop_values_text.replace(";", ",")
+                    .split(",") if v.strip()] or None
+        pop_mask, cat_treats = categories_to_binary(
+            np.asarray(arr[cat_field]), treat_values_text or "",
+            pop_values=pop_vals)
+        x = np.where(pop_mask, x, np.nan)   # excluded rows -> Null,
+        y = np.where(pop_mask, y, np.nan)   # the standard convention
+        messages.addMessage(
+            f"Category mode: population {int(pop_mask.sum())} rows; "
+            f"treatments: {', '.join(cat_treats) or '(none)'}")
+
     kw = dict(unit_size=float(unit))
     kw["k_values"] = [int(t) for t in k_text.split()] or None
     kw["r_values"] = [float(t) for t in r_text.split()] or None
@@ -74,6 +102,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["tau_values"] = [float(t) for t in tau_text.split()]
     if treat_fields:
         kw["treat"] = {f: np.asarray(arr[f], float) for f in treat_fields}
+    if cat_field and cat_treats:
+        kw.setdefault("treat", {}).update(cat_treats)
     if weight_field:
         kw["weight"] = np.asarray(arr[weight_field], float)
     if engine == "counts" and half_life and half_life > 0:
@@ -95,9 +125,24 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     out[str(oid)] = np.asarray(arr[oid], np.int64)
     for c, v in res.items():
         out[_field(c)] = v
+    existing_names = {f.name for f in arcpy.ListFields(layer)}
+    clash = [c for c in (_field(c) for c in res) if c in existing_names]
+    if clash and existing.startswith("Overwrite"):
+        messages.addMessage(f"Overwriting {len(clash)} existing "
+                            f"EquiPop fields.")
+        arcpy.management.DeleteField(layer, clash)
+    elif clash:
+        raise arcpy.ExecuteError(
+            f"Result fields already exist ({', '.join(clash[:4])}...). "
+            "Choose Overwrite, or write to a new feature class.")
     arcpy.da.ExtendTable(layer, oid, out, str(oid))
     messages.addMessage(f"EquiPop: {len(res)} fields appended "
                         f"({', '.join(_field(c) for c in res)}).")
+    if any(c.startswith("Dist_") for c in res):
+        messages.addMessage("Note: Dist_k is in METRES - it is the "
+                            "radius each point needed to gather its k "
+                            "people (k fixes population, the radius "
+                            "floats). Not an error - a finding.")
 
 
 def _p(name, display, dtype, **kw):
@@ -120,51 +165,105 @@ class Toolbox:
 class CountsShares:
     def __init__(self):
         self.label = "1. Counts and Shares (k / radius / decay)"
-        self.description = ("Egocentric neighbourhoods: N, group T/R "
-                            "shares, Dist; optional decayed sums.")
+        self.description = (
+            "Egocentric neighbourhoods around every point. OUTPUT "
+            "FIELDS: N_k = persons among the k nearest (whole squares "
+            "enter, so slightly above k is honest); T_<g>_k and "
+            "R_<g>_k = group count and share; Dist_k = the RADIUS in "
+            "metres that the k-search needed (k fixes population, "
+            "geography floats); N_r### = persons within the radius. "
+            "DATA SHAPES: one point per PERSON (group fields are 0/1, "
+            "leave Population empty) or one point per PLACE carrying "
+            "many persons (set Population = total-persons field; group "
+            "fields then hold group COUNTS). Coordinates must be "
+            "METRIC (metres, e.g. SWEREF 99), not degrees.")
 
     def getParameterInfo(self):
-        ps = [_p("layer", "Point layer (people)", "GPFeatureLayer"),
-              _p("treat", "Group fields (0/1 or counts)", "Field",
-                 required=False, multiValue=True),
-              _p("weight", "Weight field (persons per row)", "Field",
+        ps = [_p("layer", "Point layer (people or places)",
+                 "GPFeatureLayer"),
+              _p("pop", "Population field - total persons at this "
+                 "point (empty if each point is one person)", "Field",
                  required=False),
+              _p("treat", "Group count fields - persons per group at "
+                 "this point (0/1 if points are individuals)", "Field",
+                 required=False, multiValue=True),
               _p("k", "k values (space-separated, e.g. 200 1600)",
                  "GPString", required=False),
               _p("r", "Radii in metres (e.g. 500 1000)", "GPString",
                  required=False),
-              _p("halflife", "Decay half-life in metres (0 = off)",
-                 "GPDouble", required=False),
-              _p("model", "Decay model", "GPString", required=False),
+              _p("model", "Distance decay", "GPString", required=False),
+              _p("halflife", "Decay half-life in metres", "GPDouble",
+                 required=False),
+              _p("catfield", "Category field (e.g. fclass) - builds "
+                 "population and groups from VALUES instead",
+                 "Field", required=False),
+              _p("popvalues", "Category values forming the population "
+                 "(comma-separated; empty = all rows)", "GPString",
+                 required=False),
+              _p("treatvalues", "Treatment categories - 'restaurant; "
+                 "cafe' or grouped 'food: restaurant, cafe'",
+                 "GPString", required=False),
+              _p("existing", "If result fields already exist",
+                 "GPString", required=False),
+              _p("outmode", "Output", "GPString", required=False),
+              _p("outfc", "New feature class (name/path)",
+                 "DEFeatureClass", required=False),
               _p("unit", "Cell size (m)", "GPDouble", required=False)]
-        for f in (1, 2):
-            ps[f].parameterDependencies = ["layer"]
-        ps[6].filter.type = "ValueList"
-        ps[6].filter.list = ["negexp", "expnormal", "expsqrt",
-                             "lognormal", "power"]
-        ps[6].value = "negexp"
-        ps[7].value = 100.0
+        for i in (1, 2, 7):
+            ps[i].parameterDependencies = ["layer"]
+        ps[5].filter.type = "ValueList"
+        ps[5].filter.list = ["no decay", "negexp", "expnormal",
+                             "expsqrt", "lognormal", "power"]
+        ps[5].value = "no decay"
+        ps[10].filter.type = "ValueList"
+        ps[10].filter.list = ["Overwrite", "Stop with a message"]
+        ps[10].value = "Overwrite"
+        ps[11].filter.type = "ValueList"
+        ps[11].filter.list = ["Append to input", "New feature class"]
+        ps[11].value = "Append to input"
+        ps[13].value = 100.0
         return ps
+
+    def updateParameters(self, parameters):
+        parameters[6].enabled = (parameters[5].valueAsText
+                                 not in (None, "", "no decay"))
+        parameters[12].enabled = (parameters[11].valueAsText
+                                  == "New feature class")
+        return
 
     def execute(self, parameters, messages):
         v = [p.valueAsText or "" for p in parameters]
+        model = v[5] or "no decay"
         _run_tool("counts", parameters[0].value, messages,
-                  treat_fields=[f for f in v[1].split(";") if f],
-                  weight_field=v[2] or None, k_text=v[3], r_text=v[4],
-                  half_life=float(v[5] or 0), decay_model=v[6] or
-                  "negexp", unit=float(v[7] or 100))
+                  weight_field=v[1] or None,
+                  treat_fields=[f for f in v[2].split(";") if f],
+                  k_text=v[3], r_text=v[4],
+                  half_life=float(v[6] or 0) if model != "no decay"
+                  else 0.0,
+                  decay_model=model if model != "no decay" else
+                  "negexp",
+                  cat_field=v[7] or None, pop_values_text=v[8],
+                  treat_values_text=v[9], existing=v[10] or
+                  "Overwrite", out_mode=v[11] or "Append to input",
+                  out_fc=v[12] or None, unit=float(v[13] or 100))
 
 
 class ValueStatistics:
     def __init__(self):
-        self.label = "2. Value Statistics (income among the k nearest)"
-        self.description = ("Mean / median / Gini of numeric fields "
-                            "in each egocentric neighbourhood.")
+        self.label = "2. Value Statistics (numeric fields among the k nearest)"
+        self.description = (
+            "Mean / median / Gini / SD of any NUMERIC fields (income, "
+            "rent, age...) computed among each point's k nearest "
+            "persons. Output: Mean_<f>_k, Med_<f>_k, Gini_<f>_k plus "
+            "Nv_<f>_k = how many of the k had a usable value (the "
+            "honesty column - a median on 30 valid values is a "
+            "rumour). Missing values still count as NEIGHBOURS but "
+            "contribute no value, the register convention.")
 
     def getParameterInfo(self):
         ps = [_p("layer", "Point layer (people)", "GPFeatureLayer"),
-              _p("values", "Value fields (e.g. income)", "Field",
-                 multiValue=True),
+              _p("values", "Numeric value fields (e.g. income, rent, "
+                 "age)", "Field", multiValue=True),
               _p("stats", "Statistics (space-separated)", "GPString",
                  required=False),
               _p("k", "k values", "GPString"),
@@ -185,7 +284,7 @@ class ValueStatistics:
 
 class FrictionEffort:
     def __init__(self):
-        self.label = "3. Friction Effort (rivers and barriers)"
+        self.label = "3. Effort and Isochrones (friction barriers)"
         self.description = ("Rounds to reach k people and effort "
                             "isochrones, over a barrier table with "
                             "x, y, friction columns.")
