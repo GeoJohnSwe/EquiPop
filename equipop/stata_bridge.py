@@ -23,7 +23,8 @@ from .fastcounts import run_knn_counts
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
                 m_neighbors: int = 4096,
-                r_values=None, decay=None) -> dict:
+                r_values=None, decay=None,
+                treat_are_counts: bool = False) -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
 
@@ -55,9 +56,21 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     df = pd.DataFrame({"_x": x, "_y": y, "_w": w})
     for name, arr in treat.items():
         df[name] = np.asarray(arr, dtype=float)
-    # treatment contribution = value * weight (0/1 * 1 in the plain case)
+    # Two conventions, explicit since v1.14.1 (the ArcGIS field-test
+    # bug): treat_are_counts=False (legacy, Stata) -> treat is a 0/1
+    # FLAG on a weighted row, contribution = flag * weight.
+    # treat_are_counts=True (GIS door) -> treat IS the group's person
+    # COUNT at the point; weight is the TOTAL count; no multiplication.
     for name in treat:
-        df[name] = df[name] * df["_w"]
+        if not treat_are_counts:
+            df[name] = df[name] * df["_w"]
+    if treat_are_counts and weight is not None:
+        for name in treat:
+            over = int((df[name] > df["_w"]).sum())
+            if over:
+                print(f"[bridge] WARNING: '{name}' exceeds the "
+                      f"population at {over} points - group counts "
+                      "larger than totals is a data error.")
 
     valid = df["_x"].notna() & df["_y"].notna()
     dv = df[valid]
@@ -79,7 +92,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                   value_arrays={}, unit_size=unit_size)
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
-    if treat and weight is None:
+    if treat and weight is None and not treat_are_counts:
         for _v, _a in treat.items():
             _fin = _a[np.isfinite(_a)]
             if len(_fin) and np.nanmax(_fin) > 1:
@@ -187,7 +200,9 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                         gamma=extra.get("gamma"))
         return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
                            unit_size=unit_size, r_values=r_values,
-                           decay=dec)
+                           decay=dec,
+                           treat_are_counts=extra.get(
+                               "treat_are_counts", False))
 
     if engine == "stats":
         from .analysis import run_knn_stats

@@ -217,3 +217,28 @@ def test_pyt_rerun_overwrite_and_category_and_newoutput(tmp_path):
     assert "N_30" not in base_cols or True
     assert "N_30" in state["copies"]["out_fc1"].columns
     assert "N_30" not in set(t.columns)              # input pristine
+
+
+def test_pyt_preaggregated_counts_convention():
+    """The John bug (v1.14.0 field test): pre-aggregated register
+    points with Population + group COUNT fields must yield T <= N
+    and shares in [0, 1] - no flagxweight multiplication."""
+    rng = np.random.default_rng(14)
+    n = 250
+    popn = rng.integers(1, 40, n).astype(float)
+    low = np.minimum(rng.integers(0, 20, n).astype(float), popn)
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 2500, n),
+                      "SHAPE@Y": rng.uniform(0, 2500, n),
+                      "Population": popn, "LowEdu_sum": low})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "reg", msg, treat_fields=["LowEdu_sum"],
+                  weight_field="Population", k_text="200")
+    got = state["table"].dropna()
+    assert (got["T_LowEdu_sum_200"] <= got["N_200"] + 1e-9).all()
+    r = got["R_LowEdu_sum_200"]
+    assert (r >= 0).all() and (r <= 1).all()
+    share = low.sum() / popn.sum()
+    assert abs(r.mean() - share) < 0.1        # in the right world now

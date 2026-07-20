@@ -485,3 +485,26 @@ small batch after.
   factory is waiting), per-parameter metadata XML sidecars (polish),
   LISA + FCA tools (#21c), polyline-barrier auto-rasterizer.
 - Book at 14 chapters, riding this release.
+
+
+## v1.14.1 (hotfix - the counts-convention bug, found by John on the
+## real register through ArcGIS; shapefile name truncation decoded in
+## chat -> reinforce gdb / New-feature-class-to-gdb advice)
+
+## STATA-UX SPEC (feedback from Umut - next Stata session)
+- i) NATURAL INSTALL, two stages: (a) NOW: `net install equipop,
+  from(https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata/)`
+  - needs stata.toc + equipop.pkg files in stata/ (small, buildable
+  immediately); ado then CHECKS for the python package and prints
+  the pip line if absent. (b) LATER: SSC submission (bundle ados +
+  sthlp help files + ancillaries, email to SSC maintainer) ->
+  `ssc install equipop` for the world.
+- ii) `help equipop` -> write SMCL help files: equipop.sthlp
+  (overview + engines table), equipop_run.sthlp, equipop_knn.sthlp
+  (syntax, options, examples with expected output, the two treat
+  conventions EXPLAINED).
+- iii) VARIABLE LABELS on every generated variable (via `label
+  variable` after store): e.g. R_HighEdu_400 -> "EquiPop: share
+  HighEdu among 400 nearest"; plus a prefix() option (e.g.
+  prefix(eq_)) so new variables sort together and cannot collide
+  with old ones; the completion message already lists them.

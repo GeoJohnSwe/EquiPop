@@ -106,6 +106,10 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw.setdefault("treat", {}).update(cat_treats)
     if weight_field:
         kw["weight"] = np.asarray(arr[weight_field], float)
+    if engine == "counts":
+        kw["treat_are_counts"] = True   # GIS convention: group fields
+                                        # ARE counts (0/1 included);
+                                        # Population = the total.
     if engine == "counts" and half_life and half_life > 0:
         kw["half_life_m"] = float(half_life)
         kw["decay_model"] = decay_model
