@@ -293,12 +293,16 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
     if engine == "fca":
         from .fca import fca
         from .decay import Decay
-        try:
-            from .io import read_table
-            sup = read_table(supply_file)
-        except Exception:
-            sup = (pd.read_csv(supply_file) if supply_file.endswith(".csv")
-                   else pd.read_stata(supply_file))
+        if isinstance(supply_file, pd.DataFrame):
+            sup = supply_file.copy()      # the GIS door hands a LAYER
+        else:
+            try:
+                from .io import read_table
+                sup = read_table(supply_file)
+            except Exception:
+                sup = (pd.read_csv(supply_file)
+                       if supply_file.endswith(".csv")
+                       else pd.read_stata(supply_file))
         sup = sup.rename(columns={supply_x: "x", supply_y: "y"})
         d_arr = np.asarray(demand_arr, float)
         d_arr = np.where(d_arr > 8.9e307, np.nan, d_arr)
@@ -311,8 +315,11 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         dec = (Decay(model="negexp", half_life_m=half_life_m)
                if half_life_m else None)
         d_out, _ = fca(dem_cells, sup, "_D", supply_col, decay=dec,
-                       reach=reach, method=method, k=k_fca, r=r_fca)
-        return _map_back(d_out, list(zip(E, N)), ["A", "J"],
+                       reach=reach, method=method, k=k_fca, r=r_fca,
+                       k_side=extra.get("k_side", "union"))
+        cols = [c for c in d_out.columns
+                if c in ("A", "J") or c.startswith(("A_k", "J_k"))]
+        return _map_back(d_out, list(zip(E, N)), cols,
                          ok.to_numpy() if hasattr(ok, "to_numpy") else ok,
                          n_rows)
 

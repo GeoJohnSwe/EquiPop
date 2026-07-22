@@ -347,6 +347,14 @@ def features_to_friction(features, value_field: str = "friction",
     for geom, v in zip(gdf.geometry, vals):
         if geom is None or geom.is_empty:
             continue
+        # zero-measure contact (corner/edge kiss) costs nothing:
+        # positive LENGTH for line features, positive AREA for polygon
+        # features (a polygon touching a cell only along its boundary
+        # has zero presence there - the boundary line is not the
+        # feature's measure; latent charge found by the numpy-twin
+        # cross-check in v1.16.0)
+        is_line = geom.geom_type in ("LineString", "MultiLineString",
+                                     "LinearRing")
         x0, y0, x1, y1 = geom.bounds
         i0, i1 = int(np.floor(x0 / u)), int(np.floor(x1 / u))
         j0, j1 = int(np.floor(y0 / u)), int(np.floor(y1 / u))
@@ -354,11 +362,10 @@ def features_to_friction(features, value_field: str = "friction",
             for j in range(j0, j1 + 1):
                 cell = box(i * u, j * u, (i + 1) * u, (j + 1) * u)
                 inter = geom.intersection(cell)
-                # zero-measure contact (corner/edge kiss) costs
-                # nothing: require length (lines) or area (polygons)
                 if not inter.is_empty and (
                         getattr(inter, "length", 0.0) > 1e-9
-                        or getattr(inter, "area", 0.0) > 1e-9):
+                        if is_line else
+                        getattr(inter, "area", 0.0) > 1e-9):
                     key = (i * u + u / 2, j * u + u / 2)
                     acc[key] = acc.get(key, 0.0) + float(v)
                     n_cells += 1
@@ -367,4 +374,185 @@ def features_to_friction(features, value_field: str = "friction",
     print(f"[friction] {len(gdf)} features -> {len(out)} friction "
           f"cells at {u:g} m (additive"
           f"{'' if n_cells == len(out) else ', overlaps stacked'})")
+    return out
+
+
+# ------------------------------------------- geopandas-free twin (#21d)
+def _clip_len(x1, y1, x2, y2, X0, Y0, X1, Y1):
+    """Length of segment (x1,y1)-(x2,y2) inside the CLOSED box
+    [X0,X1]x[Y0,Y1] (Liang-Barsky parametric clip)."""
+    dx, dy = x2 - x1, y2 - y1
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, x1 - X0), (dx, X1 - x1),
+                 (-dy, y1 - Y0), (dy, Y1 - y1)):
+        if p == 0.0:
+            if q < 0.0:
+                return 0.0           # parallel and outside the slab
+        else:
+            t = q / p
+            if p < 0.0:
+                t0 = max(t0, t)
+            else:
+                t1 = min(t1, t)
+            if t0 > t1:
+                return 0.0
+    return (t1 - t0) * float(np.hypot(dx, dy))
+
+
+def _ring_area(pts):
+    """Signed shoelace area of a ring given as a list of (x, y)."""
+    if len(pts) < 3:
+        return 0.0
+    a = np.asarray(pts, float)
+    x, y = a[:, 0], a[:, 1]
+    return 0.5 * float(np.dot(x, np.roll(y, -1))
+                       - np.dot(y, np.roll(x, -1)))
+
+
+def _clip_ring(pts, X0, Y0, X1, Y1):
+    """Sutherland-Hodgman clip of one ring against the box; returns
+    the clipped ring (possibly with zero-width bridges - the shoelace
+    area stays exact)."""
+    def clip_edge(poly, inside, cross):
+        out = []
+        n = len(poly)
+        for i in range(n):
+            a, b = poly[i], poly[(i + 1) % n]
+            ia, ib = inside(a), inside(b)
+            if ia:
+                out.append(a)
+                if not ib:
+                    out.append(cross(a, b))
+            elif ib:
+                out.append(cross(a, b))
+        return out
+
+    def xcross(bound):
+        def f(a, b):
+            t = (bound - a[0]) / (b[0] - a[0])
+            return (bound, a[1] + t * (b[1] - a[1]))
+        return f
+
+    def ycross(bound):
+        def f(a, b):
+            t = (bound - a[1]) / (b[1] - a[1])
+            return (a[0] + t * (b[0] - a[0]), bound)
+        return f
+
+    poly = list(pts)
+    for inside, cross in (
+            (lambda p: p[0] >= X0, xcross(X0)),
+            (lambda p: p[0] <= X1, xcross(X1)),
+            (lambda p: p[1] >= Y0, ycross(Y0)),
+            (lambda p: p[1] <= Y1, ycross(Y1))):
+        if not poly:
+            return []
+        poly = clip_edge(poly, inside, cross)
+    return poly
+
+
+def paths_to_friction(features, values=None, unit_size: float = 100.0,
+                      default_value: float | None = None) -> pd.DataFrame:
+    """
+    features_to_friction WITHOUT geopandas (#21d): coordinate paths ->
+    additive friction cells, for hosts whose Python cannot grow
+    geopandas (the ArcGIS Pro clone). Validated cell-for-cell against
+    the shapely twin - both apply the SAME conventions: a cell is
+    charged when the feature's presence in it has positive measure
+    (length for lines, area for polygons); corner/edge kisses of zero
+    measure are free; one feature charges a cell at most ONCE;
+    overlapping features stack ADDITIVELY.
+
+    features : list of feature dicts:
+        {"type": "line",    "parts": [[(x, y), ...], ...]}
+        {"type": "polygon", "parts": [[exterior_ring, hole_ring, ...],
+                                      ...]}
+        (rings = lists of (x, y); first ring per part is the
+        exterior, later rings are holes - the arcpy part convention).
+    values : one friction value per feature (else default_value).
+    Returns DataFrame(x, y, friction) of charged cell MIDPOINTS.
+    """
+    n = len(features)
+    if values is not None:
+        vals = np.asarray(values, float)
+        if len(vals) != n:
+            raise ValueError(f"[friction] {n} features but "
+                             f"{len(vals)} values")
+    elif default_value is not None:
+        vals = np.full(n, float(default_value))
+        print(f"[friction] no values given - every feature costs "
+              f"{default_value}")
+    else:
+        raise ValueError("[friction] paths_to_friction needs values "
+                         "or a default_value")
+    if (vals < 0).any():
+        raise ValueError("[friction] negative friction values - "
+                         "speedups are not supported (yet); costs "
+                         "must be >= 0")
+    u = float(unit_size)
+    acc: dict[tuple[float, float], float] = {}
+    n_hits = 0
+    for feat, v in zip(features, vals):
+        gtype = str(feat.get("type", "line")).lower()
+        parts = feat.get("parts") or []
+        # measure of THIS feature per candidate cell (i, j)
+        measure: dict[tuple[int, int], float] = {}
+        if gtype.startswith("line"):
+            for part in parts:
+                pts = [(float(p[0]), float(p[1])) for p in part
+                       if p is not None]
+                for (x1, y1), (x2, y2) in zip(pts[:-1], pts[1:]):
+                    i0 = int(np.floor(min(x1, x2) / u))
+                    i1 = int(np.floor(max(x1, x2) / u))
+                    j0 = int(np.floor(min(y1, y2) / u))
+                    j1 = int(np.floor(max(y1, y2) / u))
+                    for i in range(i0, i1 + 1):
+                        for j in range(j0, j1 + 1):
+                            L = _clip_len(x1, y1, x2, y2, i * u,
+                                          j * u, (i + 1) * u,
+                                          (j + 1) * u)
+                            if L > 0.0:
+                                measure[(i, j)] = measure.get(
+                                    (i, j), 0.0) + L
+        elif gtype.startswith("poly"):
+            for part in parts:
+                rings = [[(float(p[0]), float(p[1])) for p in ring
+                          if p is not None] for ring in part]
+                rings = [r for r in rings if len(r) >= 3]
+                if not rings:
+                    continue
+                # orientation convention: exterior positive area,
+                # holes negative - normalise whatever came in
+                for ri, ring in enumerate(rings):
+                    a = _ring_area(ring)
+                    if (ri == 0 and a < 0) or (ri > 0 and a > 0):
+                        rings[ri] = ring[::-1]
+                allp = np.asarray([p for r in rings for p in r], float)
+                i0 = int(np.floor(allp[:, 0].min() / u))
+                i1 = int(np.floor(allp[:, 0].max() / u))
+                j0 = int(np.floor(allp[:, 1].min() / u))
+                j1 = int(np.floor(allp[:, 1].max() / u))
+                for i in range(i0, i1 + 1):
+                    for j in range(j0, j1 + 1):
+                        A = 0.0
+                        for ring in rings:
+                            A += _ring_area(_clip_ring(
+                                ring, i * u, j * u, (i + 1) * u,
+                                (j + 1) * u))
+                        if A > 0.0:
+                            measure[(i, j)] = measure.get(
+                                (i, j), 0.0) + A
+        else:
+            raise ValueError(f"[friction] unknown feature type "
+                             f"'{gtype}' - line or polygon")
+        for (i, j), m in measure.items():
+            if m > 1e-9:                      # zero-measure kiss: free
+                key = (i * u + u / 2, j * u + u / 2)
+                acc[key] = acc.get(key, 0.0) + float(v)
+                n_hits += 1
+    out = pd.DataFrame([(k[0], k[1], f) for k, f in acc.items()],
+                       columns=["x", "y", "friction"])
+    print(f"[friction] {n} features -> {len(out)} friction cells at "
+          f"{u:g} m (additive"
+          f"{'' if n_hits == len(out) else ', overlaps stacked'})")
     return out

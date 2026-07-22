@@ -15,12 +15,16 @@ Add this .pyt to any project via Catalog -> Toolboxes -> Add Toolbox.
 Full walk-through in ARCGIS_GUIDE.md next to this file.
 
 Tools:
-  1 Counts & Shares  - k / radius neighbourhoods, group shares,
-                       optional distance decay (unbounded sums)
-  2 Value Statistics - mean / median / Gini of numeric fields
-                       (income!) among the k nearest
-  3 Friction Effort  - rounds and effort isochrones over a barrier
-                       table (rivers, cuttings)
+  1 Counts & Shares      - k / radius neighbourhoods, group shares,
+                           decay; barrier/DEM distance INGREDIENTS
+  2 Value Statistics     - mean / median / Gini of numeric fields
+                           (income!) among the k nearest
+  3 Hotspots             - LISA / local Moran's I on any field
+                           (typically an EquiPop result)
+  4 Accessibility        - 2SFCA/3SFCA: demand layer meets supply
+                           layer; decay / radius / k-supply reach
+  5 Features to Barriers - lines/polygons -> the barrier table for
+                           tool 1 (geopandas-free)
 
 All results are appended to the input layer as new double fields,
 row-aligned; rows with missing coordinates receive Null.
@@ -56,7 +60,13 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               friction_table=None, unit=100.0,
               cat_field=None, pop_values_text="", treat_values_text="",
               existing="Overwrite", out_mode="Append to input",
-              out_fc=None, extra_dem=None, roundtrip=False):
+              out_fc=None, extra_dem=None, roundtrip=False,
+              # lisa (#21d):
+              w_k=8, permutations=199,
+              # fca (#21d):
+              supply_layer=None, supply_field=None, demand_field=None,
+              reach="decay", fca_method="2sfca", fca_k=None,
+              fca_r=None):
     """The single glue path all three tools share (stub-validated)."""
     from equipop.stata_bridge import dispatch
 
@@ -84,7 +94,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
 
     fields = [oid, "SHAPE@X", "SHAPE@Y"] + list(treat_fields) \
         + list(value_fields) + ([weight_field] if weight_field else []) \
-        + ([cat_field] if cat_field else [])
+        + ([cat_field] if cat_field else []) \
+        + ([demand_field] if demand_field else [])
     arr = arcpy.da.FeatureClassToNumPyArray(
         layer, fields, skip_nulls=False, null_value=np.nan)
     x = np.asarray(arr["SHAPE@X"], float)
@@ -154,9 +165,72 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["values"] = vals
         wanted = stats_text.split() or ["mean", "median", "gini"]
         kw["stats"] = {f: wanted for f in vals}
+    if engine == "lisa":
+        f = value_fields[0]
+        kw["values"] = {f: np.asarray(arr[f], float)}
+        kw["w_k"] = int(w_k or 8)
+        kw["permutations"] = int(permutations or 199)
+        kw.pop("k_values", None); kw.pop("r_values", None)
+        messages.addMessage(
+            f"LISA on '{f}': local Moran's I over cell means, "
+            f"{kw['w_k']}-nearest-cell weights, "
+            f"{kw['permutations']} permutations. Quad codes: "
+            "1=High-High (hotspot), 2=Low-Low (coldspot), "
+            "3=High-Low, 4=Low-High; read them WITH the p field.")
+    if engine == "fca":
+        if not supply_layer or not supply_field:
+            raise arcpy.ExecuteError("Accessibility needs a SUPPLY "
+                                     "layer and its capacity field.")
+        if reach == "decay" and not (half_life and half_life > 0):
+            raise arcpy.ExecuteError(
+                "Reach 'decay' needs a half-life in metres (how far "
+                "away supply counts half). Or choose a fixed radius "
+                "/ k nearest supply.")
+        sdesc = arcpy.Describe(supply_layer)
+        if getattr(sdesc, "shapeType", "") != "Point":
+            raise arcpy.ExecuteError("The supply layer must be POINTS "
+                                     "(one point per facility/place).")
+        import pandas as pd
+        sarr = arcpy.da.FeatureClassToNumPyArray(
+            supply_layer, ["SHAPE@X", "SHAPE@Y", supply_field],
+            skip_nulls=False, null_value=np.nan)
+        sup = pd.DataFrame({"x": np.asarray(sarr["SHAPE@X"], float),
+                            "y": np.asarray(sarr["SHAPE@Y"], float),
+                            "supply": np.asarray(sarr[supply_field],
+                                                 float)}).dropna()
+        n_drop = len(sarr) - len(sup)
+        if n_drop:
+            messages.addMessage(f"{n_drop} supply rows without "
+                                "coordinates/value dropped.")
+        messages.addMessage(
+            f"Supply: {len(sup)} points, total "
+            f"{sup['supply'].sum():g} '{supply_field}'.")
+        d_arr = (np.asarray(arr[demand_field], float) if demand_field
+                 else np.ones(len(x)))
+        if not demand_field:
+            messages.addMessage("No demand field set - every point "
+                                "counts as ONE demand unit.")
+        kw = dict(unit_size=float(unit), supply_file=sup,
+                  supply_col="supply", demand_arr=d_arr,
+                  reach=reach, method=fca_method)
+        if half_life and half_life > 0:
+            kw["half_life_m"] = float(half_life)
+        if fca_k is not None:
+            kw["k_fca"] = float(fca_k)
+        if fca_r is not None:
+            kw["r_fca"] = float(fca_r)
     # (legacy machine-3 wiring removed in v1.15 - ingredients above)
 
     res = dispatch(engine, x, y, **kw)
+    if engine == "fca":
+        tag = _field(supply_field)
+        res = {(f"A_{tag}" if c == "A" else f"J_{tag}" if c == "J"
+                else f"{c}_{tag}"): v for c, v in res.items()}
+        messages.addMessage(
+            f"A_{tag} = access: '{supply_field}' per unit demand "
+            "experienced, competition included (2SFCA family); "
+            f"J_{tag} = the competition-BLIND decayed supply "
+            "potential. Comparable across runs of the same reach.")
 
     dtype = [(str(oid), np.int64)] + [(_field(c), np.float64)
                                       for c in res]
@@ -198,9 +272,13 @@ class Toolbox:
     def __init__(self):
         self.label = "EquiPop"
         self.alias = "equipop"
-        self.tools = [CountsShares, ValueStatistics]
+        self.tools = [CountsShares, ValueStatistics, Hotspots,
+                      Accessibility, FeaturesToBarriers]
         # machine 3 retired in v1.15: friction/slope are DISTANCE
         # INGREDIENTS on machine 1, not an analysis of their own.
+        # v1.16 (#21d): Hotspots (LISA) + Accessibility (FCA) close
+        # the analysis family; Features to Barriers feeds tool 1's
+        # barrier ingredient without leaving Pro.
 
 
 class CountsShares:
@@ -339,3 +417,232 @@ class ValueStatistics:
                   value_fields=[f for f in v[1].split(";") if f],
                   stats_text=v[2], k_text=v[3], r_text=v[4],
                   unit=float(v[5] or 100))
+
+
+class Hotspots:
+    def __init__(self):
+        self.label = "3. Hotspots (LISA - local Moran's I)"
+        self.description = (
+            "WHERE do high and low values CLUSTER? Local Moran's I on "
+            "one numeric field - typically an EquiPop result from "
+            "tool 1 or 2 (e.g. R_HighEdu_400 or Med_income_400). "
+            "OUTPUT FIELDS: LISA_<f>_Ii = the local statistic; "
+            "LISA_<f>_quad = 1 High-High (hotspot), 2 Low-Low "
+            "(coldspot), 3 High-Low, 4 Low-High; LISA_<f>_p = "
+            "permutation pseudo p-value - map quad WHERE p is small "
+            "(<= 0.05), grey out the rest. Points sharing a cell are "
+            "averaged first (the tool says so loudly).")
+
+    def getParameterInfo(self):
+        ps = [_p("layer", "Point layer (with the value to test)",
+                 "GPFeatureLayer"),
+              _p("value", "Value field (e.g. an EquiPop result like "
+                 "R_HighEdu_400)", "Field"),
+              _p("wk", "Neighbour cells in the weights (k)",
+                 "GPLong", required=False),
+              _p("perms", "Permutations for the p-value", "GPLong",
+                 required=False),
+              _p("existing", "If result fields already exist",
+                 "GPString", required=False),
+              _p("outmode", "Output", "GPString", required=False),
+              _p("outfc", "New feature class (name/path)",
+                 "DEFeatureClass", required=False),
+              _p("unit", "Cell size (m)", "GPDouble", required=False)]
+        ps[1].parameterDependencies = ["layer"]
+        ps[2].value = 8
+        ps[3].value = 199
+        ps[4].filter.type = "ValueList"
+        ps[4].filter.list = ["Overwrite", "Stop with a message"]
+        ps[4].value = "Overwrite"
+        ps[5].filter.type = "ValueList"
+        ps[5].filter.list = ["Append to input", "New feature class"]
+        ps[5].value = "Append to input"
+        ps[7].value = 100.0
+        return ps
+
+    def updateParameters(self, parameters):
+        parameters[6].enabled = (parameters[5].valueAsText
+                                 == "New feature class")
+        return
+
+    def execute(self, parameters, messages):
+        v = [p.valueAsText or "" for p in parameters]
+        _run_tool("lisa", parameters[0].value, messages,
+                  value_fields=[v[1]],
+                  w_k=int(v[2] or 8), permutations=int(v[3] or 199),
+                  existing=v[4] or "Overwrite",
+                  out_mode=v[5] or "Append to input",
+                  out_fc=v[6] or None, unit=float(v[7] or 100))
+
+
+class Accessibility:
+    def __init__(self):
+        self.label = "4. Accessibility (2SFCA - supply vs demand)"
+        self.description = (
+            "HOW MUCH supply does each point experience, competition "
+            "included? Two point layers meet: THIS layer is the "
+            "DEMAND side (people; optional demand field = persons "
+            "per point), the SUPPLY layer carries capacity (jobs, GP "
+            "slots, seats...). Reach: 'decay' = everything counts, "
+            "nearer counts more (set the half-life in metres); "
+            "'fixed radius' = classic catchment; 'k nearest supply' "
+            "= each point's catchment GROWS until it holds k units "
+            "of supply (the EquiPop signature). OUTPUT: A_<supply> = "
+            "supply per unit demand experienced (2SFCA/3SFCA); "
+            "J_<supply> = competition-blind potential. Both layers "
+            "must share a METRIC coordinate system.")
+
+    def getParameterInfo(self):
+        ps = [_p("layer", "Demand point layer (people)",
+                 "GPFeatureLayer"),
+              _p("demand", "Demand field - persons per point (empty "
+                 "= one each)", "Field", required=False),
+              _p("slayer", "Supply point layer (facilities)",
+                 "GPFeatureLayer"),
+              _p("sfield", "Supply capacity field (jobs, slots...)",
+                 "Field"),
+              _p("reach", "Reach", "GPString"),
+              _p("halflife", "Half-life in metres (decay reach)",
+                 "GPDouble", required=False),
+              _p("radius", "Radius in metres (fixed-radius reach)",
+                 "GPDouble", required=False),
+              _p("ksup", "k = supply units to gather (k reach)",
+                 "GPDouble", required=False),
+              _p("method", "Method", "GPString", required=False),
+              _p("existing", "If result fields already exist",
+                 "GPString", required=False),
+              _p("outmode", "Output", "GPString", required=False),
+              _p("outfc", "New feature class (name/path)",
+                 "DEFeatureClass", required=False),
+              _p("unit", "Cell size (m)", "GPDouble", required=False)]
+        ps[1].parameterDependencies = ["layer"]
+        ps[3].parameterDependencies = ["slayer"]
+        ps[4].filter.type = "ValueList"
+        ps[4].filter.list = ["decay (half-life)", "fixed radius",
+                             "k nearest supply"]
+        ps[4].value = "decay (half-life)"
+        ps[8].filter.type = "ValueList"
+        ps[8].filter.list = ["2sfca", "3sfca"]
+        ps[8].value = "2sfca"
+        ps[9].filter.type = "ValueList"
+        ps[9].filter.list = ["Overwrite", "Stop with a message"]
+        ps[9].value = "Overwrite"
+        ps[10].filter.type = "ValueList"
+        ps[10].filter.list = ["Append to input", "New feature class"]
+        ps[10].value = "Append to input"
+        ps[12].value = 100.0
+        return ps
+
+    def updateParameters(self, parameters):
+        r = parameters[4].valueAsText or "decay (half-life)"
+        parameters[5].enabled = r.startswith("decay")
+        parameters[6].enabled = r.startswith("fixed")
+        parameters[7].enabled = r.startswith("k ")
+        parameters[11].enabled = (parameters[10].valueAsText
+                                  == "New feature class")
+        return
+
+    def execute(self, parameters, messages):
+        v = [p.valueAsText or "" for p in parameters]
+        r = v[4] or "decay (half-life)"
+        reach = ("decay" if r.startswith("decay")
+                 else "r" if r.startswith("fixed") else "k")
+        _run_tool("fca", parameters[0].value, messages,
+                  demand_field=v[1] or None,
+                  supply_layer=parameters[2].value,
+                  supply_field=v[3],
+                  reach=reach,
+                  half_life=float(v[5] or 0),
+                  fca_r=float(v[6]) if reach == "r" and v[6] else None,
+                  fca_k=float(v[7]) if reach == "k" and v[7] else None,
+                  fca_method=v[8] or "2sfca",
+                  existing=v[9] or "Overwrite",
+                  out_mode=v[10] or "Append to input",
+                  out_fc=v[11] or None, unit=float(v[12] or 100))
+
+
+class FeaturesToBarriers:
+    def __init__(self):
+        self.label = "5. Features to Barriers (lines/polygons -> table)"
+        self.description = (
+            "Turn rivers, railways, water bodies - any LINE or "
+            "POLYGON layer - into the barrier table that tool 1 "
+            "takes as its distance ingredient. Every grid cell the "
+            "feature genuinely passes through (positive length/area; "
+            "corner kisses are free) is charged the feature's "
+            "friction value; overlapping features STACK (river + "
+            "railway = both costs). Output: a csv of x, y, friction "
+            "cell midpoints - feed it straight into tool 1's "
+            "'barrier table' box. Runs without geopandas: built for "
+            "the Pro clone as it is.")
+
+    def getParameterInfo(self):
+        ps = [_p("features", "Line or polygon layer (barriers)",
+                 "GPFeatureLayer"),
+              _p("vfield", "Friction value field (crossing cost in "
+                 "ROUNDS; empty = use the default below)", "Field",
+                 required=False),
+              _p("vdefault", "Default friction value", "GPDouble",
+                 required=False),
+              _p("unit", "Cell size (m) - MUST match the analysis "
+                 "runs", "GPDouble", required=False),
+              _p("outcsv", "Output barrier table (.csv)", "DEFile")]
+        ps[1].parameterDependencies = ["features"]
+        ps[2].value = 6.0
+        ps[3].value = 100.0
+        ps[4].direction = "Output"
+        return ps
+
+    def execute(self, parameters, messages):
+        v = [p.valueAsText or "" for p in parameters]
+        layer = parameters[0].value
+        desc = arcpy.Describe(layer)
+        shape = str(getattr(desc, "shapeType", ""))
+        if shape not in ("Polyline", "Polygon"):
+            raise arcpy.ExecuteError(
+                "Features to Barriers wants LINES or POLYGONS; "
+                f"this layer is '{shape}'. Point barriers can go "
+                "into tool 1 directly as an x/y/friction table.")
+        gtype = "line" if shape == "Polyline" else "polygon"
+        vfield = v[1] or None
+        cols = ["SHAPE@"] + ([vfield] if vfield else [])
+        feats, vals = [], []
+        with arcpy.da.SearchCursor(layer, cols) as cur:
+            for row in cur:
+                geom = row[0]
+                if geom is None:
+                    continue
+                parts = []
+                for part in geom:
+                    if gtype == "line":
+                        parts.append([(p.X, p.Y) for p in part
+                                      if p is not None])
+                    else:               # rings split on None (arcpy)
+                        rings, ring = [], []
+                        for p in part:
+                            if p is None:
+                                rings.append(ring); ring = []
+                            else:
+                                ring.append((p.X, p.Y))
+                        if ring:
+                            rings.append(ring)
+                        parts.append(rings)
+                if gtype == "line":
+                    feats.append({"type": "line", "parts": parts})
+                else:
+                    feats.append({"type": "polygon", "parts": parts})
+                vals.append(float(row[1]) if vfield else
+                            float(v[2] or 6.0))
+        if not feats:
+            raise arcpy.ExecuteError("No features found in the layer "
+                                     "(empty selection?).")
+        from equipop.friction import paths_to_friction
+        out = paths_to_friction(feats, vals, unit_size=float(v[3]
+                                                            or 100))
+        out_path = v[4]
+        out.to_csv(out_path, index=False)
+        messages.addMessage(
+            f"{len(feats)} features -> {len(out)} barrier cells at "
+            f"{float(v[3] or 100):g} m, written to {out_path}. Feed "
+            "this file into tool 1's 'barrier table' - with the SAME "
+            "cell size - and your counts run on the effort ruler.")

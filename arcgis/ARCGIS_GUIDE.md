@@ -22,7 +22,7 @@ default one is locked. The supported route is a clone:
 
 Copy the `arcgis/EquiPop.pyt` file anywhere convenient (it can live
 in the project folder). In Pro's **Catalog** pane: right-click
-**Toolboxes -> Add Toolbox** -> pick the .pyt. Two tools appear
+**Toolboxes -> Add Toolbox** -> pick the .pyt. Five tools appear
 under "EquiPop".
 
 ## 3. First run (Counts and Shares)
@@ -36,9 +36,8 @@ geometry get Null, as they should.
 
 Tool 2 does income: pick numeric fields, statistics `mean median
 gini`, k - fields like `Med_income_400` and `Gini_income_400`
-appear. Tool 3 takes a barrier csv (`x,y,friction` in the SAME
-metric coordinate system as the layer) and returns `Rounds_k` and
-`N_tau...` isochrone counts.
+appear. Barriers and terrain are distance INGREDIENTS on tool 1
+(section 8); tools 3-5 are described in section 9.
 
 ## 4. Three things worth knowing
 
@@ -86,8 +85,8 @@ in order.
 
    Restart Pro (it binds packages at startup).
 3. **Version check.** `import equipop; print(equipop.__version__)` -
-   the toolbox needs >= 1.14.0 for the category mode and output
-   options.
+   the toolbox needs >= 1.16.0 for the full five-tool family
+   (hotspots, accessibility, features-to-barriers).
 
 ## 7. Reading the results honestly
 
@@ -122,3 +121,40 @@ Rivers as LINES: in Python, `equipop.friction.features_to_friction`
 turns line/polygon features with a friction field into the barrier
 table (overlaps stack additively); a one-click Pro wrapper for it is
 on the roadmap.
+
+
+## 9. v1.16 - the analysis family completes (#21d)
+
+**Tool 3, Hotspots (LISA).** WHERE do high and low values cluster?
+Point at any numeric field - the natural workflow is tool 1 or 2
+first, then LISA on the result (`R_HighEdu_400`, `Med_income_400`).
+Three fields appear: `LISA_<f>_Ii` (the local statistic),
+`LISA_<f>_quad` (1 = High-High hotspot, 2 = Low-Low coldspot,
+3 = High-Low, 4 = Low-High) and `LISA_<f>_p` (permutation pseudo
+p-value). Symbolise `quad` and grey out rows where `p > 0.05` -
+quadrants without their p-value are rumours. Several points in one
+grid cell are averaged first, and the tool says so.
+
+**Tool 4, Accessibility (2SFCA).** Two point layers meet: the layer
+you run the tool ON is the DEMAND side (people; a demand field gives
+persons per point, empty means one each), and a SUPPLY layer carries
+capacity (jobs, GP slots, seats). Choose the reach: *decay* (all
+supply counts, nearer counts more - set the half-life in metres),
+*fixed radius* (the classic catchment), or *k nearest supply* (each
+point's catchment grows until it holds k units of supply - the
+EquiPop signature). Output on the demand layer: `A_<supply>` =
+supply per unit demand experienced with competition included
+(2SFCA/3SFCA), and `J_<supply>` = the competition-blind potential.
+J/A tells you how crowded your access is. Both layers must share a
+metric coordinate system.
+
+**Tool 5, Features to Barriers.** Rivers, railways, lakes - select
+the line or polygon layer, a friction field (or one default value),
+the CELL SIZE YOUR ANALYSES USE, and an output csv. Every cell the
+feature genuinely passes through (positive length or area - corner
+and edge kisses are free) is charged; overlapping features stack.
+Feed the csv into tool 1's *barrier table* box and your counts run
+on the effort ruler - rivers cost rounds to cross. Runs without
+geopandas: the rasterizer is pure numpy, built for the Pro clone
+exactly as it is, and validated cell-for-cell against the package's
+shapely implementation.

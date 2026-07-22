@@ -147,3 +147,32 @@ def test_dispatch_friction_multigroup_resolver_and_counts(tmp_path):
     assert np.allclose(s, out["N_30"][ok])       # A + B = everyone
     r = out["R_grpA_tau3"][ok]
     assert np.nanmax(r) <= 1 + 1e-9
+
+
+def test_dispatch_fca_dataframe_supply_and_k_side():
+    """#21d: supply may arrive as a DataFrame (the ArcGIS door hands
+    a layer, not a file) - identical to the csv path; and the parked
+    k_side option now flows through (both-sides columns appear)."""
+    import pandas as pd
+    from equipop.stata_bridge import dispatch
+    rng = np.random.default_rng(33)
+    n = 200
+    x = rng.uniform(0, 2000, n)
+    y = rng.uniform(0, 2000, n)
+    d = rng.integers(1, 10, n).astype(float)
+    sup = pd.DataFrame({"x": rng.uniform(0, 2000, 6),
+                        "y": rng.uniform(0, 2000, 6),
+                        "jobs": rng.integers(10, 50, 6).astype(float)})
+    a = dispatch("fca", x, y, demand_arr=d, supply_file=sup,
+                 supply_col="jobs", reach="decay", half_life_m=600.0)
+    import tempfile, os
+    f = os.path.join(tempfile.mkdtemp(), "sup.csv")
+    sup.to_csv(f, index=False)
+    b = dispatch("fca", x, y, demand_arr=d, supply_file=f,
+                 supply_col="jobs", reach="decay", half_life_m=600.0)
+    assert np.allclose(a["A"], b["A"], equal_nan=True)
+    assert np.allclose(a["J"], b["J"], equal_nan=True)
+    both = dispatch("fca", x, y, demand_arr=d, supply_file=sup,
+                    supply_col="jobs", reach="k", k_fca=40.0,
+                    k_side="both")
+    assert {"A_ksupply", "A_kdemand"} <= set(both)

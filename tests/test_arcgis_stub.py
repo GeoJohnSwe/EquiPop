@@ -16,6 +16,23 @@ class _FakeDescribe:
     dataType = "FeatureLayer"
     catalogPath = "memory/people"
 
+    def __init__(self, shape="Point"):
+        self.shapeType = shape
+
+
+class _Pt(types.SimpleNamespace):
+    pass
+
+
+def _geom(parts):
+    """Fake arcpy geometry: iterable of parts; line part = [Pt...];
+    polygon part = [Pt..., None, Pt... (hole)]."""
+    out = []
+    for part in parts:
+        out.append([None if p is None else _Pt(X=p[0], Y=p[1])
+                    for p in part])
+    return out
+
 
 class _Messages:
     def __init__(self):
@@ -33,7 +50,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
     state = {"table": table.copy()}
 
     def Describe(_layer):
-        return _FakeDescribe()
+        shp = state.get("shape_types", {}).get(_layer, "Point")
+        return _FakeDescribe(shp)
 
     def _tab():
         ac = state.get("active_copy")
@@ -48,7 +66,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
 
     def FeatureClassToNumPyArray(_layer, fields, skip_nulls=False,
                                  null_value=np.nan):
-        t = _tab()
+        t = state.get("layers", {}).get(_layer, _tab())
 
         def _dt(f):
             if f == "OBJECTID":
@@ -115,6 +133,19 @@ def _install_fake_arcpy(table: pd.DataFrame):
         return [types.SimpleNamespace(name=c, type="Double")
                 for c in _tab().columns]
 
+    class SearchCursor:
+        """Rows = state["geom_layers"][layer]: list of tuples whose
+        first element is a fake geometry (see _geom)."""
+        def __init__(self, layer, fields):
+            self.rows = state["geom_layers"][layer]
+
+        def __enter__(self):
+            return iter(self.rows)
+
+        def __exit__(self, *a):
+            return False
+
+    da.SearchCursor = SearchCursor
     da.TableToNumPyArray = TableToNumPyArray
     da.FeatureClassToNumPyArray = FeatureClassToNumPyArray
     da.ExtendTable = ExtendTable
@@ -290,3 +321,154 @@ def test_pyt_machine1_with_barrier_ingredient():
     r = ok["R_LowEdu_40"]
     assert (r >= 0).all() and (r <= 1).all()
     assert any("effort engine" in m for m in msg.log)
+
+
+def test_pyt_lisa_hotspots_verbatim():
+    """#21d tool 3: planted hotspot -> HH quad with small p, and the
+    glue reproduces dispatch('lisa') EXACTLY (same seeded
+    permutations)."""
+    rng = np.random.default_rng(21)
+    xs, ys = np.meshgrid(np.arange(50.0, 2050.0, 100.0),
+                         np.arange(50.0, 2050.0, 100.0))
+    x, y = xs.ravel(), ys.ravel()
+    v = rng.normal(10, 1, len(x))
+    hot = (x >= 750) & (x <= 1150) & (y >= 750) & (y <= 1150)
+    v[hot] = 60.0
+    t = pd.DataFrame({"OBJECTID": np.arange(1, len(x) + 1),
+                      "SHAPE@X": x, "SHAPE@Y": y, "segval": v})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("lisa", "people", msg, value_fields=["segval"],
+                  w_k=8, permutations=99)
+    got = state["table"]
+    for c in ("LISA_segval_Ii", "LISA_segval_quad", "LISA_segval_p"):
+        assert c in got
+    core = hot & (x >= 850) & (x <= 1050) & (y >= 850) & (y <= 1050)
+    assert (got.loc[core, "LISA_segval_quad"] == 1).all()   # HH
+    assert (got.loc[core, "LISA_segval_p"] <= 0.05).all()
+    far = (x <= 250) & (y <= 250)
+    assert not ((got.loc[far, "LISA_segval_quad"] == 1)
+                & (got.loc[far, "LISA_segval_p"] <= 0.05)).any()
+    assert any("Quad codes" in m for m in msg.log)      # loud teaching
+    from equipop.stata_bridge import dispatch
+    ref = dispatch("lisa", x, y, values={"segval": v}, unit_size=100.0,
+                   w_k=8, permutations=99)
+    assert np.allclose(got["LISA_segval_Ii"], ref["LISA_segval_Ii"],
+                       equal_nan=True)
+    assert np.allclose(got["LISA_segval_p"], ref["LISA_segval_p"],
+                       equal_nan=True)
+
+
+def test_pyt_fca_accessibility_two_layers():
+    """#21d tool 4: demand layer x supply layer through the glue.
+    Known answer: with unbounded decay reach, demand-weighted total
+    access returns the whole supply (2SFCA conservation); verbatim
+    cross-check against dispatch('fca')."""
+    rng = np.random.default_rng(22)
+    n = 300
+    popn = rng.integers(1, 20, n).astype(float)
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 3000, n),
+                      "SHAPE@Y": rng.uniform(0, 3000, n),
+                      "Population": popn})
+    t.loc[:2, "SHAPE@X"] = np.nan                # missing coords
+    state = _install_fake_arcpy(t)
+    sup = pd.DataFrame({"SHAPE@X": rng.uniform(0, 3000, 12),
+                        "SHAPE@Y": rng.uniform(0, 3000, 12),
+                        "slots": rng.integers(5, 60, 12).astype(float)})
+    state["layers"] = {"clinics": sup}
+    state["shape_types"] = {"clinics": "Point"}
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("fca", "people", msg, demand_field="Population",
+                  supply_layer="clinics", supply_field="slots",
+                  reach="decay", half_life=800.0)
+    got = state["table"]
+    assert "A_slots" in got and "J_slots" in got
+    assert got.loc[:2, "A_slots"].isna().all()          # Null rows
+    ok = got.dropna(subset=["A_slots"])
+    served = float((ok["A_slots"] * ok["Population"]).sum())
+    assert abs(served - sup["slots"].sum()) < 1e-6      # conservation
+    assert (ok["J_slots"] > 0).all()
+    assert any("competition" in m for m in msg.log)
+    from equipop.stata_bridge import dispatch
+    ref = dispatch("fca", t["SHAPE@X"].to_numpy(),
+                   t["SHAPE@Y"].to_numpy(),
+                   demand_arr=t["Population"].to_numpy(),
+                   supply_file=sup.rename(columns={"SHAPE@X": "x",
+                                                   "SHAPE@Y": "y"}),
+                   supply_col="slots", reach="decay", half_life_m=800.0)
+    assert np.allclose(got["A_slots"], ref["A"], equal_nan=True)
+    assert np.allclose(got["J_slots"], ref["J"], equal_nan=True)
+    # k-nearest-supply reach re-run (Overwrite path)
+    pyt._run_tool("fca", "people", msg, demand_field="Population",
+                  supply_layer="clinics", supply_field="slots",
+                  reach="k", fca_k=60.0)
+    got = state["table"]
+    assert got.dropna(subset=["A_slots"])["A_slots"].ge(0).all()
+
+
+class _FakeParam:
+    def __init__(self, value):
+        self.value = value
+        self.valueAsText = "" if value is None else str(value)
+
+
+def test_pyt_features_to_barriers_verbatim(tmp_path):
+    """#21d tool 5: fake Pro geometries -> barrier csv that matches
+    the shapely rasterizer cell-for-cell (line WITH value field,
+    polygon-with-hole WITHOUT)."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+
+    river = [(1550.0, 50.0), (1550.0, 950.0)]
+    rail = [(50.0, 450.0), (950.0, 450.0)]
+    state["shape_types"] = {"rivers": "Polyline", "lakes": "Polygon"}
+    state["geom_layers"] = {
+        "rivers": [(_geom([river]), 6.0), (_geom([rail]), 4.0)],
+        "lakes": [(_geom([[(500.0, 500.0), (1200.0, 500.0),
+                           (1200.0, 1200.0), (500.0, 1200.0), None,
+                           (700.0, 700.0), (1000.0, 700.0),
+                           (1000.0, 1000.0), (700.0, 1000.0)]]),)]}
+    msg = _Messages()
+    out1 = tmp_path / "riverbar.csv"
+    tool = pyt.FeaturesToBarriers()
+    tool.execute([_FakeParam("rivers"), _FakeParam("cost"),
+                  _FakeParam(6.0), _FakeParam(100.0),
+                  _FakeParam(str(out1))], msg)
+    got = pd.read_csv(out1).sort_values(["x", "y"]).reset_index(
+        drop=True)
+    import geopandas as gpd
+    from shapely.geometry import LineString, Polygon
+    from equipop.friction import features_to_friction
+    ref = features_to_friction(
+        gpd.GeoDataFrame({"friction": [6.0, 4.0]},
+                         geometry=[LineString(river),
+                                   LineString(rail)]),
+        unit_size=100).sort_values(["x", "y"]).reset_index(drop=True)
+    pd.testing.assert_frame_equal(got, ref)
+
+    out2 = tmp_path / "lakebar.csv"
+    tool.execute([_FakeParam("lakes"), _FakeParam(None),
+                  _FakeParam(3.0), _FakeParam(100.0),
+                  _FakeParam(str(out2))], msg)
+    got2 = pd.read_csv(out2).sort_values(["x", "y"]).reset_index(
+        drop=True)
+    ref2 = features_to_friction(
+        gpd.GeoDataFrame({"friction": [3.0]}, geometry=[Polygon(
+            [(500, 500), (1200, 500), (1200, 1200), (500, 1200)],
+            [[(700, 700), (1000, 700), (1000, 1000), (700, 1000)]])]),
+        unit_size=100).sort_values(["x", "y"]).reset_index(drop=True)
+    pd.testing.assert_frame_equal(got2, ref2)
+    assert (750.0, 750.0) not in set(zip(got2.x, got2.y))  # hole free
+    assert any("barrier cells" in m for m in msg.log)
+
+    # a POINT layer is refused loudly
+    arcpy = sys.modules["arcpy"]
+    with pytest.raises(arcpy.ExecuteError):
+        tool.execute([_FakeParam("people"), _FakeParam(None),
+                      _FakeParam(6.0), _FakeParam(100.0),
+                      _FakeParam(str(tmp_path / "no.csv"))], msg)

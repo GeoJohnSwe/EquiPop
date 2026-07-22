@@ -518,3 +518,21 @@ small batch after.
   negative-friction/speedups discussion.
 - Next candidates: Stata-UX round (Umut, on his return), #21d LISA/
   FCA tools, writing ch14+15+17.
+
+
+## v1.16.0 (#21d - the analysis family)
+- ~~#21d LISA + FCA tools~~ DONE: Tool 3 Hotspots (quad codes taught
+  in-dialog) + Tool 4 Accessibility (two layers; decay/radius/
+  k-supply reach dials; A_<supply>/J_<supply>). ~~features_to_friction
+  Pro wrapper~~ DONE as Tool 5 via NEW geopandas-free
+  `paths_to_friction` (numpy Liang-Barsky + Sutherland-Hodgman),
+  twin-validated cell-for-cell - and the twin FOUND a latent v1.15
+  bug (polygon boundary-length billed as presence): fixed.
+- ~~parked: expose k_side in dispatcher fca~~ DONE (dispatch
+  k_side=..., both-sides columns row-aligned). Stata ado exposure
+  still pending (one option keyword, ride the Stata-UX round).
+- STILL DEFERRED from #21 family: stats-over-effort engine (+decay-
+  over-effort); per-parameter metadata XML sidecars; symbology
+  presets; Stata catvar()/treatvalues() options.
+- FUNCTION_MATRIX.md is at 1.5.1 - refresh it in a writing session
+  (paths_to_friction, fca k_side, lisa/fca doors now in the pyt).
