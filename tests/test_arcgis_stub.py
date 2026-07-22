@@ -100,11 +100,27 @@ def _install_fake_arcpy(table: pd.DataFrame):
     mgmt.DeleteField = DeleteField
     mgmt.CopyFeatures = CopyFeatures
 
+    def TableToNumPyArray(table, fields, skip_nulls=False,
+                          null_value=np.nan):
+        bt = state["aux_tables"][table]
+        out = np.empty(len(bt), dtype=[(f, np.float64) for f in fields])
+        for f in fields:
+            out[f] = bt[f].to_numpy(float)
+        return out
+
+    def ListFieldsAny(obj):
+        if isinstance(obj, str) and obj in state.get("aux_tables", {}):
+            return [types.SimpleNamespace(name=c, type="Double")
+                    for c in state["aux_tables"][obj].columns]
+        return [types.SimpleNamespace(name=c, type="Double")
+                for c in _tab().columns]
+
+    da.TableToNumPyArray = TableToNumPyArray
     da.FeatureClassToNumPyArray = FeatureClassToNumPyArray
     da.ExtendTable = ExtendTable
     arcpy.da = da
     arcpy.Describe = Describe
-    arcpy.ListFields = ListFields
+    arcpy.ListFields = ListFieldsAny
     arcpy.management = mgmt
     arcpy.ExecuteError = ExecuteError
     arcpy.Parameter = Parameter
@@ -242,3 +258,35 @@ def test_pyt_preaggregated_counts_convention():
     assert (r >= 0).all() and (r <= 1).all()
     share = low.sum() / popn.sum()
     assert abs(r.mean() - share) < 0.1        # in the right world now
+
+
+
+def test_pyt_machine1_with_barrier_ingredient():
+    """v1.15 absorption: machine 1 + barrier table (East/North/cost
+    columns via the resolver) -> effort columns, full group
+    vocabulary, counts convention intact."""
+    rng = np.random.default_rng(41)
+    n = 220
+    popn = rng.integers(1, 15, n).astype(float)
+    low = np.minimum(rng.integers(0, 6, n).astype(float), popn)
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 2000, n),
+                      "SHAPE@Y": rng.uniform(0, 2000, n),
+                      "Population": popn, "LowEdu": low})
+    state = _install_fake_arcpy(t)
+    state["aux_tables"] = {"barriers": pd.DataFrame(
+        {"East": [1050.0] * 8, "North": np.arange(50.0, 850.0, 100.0),
+         "cost": 6.0})}
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "reg", msg, treat_fields=["LowEdu"],
+                  weight_field="Population", k_text="40",
+                  friction_table="barriers", tau_text="3",
+                  roundtrip=False)
+    got = state["table"]
+    assert "Rounds_40" in got and "N_tau3" in got
+    ok = got.dropna(subset=["N_40"])
+    assert (ok["T_LowEdu_40"] <= ok["N_40"] + 1e-9).all()
+    r = ok["R_LowEdu_40"]
+    assert (r >= 0).all() and (r <= 1).all()
+    assert any("effort engine" in m for m in msg.log)

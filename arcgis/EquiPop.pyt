@@ -38,13 +38,25 @@ def _field(name):
     return (out[:60] or "X")
 
 
+def _read_pro_table(table):
+    """Read ANY table Pro can open (gdb, dbf, csv, registered txt)
+    into a DataFrame via arcpy's own reader - Pro's format zoo,
+    inherited for free."""
+    import pandas as pd
+    flds = [f.name for f in arcpy.ListFields(table)
+            if f.type not in ("Geometry", "Blob", "Raster")]
+    arr = arcpy.da.TableToNumPyArray(table, flds, skip_nulls=False,
+                                     null_value=np.nan)
+    return pd.DataFrame({f: arr[f] for f in flds})
+
+
 def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_text="", half_life=0.0, decay_model="negexp",
               friction_table=None, unit=100.0,
               cat_field=None, pop_values_text="", treat_values_text="",
               existing="Overwrite", out_mode="Append to input",
-              out_fc=None):
+              out_fc=None, extra_dem=None, roundtrip=False):
     """The single glue path all three tools share (stub-validated)."""
     from equipop.stata_bridge import dispatch
 
@@ -110,6 +122,30 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["treat_are_counts"] = True   # GIS convention: group fields
                                         # ARE counts (0/1 included);
                                         # Population = the total.
+        # v1.15 INGREDIENTS: a barrier table and/or a DEM turn the
+        # straight-line ruler into the effort ruler (same analysis).
+        dem_given = bool(kw.pop("_dem", None) or None)
+        if friction_table or extra_dem:
+            engine = "slope" if extra_dem else "friction"
+            messages.addMessage(
+                f"Distance ingredients: "
+                f"{'barriers ' if friction_table else ''}"
+                f"{'terrain' if extra_dem else ''} -> effort engine "
+                "(runtime grows with data; Rounds/N_tau columns "
+                "replace/join Dist).")
+            if friction_table:
+                kw["friction_file"] = _read_pro_table(friction_table)
+            if extra_dem:
+                kw["dem"] = str(extra_dem)
+            if tau_text:
+                kw["tau_values"] = [float(t) for t in tau_text.split()]
+            kw["roundtrip"] = bool(roundtrip)
+            kw.pop("r_values", None)      # r on effort: not defined
+            if half_life and half_life > 0:
+                messages.addWarningMessage(
+                    "Decay over effort is not available - decay "
+                    "ignored for this run (backlogged).")
+                half_life = 0.0
     if engine == "counts" and half_life and half_life > 0:
         kw["half_life_m"] = float(half_life)
         kw["decay_model"] = decay_model
@@ -118,8 +154,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["values"] = vals
         wanted = stats_text.split() or ["mean", "median", "gini"]
         kw["stats"] = {f: wanted for f in vals}
-    if engine == "friction" and friction_table:
-        kw["friction_file"] = str(friction_table)
+    # (legacy machine-3 wiring removed in v1.15 - ingredients above)
 
     res = dispatch(engine, x, y, **kw)
 
@@ -163,7 +198,9 @@ class Toolbox:
     def __init__(self):
         self.label = "EquiPop"
         self.alias = "equipop"
-        self.tools = [CountsShares, ValueStatistics, FrictionEffort]
+        self.tools = [CountsShares, ValueStatistics]
+        # machine 3 retired in v1.15: friction/slope are DISTANCE
+        # INGREDIENTS on machine 1, not an analysis of their own.
 
 
 class CountsShares:
@@ -207,6 +244,15 @@ class CountsShares:
               _p("treatvalues", "Treatment categories - 'restaurant; "
                  "cafe' or grouped 'food: restaurant, cafe'",
                  "GPString", required=False),
+              _p("barriers", "Distance ingredient: barrier table "
+                 "(any table with x/y-style + friction columns)",
+                 "GPTableView", required=False),
+              _p("dem", "Distance ingredient: elevation raster (DEM)",
+                 "DEFile", required=False),
+              _p("tau", "Effort budgets in rounds (e.g. 3 8)",
+                 "GPString", required=False),
+              _p("roundtrip", "Round trip (journey home included)",
+                 "GPBoolean", required=False),
               _p("existing", "If result fields already exist",
                  "GPString", required=False),
               _p("outmode", "Output", "GPString", required=False),
@@ -219,19 +265,23 @@ class CountsShares:
         ps[5].filter.list = ["no decay", "negexp", "expnormal",
                              "expsqrt", "lognormal", "power"]
         ps[5].value = "no decay"
-        ps[10].filter.type = "ValueList"
-        ps[10].filter.list = ["Overwrite", "Stop with a message"]
-        ps[10].value = "Overwrite"
-        ps[11].filter.type = "ValueList"
-        ps[11].filter.list = ["Append to input", "New feature class"]
-        ps[11].value = "Append to input"
-        ps[13].value = 100.0
+        ps[14].filter.type = "ValueList"
+        ps[14].filter.list = ["Overwrite", "Stop with a message"]
+        ps[14].value = "Overwrite"
+        ps[15].filter.type = "ValueList"
+        ps[15].filter.list = ["Append to input", "New feature class"]
+        ps[15].value = "Append to input"
+        ps[17].value = 100.0
         return ps
 
     def updateParameters(self, parameters):
         parameters[6].enabled = (parameters[5].valueAsText
                                  not in (None, "", "no decay"))
-        parameters[12].enabled = (parameters[11].valueAsText
+        ing = bool(parameters[10].valueAsText
+                   or parameters[11].valueAsText)
+        parameters[12].enabled = ing          # tau
+        parameters[13].enabled = ing          # roundtrip
+        parameters[16].enabled = (parameters[15].valueAsText
                                   == "New feature class")
         return
 
@@ -247,9 +297,14 @@ class CountsShares:
                   decay_model=model if model != "no decay" else
                   "negexp",
                   cat_field=v[7] or None, pop_values_text=v[8],
-                  treat_values_text=v[9], existing=v[10] or
-                  "Overwrite", out_mode=v[11] or "Append to input",
-                  out_fc=v[12] or None, unit=float(v[13] or 100))
+                  treat_values_text=v[9],
+                  friction_table=parameters[10].value or None,
+                  extra_dem=v[11] or None, tau_text=v[12],
+                  roundtrip=(v[13] or "").lower() in
+                  ("true", "1", "yes"),
+                  existing=v[14] or "Overwrite",
+                  out_mode=v[15] or "Append to input",
+                  out_fc=v[16] or None, unit=float(v[17] or 100))
 
 
 class ValueStatistics:
@@ -283,32 +338,4 @@ class ValueStatistics:
         _run_tool("stats", parameters[0].value, messages,
                   value_fields=[f for f in v[1].split(";") if f],
                   stats_text=v[2], k_text=v[3], r_text=v[4],
-                  unit=float(v[5] or 100))
-
-
-class FrictionEffort:
-    def __init__(self):
-        self.label = "3. Effort and Isochrones (friction barriers)"
-        self.description = ("Rounds to reach k people and effort "
-                            "isochrones, over a barrier table with "
-                            "x, y, friction columns.")
-
-    def getParameterInfo(self):
-        ps = [_p("layer", "Point layer (people)", "GPFeatureLayer"),
-              _p("treat", "Group field (0/1)", "Field", required=False),
-              _p("friction", "Barrier table (csv with x,y,friction)",
-                 "DEFile"),
-              _p("k", "k values", "GPString", required=False),
-              _p("tau", "Effort budgets in rounds (e.g. 3 8)",
-                 "GPString", required=False),
-              _p("unit", "Cell size (m)", "GPDouble", required=False)]
-        ps[1].parameterDependencies = ["layer"]
-        ps[5].value = 100.0
-        return ps
-
-    def execute(self, parameters, messages):
-        v = [p.valueAsText or "" for p in parameters]
-        _run_tool("friction", parameters[0].value, messages,
-                  treat_fields=[v[1]] if v[1] else [],
-                  friction_table=v[2], k_text=v[3], tau_text=v[4],
                   unit=float(v[5] or 100))

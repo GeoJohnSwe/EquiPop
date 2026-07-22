@@ -22,7 +22,7 @@ default one is locked. The supported route is a clone:
 
 Copy the `arcgis/EquiPop.pyt` file anywhere convenient (it can live
 in the project folder). In Pro's **Catalog** pane: right-click
-**Toolboxes -> Add Toolbox** -> pick the .pyt. Three tools appear
+**Toolboxes -> Add Toolbox** -> pick the .pyt. Two tools appear
 under "EquiPop".
 
 ## 3. First run (Counts and Shares)
@@ -102,3 +102,23 @@ in order.
 - Category mode: rows outside the population filter get Null in
   every result column - they were not part of the analysis, and
   Null says so.
+
+
+## 8. v1.15 - two tools, several rulers
+
+Machine 3 is retired - not removed, PROMOTED: friction and terrain
+are now DISTANCE INGREDIENTS on tool 1. Add a barrier table (ANY
+table Pro can open - gdb, dbf, csv, registered txt; coordinate
+columns found by name automatically: x/y, East/North, POINT_X/Y...)
+and/or a DEM raster, and the same counts-and-shares analysis runs on
+the effort ruler: Rounds_k and N_tau# columns appear, the effort
+dials reveal themselves, and - the point of the redesign - your
+populations, groups, categories and weights all work ACROSS THE
+WATER exactly as on flat ground. Both ingredients together = rivers
+AND hills in one run. Runtime note: the effort engines cost real
+time on large layers; the tool says so when they engage.
+
+Rivers as LINES: in Python, `equipop.friction.features_to_friction`
+turns line/polygon features with a friction field into the barrier
+table (overlaps stack additively); a one-click Pro wrapper for it is
+on the roadmap.

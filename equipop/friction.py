@@ -299,3 +299,72 @@ def run_knn_friction(
                         count_all_col, count_group_col)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
                             tau_values)
+
+
+# ===================================================================
+# v1.15.0 - features_to_friction: line/polygon features (rivers,
+# rail, slow zones) -> additive friction cells at unit_size. Lives
+# in the package so every door (ArcGIS, QGIS-future, Python, Stata)
+# shares one tested rasterizer.
+# ===================================================================
+
+def features_to_friction(features, value_field: str = "friction",
+                         unit_size: float = 100.0,
+                         default_value: float | None = None):
+    """
+    features : path to a vector file (shp/gpkg/geojson) or a
+        GeoDataFrame of LINE and/or POLYGON features.
+    value_field : column holding each feature's friction value; if
+        absent and default_value is given, every feature costs that.
+    Returns DataFrame(x, y, friction) of cell MIDPOINTS whose cell
+    square the feature touches. Overlapping features stack
+    ADDITIVELY (river + railway in one cell = both costs).
+    """
+    try:
+        import geopandas as gpd
+        from shapely.geometry import box
+    except ImportError:
+        raise ImportError("[friction] features_to_friction needs "
+                          "geopandas: pip install geopandas")
+    gdf = features if hasattr(features, "geometry") \
+        else gpd.read_file(features)
+    if value_field in gdf.columns:
+        vals = gdf[value_field].astype(float).to_numpy()
+    elif default_value is not None:
+        vals = np.full(len(gdf), float(default_value))
+        print(f"[friction] no '{value_field}' column - every feature "
+              f"costs {default_value}")
+    else:
+        raise ValueError(f"[friction] features need a '{value_field}' "
+                         "column or a default_value")
+    if (vals < 0).any():
+        raise ValueError("[friction] negative friction values - "
+                         "speedups are not supported (yet); costs "
+                         "must be >= 0")
+    u = float(unit_size)
+    acc: dict[tuple[float, float], float] = {}
+    n_cells = 0
+    for geom, v in zip(gdf.geometry, vals):
+        if geom is None or geom.is_empty:
+            continue
+        x0, y0, x1, y1 = geom.bounds
+        i0, i1 = int(np.floor(x0 / u)), int(np.floor(x1 / u))
+        j0, j1 = int(np.floor(y0 / u)), int(np.floor(y1 / u))
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                cell = box(i * u, j * u, (i + 1) * u, (j + 1) * u)
+                inter = geom.intersection(cell)
+                # zero-measure contact (corner/edge kiss) costs
+                # nothing: require length (lines) or area (polygons)
+                if not inter.is_empty and (
+                        getattr(inter, "length", 0.0) > 1e-9
+                        or getattr(inter, "area", 0.0) > 1e-9):
+                    key = (i * u + u / 2, j * u + u / 2)
+                    acc[key] = acc.get(key, 0.0) + float(v)
+                    n_cells += 1
+    out = pd.DataFrame([(k[0], k[1], f) for k, f in acc.items()],
+                       columns=["x", "y", "friction"])
+    print(f"[friction] {len(gdf)} features -> {len(out)} friction "
+          f"cells at {u:g} m (additive"
+          f"{'' if n_cells == len(out) else ', overlaps stacked'})")
+    return out

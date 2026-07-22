@@ -73,7 +73,12 @@ the roads; the machinery is indifferent.)
 
 ## The dials
 
-`fr` (the friction table) and `default_friction`; `k_values` and
+`fr` (the friction table) and `default_friction`; and since
+version 1.15 the table need not be typed at all —
+`features_to_friction` rasterizes your river and railway *line or
+polygon features* onto the grid, with overlapping features stacking
+their costs additively (a river and a railway in one square cost
+both); `k_values` and
 `tau_values` from the shared menu; and `origins=`, which computes
 results for a subset of squares against the full population — the
 same key that chapter 17 uses at national scale, available here

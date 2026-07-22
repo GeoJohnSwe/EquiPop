@@ -225,31 +225,70 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         return _map_back(st, list(zip(E, N)), cols, valid, n_rows)
 
     if engine in ("friction", "slope"):
-        from .io import read_table
-        tr = (np.zeros(n_rows) if not treat
-              else np.asarray(next(iter(treat.values())), float))
-        w = np.ones(n_rows) if weight is None else np.asarray(weight, float)
-        df = pd.DataFrame({"x": x, "y": y, "count_all": w,
-                           "count_group": np.where(tr > 8.9e307, 0, tr) * w})
-        dv = df[valid]
-        E, N = _snap(dv["x"], dv["y"], unit_size)
-        pop = (dv.assign(x=E.astype(float) , y=N.astype(float))
-               .groupby(["x", "y"], as_index=False).sum())
-        fr = read_table(friction_file) if friction_file else None
-        if engine == "slope":
-            from .slope import run_knn_slope
-            res = run_knn_slope(pop, k_values or [], altitude=dem,
-                                model=model, fr=fr, unit_size=unit_size,
-                                tau_values=tau_values,
-                                roundtrip=roundtrip, **extra)
-        else:
-            from .friction import run_knn_friction
-            res = run_knn_friction(pop, k_values or [], fr=fr,
-                                   unit_size=unit_size,
-                                   tau_values=tau_values)
-        cols = [c for c in res.columns if c.split("_")[0]
+        from .io import read_table, resolve_xy_columns
+        w = np.ones(n_rows) if weight is None else np.asarray(weight,
+                                                              float)
+        counts_mode = extra.pop("treat_are_counts", False)
+        fr = friction_file
+        if isinstance(fr, str) and fr:
+            fr = read_table(fr)
+        if fr is not None:
+            fr = resolve_xy_columns(fr, context="barrier table")
+            if "friction" not in fr.columns:
+                cand = [c for c in fr.columns
+                        if c.lower().startswith("frict")
+                        or c.lower() in ("cost", "value", "weight")]
+                if not cand:
+                    raise ValueError(
+                        "[bridge] barrier table needs a friction "
+                        f"value column - found {list(fr.columns)}")
+                print(f"[bridge] barrier table: using '{cand[0]}' "
+                      "as friction")
+                fr = fr.rename(columns={cand[0]: "friction"})
+        groups = (list(treat.items()) if treat
+                  else [(None, np.zeros(n_rows))])
+        E = N = None
+        merged = None
+        for gname, garr in groups:
+            tr = np.asarray(garr, float)
+            cg = np.where(tr > 8.9e307, 0, tr)
+            if not counts_mode:
+                cg = cg * w
+            df = pd.DataFrame({"x": x, "y": y, "count_all": w,
+                               "count_group": cg})
+            dv = df[valid]
+            if E is None:
+                E, N = _snap(dv["x"], dv["y"], unit_size)
+            pop = (dv.assign(x=E.astype(float), y=N.astype(float))
+                   .groupby(["x", "y"], as_index=False).sum())
+            if engine == "slope":
+                from .slope import run_knn_slope
+                res = run_knn_slope(pop, k_values or [], altitude=dem,
+                                    model=model, fr=fr,
+                                    unit_size=unit_size,
+                                    tau_values=tau_values,
+                                    roundtrip=roundtrip, **extra)
+            else:
+                from .friction import run_knn_friction
+                res = run_knn_friction(pop, k_values or [], fr=fr,
+                                       unit_size=unit_size,
+                                       tau_values=tau_values)
+            if gname is not None:
+                res = res.rename(columns={
+                    c: (f"T_{gname}_{c[2:]}" if c.startswith("T_")
+                        else f"R_{gname}_{c[2:]}")
+                    for c in res.columns
+                    if c.startswith(("T_", "R_"))})
+            if merged is None:
+                merged = res
+            else:
+                keep = [c for c in res.columns
+                        if c.startswith(("T_", "R_"))]
+                key = res.columns[:2].tolist()
+                merged = merged.merge(res[key + keep], on=key)
+        cols = [c for c in merged.columns if c.split("_")[0]
                 in ("N", "T", "R", "Dist", "Rounds")]
-        return _map_back(res, list(zip(E, N)), cols, valid, n_rows)
+        return _map_back(merged, list(zip(E, N)), cols, valid, n_rows)
 
     if engine == "fca":
         from .fca import fca

@@ -48,7 +48,8 @@ def test_dispatch_slope_flat_equals_friction():
     sl_out = dispatch("slope", x, y, k_values=[10], tau_values=[3],
                       treat={"g": g}, dem=np.zeros(nx * ny),
                       roundtrip=True)
-    for c in ("Rounds_10", "N_10", "N_tau3", "R_tau3"):
+    for c in ("Rounds_10", "N_10", "N_tau3", "R_g_tau3"):  # named
+        # group columns since v1.15 (multi-group friction)
         assert np.allclose(sl_out[c], fr_out[c], equal_nan=True), c
 
 
@@ -120,3 +121,29 @@ def test_dispatch_counts_decay_matches_direct():
     assert np.allclose(out["ND_inf"][ok],
                        r.loc[list(zip(E, N))]["ND_inf"].to_numpy(),
                        rtol=1e-10)
+
+
+def test_dispatch_friction_multigroup_resolver_and_counts(tmp_path):
+    """v1.15: barrier columns East/North + value col 'cost' resolve;
+    TWO groups in one call; counts convention respected."""
+    rng = np.random.default_rng(31)
+    n = 200
+    x = rng.uniform(0, 2000, n); y = rng.uniform(0, 2000, n)
+    popn = rng.integers(1, 20, n).astype(float)
+    a = np.minimum(rng.integers(0, 8, n).astype(float), popn)
+    b = popn - a
+    fr = pd.DataFrame({"East": [1050.0] * 8,
+                       "North": np.arange(50.0, 850.0, 100.0),
+                       "cost": 5})
+    f = tmp_path / "barriers.txt"
+    fr.to_csv(f, sep="\t", index=False)          # tab-separated txt
+    out = dispatch("friction", x, y, k_values=[30], tau_values=[3],
+                   treat={"grpA": a, "grpB": b}, weight=popn,
+                   treat_are_counts=True, friction_file=str(f))
+    ok = np.isfinite(out["N_30"])
+    assert (out["T_grpA_30"][ok] <= out["N_30"][ok] + 1e-9).all()
+    assert (out["T_grpB_30"][ok] <= out["N_30"][ok] + 1e-9).all()
+    s = out["T_grpA_30"][ok] + out["T_grpB_30"][ok]
+    assert np.allclose(s, out["N_30"][ok])       # A + B = everyone
+    r = out["R_grpA_tau3"][ok]
+    assert np.nanmax(r) <= 1 + 1e-9

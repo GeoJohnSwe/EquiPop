@@ -508,3 +508,13 @@ small batch after.
   HighEdu among 400 nearest"; plus a prefix() option (e.g.
   prefix(eq_)) so new variables sort together and cannot collide
   with old ones; the completion message already lists them.
+
+
+## v1.15.0 (#21c delivered)
+- ~~#21c items 1-3~~ DONE per confirmed spec. Deferred honestly:
+  stats-over-effort engine (machine 2 ingredients await it);
+  decay-over-effort; one-click Pro wrapper for features_to_friction
+  (needs geopandas in the Pro clone - document or wrap);
+  negative-friction/speedups discussion.
+- Next candidates: Stata-UX round (Umut, on his return), #21d LISA/
+  FCA tools, writing ch14+15+17.

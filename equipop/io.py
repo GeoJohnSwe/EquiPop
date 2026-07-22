@@ -41,6 +41,16 @@ def read_table(path: str, sheet: str | int = 0, **kw) -> pd.DataFrame:
     arguments are passed to the underlying pandas reader."""
     p = Path(path)
     ext = p.suffix.lower()
+    if ext == ".dbf":
+        try:
+            from dbfread import DBF
+        except ImportError:
+            raise ImportError("[io] .dbf files need dbfread: "
+                              "pip install dbfread")
+        df = pd.DataFrame(iter(DBF(str(p), load=True)))
+        print(f"[io] {p.name}: dbf, {len(df)} rows, "
+              f"{len(df.columns)} columns")
+        return df
 
     if ext in _TEXT:
         sep = kw.pop("sep", None) or _sniff_sep(p)
@@ -162,3 +172,35 @@ def list_layers(path: str):
     """List layers of a multi-layer GIS source (gpkg, pbf, ...)."""
     import pyogrio
     return pyogrio.list_layers(path)
+
+
+# ---------------------------------------------------------- v1.15.0
+_XY_CANDIDATES = [("x", "y"), ("east", "north"),
+                  ("eastwest", "northsouth"), ("point_x", "point_y"),
+                  ("xcoord", "ycoord"), ("xkoord", "ykoord"),
+                  ("east_rt90", "north_rt90"), ("lon", "lat")]
+
+
+def resolve_xy_columns(df, context: str = "table"):
+    """Find the coordinate pair whatever it is called (case-
+    insensitive; prefix matches like East_RT90 accepted) and return
+    a copy with columns renamed to x, y. Loud, honest failure."""
+    low = {c.lower().strip(): c for c in df.columns}
+    for cx, cy in _XY_CANDIDATES:
+        fx = low.get(cx) or next((low[k] for k in low
+                                  if k.startswith(cx)), None)
+        fy = low.get(cy) or next((low[k] for k in low
+                                  if k.startswith(cy)), None)
+        if fx and fy and fx != fy:
+            if (fx, fy) != ("x", "y"):
+                print(f"[io] {context}: using '{fx}'/'{fy}' as x/y")
+            if cx == "lon":
+                raise ValueError(
+                    f"[io] {context}: found lon/lat DEGREES - EquiPop "
+                    "needs metric coordinates; project first "
+                    "(chapter 3 / projection module).")
+            return df.rename(columns={fx: "x", fy: "y"})
+    raise ValueError(
+        f"[io] {context}: could not identify coordinate columns among "
+        f"{list(df.columns)} - rename them to x/y or one of the "
+        "recognised pairs (East/North, POINT_X/POINT_Y, ...).")
