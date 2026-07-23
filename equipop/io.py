@@ -176,9 +176,30 @@ def list_layers(path: str):
 
 # ---------------------------------------------------------- v1.15.0
 _XY_CANDIDATES = [("x", "y"), ("east", "north"),
+                  ("easting", "northing"),
                   ("eastwest", "northsouth"), ("point_x", "point_y"),
                   ("xcoord", "ycoord"), ("xkoord", "ykoord"),
-                  ("east_rt90", "north_rt90"), ("lon", "lat")]
+                  ("east_rt90", "north_rt90"),
+                  ("longitude", "latitude"), ("lon", "lat")]
+# pairs whose match means DEGREES - refused with advice, never used
+_DEGREE_PAIRS = {("longitude", "latitude"), ("lon", "lat")}
+
+
+def guess_xy_fields(names, context: str = "table"):
+    """Names-only coordinate guess for interactive dialogs (v1.16):
+    returns (x_name, y_name, is_degrees) or (None, None, False) when
+    no recognised pair exists. NEVER raises - the dialog stays in
+    charge and simply asks the user to pick fields. Same alias table
+    and precedence as resolve_xy_columns."""
+    low = {str(c).lower().strip(): c for c in names}
+    for cx, cy in _XY_CANDIDATES:
+        fx = low.get(cx) or next((low[k] for k in low
+                                  if k.startswith(cx)), None)
+        fy = low.get(cy) or next((low[k] for k in low
+                                  if k.startswith(cy)), None)
+        if fx and fy and fx != fy:
+            return fx, fy, (cx, cy) in _DEGREE_PAIRS
+    return None, None, False
 
 
 def resolve_xy_columns(df, context: str = "table"):
@@ -194,7 +215,7 @@ def resolve_xy_columns(df, context: str = "table"):
         if fx and fy and fx != fy:
             if (fx, fy) != ("x", "y"):
                 print(f"[io] {context}: using '{fx}'/'{fy}' as x/y")
-            if cx == "lon":
+            if (cx, cy) in _DEGREE_PAIRS:
                 raise ValueError(
                     f"[io] {context}: found lon/lat DEGREES - EquiPop "
                     "needs metric coordinates; project first "

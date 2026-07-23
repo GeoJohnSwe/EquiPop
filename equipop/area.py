@@ -124,7 +124,8 @@ def aggregate_output(
 # ------------------------------------------------------------------
 # Area-based statistics: the third neighbourhood family (k / r / AREA)
 # ------------------------------------------------------------------
-from .stats import BINARY_STATS, VALUE_STATS, PREFIX
+from .stats import (BINARY_STATS, VALUE_STATS, PREFIX,
+                    value_stat, stat_prefix, is_percentile)
 
 
 def area_stats(df, area_col: str,
@@ -187,7 +188,7 @@ def area_stats(df, area_col: str,
             x = x[np.isfinite(x)]
             rec[f"Nv_{v}"] = int(len(x))
             for s in stats[v]:
-                rec[f"{PREFIX[s]}_{v}"] = VALUE_STATS[s](x)
+                rec[f"{stat_prefix(s)}_{v}"] = value_stat(s, x)
         out.append(rec)
     res = pd.DataFrame(out)
     print(f"[area] {len(res)} areas, N total = {res['N'].sum():,.0f}")

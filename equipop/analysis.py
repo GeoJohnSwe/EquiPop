@@ -235,7 +235,8 @@ def run_knn(
 #  run_knn_stats - k-NN with per-variable statistics (tiers 1-3)
 # ======================================================================
 from .cells import CellData
-from .stats import BINARY_STATS, VALUE_STATS, PREFIX
+from .stats import (BINARY_STATS, VALUE_STATS, PREFIX,
+                    value_stat, stat_prefix, is_percentile)
 
 
 def run_knn_stats(
@@ -295,9 +296,10 @@ def run_knn_stats(
                                  f"Available: {list(BINARY_STATS)}")
     for v in val_vars:
         for s in stats[v]:
-            if s not in VALUE_STATS:
+            if s not in VALUE_STATS and not is_percentile(s):
                 raise ValueError(f"Unknown value statistic '{s}' for {v}. "
-                                 f"Available: {list(VALUE_STATS)}")
+                                 f"Available: {list(VALUE_STATS)} "
+                                 "plus percentiles like p10/p97.5")
 
     m = len(cd)
     print(f"[stats] {m} cells, k = {k_values}" +
@@ -343,7 +345,7 @@ def run_knn_stats(
                      if val_chunks[v] else np.empty(0))
                 rec[f"Nv_{v}_{suffix}"] = len(x)
                 for s in stats[v]:
-                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = VALUE_STATS[s](x)
+                    rec[f"{stat_prefix(s)}_{v}_{suffix}"] = value_stat(s, x)
 
         # walk cells in distance order, atomically per equal-distance ring
         def record_r(rv):

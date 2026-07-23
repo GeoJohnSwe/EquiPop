@@ -212,16 +212,38 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             a = np.asarray(arr, float)
             a = np.where(a > 8.9e307, np.nan, a)
             df[v] = a
+        if weight is not None:
+            # v1.16 FULL-POPULATION field: each row carries this many
+            # persons; k is measured against PERSONS, and every value
+            # statistic weights by population - implemented EXACTLY by
+            # expanding rows to persons (median/Gini/percentiles come
+            # out weighted by construction). Rows with missing or
+            # non-positive population are excluded (Null results).
+            w = np.asarray(weight, float)
+            w = np.where(w > 8.9e307, np.nan, w)
+            rep = np.where(np.isfinite(w) & (w > 0),
+                           np.round(w), 0).astype(np.int64)
+            valid = valid & (rep > 0)
+            df["_rep"] = rep
         dv = df[valid]
+        E, N = _snap(dv["_x"], dv["_y"], unit_size)   # per INPUT row
+        if weight is not None:
+            n_persons = int(dv["_rep"].sum())
+            print(f"[stata] full population: {len(dv)} rows -> "
+                  f"{n_persons} persons (k counts PERSONS)")
+            dv = dv.loc[dv.index.repeat(dv["_rep"])] \
+                   .drop(columns="_rep").reset_index(drop=True)
         cd = build_cells(dv, "_x", "_y", value_vars=list(values),
                          unit_size=unit_size)
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            stats=stats or {v: ["mean", "median", "gini"]
                                            for v in values})
-        E, N = _snap(dv["_x"], dv["_y"], unit_size)
+        from .stats import stat_prefix
+        req = stats or {v: ["mean", "median", "gini"] for v in values}
+        allowed = {"N", "Nv", "Dist"} | {
+            stat_prefix(s) for ss in req.values() for s in ss}
         cols = [c for c in st.columns
-                if c.split("_")[0] in ("N", "Nv", "Dist", "Mean", "Med",
-                                       "Gini", "SD", "SE", "R", "T")]
+                if c.split("_")[0] in allowed]
         return _map_back(st, list(zip(E, N)), cols, valid, n_rows)
 
     if engine in ("friction", "slope"):

@@ -77,10 +77,51 @@ VALUE_STATS = {
     "se":     lambda x: (float(np.std(x, ddof=1)) / math.sqrt(len(x))
                          if len(x) > 1 else float("nan")),
     "gini":   gini_sorted,
+    # ------------------------------------------------- v1.16 additions
+    "var":    lambda x: float(np.var(x, ddof=1)) if len(x) > 1 else float("nan"),
+    "min":    lambda x: float(np.min(x)) if len(x) else float("nan"),
+    "max":    lambda x: float(np.max(x)) if len(x) else float("nan"),
+    "count":  lambda x: float(len(x)),
+    "sum":    lambda x: float(np.sum(x)) if len(x) else 0.0,
+    "range":  lambda x: (float(np.max(x) - np.min(x)) if len(x)
+                         else float("nan")),
 }
+
+
+def is_percentile(s: str) -> bool:
+    """A dynamic value statistic: 'p10', 'p25', 'p97.5', ...
+    (documented convention: LINEAR interpolation, numpy default)."""
+    if not (isinstance(s, str) and len(s) > 1 and s[0] in "pP"):
+        return False
+    try:
+        q = float(s[1:])
+    except ValueError:
+        return False
+    return 0.0 <= q <= 100.0
+
+
+def value_stat(s: str, x) -> float:
+    """One value statistic by name - registry entries plus dynamic
+    percentiles pNN. Raises KeyError for unknown names (validated
+    upstream with a loud list)."""
+    if is_percentile(s):
+        return (float(np.percentile(x, float(s[1:]), method="linear"))
+                if len(x) else float("nan"))
+    return VALUE_STATS[s](x)
+
+
+def stat_prefix(s: str) -> str:
+    """Column prefix for a statistic name, percentiles included
+    (p25 -> P25, p97.5 -> P97_5)."""
+    if is_percentile(s):
+        return "P" + s[1:].replace(".", "_").rstrip("_0").rstrip("_") \
+            if "." in s[1:] else "P" + s[1:]
+    return PREFIX[s]
 
 # short column prefixes per statistic (edit here to rename output)
 PREFIX = {
     "ratio": "R", "mean": "Mean", "median": "Med", "sd": "SD",
     "se": "SE", "entropy": "Ent", "gini": "Gini",
+    "var": "Var", "min": "Min", "max": "Max", "count": "Cnt",
+    "sum": "Sum", "range": "Rng",
 }
