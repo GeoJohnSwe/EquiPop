@@ -40,14 +40,21 @@ def categories_to_binary(cat, treat_spec, pop_values=None):
     c = np.char.strip(c)
     if isinstance(treat_spec, str):
         treat_spec = parse_treat_spec(treat_spec)
+    treat_spec = {str(k).strip().strip("\"'").strip(): v
+                  for k, v in treat_spec.items()}
+    def _clean(v):
+        # quotes are OPTIONAL in typed value lists: 'cafe', "cafe"
+        # and cafe all mean cafe (asked in the v1.16 field test)
+        return str(v).strip().strip("\"'").strip()
+
     if pop_values:
-        pv = [str(v).strip() for v in pop_values]
+        pv = [_clean(v) for v in pop_values]
         pop = np.isin(c, pv)
     else:
         pop = np.ones(len(c), bool)
     treats = {}
     for name, vals in treat_spec.items():
-        vv = [str(v).strip() for v in vals]
+        vv = [_clean(v) for v in vals]
         arr = (np.isin(c, vv) & pop).astype(float)
         treats[name] = arr
         if arr.sum() == 0:

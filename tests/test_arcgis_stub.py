@@ -54,10 +54,15 @@ def _install_fake_arcpy(table: pd.DataFrame):
                    or key in state.get("aux_tables", {}) else "Point")
         d = types.SimpleNamespace(
             OIDFieldName="OBJECTID", dataType="FeatureLayer",
-            catalogPath=f"memory/{key}",
+            catalogPath=state.get("catalog_paths", {}).get(
+                key, f"memory/{key}"),
             spatialReference=_SR(type=state.get("crs_types", {})
                                  .get(key, "Projected"),
                                  name="SWEREF99 TM"))
+        if key in state.get("extents", {}):
+            x0, y0, x1, y1 = state["extents"][key]
+            d.extent = types.SimpleNamespace(XMin=x0, YMin=y0,
+                                             XMax=x1, YMax=y1)
         if shp in ("Point", "Multipoint", "Polyline", "Polygon"):
             d.shapeType = shp
         elif shp == "Raster":
@@ -125,11 +130,41 @@ def _install_fake_arcpy(table: pd.DataFrame):
     class ExecuteError(Exception):
         pass
 
+    # datatype keywords real Pro accepts (the ones EquiPop uses);
+    # SEMICOLON STRINGS ARE INVALID in real arcpy - multiple types
+    # must be a LIST (field-found bug, v1.16.1)
+    _DATATYPES = {"GPFeatureLayer", "GPTableView", "DERasterDataset",
+                  "GPString", "GPDouble", "GPBoolean", "GPLong",
+                  "Field", "DEFile", "DEFeatureClass"}
+
     class Parameter:
         def __init__(self, **kw):
+            dt = kw.get("datatype")
+            dts = dt if isinstance(dt, (list, tuple)) else [dt]
+            for d in dts:
+                if d not in _DATATYPES:
+                    raise ValueError(
+                        "ParameterObject: Invalid input value for "
+                        f"DataType property ({d!r})")
             self.__dict__.update(kw)
             self.filter = types.SimpleNamespace(type=None, list=[])
             self.value = None
+            self.enabled = True
+            self.parameterDependencies = []
+            self.messages = []          # (kind, text) set by tool
+
+        def setErrorMessage(self, text):
+            self.messages.append(("ERROR", text))
+
+        def setWarningMessage(self, text):
+            self.messages.append(("WARNING", text))
+
+        def clearMessage(self):
+            self.messages = []
+
+        @property
+        def valueAsText(self):
+            return None if self.value is None else str(self.value)
 
     def ListFields(_layer):
         return [types.SimpleNamespace(name=c)
@@ -574,3 +609,268 @@ def test_pyt_barrier_polygon_raster_and_overlap_rules(tmp_path):
     fr4 = pyt._barrier_frame("spots", "cost", "additive (sum)",
                              100.0, None, None, None, msg)
     assert set(zip(fr4.x, fr4.y, fr4.friction)) == {(50.0, 50.0, 10.0)}
+
+
+def test_pyt_dialogs_construct_like_pro():
+    """Field-found bug (v1.16.0 redo): Pro validates every Parameter
+    datatype at toolbox OPEN, and multi-type parameters must be
+    LISTS, not semicolon strings. The fake now enforces the same, and
+    this test builds BOTH dialogs exactly as Pro does - plus one
+    updateParameters pass on empty dialogs."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    for tool in (pyt.CountsShares(), pyt.ValueStatistics()):
+        ps = tool.getParameterInfo()
+        assert len({p.name for p in ps}) == len(ps)   # unique names
+        tool.updateParameters(ps)                      # must not raise
+    m1 = pyt.CountsShares().getParameterInfo()
+    assert isinstance(m1[0].datatype, list)            # the field bug
+    assert isinstance(m1[13].datatype, list) and \
+        "DERasterDataset" in m1[13].datatype
+    assert m1[15].filter.list[0].startswith("additive")
+    m2 = pyt.ValueStatistics().getParameterInfo()
+    assert m2[6].filter.list == pyt._MEASURES
+    assert m2[7].value == "10 25 75 90"
+
+
+# --------------------------------------------- v1.16.2 field-report bugs
+def test_pyt_attribute_mode_on_layer_appends_by_oid():
+    """Field report A3: a point LAYER read through Attribute fields
+    (Pro remembered the mode) crashed with KeyError 'OBJECTID' -
+    the tabular path forgot to read the OID. Must append normally."""
+    rng = np.random.default_rng(21)
+    n = 80
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n),
+                      "MyEast": rng.uniform(0, 900, n),
+                      "MyNorth": rng.uniform(0, 900, n)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "people", msg, k_text="10",
+                  coord_source="Attribute fields",
+                  x_field="MyEast", y_field="MyNorth")
+    got = state["table"]
+    assert "N_10" in got and len(got) == n
+    from equipop.stata_bridge import dispatch
+    ref = dispatch("counts", t["MyEast"].to_numpy(),
+                   t["MyNorth"].to_numpy(), k_values=[10],
+                   treat_are_counts=True)
+    assert np.allclose(got["N_10"], ref["N_10"], equal_nan=True)
+
+
+def test_pyt_stale_xy_ignored_on_auto_geometry():
+    """Field report A1: stale X/Y picks remembered by Pro must be
+    harmless when Auto + geometry applies."""
+    rng = np.random.default_rng(22)
+    n = 60
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 700, n),
+                      "SHAPE@Y": rng.uniform(0, 700, n)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "people", msg, k_text="10",
+                  coord_source="Auto (geometry if present)",
+                  x_field="GhostX", y_field="GhostY")   # stale picks
+    assert "N_10" in state["table"]
+    assert any("feature geometry" in m for m in msg.log)
+
+
+def test_pyt_trio_update_clears_stale_fields_on_layer_change():
+    """Field report A1: switching input layers must clear and
+    re-guess X/Y instead of carrying picks from the old layer."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(t)
+    state["aux_tables"] = {
+        "old": pd.DataFrame({"coordA": [1.0], "coordB": [2.0]}),
+        "new": pd.DataFrame({"Easting": [1.0], "Northing": [2.0]})}
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    ps[0].value = "old"
+    ps[1].value = "Attribute fields"
+    ps[2].value = "coordA"
+    ps[3].value = "coordB"
+    tool.updateParameters(ps)
+    assert (ps[2].value, ps[3].value) == ("coordA", "coordB")  # kept
+    ps[0].value = "new"                       # the layer changes
+    tool.updateParameters(ps)
+    assert (ps[2].value, ps[3].value) == ("Easting", "Northing")
+
+
+def test_pyt_dialog_time_validation_blocks_run():
+    """Field report A2: the loud refusals must appear IN THE DIALOG
+    (updateMessages), not after Run - table without output table,
+    and unresolvable X/Y."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(t)
+    state["aux_tables"] = {
+        "csvdata": pd.DataFrame({"coordA": [1.0], "coordB": [2.0]})}
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    ps[0].value = "csvdata"
+    tool.updateParameters(ps)
+    tool.updateMessages(ps)
+    all_errors = [txt for p in ps for kind, txt in p.messages
+                  if kind == "ERROR"]
+    assert any("output table" in e for e in all_errors)
+    assert any("X field" in e or "pick" in e.lower()
+               for e in all_errors)          # coordA/B not guessable
+    ps2 = tool.getParameterInfo()            # a fine point layer:
+    ps2[0].value = "people"
+    tool.updateParameters(ps2)
+    tool.updateMessages(ps2)
+    assert not [1 for p in ps2 for k, _ in p.messages if k == "ERROR"]
+
+
+def test_pyt_machine2_shapefile_target_refused_with_advice():
+    """Field report A4 (the Kayseri failure): every Machine 2 result
+    name exceeds the shapefile 10-character cap, so appending to a
+    .shp must be refused BEFORE computing, naming the fix (file
+    gdb / new feature class) - and writing to a gdb feature class
+    must work."""
+    rng = np.random.default_rng(23)
+    n = 120
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 1500, n),
+                      "SHAPE@Y": rng.uniform(0, 1500, n),
+                      "beautiful_": rng.normal(50, 9, n)})
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\Kayseri.shp"}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    with pytest.raises(arcpy.ExecuteError, match="10 char"):
+        pyt._run_tool("stats", "people", msg,
+                      value_fields=["beautiful_"],
+                      stats_list=["mean", "median", "gini",
+                                  "percentiles"],
+                      pct_text="10 25 75 90", k_text="200",
+                      r_text="200")
+    # same request into a NEW feature class in a gdb: succeeds
+    pyt._run_tool("stats", "people", msg,
+                  value_fields=["beautiful_"],
+                  stats_list=["mean", "percentiles"],
+                  pct_text="10 90", k_text="200",
+                  out_mode="New feature class",
+                  out_fc=r"C:\Data\work.gdb\kayseri_eqp")
+    out = state["copies"][r"C:\Data\work.gdb\kayseri_eqp"]
+    assert "Mean_beautiful__200" in out and "P90_beautiful__200" in out
+
+
+def test_pyt_machine1_shapefile_treat_names_refused():
+    """Machine 1 hits the same cap via T_/R_ names when appending to
+    a shapefile with long group fields."""
+    rng = np.random.default_rng(24)
+    n = 90
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n),
+                      "Population": rng.integers(0, 2, n).astype(float)})
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\Population.shp"}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    with pytest.raises(arcpy.ExecuteError, match="10 char"):
+        pyt._run_tool("counts", "people", msg, k_text="344",
+                      treat_fields=["Population"])
+    # short names on the same shapefile: fine (N_344, Dist_344 fit)
+    pyt._run_tool("counts", "people", msg, k_text="344")
+    assert "N_344" in state["table"]
+
+
+def test_pyt_geographic_advice_names_utm_zone():
+    """Field report A5: the degree refusal should COMPUTE the fitting
+    UTM zone from the layer's extent (Kayseri ~ 35.5E, 38.7N ->
+    zone 36N / EPSG:32636) instead of suggesting SWEREF to Anatolia;
+    Swedish extents still get SWEREF."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [35.5],
+                      "SHAPE@Y": [38.7]})
+    state = _install_fake_arcpy(t)
+    state["crs_types"] = {"people": "Geographic"}
+    state["extents"] = {"people": (35.3, 38.5, 35.7, 38.9)}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    with pytest.raises(arcpy.ExecuteError, match="32636"):
+        pyt._run_tool("counts", "people", msg, k_text="5")
+    state["extents"] = {"people": (11.0, 55.4, 24.0, 68.5)}  # Sweden
+    with pytest.raises(arcpy.ExecuteError, match="3006"):
+        pyt._run_tool("counts", "people", msg, k_text="5")
+
+
+def test_categorical_values_quotes_stripped():
+    """John's question: category values typed WITH quotes must work
+    the same as bare ones."""
+    from equipop.categorical import categories_to_binary
+    cats = np.array(["cafe", "restaurant", "school", "cafe"])
+    m1, t1 = categories_to_binary(cats, "'cafe'; \"restaurant\"")
+    m2, t2 = categories_to_binary(cats, "cafe; restaurant")
+    assert set(t1) == set(t2)
+    for k in t1:
+        assert np.array_equal(t1[k], t2[k])
+
+
+def test_pyt_predictor_matches_dispatch_columns():
+    """The shapefile-refusal predictor must not drift from the
+    package: predicted names == actual dispatch columns for the
+    supported configurations."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    from equipop.stata_bridge import dispatch
+    rng = np.random.default_rng(3)
+    x, y = rng.uniform(0, 2000, 200), rng.uniform(0, 2000, 200)
+    tr = rng.integers(0, 2, 200).astype(float)
+    v = rng.normal(50, 5, 200)
+    fr = pd.DataFrame({"x": [1050.0], "y": [1050.0],
+                       "friction": [5.0]})
+    cases = [
+        (dispatch("counts", x, y, treat={"grp": tr}, k_values=[50],
+                  r_values=[300.0], treat_are_counts=True),
+         pyt._predict_result_fields("counts", "50", "300", "",
+                                    ["grp"], [], [], False, False)),
+        (dispatch("counts", x, y, treat={"grp": tr}, k_values=[50],
+                  treat_are_counts=True, half_life_m=500.0,
+                  decay_model="negexp"),
+         pyt._predict_result_fields("counts", "50", "", "", ["grp"],
+                                    [], [], True, False)),
+        (dispatch("friction", x, y, treat={"grp": tr}, k_values=[50],
+                  tau_values=[3.0], friction_file=fr,
+                  treat_are_counts=True),
+         pyt._predict_result_fields("counts", "50", "", "3", ["grp"],
+                                    [], [], False, True)),
+        (dispatch("stats", x, y, values={"inc": v},
+                  stats={"inc": ["mean", "p10"]}, k_values=[50],
+                  r_values=[300.0]),
+         pyt._predict_result_fields("stats", "50", "300", "", [],
+                                    ["inc"], ["mean", "p10"],
+                                    False, False)),
+    ]
+    for res, pred in cases:
+        assert set(res.keys()) == set(pred), (
+            sorted(res.keys()), sorted(pred))
+
+
+def test_pyt_machine2_dialog_has_output_section():
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    tool = pyt.ValueStatistics()
+    ps = tool.getParameterInfo()
+    names = [p.name for p in ps]
+    assert names[10:14] == ["existing", "outmode", "outfc", "outtable"]
+    assert ps[11].filter.list == ["Append to input",
+                                  "New feature class"]
+    tool.updateParameters(ps)
+    tool.updateMessages(ps)

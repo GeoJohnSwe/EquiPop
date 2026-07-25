@@ -70,16 +70,41 @@ def _kind(desc):
     return "table"
 
 
-def _check_metric(desc, what):
-    """Degrees are refused LOUDLY - EquiPop distances are metres."""
+def _utm_advice(desc):
+    """Suggest the metric CRS that FITS the data: computed UTM zone
+    from the layer's own extent (degrees), SWEREF only over Sweden
+    (field-test finding: Anatolian data got Swedish advice)."""
+    try:
+        e = desc.extent
+        lon = (float(e.XMin) + float(e.XMax)) / 2.0
+        lat = (float(e.YMin) + float(e.YMax)) / 2.0
+        if 10.0 <= lon <= 25.0 and 55.0 <= lat <= 70.0:
+            return "SWEREF 99 TM (EPSG:3006)"
+        z = min(max(int((lon + 180.0) // 6) + 1, 1), 60)
+        if lat >= 0:
+            return f"WGS 84 / UTM zone {z}N (EPSG:{32600 + z})"
+        return f"WGS 84 / UTM zone {z}S (EPSG:{32700 + z})"
+    except Exception:
+        return "the local UTM zone"
+
+
+def _geographic_text(desc, what):
     sr = getattr(desc, "spatialReference", None)
     if sr is not None and str(getattr(sr, "type", "")) == "Geographic":
-        raise arcpy.ExecuteError(
-            f"{what} is in a GEOGRAPHIC coordinate system "
-            f"({getattr(sr, 'name', 'degrees')}) - EquiPop needs "
-            "metres. Project it to a metric CRS (e.g. SWEREF 99 TM) "
-            "and run again.")
-    return sr
+        return (f"{what} is in a GEOGRAPHIC coordinate system "
+                f"({getattr(sr, 'name', 'degrees')}) - EquiPop needs "
+                f"metres. Project it first - for this data "
+                f"{_utm_advice(desc)} fits (Geoprocessing > Project) "
+                "- and run again.")
+    return None
+
+
+def _check_metric(desc, what):
+    """Degrees are refused LOUDLY - EquiPop distances are metres."""
+    txt = _geographic_text(desc, what)
+    if txt:
+        raise arcpy.ExecuteError(txt)
+    return getattr(desc, "spatialReference", None)
 
 
 def _table_fields(value):
@@ -169,7 +194,10 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     # tabular path (a real table, or the user insisted on fields)
     xf, yf, how = _resolve_xy_fields(layer, xf, yf,
                                      f"The {context}")
-    arr = arcpy.da.TableToNumPyArray(layer, [xf, yf] + extra,
+    oid = desc.OIDFieldName if kind != "table" else None
+    read = [xf, yf] + extra + ([oid] if oid and oid not in
+                               ([xf, yf] + extra) else [])
+    arr = arcpy.da.TableToNumPyArray(layer, read,
                                      skip_nulls=False,
                                      null_value=np.nan)
     data = {f: arr[f] for f in arr.dtype.names}
@@ -178,8 +206,7 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     messages.addMessage(
         f"Coordinates from attribute fields: X = '{xf}', Y = '{yf}'"
         f" ({how}). X is the easting, Y the northing.")
-    return ("table" if kind == "table" else "point"), data, \
-        (desc.OIDFieldName if kind != "table" else None)
+    return ("table" if kind == "table" else "point"), data, oid
 
 
 def _barrier_frame(value, friction_field, agg, unit, main_sr,
@@ -314,6 +341,64 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
         "point/line/polygon layer, a table, or a raster.")
 
 
+def _fmt_num(v):
+    f = float(v)
+    return str(int(f)) if f == int(f) else str(f)
+
+
+def _predict_result_fields(engine, k_text, r_text, tau_text,
+                           treat_names, value_fields, stats_wanted,
+                           decaying, efforting):
+    """The columns a run WILL produce (validated against dispatch in
+    the simulator suite) - so shapefile targets can be refused
+    BEFORE the computation, not after (field-test finding A4)."""
+    from equipop.stats import stat_prefix
+    ks = [t for t in (k_text or "").split()]
+    rs = [_fmt_num(t) for t in (r_text or "").split()]
+    taus = [_fmt_num(t) for t in (tau_text or "").split()]
+    names = []
+    if engine == "counts":
+        sufs = [k for k in ks] + [f"r{r}" for r in rs]
+        if efforting:
+            sufs = [k for k in ks] + [f"tau{t}" for t in taus]
+            names += [f"Rounds_{k}" for k in ks]
+        for suf in sufs:
+            names.append(f"N_{suf}")
+            for f in treat_names:
+                names += [f"T_{f}_{suf}", f"R_{f}_{suf}"]
+        names += [f"Dist_{k}" for k in ks]
+        if decaying:
+            names.append("ND_inf")
+            for f in treat_names:
+                names += [f"TD_{f}_inf", f"RD_{f}_inf"]
+    else:
+        sufs = [k for k in ks] + [f"r{r}" for r in rs]
+        names += [f"N_{s}" for s in sufs] + ["N_local"]
+        names += [f"Dist_{k}" for k in ks]
+        for f in value_fields:
+            for s in sufs:
+                names.append(f"Nv_{f}_{s}")
+                for st in stats_wanted:
+                    names.append(f"{stat_prefix(st)}_{f}_{s}")
+    return [_field(n) for n in names]
+
+
+def _refuse_shp_overflow(target, names, messages=None):
+    """dBASE (shapefile) field names cap at 10 characters - refuse
+    with the fix instead of failing after minutes of compute."""
+    if not (target and str(target).lower().endswith(".shp")):
+        return None
+    bad = sorted({n for n in names if len(n) > 10})
+    if not bad:
+        return None
+    txt = (f"The target is a SHAPEFILE and shapefile field names are "
+           f"capped at 10 characters - these results cannot fit: "
+           f"{', '.join(bad[:5])}{'...' if len(bad) > 5 else ''}. "
+           "Write to a NEW feature class in a file geodatabase "
+           "(unlimited names) or, for tables, a .csv output.")
+    return txt
+
+
 def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_list=(), pct_text="", half_life=0.0,
@@ -369,6 +454,31 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(
             f"Category mode: population {int(pop_mask.sum())} rows; "
             f"treatments: {', '.join(cat_treats) or '(none)'}")
+
+    treat_names = list(treat_fields) + (list(cat_treats)
+                                        if cat_field else [])
+    if kind != "table":
+        target = (out_fc if out_mode.startswith("New") and out_fc
+                  else getattr(arcpy.Describe(layer), "catalogPath",
+                               ""))
+        wanted_pred = []
+        if engine == "stats":
+            for m in stats_list:
+                m = (m or "").strip().lower()
+                if m == "percentiles":
+                    wanted_pred += [f"p{q}" for q in
+                                    (pct_text or "").replace(",", " ")
+                                    .split()]
+                elif m:
+                    wanted_pred.append(_MEASURE_KEY.get(m, m))
+        txt = _refuse_shp_overflow(target, _predict_result_fields(
+            engine, k_text, r_text, tau_text, treat_names,
+            list(value_fields),
+            wanted_pred or ["mean", "median", "gini"],
+            decaying=bool(half_life), efforting=bool(
+                barrier is not None or extra_dem)))
+        if txt:
+            raise arcpy.ExecuteError(txt)
 
     kw = dict(unit_size=float(unit))
     kw["k_values"] = [int(t) for t in k_text.split()] or None
@@ -460,6 +570,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             f"{out_table} ({len(out_df)} rows, row order preserved).")
         return
 
+    txt = _refuse_shp_overflow(
+        getattr(arcpy.Describe(layer), "catalogPath", ""),
+        [_field(c) for c in res])
+    if txt:                       # safety net: exact names, pre-append
+        raise arcpy.ExecuteError(txt)
     dtype = [(str(oid), np.int64)] + [(_field(c), np.float64)
                                       for c in res]
     out = np.empty(len(x), dtype=dtype)
@@ -512,7 +627,10 @@ def _coord_trio(ps, dep="layer"):
 
 
 def _trio_update(parameters, i_layer, i_src, i_x, i_y):
-    """Enable X/Y selectors when they matter; preguess once."""
+    """Enable X/Y selectors when they matter; preguess; and CLEAR
+    stale picks that Pro remembered from a previous layer (field-
+    test finding: 'it seems to remember... a refresh will be
+    needed')."""
     src = parameters[i_src].valueAsText or _COORD_AUTO
     is_attr = src == _COORD_ATTR
     val = parameters[i_layer].value
@@ -520,6 +638,14 @@ def _trio_update(parameters, i_layer, i_src, i_x, i_y):
     if val is not None:
         try:
             is_table = _kind(arcpy.Describe(val)) == "table"
+        except Exception:
+            pass
+        try:
+            names = set(_table_fields(val))
+            for i in (i_x, i_y):
+                pv = parameters[i].valueAsText
+                if pv and pv not in names:
+                    parameters[i].value = None    # stale: other layer
         except Exception:
             pass
     on = is_attr or is_table
@@ -535,6 +661,59 @@ def _trio_update(parameters, i_layer, i_src, i_x, i_y):
                 parameters[i_y].value = gy
         except Exception:
             pass
+
+
+def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
+                     i_outtable):
+    """Dialog-time (pre-Run) validation shared by both machines: the
+    loud refusals appear as red X:es IN the dialog (field-test
+    finding A2), not as tracebacks after Run."""
+    for p in parameters:
+        try:
+            p.clearMessage()
+        except Exception:
+            pass
+    val = parameters[i_layer].value
+    if val is None:
+        return
+    try:
+        desc = arcpy.Describe(val)
+        kind = _kind(desc)
+    except Exception:
+        return
+    txt = _geographic_text(desc, "The input")
+    if txt:
+        parameters[i_layer].setErrorMessage(txt)
+    src = parameters[i_src].valueAsText or _COORD_AUTO
+    if kind == "table" and not (parameters[i_outtable].valueAsText):
+        parameters[i_outtable].setErrorMessage(
+            "Table input has no feature class to append to - set the "
+            "output table (.csv). The results arrive there with your "
+            "coordinates.")
+    if kind == "table" or src == _COORD_ATTR:
+        xf = parameters[i_x].valueAsText
+        yf = parameters[i_y].valueAsText
+        if not (xf and yf):
+            gx = gy = None
+            deg = False
+            try:
+                from equipop.io import guess_xy_fields
+                gx, gy, deg = guess_xy_fields(_table_fields(val))
+            except Exception:
+                pass
+            if deg:
+                parameters[i_layer].setErrorMessage(
+                    f"'{gx}'/'{gy}' look like DEGREES (lon/lat) - "
+                    "EquiPop needs metres. Project the data first.")
+            elif not (gx and gy):
+                if not xf:
+                    parameters[i_x].setErrorMessage(
+                        "Pick the X field (easting) - the coordinate "
+                        "columns could not be guessed. No renaming "
+                        "needed.")
+                if not yf:
+                    parameters[i_y].setErrorMessage(
+                        "Pick the Y field (northing).")
 
 
 class Toolbox:
@@ -564,7 +743,7 @@ class CountsShares:
 
     def getParameterInfo(self):
         ps = [_p("layer", "Input points (layer) or table",
-                 "GPFeatureLayer;GPTableView")]
+                 ["GPFeatureLayer", "GPTableView"])]
         _coord_trio(ps)
         ps += [_p("pop", "Population field - total persons at this "
                   "point (empty if each point is one person)", "Field",
@@ -580,18 +759,18 @@ class CountsShares:
                   required=False),
                _p("halflife", "Decay half-life in metres", "GPDouble",
                   required=False),
-               _p("catfield", "Category field (e.g. fclass) - builds "
-                  "population and groups from VALUES instead",
+               _p("catfield", "Category field (codes or names) - "
+                  "builds population and groups from its VALUES",
                   "Field", required=False),
-               _p("popvalues", "Category values forming the population "
-                  "(comma-separated; empty = all rows)", "GPString",
-                  required=False),
-               _p("treatvalues", "Treatment categories - 'restaurant; "
-                  "cafe' or grouped 'food: restaurant, cafe'",
-                  "GPString", required=False),
+               _p("popvalues", "Category values forming the "
+                  "population (comma-separated, no quotes needed; "
+                  "empty = all rows)", "GPString", required=False),
+               _p("treatvalues", "Group categories - typeA; typeB "
+                  "or grouped groupname: typeA, typeB (no quotes "
+                  "needed)", "GPString", required=False),
                _p("barrier", "Distance ingredient: barriers (point/"
                   "line/polygon layer, table, or raster)",
-                  "GPFeatureLayer;GPTableView;DERasterDataset",
+                  ["GPFeatureLayer", "GPTableView", "DERasterDataset"],
                   required=False),
                _p("barrierfield", "Barrier friction field (crossing "
                   "cost in rounds)", "Field", required=False),
@@ -659,6 +838,10 @@ class CountsShares:
                                   == "New feature class")
         return
 
+    def updateMessages(self, parameters):
+        _shared_messages(parameters, 0, 1, 2, 3, 24)
+        return
+
     def execute(self, parameters, messages):
         v = [p.valueAsText or "" for p in parameters]
         model = v[8] or "no decay"
@@ -703,7 +886,7 @@ class ValueStatistics:
 
     def getParameterInfo(self):
         ps = [_p("layer", "Input points (layer) or table",
-                 "GPFeatureLayer;GPTableView")]
+                 ["GPFeatureLayer", "GPTableView"])]
         _coord_trio(ps)
         ps += [_p("fullpop", "Full population field - persons per "
                   "point (empty = one each); k is measured against "
@@ -716,6 +899,12 @@ class ValueStatistics:
                   "90)", "GPString", required=False),
                _p("k", "k values", "GPString"),
                _p("r", "Radii in metres", "GPString", required=False),
+               _p("existing", "If result fields already exist",
+                  "GPString", required=False),
+               _p("outmode", "Output", "GPString", required=False),
+               _p("outfc", "New feature class (name/path - use a "
+                  "file geodatabase for unlimited field names)",
+                  "DEFeatureClass", required=False),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False),
                _p("unit", "Cell size (m)", "GPDouble", required=False)]
@@ -725,14 +914,26 @@ class ValueStatistics:
         ps[6].filter.list = _MEASURES
         ps[6].value = "mean;median;gini"
         ps[7].value = "10 25 75 90"
-        ps[10].direction = "Output"
-        ps[11].value = 100.0
+        ps[10].filter.type = "ValueList"
+        ps[10].filter.list = ["Overwrite", "Stop with a message"]
+        ps[10].value = "Overwrite"
+        ps[11].filter.type = "ValueList"
+        ps[11].filter.list = ["Append to input", "New feature class"]
+        ps[11].value = "Append to input"
+        ps[13].direction = "Output"
+        ps[14].value = 100.0
         return ps
 
     def updateParameters(self, parameters):
         _trio_update(parameters, 0, 1, 2, 3)
         chosen = (parameters[6].valueAsText or "").lower()
         parameters[7].enabled = "percentiles" in chosen
+        parameters[12].enabled = (parameters[11].valueAsText
+                                  == "New feature class")
+        return
+
+    def updateMessages(self, parameters):
+        _shared_messages(parameters, 0, 1, 2, 3, 13)
         return
 
     def execute(self, parameters, messages):
@@ -746,5 +947,8 @@ class ValueStatistics:
                               if m.strip("' ")],
                   pct_text=v[7],
                   k_text=v[8], r_text=v[9],
-                  out_table=v[10] or None,
-                  unit=float(v[11] or 100))
+                  existing=v[10] or "Overwrite",
+                  out_mode=v[11] or "Append to input",
+                  out_fc=v[12] or None,
+                  out_table=v[13] or None,
+                  unit=float(v[14] or 100))
