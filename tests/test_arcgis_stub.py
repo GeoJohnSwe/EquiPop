@@ -1032,3 +1032,51 @@ def test_help_xml_covers_every_parameter():
         helped = {p.get("name") for p in tree.iter("param")}
         assert {p.name for p in cls().getParameterInfo()} <= helped
         assert tree.find(".//summary").text
+
+
+def test_pyt_reports_package_voice_and_stage_times():
+    """Field finding (475k-row run, 94 minutes, silent pane): the
+    package's own lines never reached Pro, so nobody could see where
+    the time went. Now stdout is forwarded and every stage is
+    timed."""
+    rng = np.random.default_rng(41)
+    n = 300
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 2000, n),
+                      "SHAPE@Y": rng.uniform(0, 2000, n),
+                      "Pop": rng.integers(1, 6, n).astype(float)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "people", msg, k_text="50",
+                  weight_field="Pop")
+    log = "\n".join(msg.log)
+    # the package's own voice now reaches the pane (engine notes,
+    # neighbour-search size, row count handed back)
+    assert "[fast]" in log and "neighbour cells" in log
+    assert "[stata]" in log
+    for stage in ("[time] reading input", "[time] calculating",
+                  "[time] writing results to the layer",
+                  "[time] TOTAL"):
+        assert stage in log, stage
+    assert "most of it in" in log
+    # stdout must be restored, whatever happened
+    assert sys.stdout is not None and hasattr(sys.stdout, "write")
+
+
+def test_pyt_stage_times_survive_a_refusal():
+    """A refusal mid-run must not leave the package talking into a
+    dead reporter (stdout restored by the context manager)."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0], "Income": [1.0]})
+    state = _install_fake_arcpy(t)
+    state["crs_types"] = {"people": "Geographic"}
+    state["extents"] = {"people": (11.0, 55.4, 24.0, 68.5)}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    before = sys.stdout
+    with pytest.raises(arcpy.ExecuteError):
+        pyt._run_tool("stats", "people", msg, value_fields=["Income"],
+                      k_text="5")
+    assert sys.stdout is before

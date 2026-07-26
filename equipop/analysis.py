@@ -438,33 +438,56 @@ def run_knn_stats(
         for kk, vv in rec.items():
             cols_out[kk][i] = vv
 
-    for start in range(0, m, o_chunk):
-        stop = min(start + o_chunk, m)
-        if tree is None:
-            nds = nis = None
-        else:
-            nds, nis = tree.query(np.c_[Ef[start:stop], Nf[start:stop]],
-                                  k=mm, workers=-1)
-        for oi in range(start, stop):
-            if tree is None:
-                dist = np.hypot(Ef - cd.E[oi], Nf - cd.N[oi])
-                order = np.argsort(dist, kind="stable")
-                rec, ok = _walk(oi, dist[order], order, True)
-            else:
-                rec, ok = _walk(oi, nds[oi - start], nis[oi - start],
-                                False)
-                if not ok:                      # exact recomputation
-                    fallbacks += 1
-                    dist = np.hypot(Ef - cd.E[oi], Nf - cd.N[oi])
-                    order = np.argsort(dist, kind="stable")
-                    rec, _ = _walk(oi, dist[order], order, True)
+    # --------------------------------------------- v1.16.4 the LADDER
+    # Same lesson as the counts engine: an origin too thin to reach k
+    # inside its neighbourhood used to be re-sorted against ALL cells.
+    # Widen the search x8 for exactly those origins instead; only the
+    # final rung, rarely reached, is the full set. Numbers identical.
+    todo = np.arange(m) if tree is not None else None
+    m_now = mm
+    done = 0
+    if tree is None:
+        for oi in range(m):
+            dist = np.hypot(Ef - cd.E[oi], Nf - cd.N[oi])
+            order = np.argsort(dist, kind="stable")
+            rec, _ = _walk(oi, dist[order], order, True)
             _store(oi, rec)
-        if m > 20000 and (stop % 20480 == 0 or stop == m):
-            print(f"[stats] {stop}/{m} origins done", flush=True)
+            done += 1
+            if m > 20000 and done % 20480 == 0:
+                print(f"[stats] {done}/{m} origins done", flush=True)
+    else:
+        while len(todo):
+            nxt = []
+            c_now = max(1, min(o_chunk, int(2e6 // max(m_now, 1))))
+            for start in range(0, len(todo), c_now):
+                sel = todo[start:min(start + c_now, len(todo))]
+                nds, nis = tree.query(np.c_[Ef[sel], Nf[sel]],
+                                      k=m_now, workers=-1)
+                if m_now == 1:
+                    nds, nis = nds[:, None], nis[:, None]
+                for r, oi in enumerate(sel):
+                    rec, ok = _walk(int(oi), nds[r], nis[r],
+                                    m_now >= m)
+                    if ok:
+                        _store(int(oi), rec)
+                        done += 1
+                    else:
+                        nxt.append(int(oi))
+                if m > 20000 and done % 20480 < c_now:
+                    print(f"[stats] {done}/{m} origins done",
+                          flush=True)
+            if not nxt or m_now >= m:
+                break
+            fallbacks += len(nxt)
+            m_now = int(min(m, max(m_now * 8, 64)))
+            print(f"[stats] {len(nxt)} sparse origins need a wider "
+                  f"search - retrying those with m = {m_now}"
+                  + (" (all cells)" if m_now >= m else ""), flush=True)
+            todo = np.asarray(nxt)
 
     if tree is not None:
         print(f"[stats] fast pass with m = {mm} neighbour cells"
-              + (f"; {fallbacks} origins recomputed exactly"
+              + (f"; {fallbacks} widened searches"
                  if fallbacks else ""))
     if cols_out and not fell_back:
         return pd.DataFrame({k: cols_out[k] for k in order_out})

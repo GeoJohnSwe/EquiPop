@@ -72,11 +72,14 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         modes.append(f"decayed sum (trunc {trunc:,.0f} m at eps {decay_eps})")
     print(f"[fast] {n_cells} cells, {' | '.join(modes)}, "
           f"fast pass with m = {m} neighbour cells")
-    rows = []
+    rows_by_oi: dict = {}
     stragglers = 0
 
     def _solve(dist, idx, oi_range):
-        nonlocal stragglers
+        """Fill in every origin this neighbourhood can settle; hand
+        back the ones that need a WIDER search (v1.16.4 ladder - see
+        the loop below)."""
+        unsat = []
         # dist, idx: (C, m) sorted by distance (self included at 0)
         cpop = np.cumsum(pop[idx], axis=1)
         cgrp = {v: np.cumsum(grp[v][idx], axis=1) for v in bvars}
@@ -84,9 +87,7 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
             covered = dist[r, -1]
             if ((cpop[r, -1] < kmax or covered < rmax or covered < trunc)
                     and dist.shape[1] < n_cells):
-                stragglers += 1
-                d2, i2 = tree.query(pts[oi], k=n_cells)
-                _solve(d2[None, :], i2[None, :], [oi])
+                unsat.append(oi)
                 continue
             rec = {"CellId": cd.labels[oi] if cd.labels else oi,
                    "EastWest": round(float(cd.E[oi]), 2),
@@ -131,15 +132,42 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 last = max(last, pos - 1)
             rec["SumN"] = cp[last]
             rec["MaxDistance"] = float(dd[last])
-            rows.append(rec)
+            rows_by_oi[oi] = rec
+        return unsat
 
     origins = np.arange(n_cells) if origins is None \
         else np.asarray(origins)
-    for start in range(0, len(origins), chunk):
-        sel = origins[start:min(start + chunk, len(origins))]
-        dist, idx = tree.query(pts[sel], k=m, workers=-1)
-        _solve(dist, idx, sel)
+    # --------------------------------------------- v1.16.4 the LADDER
+    # Thin-population origins cannot reach k inside the neighbourhood
+    # the density suggested. Until now each one was re-solved against
+    # ALL cells - and in a country with both cities and wilderness
+    # that single cliff dominated the run (a field run: 64,966 such
+    # origins, 1 h 46 min of the 1 h 51 min total). Now the search
+    # widens x8 at a time for exactly those origins, which is a few
+    # thousand cells rather than half a million, and only the last
+    # step - if it is ever reached - is the full set. Results are
+    # unchanged either way: the walk still ends inside a complete
+    # neighbourhood.
+    todo = origins
+    m_now = m
+    while len(todo):
+        nxt = []
+        c_now = max(1, min(chunk, int(4e6 // max(m_now, 1))))
+        for start in range(0, len(todo), c_now):
+            sel = todo[start:min(start + c_now, len(todo))]
+            dist, idx = tree.query(pts[sel], k=m_now, workers=-1)
+            if m_now == 1:
+                dist, idx = dist[:, None], idx[:, None]
+            nxt.extend(_solve(dist, idx, sel))
+        if not nxt or m_now >= n_cells:
+            break
+        stragglers += len(nxt)
+        m_now = int(min(n_cells, max(m_now * 8, 64)))
+        print(f"[fast] {len(nxt)} sparse origins need a wider search "
+              f"- retrying those with m = {m_now}"
+              + (" (all cells)" if m_now >= n_cells else ""))
+        todo = np.asarray(nxt)
     if stragglers:
-        print(f"[fast] {stragglers} sparse origins exact-solved "
-              f"against all cells")
-    return pd.DataFrame(rows)
+        print(f"[fast] {stragglers} widened searches in total "
+              "(results identical, only the route differs)")
+    return pd.DataFrame([rows_by_oi[o] for o in origins])

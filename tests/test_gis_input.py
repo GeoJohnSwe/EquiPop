@@ -197,3 +197,34 @@ def test_auto_m_scales_with_k_and_density():
     big = auto_m_neighbors(cd, [800], None)
     assert small < big <= len(cd)
     assert auto_m_neighbors(cd, [50], [2000.0]) > small   # radius rules
+
+
+def test_counts_ladder_identical_to_exhaustive():
+    """v1.16.4: widening the neighbour search step by step (instead
+    of re-solving thin origins against every cell) must not move a
+    single number - checked with m so small that almost every origin
+    has to climb the ladder."""
+    from equipop.cells import build_cells
+    from equipop.fastcounts import run_knn_counts
+    rng = np.random.default_rng(4711)
+    n = 3000
+    # urban/rural contrast: this is what makes origins straggle
+    nd = int(n * 0.7)
+    x = np.r_[rng.normal(2000, 300, nd), rng.uniform(0, 40000, n - nd)]
+    y = np.r_[rng.normal(2000, 300, nd), rng.uniform(0, 40000, n - nd)]
+    pop = np.r_[rng.integers(4, 30, nd),
+                rng.integers(1, 3, n - nd)].astype(float)
+    # expand to individuals (build_cells counts rows as persons)
+    rep = pop.astype(int)
+    xi = np.repeat(x, rep)
+    yi = np.repeat(y, rep)
+    hi = np.repeat(rng.integers(0, 2, n), rep).astype(float)
+    df = pd.DataFrame({"_x": xi, "_y": yi, "hi": hi})
+    cd = build_cells(df, "_x", "_y", binary_vars=["hi"],
+                     unit_size=100)
+    ref = run_knn_counts(cd, k_values=[200, 444], r_values=[444.0],
+                         m_neighbors=len(cd))          # exhaustive
+    for m in (8, 64, 300, None):
+        got = run_knn_counts(cd, k_values=[200, 444], r_values=[444.0],
+                             m_neighbors=m)
+        pd.testing.assert_frame_equal(ref, got)

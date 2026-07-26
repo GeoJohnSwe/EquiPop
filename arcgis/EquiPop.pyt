@@ -31,9 +31,76 @@ row-aligned double fields (Null where coordinates are missing);
 table inputs write a NEW output table.
 """
 
+import contextlib
+import sys
+import time
+
 import numpy as np
 
 import arcpy
+
+class _Reporter:
+    """The package talks by printing (one voice for every door);
+    ArcGIS only shows what goes through the messages object. This
+    forwards package output into the pane line by line, so [cells],
+    [fast] and progress lines are finally visible in Pro - and long
+    runs stop being silent (v1.16.4)."""
+
+    def __init__(self, messages):
+        self.messages = messages
+        self.buf = ""
+
+    def write(self, text):
+        self.buf += str(text)
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            if line.strip():
+                try:
+                    self.messages.addMessage(line.rstrip())
+                except Exception:
+                    pass
+
+    def flush(self):
+        if self.buf.strip():
+            try:
+                self.messages.addMessage(self.buf.rstrip())
+            except Exception:
+                pass
+        self.buf = ""
+
+
+@contextlib.contextmanager
+def _speaking(messages):
+    old = sys.stdout
+    rep = _Reporter(messages)
+    sys.stdout = rep
+    try:
+        yield
+    finally:
+        rep.flush()
+        sys.stdout = old
+
+
+def _hms(sec):
+    sec = float(sec)
+    if sec < 60:
+        return f"{sec:.1f} s"
+    m, s = divmod(int(round(sec)), 60)
+    h, m = divmod(m, 60)
+    return f"{h} h {m:02d} min {s:02d} s" if h else f"{m} min {s:02d} s"
+
+
+@contextlib.contextmanager
+def _stage(messages, label, store=None):
+    """Time one stage and report it, so a long run says WHERE the
+    time went instead of only how long it took in total."""
+    t0 = time.time()
+    yield
+    dt = time.time() - t0
+    if store is not None:
+        store.append((label, dt))
+    messages.addMessage(f"[time] {label}: {_hms(dt)}")
+
 
 _COORD_AUTO = "Auto (geometry if present)"
 _COORD_GEOM = "Feature geometry"
@@ -520,9 +587,12 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     extra = list(treat_fields) + list(value_fields) \
         + ([weight_field] if weight_field else []) \
         + ([cat_field] if cat_field else [])
-    kind, data, oid = _read_input(layer, coord_source, x_field,
-                                  y_field, extra, messages,
-                                  auto_project=auto_project)
+    t_all = time.time()
+    stages = []
+    with _stage(messages, "reading input", stages), _speaking(messages):
+        kind, data, oid = _read_input(layer, coord_source, x_field,
+                                      y_field, extra, messages,
+                                      auto_project=auto_project)
 
     if kind == "table":
         if not out_table:
@@ -605,9 +675,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         if barrier is not None:
             main_sr = getattr(arcpy.Describe(layer),
                               "spatialReference", None)
-            fr_df = _barrier_frame(barrier, barrier_field, barrier_agg,
-                                   unit, main_sr, barrier_x, barrier_y,
-                                   messages)
+            with _stage(messages, "building barriers", stages), \
+                    _speaking(messages):
+                fr_df = _barrier_frame(barrier, barrier_field,
+                                       barrier_agg, unit, main_sr,
+                                       barrier_x, barrier_y, messages)
         if fr_df is not None or extra_dem:
             engine = "slope" if extra_dem else "friction"
             messages.addMessage(
@@ -662,17 +734,25 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage("Measures: " + " ".join(wanted) +
                             " (only these are calculated).")
 
-    res = dispatch(engine, x, y, **kw)
+    messages.addMessage(
+        f"Calculating ({engine} engine, {len(x)} rows, cell size "
+        f"{float(unit):g} m). Progress and engine notes follow; "
+        "bigger cells mean fewer origins and faster runs.")
+    with _stage(messages, "calculating", stages), _speaking(messages):
+        res = dispatch(engine, x, y, **kw)
 
     if kind == "table":
-        out_df = pd.DataFrame({k: v for k, v in data.items()
-                               if k in ("x", "y")})
-        for c, v in res.items():
-            out_df[_field(c)] = v
-        out_df.to_csv(out_table, index=False)
+        with _stage(messages, "writing output table", stages):
+            out_df = pd.DataFrame({k: v for k, v in data.items()
+                                   if k in ("x", "y")})
+            for c, v in res.items():
+                out_df[_field(c)] = v
+            out_df.to_csv(out_table, index=False)
         messages.addMessage(
             f"EquiPop: {len(res)} result columns written with x/y to "
             f"{out_table} ({len(out_df)} rows, row order preserved).")
+        messages.addMessage("[time] TOTAL: " + _hms(time.time()
+                                                    - t_all))
         return
 
     names = {c: _field(c) for c in res}
@@ -696,16 +776,26 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     existing_names = {f.name for f in arcpy.ListFields(layer)}
     clash = [c for c in names.values() if c in existing_names]
     if clash and existing.startswith("Overwrite"):
-        messages.addMessage(f"Overwriting {len(clash)} existing "
-                            f"EquiPop fields.")
-        arcpy.management.DeleteField(layer, clash)
+        messages.addMessage(
+            f"Overwriting {len(clash)} existing EquiPop fields "
+            "(deleting fields rewrites the whole table - on a large "
+            "shapefile this is the slowest step there is; a new "
+            "feature class avoids it).")
+        with _stage(messages, "deleting old fields", stages):
+            arcpy.management.DeleteField(layer, clash)
     elif clash:
         raise arcpy.ExecuteError(
             f"Result fields already exist ({', '.join(clash[:4])}...). "
             "Choose Overwrite, or write to a new feature class.")
-    arcpy.da.ExtendTable(layer, oid, out, str(oid))
+    with _stage(messages, "writing results to the layer", stages):
+        arcpy.da.ExtendTable(layer, oid, out, str(oid))
     messages.addMessage(f"EquiPop: {len(res)} fields appended "
                         f"({', '.join(names.values())}).")
+    if stages:
+        slow = max(stages, key=lambda p: p[1])
+        messages.addMessage(
+            "[time] TOTAL: " + _hms(time.time() - t_all)
+            + f" - most of it in '{slow[0]}' ({_hms(slow[1])}).")
     if any(c.startswith("Dist_") for c in res):
         messages.addMessage("Note: Dist_k is in METRES - it is the "
                             "radius each point needed to gather its k "
