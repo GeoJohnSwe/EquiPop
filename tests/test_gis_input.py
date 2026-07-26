@@ -157,3 +157,43 @@ def test_paths_vs_shapely_twin_with_agg():
         b2 = paths_to_friction(feats2, vals2, unit_size=100, agg=agg) \
             .sort_values(["x", "y"]).reset_index(drop=True)
         assert a2.equals(b2)
+
+
+
+def test_stats_fast_path_identical_to_exhaustive():
+    """v1.16.3: the KD-tree fast path must reproduce the exhaustive
+    engine BIT FOR BIT at any m - including m so small that the tie-
+    ring guard has to trigger the exact recomputation."""
+    from equipop.cells import build_cells, auto_m_neighbors
+    from equipop.analysis import run_knn_stats
+    rng = np.random.default_rng(4242)
+    n = 2500
+    df = pd.DataFrame({"_x": rng.uniform(0, 5000, n),
+                       "_y": rng.uniform(0, 5000, n),
+                       "inc": rng.lognormal(10, 0.4, n),
+                       "hi": rng.integers(0, 2, n).astype(float)})
+    cd = build_cells(df, "_x", "_y", value_vars=["inc"],
+                     binary_vars=["hi"], unit_size=100)
+    st = {"inc": ["mean", "median", "gini", "p10", "p90", "count"],
+          "hi": ["ratio", "sd"]}
+    slow = run_knn_stats(cd, k_values=[40, 300], r_values=[400.0],
+                         stats=st, m_neighbors=10 ** 9)
+    for m in (8, 64, 512, None):
+        fast = run_knn_stats(cd, k_values=[40, 300], r_values=[400.0],
+                             stats=st, m_neighbors=m)
+        pd.testing.assert_frame_equal(slow, fast)
+    m_auto = auto_m_neighbors(cd, [300], [400.0])
+    assert 64 <= m_auto <= len(cd)
+
+
+def test_auto_m_scales_with_k_and_density():
+    from equipop.cells import build_cells, auto_m_neighbors
+    rng = np.random.default_rng(5)
+    n = 4000
+    df = pd.DataFrame({"_x": rng.uniform(0, 8000, n),
+                       "_y": rng.uniform(0, 8000, n)})
+    cd = build_cells(df, "_x", "_y", unit_size=100)
+    small = auto_m_neighbors(cd, [50], None)
+    big = auto_m_neighbors(cd, [800], None)
+    assert small < big <= len(cd)
+    assert auto_m_neighbors(cd, [50], [2000.0]) > small   # radius rules

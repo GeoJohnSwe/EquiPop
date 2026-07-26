@@ -98,9 +98,27 @@ def _install_fake_arcpy(table: pd.DataFrame):
         else:
             state["table"] = df
 
+    class SpatialReference:
+        """Fake CRS object; auto-projection is simulated by a simple
+        deterministic degrees->metres transform (the glue only needs
+        to prove that projection HAPPENED and metres arrived)."""
+        def __init__(self, code):
+            self.factoryCode = int(code)
+            self.type = "Projected"
+            self.name = f"EPSG:{code}"
+
     def FeatureClassToNumPyArray(_layer, fields, skip_nulls=False,
-                                 null_value=np.nan):
+                                 null_value=np.nan,
+                                 spatial_reference=None):
         t = _df_for(_layer)
+        if spatial_reference is not None:
+            t = t.copy()
+            zone = spatial_reference.factoryCode % 100
+            cm = -183.0 + 6.0 * zone
+            lat = t["SHAPE@Y"].to_numpy(float)
+            t["SHAPE@X"] = ((t["SHAPE@X"].to_numpy(float) - cm)
+                            * 111320.0 * np.cos(np.radians(lat)))
+            t["SHAPE@Y"] = lat * 110540.0
 
         def _dt(f):
             if f == "OBJECTID":
@@ -229,6 +247,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
     arcpy.ListFields = ListFieldsAny
     arcpy.management = mgmt
     arcpy.RasterToNumPyArray = RasterToNumPyArray
+    arcpy.SpatialReference = SpatialReference
     arcpy.ExecuteError = ExecuteError
     arcpy.Parameter = Parameter
     sys.modules["arcpy.management"] = mgmt
@@ -874,3 +893,142 @@ def test_pyt_machine2_dialog_has_output_section():
                                   "New feature class"]
     tool.updateParameters(ps)
     tool.updateMessages(ps)
+
+
+# ------------------------------------------- v1.16.3 field-round bugs
+def test_pyt_field_box_holding_a_number_refused():
+    """Field-test finding: a k value typed into the Full population
+    box reached arcpy as a field name ('Cannot find field 55').
+    Now refused with advice - and stale field picks from another
+    layer are cleared by the dialog."""
+    rng = np.random.default_rng(31)
+    n = 40
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 500, n),
+                      "SHAPE@Y": rng.uniform(0, 500, n),
+                      "Income": rng.normal(300, 40, n)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    with pytest.raises(arcpy.ExecuteError, match="not a field"):
+        pyt._run_tool("stats", "people", msg, value_fields=["Income"],
+                      weight_field="55", k_text="55")
+    tool = pyt.ValueStatistics()
+    ps = tool.getParameterInfo()
+    ps[0].value = "people"
+    ps[4].value = "55"                     # stale/typed junk
+    ps[5].value = "Income;Ghost"           # one real, one stale
+    tool.updateParameters(ps)
+    assert ps[4].value is None
+    assert ps[5].valueAsText == "Income"
+
+
+def test_pyt_autoproject_checkbox_and_table_advice(tmp_path):
+    """Field-test ruling: degree LAYERS may be auto-projected to the
+    computed zone when the box is ticked (and are refused with that
+    suggestion when it is not); degree TABLES always refuse, but now
+    name the fitting CRS computed from the coordinates."""
+    t = pd.DataFrame({"OBJECTID": [1, 2, 3],
+                      "SHAPE@X": [35.50, 35.52, 35.54],
+                      "SHAPE@Y": [38.70, 38.72, 38.74]})
+    state = _install_fake_arcpy(t)
+    state["crs_types"] = {"people": "Geographic"}
+    state["extents"] = {"people": (35.4, 38.6, 35.6, 38.8)}
+    state["aux_tables"] = {"degtab": pd.DataFrame(
+        {"Longitude": [35.5, 35.6], "Latitude": [38.7, 38.8]})}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    with pytest.raises(arcpy.ExecuteError, match="32636"):
+        pyt._run_tool("counts", "people", msg, k_text="2")
+    pyt._run_tool("counts", "people", msg, k_text="2",
+                  auto_project=True)
+    assert "N_2" in state["table"]
+    assert any("AUTO-PROJECTED" in m for m in msg.log)
+    with pytest.raises(arcpy.ExecuteError, match="32636"):
+        pyt._run_tool("counts", "degtab", msg, k_text="2",
+                      out_table=str(tmp_path / "t.csv"),
+                      auto_project=True)     # tables never auto
+
+
+def test_pyt_short_names_are_collision_free():
+    """Ruling: shapefile targets may take shortened names when the
+    box is ticked - and the shortening must never merge two
+    different results (the P25/P75 trap)."""
+    rng = np.random.default_rng(32)
+    n = 60
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n),
+                      "beautiful_": rng.normal(50, 9, n)})
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\Kayseri.shp"}
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("stats", "people", msg, value_fields=["beautiful_"],
+                  stats_list=["percentiles"], pct_text="25 75",
+                  k_text="40", short_names=True)
+    got = state["table"]
+    added = [c for c in got.columns if c not in
+             ("OBJECTID", "SHAPE@X", "SHAPE@Y", "beautiful_")]
+    assert added and all(len(c) <= 10 for c in added)
+    assert len(set(added)) == len(added)          # no collisions
+    assert any("Mapping:" in m for m in msg.log)
+    from equipop.stata_bridge import dispatch
+    ref = dispatch("stats", t["SHAPE@X"].to_numpy(),
+                   t["SHAPE@Y"].to_numpy(),
+                   values={"beautiful_": t["beautiful_"].to_numpy()},
+                   stats={"beautiful_": ["p25", "p75"]}, k_values=[40])
+    p25 = [c for c in added if "25" in c][0]
+    assert np.allclose(got[p25], ref["P25_beautiful__40"],
+                       equal_nan=True)
+
+
+def test_pyt_dialog_warns_about_shapefile_before_run():
+    """The shapefile conflict must be visible in the DIALOG, not
+    only as a post-Run refusal (field-test comment)."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0], "Income": [1.0]})
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\gridby_points.shp"}
+    pyt = _load_pyt()
+    tool = pyt.ValueStatistics()
+    ps = tool.getParameterInfo()
+    ps[0].value = "people"
+    ps[5].value = "Income"
+    ps[8].value = "200"
+    tool.updateParameters(ps)
+    tool.updateMessages(ps)
+    errs = [txt for p in ps for kind, txt in p.messages
+            if kind == "ERROR"]
+    assert any("10 char" in e for e in errs)
+    assert any("shortened field names" in e for e in errs)
+    ps[16].value = True                     # tick the escape hatch
+    tool.updateMessages(ps)
+    errs2 = [txt for p in ps for kind, txt in p.messages
+             if kind == "ERROR" and "10 char" in txt]
+    assert not errs2
+
+
+def test_help_xml_covers_every_parameter():
+    """The sidecar help must stay in step with the dialogs: every
+    parameter of both tools needs its own explanation, and the XML
+    must parse."""
+    import xml.etree.ElementTree as ET
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    gen = os.path.join(root, "arcgis", "make_help_xml.py")
+    subprocess.run([sys.executable, gen], check=True, cwd=root)
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    for cls, name in ((pyt.CountsShares, "CountsShares"),
+                      (pyt.ValueStatistics, "ValueStatistics")):
+        path = os.path.join(root, "arcgis",
+                            f"EquiPop.{name}.pyt.xml")
+        tree = ET.parse(path)
+        helped = {p.get("name") for p in tree.iter("param")}
+        assert {p.name for p in cls().getParameterInfo()} <= helped
+        assert tree.find(".//summary").text

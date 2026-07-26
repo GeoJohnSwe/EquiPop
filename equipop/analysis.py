@@ -30,6 +30,7 @@ Output naming - two schemes, chosen with naming="short" | "legacy":
 
 import math
 import numpy as np
+from scipy.spatial import cKDTree
 import pandas as pd
 from itertools import groupby
 
@@ -245,6 +246,7 @@ def run_knn_stats(
     stats: dict[str, list[str]],
     max_radius_units: int | None = None,
     r_values: list[float] | None = None,
+    m_neighbors: int | None = None,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis with user-selected statistics per variable.
@@ -309,12 +311,30 @@ def run_knn_stats(
     results = []
     Ef, Nf = cd.E.astype(float), cd.N.astype(float)
 
-    for oi in range(m):
-        e0, n0 = cd.E[oi], cd.N[oi]
+    # ---------------------------------------------- v1.16.3 fast path
+    # Sorting every cell for every origin is quadratic (measured: cells
+    # x2 -> time x2.7). Instead fetch the m nearest CELLS from a
+    # KD-tree, exactly as the counts engine does, and walk those. An
+    # origin whose k (or radius) is NOT resolved strictly inside that
+    # neighbourhood - including the tie-ring case - is recomputed
+    # against all cells, so results are bit-for-bit the exhaustive
+    # ones. m affects SPEED ONLY, never numbers.
+    if m_neighbors is None:            # auto-tuned from k / radius
+        from .cells import auto_m_neighbors
+        m_neighbors = auto_m_neighbors(cd, k_values, r_values)
+    mm = int(min(max(m_neighbors, 1), m))
+    tree = cKDTree(np.c_[Ef, Nf]) if mm < m else None
+    o_chunk = max(1, min(512, m))
+    fallbacks = 0
 
-        # distances from this origin to ALL populated cells (vectorised)
-        dist = np.hypot(Ef - e0, Nf - n0)
-        order = np.argsort(dist, kind="stable")
+    def _walk(oi, nd, ni, exhaustive):
+        """One origin over the neighbour list (sorted by distance).
+        Returns (record, trustworthy) - trustworthy is False when a
+        result had to be taken from the final, possibly incomplete
+        ring of an m-limited neighbourhood."""
+        e0, n0 = cd.E[oi], cd.N[oi]
+        d_last = float(nd[-1]) if len(nd) else 0.0
+        touched_last = False
 
         rec: dict = {"EastWest": round(float(e0), 2),
                      "NorthSouth": round(float(n0), 2),
@@ -352,17 +372,20 @@ def run_knn_stats(
             record(rv, suffix=f"r{rv:g}", with_dist=False)
 
         j = 0
-        while j < m and (pending or pending_r):
-            d = dist[order[j]]
+        n_nb = len(nd)
+        while j < n_nb and (pending or pending_r):
+            d = float(nd[j])
             while pending_r and pending_r[0] < d - 1e-9:
                 record_r(pending_r.pop(0))   # radius closes BEFORE this ring
             if max_radius_units is not None and d > max_radius_units * cd.unit_size:
                 break
             # gather the full ring of cells at this exact distance
             ring = []
-            while j < m and dist[order[j]] - d < 1e-6:
-                ring.append(order[j])
+            while j < n_nb and float(nd[j]) - d < 1e-6:
+                ring.append(int(ni[j]))
                 j += 1
+            if not exhaustive and abs(d - d_last) < 1e-6:
+                touched_last = True     # ring may be cut by the m limit
             for ci in ring:
                 sum_n += float(cd.n[ci])
                 for v in bin_vars:
@@ -375,12 +398,74 @@ def run_knn_stats(
             while pending and sum_n >= pending[0]:
                 record(pending.pop(0))
 
+        unresolved = bool(pending or pending_r)
         for k in pending:          # unreached: partial results
             record(k)
         for rv in pending_r:       # radius reaches beyond data: whole set
             record_r(rv)
         rec["SumN"] = sum_n
         rec["MaxDistance"] = dist_m
-        results.append(rec)
+        # trustworthy unless an m-limited neighbourhood ran out or the
+        # answer came from its final (possibly truncated) ring
+        return rec, exhaustive or not (unresolved or touched_last)
 
+    # v1.16.3 memory shape: one Python dict per origin costs ~10x
+    # what the numbers need (422k origins were enough to thrash a
+    # 3 GB box). Records are copied into preallocated columns as they
+    # are produced; the dict path stays as a fallback if a record
+    # ever carries an unexpected key.
+    cols_out: dict = {}
+    order_out: list = []
+    fell_back = False
+
+    def _store(i, rec):
+        nonlocal fell_back
+        if not cols_out and not fell_back:
+            for kk, vv in rec.items():
+                order_out.append(kk)
+                cols_out[kk] = (np.empty(m, dtype=object)
+                                if isinstance(vv, str)
+                                else np.full(m, np.nan))
+        if fell_back or set(rec) != set(cols_out):
+            if not fell_back:                 # first mismatch: unwind
+                fell_back = True
+                results.extend(
+                    {k2: cols_out[k2][j] for k2 in order_out}
+                    for j in range(i))
+                cols_out.clear()
+            results.append(rec)
+            return
+        for kk, vv in rec.items():
+            cols_out[kk][i] = vv
+
+    for start in range(0, m, o_chunk):
+        stop = min(start + o_chunk, m)
+        if tree is None:
+            nds = nis = None
+        else:
+            nds, nis = tree.query(np.c_[Ef[start:stop], Nf[start:stop]],
+                                  k=mm, workers=-1)
+        for oi in range(start, stop):
+            if tree is None:
+                dist = np.hypot(Ef - cd.E[oi], Nf - cd.N[oi])
+                order = np.argsort(dist, kind="stable")
+                rec, ok = _walk(oi, dist[order], order, True)
+            else:
+                rec, ok = _walk(oi, nds[oi - start], nis[oi - start],
+                                False)
+                if not ok:                      # exact recomputation
+                    fallbacks += 1
+                    dist = np.hypot(Ef - cd.E[oi], Nf - cd.N[oi])
+                    order = np.argsort(dist, kind="stable")
+                    rec, _ = _walk(oi, dist[order], order, True)
+            _store(oi, rec)
+        if m > 20000 and (stop % 20480 == 0 or stop == m):
+            print(f"[stats] {stop}/{m} origins done", flush=True)
+
+    if tree is not None:
+        print(f"[stats] fast pass with m = {mm} neighbour cells"
+              + (f"; {fallbacks} origins recomputed exactly"
+                 if fallbacks else ""))
+    if cols_out and not fell_back:
+        return pd.DataFrame({k: cols_out[k] for k in order_out})
     return pd.DataFrame(results)

@@ -137,3 +137,29 @@ def build_cells(
     print(f"[cells] {len(df)} individuals -> {len(cd)} cells "
           f"(unit {unit_size} m, global N = {cd.n.sum()})")
     return cd
+
+
+def auto_m_neighbors(cd, k_values=None, r_values=None,
+                     safety: float = 3.0) -> int:
+    """How many nearest CELLS an origin must fetch to satisfy the
+    largest k (or radius) - the tuning knob of the fast engines
+    (v1.16.3). Under-estimates are harmless: both engines recompute
+    such origins exactly, so this affects SPEED ONLY.
+
+    k needs k/mean_persons_per_cell cells; a radius needs the cells
+    inside its disc at the observed cell density.
+    """
+    n_cells = len(cd)
+    if n_cells <= 64:
+        return n_cells
+    mean_n = max(float(np.sum(cd.n)) / n_cells, 1e-9)
+    need = max((float(k) / mean_n for k in (k_values or [])),
+               default=0.0)
+    if r_values:
+        e, n = np.asarray(cd.E, float), np.asarray(cd.N, float)
+        area = max((e.max() - e.min()) * (n.max() - n.min()),
+                   float(cd.unit_size) ** 2)
+        dens = n_cells / area                      # cells per m^2
+        need = max(need, max(np.pi * float(r) ** 2 * dens
+                             for r in r_values))
+    return int(min(n_cells, max(64, round(safety * need))))

@@ -22,7 +22,7 @@ from .fastcounts import run_knn_counts
 
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
-                m_neighbors: int = 4096,
+                m_neighbors: int | None = None,
                 r_values=None, decay=None,
                 treat_are_counts: bool = False) -> dict:
     """

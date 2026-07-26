@@ -99,16 +99,59 @@ def _geographic_text(desc, what):
     return None
 
 
-def _check_metric(desc, what):
-    """Degrees are refused LOUDLY - EquiPop distances are metres."""
+def _epsg_from_advice(desc):
+    """The EPSG code behind _utm_advice(), for auto-projection."""
+    a = _utm_advice(desc)
+    for tok in a.replace("(", " ").replace(")", " ").split():
+        if tok.startswith("EPSG:"):
+            try:
+                return int(tok.split(":")[1])
+            except ValueError:
+                return None
+    return None
+
+
+def _check_metric(desc, what, auto_project=False):
+    """Degrees are refused LOUDLY - EquiPop distances are metres -
+    unless the user ticked auto-projection, in which case a LAYER is
+    read in the fitting metric CRS instead (v1.16.3). Tables always
+    refuse: their numbers carry no CRS to project from."""
     txt = _geographic_text(desc, what)
     if txt:
+        if auto_project and getattr(desc, "shapeType", None):
+            return arcpy.SpatialReference(_epsg_from_advice(desc))
         raise arcpy.ExecuteError(txt)
     return getattr(desc, "spatialReference", None)
 
 
 def _table_fields(value):
     return [f.name for f in arcpy.ListFields(value)]
+
+
+def _utm_from_lonlat(lon, lat):
+    """Fitting metric CRS straight from coordinate VALUES - the table
+    path has no CRS object to ask (field-test gap: degree tables were
+    refused without a suggestion)."""
+    try:
+        lon, lat = float(lon), float(lat)
+    except (TypeError, ValueError):
+        return "a metric CRS"
+    if 10.0 <= lon <= 25.0 and 55.0 <= lat <= 70.0:
+        return "SWEREF 99 TM (EPSG:3006)"
+    z = min(max(int((lon + 180.0) // 6) + 1, 1), 60)
+    return (f"WGS 84 / UTM zone {z}{'N' if lat >= 0 else 'S'} "
+            f"(EPSG:{(32600 if lat >= 0 else 32700) + z})")
+
+
+def _sample_lonlat(value, gx, gy):
+    try:
+        a = arcpy.da.TableToNumPyArray(value, [gx, gy],
+                                       skip_nulls=False,
+                                       null_value=np.nan)
+        return (float(np.nanmedian(np.asarray(a[gx], float))),
+                float(np.nanmedian(np.asarray(a[gy], float))))
+    except Exception:
+        return (None, None)
 
 
 def _resolve_xy_fields(value, xf, yf, context):
@@ -119,16 +162,37 @@ def _resolve_xy_fields(value, xf, yf, context):
         return xf, yf, "chosen"
     gx, gy, deg = guess_xy_fields(_table_fields(value), context)
     if deg:
+        lon, lat = _sample_lonlat(value, gx, gy)
         raise arcpy.ExecuteError(
             f"{context}: '{gx}'/'{gy}' look like DEGREES (lon/lat) - "
-            "EquiPop needs metres. Project the data to a metric CRS "
-            "first.")
+            f"EquiPop needs metres. Project the data first - for "
+            f"these coordinates {_utm_from_lonlat(lon, lat)} fits "
+            "(add the table as XY layer, then Project). A table "
+            "cannot be auto-projected: its numbers carry no CRS.")
     if gx and gy:
         return gx, gy, "guessed"
     raise arcpy.ExecuteError(
         f"{context}: could not guess the coordinate columns among "
         f"{_table_fields(value)} - pick the X field (easting) and "
         "Y field (northing) in the dialog. No renaming needed.")
+
+
+def _check_fields_exist(layer, fields, context):
+    """Every field box must hold a REAL field of this layer. Typing a
+    number (a k value in a field box - the '55' field-test error) or
+    a leftover name from another layer is caught here with advice,
+    instead of arcpy's bare "Cannot find field"."""
+    try:
+        have = set(_table_fields(layer))
+    except Exception:
+        return
+    bad = [f for f in fields if f and f not in have]
+    if bad:
+        raise arcpy.ExecuteError(
+            f"{context}: {', '.join(repr(b) for b in bad)} "
+            f"{'is not a field' if len(bad) == 1 else 'are not fields'}"
+            " of this layer - pick from the dropdown. (Numbers like k "
+            "or radii belong in their own boxes, not in a field box.)")
 
 
 def _numeric(arr, field, context):
@@ -152,14 +216,15 @@ def _numeric(arr, field, context):
 
 
 def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
-                context="input"):
+                context="input", auto_project=False):
     """THE SHARED LOADER (v1.16): one behaviour for both machines.
     Returns (kind, data dict incl. 'x'/'y', oid name or None)."""
     desc = arcpy.Describe(layer)
     kind = _kind(desc)
     src = coord_source or _COORD_AUTO
-    _check_metric(desc, f"The {context}")
     extra = [f for f in extra_fields if f]
+    _check_fields_exist(layer, extra, f"The {context}")
+    _check_metric(desc, f"The {context}", auto_project)
 
     if kind == "table" and src == _COORD_GEOM:
         raise arcpy.ExecuteError(
@@ -181,9 +246,23 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
                 "Shapefile input: field names truncate to 10 "
                 "characters - a file geodatabase layer is strongly "
                 "recommended.")
+        sr_used = _check_metric(desc, f"The {context}", auto_project)
+        proj = (sr_used is not None
+                and str(getattr(desc.spatialReference, "type", ""))
+                == "Geographic")
         arr = arcpy.da.FeatureClassToNumPyArray(
             layer, [oid, "SHAPE@X", "SHAPE@Y"] + extra,
-            skip_nulls=False, null_value=np.nan)
+            skip_nulls=False, null_value=np.nan,
+            spatial_reference=sr_used) if proj else \
+            arcpy.da.FeatureClassToNumPyArray(
+                layer, [oid, "SHAPE@X", "SHAPE@Y"] + extra,
+                skip_nulls=False, null_value=np.nan)
+        if proj:
+            messages.addWarningMessage(
+                f"Input was in degrees - AUTO-PROJECTED to "
+                f"{_utm_advice(desc)} for this analysis. The input "
+                "data itself is untouched; distances are metres in "
+                "that projection.")
         data = {f: arr[f] for f in arr.dtype.names}
         data["x"] = np.asarray(arr["SHAPE@X"], float)
         data["y"] = np.asarray(arr["SHAPE@Y"], float)
@@ -383,6 +462,29 @@ def _predict_result_fields(engine, k_text, r_text, tau_text,
     return [_field(n) for n in names]
 
 
+def _shorten_names(names, cap: int = 10):
+    """Collision-free abbreviation for shapefile targets (opt-in).
+    Keeps the statistic prefix and the suffix (k/radius) - the parts
+    that distinguish results - and uniquifies by construction, so
+    P25_income_400 and P75_income_400 can never collapse into one
+    field. Returns {original: short}."""
+    out, used = {}, set()
+    for n in names:
+        parts = n.split("_")
+        head = parts[0][:4]
+        tail = parts[-1][:4] if len(parts) > 1 else ""
+        mid = "".join(p[:2] for p in parts[1:-1])[:cap]
+        base = (head + mid + tail)[:cap] or "F"
+        cand, i = base, 0
+        while cand in used:
+            i += 1
+            suf = str(i)
+            cand = (base[:cap - len(suf)] + suf)
+        used.add(cand)
+        out[n] = cand
+    return out
+
+
 def _refuse_shp_overflow(target, names, messages=None):
     """dBASE (shapefile) field names cap at 10 characters - refuse
     with the fix instead of failing after minutes of compute."""
@@ -409,7 +511,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               cat_field=None, pop_values_text="", treat_values_text="",
               existing="Overwrite", out_mode="Append to input",
               out_fc=None, out_table=None, extra_dem=None,
-              roundtrip=False):
+              roundtrip=False, auto_project=False,
+              short_names=False):
     """The single glue path both machines share (stub-validated)."""
     import pandas as pd
     from equipop.stata_bridge import dispatch
@@ -418,7 +521,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         + ([weight_field] if weight_field else []) \
         + ([cat_field] if cat_field else [])
     kind, data, oid = _read_input(layer, coord_source, x_field,
-                                  y_field, extra, messages)
+                                  y_field, extra, messages,
+                                  auto_project=auto_project)
 
     if kind == "table":
         if not out_table:
@@ -471,7 +575,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                                     .split()]
                 elif m:
                     wanted_pred.append(_MEASURE_KEY.get(m, m))
-        txt = _refuse_shp_overflow(target, _predict_result_fields(
+        txt = None if short_names else _refuse_shp_overflow(
+            target, _predict_result_fields(
             engine, k_text, r_text, tau_text, treat_names,
             list(value_fields),
             wanted_pred or ["mean", "median", "gini"],
@@ -570,19 +675,26 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             f"{out_table} ({len(out_df)} rows, row order preserved).")
         return
 
-    txt = _refuse_shp_overflow(
-        getattr(arcpy.Describe(layer), "catalogPath", ""),
-        [_field(c) for c in res])
-    if txt:                       # safety net: exact names, pre-append
+    names = {c: _field(c) for c in res}
+    cat = getattr(arcpy.Describe(layer), "catalogPath", "")
+    txt = _refuse_shp_overflow(cat, list(names.values()))
+    if txt and not short_names:    # safety net: exact names
         raise arcpy.ExecuteError(txt)
-    dtype = [(str(oid), np.int64)] + [(_field(c), np.float64)
+    if txt and short_names:
+        short = _shorten_names(list(names.values()))
+        messages.addWarningMessage(
+            "Shapefile target: result names shortened to 10 "
+            "characters (collision-free). Mapping: "
+            + "; ".join(f"{k} -> {v}" for k, v in short.items()))
+        names = {c: short[n] for c, n in names.items()}
+    dtype = [(str(oid), np.int64)] + [(names[c], np.float64)
                                       for c in res]
     out = np.empty(len(x), dtype=dtype)
     out[str(oid)] = np.asarray(data[oid], np.int64)
     for c, v in res.items():
-        out[_field(c)] = v
+        out[names[c]] = v
     existing_names = {f.name for f in arcpy.ListFields(layer)}
-    clash = [c for c in (_field(c) for c in res) if c in existing_names]
+    clash = [c for c in names.values() if c in existing_names]
     if clash and existing.startswith("Overwrite"):
         messages.addMessage(f"Overwriting {len(clash)} existing "
                             f"EquiPop fields.")
@@ -593,7 +705,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "Choose Overwrite, or write to a new feature class.")
     arcpy.da.ExtendTable(layer, oid, out, str(oid))
     messages.addMessage(f"EquiPop: {len(res)} fields appended "
-                        f"({', '.join(_field(c) for c in res)}).")
+                        f"({', '.join(names.values())}).")
     if any(c.startswith("Dist_") for c in res):
         messages.addMessage("Note: Dist_k is in METRES - it is the "
                             "radius each point needed to gather its k "
@@ -661,6 +773,34 @@ def _trio_update(parameters, i_layer, i_src, i_x, i_y):
                 parameters[i_y].value = gy
         except Exception:
             pass
+
+
+def _catalog_of(value):
+    try:
+        return getattr(arcpy.Describe(value), "catalogPath", "") or ""
+    except Exception:
+        return ""
+
+
+def _clear_stale_fields(parameters, i_layer, idxs):
+    """Field boxes remembered by Pro from ANOTHER layer are cleared
+    (v1.16.3) - the coordinate trio got this in 1.16.2, every other
+    field box gets it now."""
+    val = parameters[i_layer].value
+    if val is None:
+        return
+    try:
+        have = set(_table_fields(val))
+    except Exception:
+        return
+    for i in idxs:
+        txt = parameters[i].valueAsText
+        if not txt:
+            continue
+        picks = [p.strip("' ") for p in txt.split(";") if p.strip("' ")]
+        keep = [p for p in picks if p in have]
+        if len(keep) != len(picks):
+            parameters[i].value = ";".join(keep) if keep else None
 
 
 def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
@@ -793,7 +933,15 @@ class CountsShares:
                   "DEFeatureClass", required=False),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False),
-               _p("unit", "Cell size (m)", "GPDouble", required=False)]
+               _p("unit", "Cell size (m)", "GPDouble", required=False),
+               _p("autoproj", "Auto-project degree data to a suitable "
+                  "metric CRS (layers only - the fitting UTM zone is "
+                  "computed from the data; input untouched)",
+                  "GPBoolean", required=False),
+               _p("shortnames", "Allow shortened field names when the "
+                  "target is a shapefile (10-character cap; names "
+                  "stay collision-free and the mapping is printed)",
+                  "GPBoolean", required=False)]
         for i in (4, 5, 10):
             ps[i].parameterDependencies = ["layer"]
         for i in (14, 16, 17):
@@ -817,6 +965,7 @@ class CountsShares:
 
     def updateParameters(self, parameters):
         _trio_update(parameters, 0, 1, 2, 3)
+        _clear_stale_fields(parameters, 0, (4, 5, 10))
         parameters[9].enabled = (parameters[8].valueAsText
                                  not in (None, "", "no decay"))
         bar = parameters[13].value
@@ -840,6 +989,19 @@ class CountsShares:
 
     def updateMessages(self, parameters):
         _shared_messages(parameters, 0, 1, 2, 3, 24)
+        v = [p.valueAsText or "" for p in parameters]
+        target = (v[23] if v[22].startswith("New") and v[23]
+                  else _catalog_of(parameters[0].value))
+        if not (v[27] or "").lower() in ("true", "1", "yes"):
+            txt = _refuse_shp_overflow(target, _predict_result_fields(
+                "counts", v[6], v[7], v[19],
+                [f for f in v[5].split(";") if f], [], [],
+                bool(v[9] and v[8] not in ("", "no decay")),
+                bool(parameters[13].value or v[18])))
+            if txt:
+                parameters[22].setErrorMessage(txt + " Or tick "
+                                               "'Allow shortened "
+                                               "field names'.")
         return
 
     def execute(self, parameters, messages):
@@ -866,7 +1028,11 @@ class CountsShares:
                   existing=v[21] or "Overwrite",
                   out_mode=v[22] or "Append to input",
                   out_fc=v[23] or None, out_table=v[24] or None,
-                  unit=float(v[25] or 100))
+                  unit=float(v[25] or 100),
+                  auto_project=(v[26] or "").lower() in
+                  ("true", "1", "yes"),
+                  short_names=(v[27] or "").lower() in
+                  ("true", "1", "yes"))
 
 
 class ValueStatistics:
@@ -907,7 +1073,15 @@ class ValueStatistics:
                   "DEFeatureClass", required=False),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False),
-               _p("unit", "Cell size (m)", "GPDouble", required=False)]
+               _p("unit", "Cell size (m)", "GPDouble", required=False),
+               _p("autoproj", "Auto-project degree data to a suitable "
+                  "metric CRS (layers only - the fitting UTM zone is "
+                  "computed from the data; input untouched)",
+                  "GPBoolean", required=False),
+               _p("shortnames", "Allow shortened field names when the "
+                  "target is a shapefile (10-character cap; names "
+                  "stay collision-free and the mapping is printed)",
+                  "GPBoolean", required=False)]
         ps[4].parameterDependencies = ["layer"]
         ps[5].parameterDependencies = ["layer"]
         ps[6].filter.type = "ValueList"
@@ -926,6 +1100,7 @@ class ValueStatistics:
 
     def updateParameters(self, parameters):
         _trio_update(parameters, 0, 1, 2, 3)
+        _clear_stale_fields(parameters, 0, (4, 5))
         chosen = (parameters[6].valueAsText or "").lower()
         parameters[7].enabled = "percentiles" in chosen
         parameters[12].enabled = (parameters[11].valueAsText
@@ -934,6 +1109,26 @@ class ValueStatistics:
 
     def updateMessages(self, parameters):
         _shared_messages(parameters, 0, 1, 2, 3, 13)
+        v = [p.valueAsText or "" for p in parameters]
+        target = (v[12] if v[11].startswith("New") and v[12]
+                  else _catalog_of(parameters[0].value))
+        wanted = []
+        for mtxt in [m.strip("' ") for m in v[6].split(";") if m]:
+            ml = mtxt.lower()
+            if ml == "percentiles":
+                wanted += [f"p{q}" for q in
+                           (v[7] or "").replace(",", " ").split()]
+            elif ml:
+                wanted.append(_MEASURE_KEY.get(ml, ml))
+        if not (v[16] or "").lower() in ("true", "1", "yes"):
+            txt = _refuse_shp_overflow(target, _predict_result_fields(
+                "stats", v[8], v[9], "", [],
+                [f for f in v[5].split(";") if f],
+                wanted or ["mean", "median", "gini"], False, False))
+            if txt:
+                parameters[11].setErrorMessage(txt + " Or tick "
+                                               "'Allow shortened "
+                                               "field names'.")
         return
 
     def execute(self, parameters, messages):
@@ -951,4 +1146,8 @@ class ValueStatistics:
                   out_mode=v[11] or "Append to input",
                   out_fc=v[12] or None,
                   out_table=v[13] or None,
-                  unit=float(v[14] or 100))
+                  unit=float(v[14] or 100),
+                  auto_project=(v[15] or "").lower() in
+                  ("true", "1", "yes"),
+                  short_names=(v[16] or "").lower() in
+                  ("true", "1", "yes"))

@@ -25,7 +25,7 @@ def _lab(x) -> str:
 
 
 def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
-                   m_neighbors: int = 4096,
+                   m_neighbors: int | None = None,
                    chunk: int = 4096,
                    r_values: list[float] | None = None,
                    decay=None, decay_eps: float = 1e-6,
@@ -55,6 +55,9 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     if not (k_values or r_values or decay):
         raise ValueError("give k_values, r_values and/or decay")
     n_cells = len(cd)
+    if m_neighbors is None:            # auto-tuned (v1.16.3)
+        from .cells import auto_m_neighbors
+        m_neighbors = auto_m_neighbors(cd, k_values, r_values)
     m = min(m_neighbors, n_cells)
     pts = np.c_[cd.E.astype(float), cd.N.astype(float)]
     tree = cKDTree(pts)
