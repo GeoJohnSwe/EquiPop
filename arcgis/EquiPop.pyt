@@ -355,6 +355,26 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     return ("table" if kind == "table" else "point"), data, oid
 
 
+def _raster_payload(value, messages):
+    """Read a raster HERE (arcpy) and hand the package plain numbers.
+    The package must never open GIS files itself - installing
+    rasterio into a Pro clone means two GDALs fighting over DLLs
+    (field-test finding: ModuleNotFoundError 'rasterio')."""
+    d = arcpy.Describe(value)
+    _check_metric(d, "The elevation raster")
+    arr = arcpy.RasterToNumPyArray(value)
+    ext = d.extent
+    pay = {"array": np.asarray(arr, float),
+           "x_min": float(ext.XMin), "y_max": float(ext.YMax),
+           "cell_w": float(d.meanCellWidth),
+           "cell_h": float(d.meanCellHeight),
+           "nodata": getattr(d, "noDataValue", None)}
+    messages.addMessage(
+        f"Elevation raster read by ArcGIS: {pay['array'].shape[0]} x "
+        f"{pay['array'].shape[1]} pixels at {pay['cell_w']:g} m.")
+    return pay
+
+
 def _barrier_frame(value, friction_field, agg, unit, main_sr,
                    bxf, byf, messages):
     """Geometry-aware barrier ingredient (v1.16): route by WHAT the
@@ -691,7 +711,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             if fr_df is not None:
                 kw["friction_file"] = fr_df
             if extra_dem:
-                kw["dem"] = str(extra_dem)
+                with _stage(messages, "reading elevation raster",
+                            stages):
+                    kw["dem"] = _raster_payload(extra_dem, messages)
             kw["roundtrip"] = bool(roundtrip)
             kw.pop("r_values", None)      # r on effort: not defined
             if half_life and half_life > 0:
@@ -767,30 +789,85 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "characters (collision-free). Mapping: "
             + "; ".join(f"{k} -> {v}" for k, v in short.items()))
         names = {c: short[n] for c, n in names.items()}
+        try:    # a mapping that lives only in a run log is useless
+            import csv as _csv
+            side = str(cat).rsplit(".", 1)[0] + "_EquiPop_fields.csv"
+            with open(side, "w", newline="", encoding="utf-8") as fh:
+                w = _csv.writer(fh)
+                w.writerow(["full_name", "shapefile_name"])
+                for k, v in short.items():
+                    w.writerow([k, v])
+            messages.addMessage(f"Name mapping also saved to {side}")
+        except Exception as exc:
+            messages.addWarningMessage(
+                f"Could not save the name mapping next to the "
+                f"output ({exc}) - it is printed above.")
     dtype = [(str(oid), np.int64)] + [(names[c], np.float64)
                                       for c in res]
     out = np.empty(len(x), dtype=dtype)
     out[str(oid)] = np.asarray(data[oid], np.int64)
     for c, v in res.items():
         out[names[c]] = v
-    existing_names = {f.name for f in arcpy.ListFields(layer)}
-    clash = [c for c in names.values() if c in existing_names]
-    if clash and existing.startswith("Overwrite"):
-        messages.addMessage(
-            f"Overwriting {len(clash)} existing EquiPop fields "
-            "(deleting fields rewrites the whole table - on a large "
-            "shapefile this is the slowest step there is; a new "
-            "feature class avoids it).")
-        with _stage(messages, "deleting old fields", stages):
-            arcpy.management.DeleteField(layer, clash)
-    elif clash:
+    flds = {f.name: f for f in arcpy.ListFields(layer)}
+    clash = [c for c in names.values() if c in flds]
+    if clash and not existing.startswith("Overwrite"):
         raise arcpy.ExecuteError(
             f"Result fields already exist ({', '.join(clash[:4])}...). "
             "Choose Overwrite, or write to a new feature class.")
-    with _stage(messages, "writing results to the layer", stages):
-        arcpy.da.ExtendTable(layer, oid, out, str(oid))
-    messages.addMessage(f"EquiPop: {len(res)} fields appended "
-                        f"({', '.join(names.values())}).")
+    reusable = [c for c in clash
+                if str(getattr(flds[c], "type", "")).lower()
+                in ("double", "single", "float")]
+    stale = [c for c in clash if c not in reusable]
+    if reusable:
+        # v1.16.5: UPDATE the existing columns instead of deleting
+        # them. DeleteField rewrites the entire table, which is both
+        # the slowest step there is AND what desynchronises a map
+        # layer from its own file (field-test: symbology offering
+        # fields the table no longer had).
+        messages.addMessage(
+            f"Updating {len(reusable)} existing EquiPop fields in "
+            "place - no schema change, so the layer and its file stay "
+            "in step.")
+        back = {names[c]: c for c in res}
+        with _stage(messages, "updating existing fields", stages):
+            with arcpy.da.UpdateCursor(layer, [str(oid)] + reusable) \
+                    as cur:
+                pos = {o: i for i, o in enumerate(
+                    np.asarray(data[oid], np.int64))}
+                for row in cur:
+                    i = pos.get(int(row[0]))
+                    if i is None:
+                        continue
+                    for j, nm in enumerate(reusable, start=1):
+                        row[j] = float(res[back[nm]][i])
+                    cur.updateRow(row)
+    if stale:
+        messages.addWarningMessage(
+            f"{len(stale)} existing fields have the wrong type and "
+            "must be replaced - this rewrites the table; if the "
+            "layer is open in a map, remove and re-add it afterwards: "
+            + ", ".join(stale[:6]))
+        with _stage(messages, "deleting mistyped fields", stages):
+            arcpy.management.DeleteField(layer, stale)
+    fresh = [c for c in names.values() if c not in reusable]
+    if fresh:
+        keep = [str(oid)] + fresh
+        sub = out[[c for c in out.dtype.names if c in keep]]
+        with _stage(messages, "writing results to the layer", stages):
+            arcpy.da.ExtendTable(layer, oid, sub, str(oid))
+    after = {f.name for f in arcpy.ListFields(layer)}
+    missing = [c for c in names.values() if c not in after]
+    where = _catalog_of(layer) or str(layer)
+    if missing:
+        messages.addWarningMessage(
+            f"{len(missing)} result fields are NOT in the target "
+            f"after writing ({', '.join(missing[:6])}). The dataset "
+            f"written to was: {where}. If your map shows something "
+            "else, that is the mismatch - check the layer's source.")
+    else:
+        messages.addMessage(
+            f"EquiPop: {len(res)} fields written and VERIFIED present "
+            f"in {where} ({', '.join(names.values())}).")
     if stages:
         slow = max(stages, key=lambda p: p[1])
         messages.addMessage(
@@ -894,7 +971,7 @@ def _clear_stale_fields(parameters, i_layer, idxs):
 
 
 def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
-                     i_outtable):
+                     i_outtable, i_autoproj=None):
     """Dialog-time (pre-Run) validation shared by both machines: the
     loud refusals appear as red X:es IN the dialog (field-test
     finding A2), not as tracebacks after Run."""
@@ -913,7 +990,19 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
         return
     txt = _geographic_text(desc, "The input")
     if txt:
-        parameters[i_layer].setErrorMessage(txt)
+        auto_on = (i_autoproj is not None
+                   and str(parameters[i_autoproj].valueAsText or "")
+                   .lower() in ("true", "1", "yes"))
+        # A ticked auto-project box must UNBLOCK the dialog - the
+        # execution path honoured it while validation still refused,
+        # so Run stayed greyed out (field-test finding).
+        if auto_on and getattr(desc, "shapeType", None):
+            parameters[i_layer].setWarningMessage(
+                "Input is in degrees - it will be AUTO-PROJECTED to "
+                f"{_utm_advice(desc)} for this analysis. The stored "
+                "data is not modified.")
+        else:
+            parameters[i_layer].setErrorMessage(txt)
     src = parameters[i_src].valueAsText or _COORD_AUTO
     if kind == "table" and not (parameters[i_outtable].valueAsText):
         parameters[i_outtable].setErrorMessage(
@@ -1078,7 +1167,7 @@ class CountsShares:
         return
 
     def updateMessages(self, parameters):
-        _shared_messages(parameters, 0, 1, 2, 3, 24)
+        _shared_messages(parameters, 0, 1, 2, 3, 24, 26)
         v = [p.valueAsText or "" for p in parameters]
         target = (v[23] if v[22].startswith("New") and v[23]
                   else _catalog_of(parameters[0].value))
@@ -1198,7 +1287,7 @@ class ValueStatistics:
         return
 
     def updateMessages(self, parameters):
-        _shared_messages(parameters, 0, 1, 2, 3, 13)
+        _shared_messages(parameters, 0, 1, 2, 3, 13, 15)
         v = [p.valueAsText or "" for p in parameters]
         target = (v[12] if v[11].startswith("New") and v[12]
                   else _catalog_of(parameters[0].value))

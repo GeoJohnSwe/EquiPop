@@ -78,19 +78,34 @@ def dem_to_cell_altitude(dem_path: str, E, N, unit_size: float = 100.0,
     clip_sea      : negative altitudes (Copernicus sea noise) -> 0.
     fill_missing  : altitude for cells with no DEM pixel (None = NaN).
     """
-    import rasterio
     E = np.asarray(E, dtype=float)
     N = np.asarray(N, dtype=float)
     u = float(unit_size)
 
-    with rasterio.open(dem_path) as src:
-        a = src.read(band).astype(float)
-        if src.nodata is not None:
-            a[a == src.nodata] = np.nan
-        # pixel-centre coordinates
-        tr = src.transform
-        px = tr.c + tr.a * (np.arange(src.width) + 0.5)
-        py = tr.f + tr.e * (np.arange(src.height) + 0.5)
+    if isinstance(dem_path, dict):
+        # v1.16.5: the HOST already read the raster (ArcGIS hands over
+        # RasterToNumPyArray + Describe, so the package needs no
+        # rasterio inside a Pro clone - glue-only discipline). Keys:
+        # array, x_min, y_max, cell_w, cell_h, nodata.
+        a = np.asarray(dem_path["array"], float)
+        nd = dem_path.get("nodata")
+        if nd is not None:
+            a[a == nd] = np.nan
+        cw = float(dem_path["cell_w"])
+        ch = float(dem_path["cell_h"])
+        px = float(dem_path["x_min"]) + cw * (np.arange(a.shape[1])
+                                              + 0.5)
+        py = float(dem_path["y_max"]) - ch * (np.arange(a.shape[0])
+                                              + 0.5)
+    else:
+        import rasterio
+        with rasterio.open(dem_path) as src:
+            a = src.read(band).astype(float)
+            if src.nodata is not None:
+                a[a == src.nodata] = np.nan
+            tr = src.transform
+            px = tr.c + tr.a * (np.arange(src.width) + 0.5)
+            py = tr.f + tr.e * (np.arange(src.height) + 0.5)
 
     # map every pixel centre to a cell midpoint key
     cE = (np.floor(px / u) * u + u / 2.0)
@@ -143,7 +158,7 @@ class SlopeGrid(FrictionGrid):
         gx, gy = gx.ravel(), gy.ravel()
         midE = self.x0 + gx * u
         midN = self.y0 + gy * u
-        if isinstance(altitude, str):
+        if isinstance(altitude, (str, dict)):
             alt = dem_to_cell_altitude(altitude, midE, midN, unit_size)
         elif isinstance(altitude, pd.DataFrame):
             zm = altitude.set_index(["x", "y"])["alt"]

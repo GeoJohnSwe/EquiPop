@@ -185,8 +185,11 @@ def _install_fake_arcpy(table: pd.DataFrame):
             return None if self.value is None else str(self.value)
 
     def ListFields(_layer):
-        return [types.SimpleNamespace(name=c)
-                for c in state["table"].columns]
+        t = _tab()
+        return [types.SimpleNamespace(
+            name=c, type=("Double"
+                          if pd.api.types.is_numeric_dtype(t[c])
+                          else "String")) for c in t.columns]
 
     mgmt = types.ModuleType("arcpy.management")
 
@@ -229,6 +232,33 @@ def _install_fake_arcpy(table: pd.DataFrame):
         def __exit__(self, *a):
             return False
 
+    class UpdateCursor:
+        """Row-by-row update of existing columns - the in-place path
+        that replaces DeleteField (v1.16.5)."""
+        def __init__(self, layer, fields):
+            self.df = _tab()
+            self.fields = list(fields)
+            self.i = -1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self.i += 1
+            if self.i >= len(self.df):
+                raise StopIteration
+            return [self.df.iloc[self.i][f] for f in self.fields]
+
+        def updateRow(self, row):
+            for f, v in zip(self.fields[1:], row[1:]):
+                self.df.loc[self.df.index[self.i], f] = v
+
     def RasterToNumPyArray(value):
         return state["rasters"][str(value)]["array"]
 
@@ -242,6 +272,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
     da.FeatureClassToNumPyArray = FeatureClassToNumPyArray
     da.ExtendTable = ExtendTable
     da.SearchCursor = SearchCursor
+    da.UpdateCursor = UpdateCursor
     arcpy.da = da
     arcpy.Describe = Describe
     arcpy.ListFields = ListFieldsAny
@@ -305,7 +336,7 @@ def test_pyt_counts_stats_friction_verbatim(tmp_path):
                   barrier_field="friction", k_text="20", tau_text="3")
     got = state["table"]
     assert "Rounds_20" in got and "N_tau3" in got
-    assert any("fields appended" in m for m in msg.log)
+    assert any("VERIFIED present" in m for m in msg.log)
 
     # cross-check one number against the package directly
     from equipop.stata_bridge import dispatch
@@ -348,7 +379,7 @@ def test_pyt_rerun_overwrite_and_category_and_newoutput(tmp_path):
                   cat_field="fclass",
                   pop_values_text="restaurant, cafe, pub",
                   treat_values_text="food: restaurant, cafe")
-    assert any("Overwriting" in m for m in msg.log)
+    assert any("in place" in m for m in msg.log)
 
     # NEW feature class output: original untouched, copy carries results
     state["active_copy"] = None
@@ -1080,3 +1111,102 @@ def test_pyt_stage_times_survive_a_refusal():
         pyt._run_tool("stats", "people", msg, value_fields=["Income"],
                       k_text="5")
     assert sys.stdout is before
+
+
+# ------------------------------------------- v1.16.5 field-round three
+def test_pyt_autoproject_unblocks_the_dialog_too():
+    """Field finding: the checkbox was honoured by execute() but the
+    DIALOG still refused, so Run stayed disabled. Both gates must
+    agree - and tables must still refuse either way."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [17.6],
+                      "SHAPE@Y": [59.8]})
+    state = _install_fake_arcpy(t)
+    state["crs_types"] = {"people": "Geographic"}
+    state["extents"] = {"people": (11.0, 55.4, 24.0, 68.5)}
+    state["aux_tables"] = {"degtab": pd.DataFrame(
+        {"Longitude": [17.6], "Latitude": [59.8]})}
+    pyt = _load_pyt()
+    for tool, i_auto in ((pyt.CountsShares(), 26),
+                         (pyt.ValueStatistics(), 15)):
+        ps = tool.getParameterInfo()
+        ps[0].value = "people"
+        tool.updateParameters(ps)
+        tool.updateMessages(ps)
+        assert any(k == "ERROR" for k, _ in ps[0].messages)
+        ps[i_auto].value = True              # tick the box
+        tool.updateMessages(ps)
+        kinds = [k for k, _ in ps[0].messages]
+        assert "ERROR" not in kinds and "WARNING" in kinds
+        assert any("3006" in txt for _, txt in ps[0].messages)
+    tool = pyt.CountsShares()               # a TABLE still refuses
+    ps = tool.getParameterInfo()
+    ps[0].value = "degtab"
+    ps[26].value = True
+    tool.updateParameters(ps)
+    tool.updateMessages(ps)
+    assert any(k == "ERROR" for p in ps for k, _ in p.messages)
+
+
+def test_pyt_rerun_updates_in_place_and_verifies():
+    """Field finding: DeleteField rewrites the whole table, which is
+    what desynchronised the map layer from its file. A re-run with
+    the same parameters must now UPDATE the existing columns, delete
+    nothing, and verify afterwards that the fields really arrived."""
+    rng = np.random.default_rng(51)
+    n = 200
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 1500, n),
+                      "SHAPE@Y": rng.uniform(0, 1500, n)})
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\gridby_points.shp"}
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "people", msg, k_text="40")
+    first = state["table"]["N_40"].copy()
+    deleted = []
+    arcpy = sys.modules["arcpy"]
+    real_delete = arcpy.management.DeleteField
+
+    def _spy(layer, fields):
+        deleted.extend(fields)
+        return real_delete(layer, fields)
+    arcpy.management.DeleteField = _spy
+    msg2 = _Messages()
+    pyt._run_tool("counts", "people", msg2, k_text="40")
+    arcpy.management.DeleteField = real_delete
+    assert not deleted                        # nothing was rewritten
+    assert any("in place" in m for m in msg2.log)
+    assert any("VERIFIED present" in m for m in msg2.log)
+    assert np.allclose(state["table"]["N_40"], first, equal_nan=True)
+    # a DIFFERENT k must still add new columns alongside
+    pyt._run_tool("counts", "people", _Messages(), k_text="25")
+    assert {"N_40", "N_25"} <= set(state["table"].columns)
+
+
+def test_pyt_dem_is_read_by_the_host_not_the_package():
+    """Field finding: the package tried to import rasterio inside a
+    Pro clone. Elevation rasters must arrive as arrays from arcpy,
+    exactly like barrier rasters do."""
+    rng = np.random.default_rng(52)
+    n = 60
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n)})
+    state = _install_fake_arcpy(t)
+    state["shape_types"] = {"dem": "Raster"}
+    hill = np.tile(np.linspace(0.0, 120.0, 10), (10, 1))
+    state["rasters"] = {"dem": {"array": hill, "xmin": 0.0,
+                                "ymax": 1000.0, "cw": 100.0,
+                                "ch": 100.0, "nodata": None}}
+    pyt = _load_pyt()
+    msg = _Messages()
+    payload = pyt._raster_payload("dem", msg)
+    assert payload["array"].shape == (10, 10)
+    assert payload["cell_w"] == 100.0 and payload["y_max"] == 1000.0
+    assert any("read by ArcGIS" in m for m in msg.log)
+    from equipop.slope import dem_to_cell_altitude
+    E = np.array([50.0, 850.0])
+    N = np.array([950.0, 950.0])
+    alt = dem_to_cell_altitude(payload, E, N, unit_size=100)
+    assert alt[1] > alt[0]                    # the hill rises east
+    assert np.isfinite(alt).all()
