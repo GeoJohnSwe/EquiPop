@@ -152,8 +152,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
     # SEMICOLON STRINGS ARE INVALID in real arcpy - multiple types
     # must be a LIST (field-found bug, v1.16.1)
     _DATATYPES = {"GPFeatureLayer", "GPTableView", "DERasterDataset",
-                  "GPString", "GPDouble", "GPBoolean", "GPLong",
-                  "Field", "DEFile", "DEFeatureClass"}
+                  "GPRasterLayer", "GPString", "GPDouble", "GPBoolean",
+                  "GPLong", "Field", "DEFile", "DEFeatureClass"}
 
     class Parameter:
         def __init__(self, **kw):
@@ -1360,3 +1360,38 @@ def test_pyt_decay_run_with_comma_values():
     assert "ND_inf" in state["table"]
     log = "\n".join(msg.log)
     assert "trunc 4,983 m at eps 0.001" in log
+
+
+
+def test_pyt_raster_inputs_accept_layer_objects():
+    """Field finding: after the name refactor the DEM arrived as a
+    parameter OBJECT and RasterToNumPyArray refused it. Both raster
+    inputs must accept an object, a layer name or a path."""
+    rng = np.random.default_rng(72)
+    n = 60
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n)})
+    state = _install_fake_arcpy(t)
+    state["shape_types"] = {"dem": "Raster"}
+    hill = np.tile(np.linspace(0.0, 90.0, 10), (10, 1))
+    state["rasters"] = {"dem": {"array": hill, "xmin": 0.0,
+                                "ymax": 1000.0, "cw": 100.0,
+                                "ch": 100.0, "nodata": None}}
+    pyt = _load_pyt()
+
+    class _ParamValue:                 # what Pro hands us
+        def __init__(self, v):
+            self.value = v
+
+        def __str__(self):
+            return self.value
+    msg = _Messages()
+    for handed in ("dem", _ParamValue("dem")):
+        pay = pyt._raster_payload(handed, msg)
+        assert pay["array"].shape == (10, 10)
+    assert pyt._ref(_ParamValue("dem")) == "dem"
+    assert pyt._ref("dem") == "dem"
+    assert pyt._ref(None) is None
+    m1 = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
+    assert "DERasterDataset" in m1["dem"].datatype   # raster picker

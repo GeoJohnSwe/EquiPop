@@ -365,14 +365,32 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     return ("table" if kind == "table" else "point"), data, oid
 
 
+def _ref(value):
+    """arcpy is inconsistent: Describe() and cursors accept a Layer
+    OBJECT, while RasterToNumPyArray insists on a path or a Raster
+    (v1.16.7 field finding: 'Expected a Raster instance or path
+    name'). Normalise to something every call accepts."""
+    if value is None or isinstance(value, str):
+        return value
+    for attr in ("value", "catalogPath", "dataSource"):
+        v = getattr(value, attr, None)
+        if isinstance(v, str) and v:
+            return v
+    try:
+        return str(value)
+    except Exception:
+        return value
+
+
 def _raster_payload(value, messages):
     """Read a raster HERE (arcpy) and hand the package plain numbers.
     The package must never open GIS files itself - installing
     rasterio into a Pro clone means two GDALs fighting over DLLs
     (field-test finding: ModuleNotFoundError 'rasterio')."""
-    d = arcpy.Describe(value)
+    src = _ref(value)
+    d = arcpy.Describe(src)
     _check_metric(d, "The elevation raster")
-    arr = arcpy.RasterToNumPyArray(value)
+    arr = arcpy.RasterToNumPyArray(src)
     ext = d.extent
     pay = {"array": np.asarray(arr, float),
            "x_min": float(ext.XMin), "y_max": float(ext.YMax),
@@ -393,12 +411,13 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
     import pandas as pd
     from equipop.friction import (points_to_friction, paths_to_friction,
                                   raster_to_friction)
+    value = _ref(value)
     desc = arcpy.Describe(value)
     kind = _kind(desc)
     aggk = _agg_key(agg)
 
     if kind == "raster":
-        low = arcpy.RasterToNumPyArray(value)
+        low = arcpy.RasterToNumPyArray(_ref(value))
         ext = desc.extent
         fr = raster_to_friction(
             low, float(ext.XMin), float(ext.YMax),
@@ -1266,7 +1285,8 @@ class CountsShares:
                _p("barriery", "Barrier Y field (tabular barriers)",
                   "Field", required=False),
                _p("dem", "Distance ingredient: elevation raster (DEM)",
-                  "DEFile", required=False),
+                  ["DERasterDataset", "GPRasterLayer"],
+                  required=False),
                _p("tau", "Effort budgets in rounds (e.g. 3 8)",
                   "GPString", required=False),
                _p("roundtrip", "Round trip (journey home included)",
@@ -1385,7 +1405,7 @@ class CountsShares:
                   barrier_agg=_txt(pm, "barrieragg"),
                   barrier_x=_txt(pm, "barrierx") or None,
                   barrier_y=_txt(pm, "barriery") or None,
-                  extra_dem=pm["dem"].value or None,
+                  extra_dem=_ref(pm["dem"].value) or None,
                   tau_text=_txt(pm, "tau"),
                   roundtrip=_flag(pm, "roundtrip"),
                   existing=_txt(pm, "existing", "Overwrite"),
