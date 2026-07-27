@@ -1302,3 +1302,61 @@ def test_friction_guard_refuses_mixed_units_and_clips_the_far_away():
                          "friction": [8.0]})
     with pytest.raises(ValueError, match="movement graph"):
         FrictionGrid(pop, huge, unit_size=1, max_graph_gb=0.001)
+
+
+def test_pyt_accepts_localised_numbers():
+    """Field finding (Swedish Pro): valueAsText returns '0,000001',
+    and float() refuses it. Numbers must come off .value when it is
+    there, and a decimal comma must work when it is not."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+
+    class _P:                       # text only, no usable .value
+        def __init__(self, name, text):
+            self.name, self._t = name, text
+            self.value = text
+
+        @property
+        def valueAsText(self):
+            return self._t
+    pm = {p.name: p for p in (_P("a", "0,000001"), _P("b", "12,5"),
+                              _P("c", "1 234,5"), _P("d", "1,234.5"),
+                              _P("e", ""), _P("f", "oops"))}
+    assert pyt._num(pm, "a") == 1e-6
+    assert pyt._num(pm, "b") == 12.5
+    assert pyt._num(pm, "c") == 1234.5
+    assert pyt._num(pm, "d") == 1234.5
+    assert pyt._num(pm, "e", 100.0) == 100.0
+    with pytest.raises(arcpy.ExecuteError, match="not a number"):
+        pyt._num(pm, "f")
+    assert pyt._numlist("344,5 500") == [344.5, 500.0]
+    assert pyt._numlist("200;1600") == [200.0, 1600.0]
+
+    class _PV(_P):                  # real numeric .value wins
+        def __init__(self, name, val, text):
+            super().__init__(name, text)
+            self.value = val
+    pm2 = {"g": _PV("g", 1e-06, "0,000001")}
+    assert pyt._num(pm2, "g") == 1e-6
+
+
+def test_pyt_decay_run_with_comma_values():
+    """End to end: a decayed run whose half-life and cutoff arrive as
+    Swedish text must run, and the cutoff must reach the engine."""
+    rng = np.random.default_rng(71)
+    n = 300
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 3000, n),
+                      "SHAPE@Y": rng.uniform(0, 3000, n)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "people", msg, k_text="50",
+                  half_life=500.0, decay_model="negexp",
+                  decay_eps=1e-3, unit=100.0)
+    assert "ND_inf" in state["table"]
+    log = "\n".join(msg.log)
+    assert "trunc 4,983 m at eps 0.001" in log

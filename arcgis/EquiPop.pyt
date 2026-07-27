@@ -686,10 +686,10 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             raise arcpy.ExecuteError(txt)
 
     kw = dict(unit_size=float(unit))
-    kw["k_values"] = [int(t) for t in k_text.split()] or None
-    kw["r_values"] = [float(t) for t in r_text.split()] or None
+    kw["k_values"] = [int(round(v)) for v in _numlist(k_text)] or None
+    kw["r_values"] = _numlist(r_text) or None
     if tau_text:
-        kw["tau_values"] = [float(t) for t in tau_text.split()]
+        kw["tau_values"] = _numlist(tau_text)
     if treat_fields:
         kw["treat"] = {f: _numeric(data[f], f, "Input")
                        for f in treat_fields}
@@ -993,6 +993,53 @@ def _txt(pm, name, default=""):
 
 def _flag(pm, name):
     return str(_txt(pm, name)).lower() in ("true", "1", "yes")
+
+
+def _num(pm, name, default=None):
+    """Numbers from a dialog box, locale-proof (v1.16.7).
+
+    Pro renders numbers in the USER's locale, so valueAsText returns
+    '0,000001' on a Swedish machine and float() refuses it. The real
+    value is on .value; the text is only a fallback, and there a
+    lone comma is a decimal comma while several commas are thousands
+    separators."""
+    p = pm.get(name)
+    if p is None:
+        return default
+    v = getattr(p, "value", None)
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    return _to_float(p.valueAsText, default)
+
+
+def _to_float(text, default=None):
+    t = str(text or "").strip()
+    if not t:
+        return default
+    t = t.replace("\u00a0", "").replace(" ", "")
+    if "," in t and "." in t:              # 1,234.56 -> 1234.56
+        t = t.replace(",", "")
+    elif t.count(",") == 1:                # 12,5 -> 12.5
+        t = t.replace(",", ".")
+    else:
+        t = t.replace(",", "")
+    try:
+        return float(t)
+    except ValueError:
+        raise arcpy.ExecuteError(
+            f"'{text}' is not a number. Use digits only - a decimal "
+            "comma or point both work, e.g. 12,5 or 12.5.")
+
+
+def _numlist(text):
+    """A space/semicolon separated list of numbers, locale-proof:
+    '344,5 500' and '344.5;500' both give [344.5, 500.0]."""
+    out = []
+    for tok in str(text or "").replace(";", " ").split():
+        v = _to_float(tok)
+        if v is not None:
+            out.append(v)
+    return out
 
 
 def _p(name, display, dtype, **kw):
@@ -1326,10 +1373,10 @@ class CountsShares:
                   treat_fields=[f for f in _txt(pm, "treat").split(";")
                                 if f],
                   k_text=_txt(pm, "k"), r_text=_txt(pm, "r"),
-                  half_life=float(_txt(pm, "halflife") or 0)
+                  half_life=(_num(pm, "halflife", 0.0) or 0.0)
                   if decaying else 0.0,
                   decay_model=model if decaying else "negexp",
-                  decay_eps=float(_txt(pm, "decayeps") or 1e-6),
+                  decay_eps=_num(pm, "decayeps", 1e-6) or 1e-6,
                   cat_field=_txt(pm, "catfield") or None,
                   pop_values_text=_txt(pm, "popvalues"),
                   treat_values_text=_txt(pm, "treatvalues"),
@@ -1345,7 +1392,7 @@ class CountsShares:
                   out_mode=_txt(pm, "outmode", "Append to input"),
                   out_fc=_txt(pm, "outfc") or None,
                   out_table=_txt(pm, "outtable") or None,
-                  unit=float(_txt(pm, "unit") or 100),
+                  unit=_num(pm, "unit", 100.0) or 100.0,
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))
 
@@ -1461,7 +1508,8 @@ class ValueStatistics:
                   out_mode=v[11] or "Append to input",
                   out_fc=v[12] or None,
                   out_table=v[13] or None,
-                  unit=float(v[14] or 100),
+                  unit=_num({p.name: p for p in parameters}, "unit",
+                            100.0) or 100.0,
                   auto_project=(v[15] or "").lower() in
                   ("true", "1", "yes"),
                   short_names=(v[16] or "").lower() in
