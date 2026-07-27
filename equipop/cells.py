@@ -140,7 +140,8 @@ def build_cells(
 
 
 def auto_m_neighbors(cd, k_values=None, r_values=None,
-                     safety: float = 3.0) -> int:
+                     safety: float = 3.0,
+                     trunc_m: float = 0.0) -> int:
     """How many nearest CELLS an origin must fetch to satisfy the
     largest k (or radius) - the tuning knob of the fast engines
     (v1.16.3). Under-estimates are harmless: both engines recompute
@@ -155,11 +156,14 @@ def auto_m_neighbors(cd, k_values=None, r_values=None,
     mean_n = max(float(np.sum(cd.n)) / n_cells, 1e-9)
     need = max((float(k) / mean_n for k in (k_values or [])),
                default=0.0)
-    if r_values:
+    if r_values or trunc_m:
         e, n = np.asarray(cd.E, float), np.asarray(cd.N, float)
         area = max((e.max() - e.min()) * (n.max() - n.min()),
                    float(cd.unit_size) ** 2)
         dens = n_cells / area                      # cells per m^2
-        need = max(need, max(np.pi * float(r) ** 2 * dens
-                             for r in r_values))
+        for r in (list(r_values or []) + ([trunc_m] if trunc_m else [])):
+            # a DECAYED sum must reach its truncation distance, which
+            # is usually far beyond what k needs - ignoring it made
+            # every origin climb the ladder twice (field-test v1.16.5)
+            need = max(need, np.pi * float(r) ** 2 * dens)
     return int(min(n_cells, max(64, round(safety * need))))

@@ -49,6 +49,14 @@ HELP = {
     "halflife": "The distance in metres at which a neighbour counts "
                 "half as much. Only used when a decay model is "
                 "chosen.",
+    "decayeps": "Where the decayed sum is cut off: neighbours whose "
+                "weight falls below this are ignored. A decayed sum "
+                "has no natural edge, so this is what bounds the "
+                "search. 1e-6 (the default) reaches about 20 "
+                "half-lives and is slow; 1e-3 reaches about 10 and "
+                "runs roughly four times faster, with a difference "
+                "far below any sampling error. The actual distance "
+                "in metres is reported in the messages.",
     "catfield": "Build population and groups from the VALUES of one "
                 "column (codes or names both work) instead of "
                 "count fields.",

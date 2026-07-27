@@ -314,6 +314,7 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
                 "characters - a file geodatabase layer is strongly "
                 "recommended.")
         sr_used = _check_metric(desc, f"The {context}", auto_project)
+        _read_input.last_sr = sr_used
         proj = (sr_used is not None
                 and str(getattr(desc.spatialReference, "type", ""))
                 == "Geographic")
@@ -333,8 +334,17 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
         data = {f: arr[f] for f in arr.dtype.names}
         data["x"] = np.asarray(arr["SHAPE@X"], float)
         data["y"] = np.asarray(arr["SHAPE@Y"], float)
-        messages.addMessage(f"Coordinates read from feature geometry "
-                            f"({len(data['x'])} points).")
+        sr_name = getattr(sr_used, "name", None) or getattr(
+            getattr(desc, "spatialReference", None), "name", "unknown")
+        sr_code = getattr(sr_used, "factoryCode", None) or getattr(
+            getattr(desc, "spatialReference", None), "factoryCode", 0)
+        _read_input.last_crs_text = (
+            f"{sr_name}" + (f" (EPSG:{sr_code})" if sr_code else ""))
+        messages.addMessage(
+            f"Coordinates read from feature geometry "
+            f"({len(data['x'])} points). Working CRS: "
+            f"{_read_input.last_crs_text} - all distances are metres "
+            "in this projection.")
         return "point", data, oid
 
     # tabular path (a real table, or the user insisted on fields)
@@ -599,7 +609,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               existing="Overwrite", out_mode="Append to input",
               out_fc=None, out_table=None, extra_dem=None,
               roundtrip=False, auto_project=False,
-              short_names=False):
+              short_names=False, decay_eps: float = 1e-6):
     """The single glue path both machines share (stub-validated)."""
     import pandas as pd
     from equipop.stata_bridge import dispatch
@@ -693,8 +703,13 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["treat_are_counts"] = True
         fr_df = None
         if barrier is not None:
-            main_sr = getattr(arcpy.Describe(layer),
-                              "spatialReference", None)
+            # the CRS the POINTS were read in - not the layer's stored
+            # one. Under auto-projection those differ, and handing the
+            # barrier reader the stored (degree) CRS produced a grid
+            # domain spanning metres-to-degrees: 290 million cells and
+            # a 17 GiB allocation error (field test v1.16.5).
+            main_sr = getattr(_read_input, "last_sr", None) or \
+                getattr(arcpy.Describe(layer), "spatialReference", None)
             with _stage(messages, "building barriers", stages), \
                     _speaking(messages):
                 fr_df = _barrier_frame(barrier, barrier_field,
@@ -724,6 +739,13 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     if engine == "counts" and half_life and half_life > 0:
         kw["half_life_m"] = float(half_life)
         kw["decay_model"] = decay_model
+        kw["decay_eps"] = float(decay_eps)
+        messages.addMessage(
+            f"Distance decay: {decay_model}, half-life "
+            f"{float(half_life):g} m, cutoff {float(decay_eps):g} - "
+            "the truncation distance is reported by the engine below "
+            "(a bigger cutoff means a smaller search and a faster "
+            "run).")
 
     if engine == "stats":
         vals = {f: _numeric(data[f], f, "Input")
@@ -773,6 +795,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(
             f"EquiPop: {len(res)} result columns written with x/y to "
             f"{out_table} ({len(out_df)} rows, row order preserved).")
+        _write_manifest(out_table, _manifest_rows(
+            engine, layer, unit, k_text, r_text, tau_text, stats_list,
+            pct_text, half_life, decay_model, decay_eps, barrier,
+            barrier_field, barrier_agg, auto_project, len(x),
+            list(res), stages, time.time() - t_all), messages)
         messages.addMessage("[time] TOTAL: " + _hms(time.time()
                                                     - t_all))
         return
@@ -868,6 +895,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(
             f"EquiPop: {len(res)} fields written and VERIFIED present "
             f"in {where} ({', '.join(names.values())}).")
+    _write_manifest(_catalog_of(layer) or out_fc, _manifest_rows(
+        engine, layer, unit, k_text, r_text, tau_text, stats_list,
+        pct_text, half_life, decay_model, decay_eps, barrier,
+        barrier_field, barrier_agg, auto_project, len(x),
+        list(names.values()), stages, time.time() - t_all), messages)
     if stages:
         slow = max(stages, key=lambda p: p[1])
         messages.addMessage(
@@ -878,6 +910,89 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                             "radius each point needed to gather its k "
                             "people (k fixes population, the radius "
                             "floats). Not an error - a finding.")
+
+
+def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
+                   stats_list, pct_text, half_life, decay_model,
+                   decay_eps, barrier, barrier_field, barrier_agg,
+                   auto_project, n_rows, out_fields, stages, total):
+    import datetime
+    try:
+        import equipop
+        ver = equipop.__version__
+    except Exception:
+        ver = "unknown"
+    rows = [
+        ("equipop_version", ver),
+        ("run_utc", datetime.datetime.now(
+            datetime.timezone.utc).isoformat(timespec="seconds")),
+        ("engine", engine),
+        ("input", _catalog_of(layer) or str(layer)),
+        ("working_crs", getattr(_read_input, "last_crs_text",
+                                "unknown")),
+        ("auto_projected", bool(auto_project)),
+        ("cell_size_m", unit),
+        ("k_values", k_text), ("radii_m", r_text),
+        ("effort_budgets_tau", tau_text),
+        ("decay_model", decay_model if half_life else "no decay"),
+        ("decay_half_life_m", half_life or ""),
+        ("decay_cutoff_eps", decay_eps if half_life else ""),
+        ("measures", ";".join(stats_list) if stats_list else ""),
+        ("percentiles", pct_text if stats_list else ""),
+        ("barrier_source", _catalog_of(barrier) if barrier
+         is not None else ""),
+        ("barrier_field", barrier_field or ""),
+        ("barrier_overlap_rule", _agg_key(barrier_agg)
+         if barrier is not None else ""),
+        ("rows_analysed", n_rows),
+        ("result_fields", ";".join(out_fields)),
+        ("total_seconds", round(float(total), 1)),
+    ]
+    rows += [(f"time_{lbl.replace(' ', '_')}_seconds", round(dt, 1))
+             for lbl, dt in stages]
+    return rows
+
+
+def _write_manifest(target, rows, messages):
+    """One small CSV per run beside the output: which EquiPop, which
+    CRS (and whether it was auto-projected), which parameters, how
+    many rows and cells, how long. Results should still be
+    reproducible a year later without archaeology (John's C# runs
+    kept a metadata text file - same idea, more complete)."""
+    if not target:
+        return
+    try:
+        import csv as _csv
+        base = str(target)
+        for ext in (".shp", ".csv", ".gdb"):
+            if base.lower().endswith(ext):
+                base = base[: -len(ext)]
+        path = base + "_EquiPop_run.csv"
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["item", "value"])
+            for k, v in rows:
+                w.writerow([k, "" if v is None else str(v)])
+        messages.addMessage(f"Run manifest written to {path}")
+    except Exception as exc:
+        messages.addWarningMessage(
+            f"Could not write the run manifest ({exc}).")
+
+
+def _byname(parameters):
+    """Parameters by NAME, not position. Inserting one parameter used
+    to shift every index after it (v1.16.6 - it has caused two bugs
+    already); names cannot slip."""
+    return {p.name: p for p in parameters}
+
+
+def _txt(pm, name, default=""):
+    p = pm.get(name)
+    return (p.valueAsText or default) if p is not None else default
+
+
+def _flag(pm, name):
+    return str(_txt(pm, name)).lower() in ("true", "1", "yes")
 
 
 def _p(name, display, dtype, **kw):
@@ -1078,6 +1193,10 @@ class CountsShares:
                   required=False),
                _p("halflife", "Decay half-life in metres", "GPDouble",
                   required=False),
+               _p("decayeps", "Decay cutoff - ignore weights below "
+                  "this (smaller = wider search = slower; the "
+                  "truncation distance is reported in the messages)",
+                  "GPDouble", required=False),
                _p("catfield", "Category field (codes or names) - "
                   "builds population and groups from its VALUES",
                   "Field", required=False),
@@ -1121,97 +1240,114 @@ class CountsShares:
                   "target is a shapefile (10-character cap; names "
                   "stay collision-free and the mapping is printed)",
                   "GPBoolean", required=False)]
-        for i in (4, 5, 10):
-            ps[i].parameterDependencies = ["layer"]
-        for i in (14, 16, 17):
-            ps[i].parameterDependencies = ["barrier"]
-        ps[8].filter.type = "ValueList"
-        ps[8].filter.list = ["no decay", "negexp", "expnormal",
-                             "expsqrt", "lognormal", "power"]
-        ps[8].value = "no decay"
-        ps[15].filter.type = "ValueList"
-        ps[15].filter.list = _AGG_CHOICES
-        ps[15].value = _AGG_CHOICES[0]
-        ps[21].filter.type = "ValueList"
-        ps[21].filter.list = ["Overwrite", "Stop with a message"]
-        ps[21].value = "Overwrite"
-        ps[22].filter.type = "ValueList"
-        ps[22].filter.list = ["Append to input", "New feature class"]
-        ps[22].value = "Append to input"
-        ps[24].direction = "Output"
-        ps[25].value = 100.0
+        pm = _byname(ps)
+        for nm in ("pop", "treat", "catfield"):
+            pm[nm].parameterDependencies = ["layer"]
+        for nm in ("barrierfield", "barrierx", "barriery"):
+            pm[nm].parameterDependencies = ["barrier"]
+        pm["model"].filter.type = "ValueList"
+        pm["model"].filter.list = ["no decay", "negexp", "expnormal",
+                                   "expsqrt", "lognormal", "power"]
+        pm["model"].value = "no decay"
+        pm["decayeps"].value = 1e-6
+        pm["barrieragg"].filter.type = "ValueList"
+        pm["barrieragg"].filter.list = _AGG_CHOICES
+        pm["barrieragg"].value = _AGG_CHOICES[0]
+        pm["existing"].filter.type = "ValueList"
+        pm["existing"].filter.list = ["Overwrite", "Stop with a message"]
+        pm["existing"].value = "Overwrite"
+        pm["outmode"].filter.type = "ValueList"
+        pm["outmode"].filter.list = ["Append to input",
+                                     "New feature class"]
+        pm["outmode"].value = "Append to input"
+        pm["outtable"].direction = "Output"
+        pm["unit"].value = 100.0
         return ps
 
     def updateParameters(self, parameters):
+        pm = _byname(parameters)
         _trio_update(parameters, 0, 1, 2, 3)
-        _clear_stale_fields(parameters, 0, (4, 5, 10))
-        parameters[9].enabled = (parameters[8].valueAsText
-                                 not in (None, "", "no decay"))
-        bar = parameters[13].value
+        _clear_stale_fields(parameters, 0, [i for i, p in
+                                            enumerate(parameters)
+                                            if p.name in
+                                            ("pop", "treat",
+                                             "catfield")])
+        decaying = _txt(pm, "model", "no decay") not in ("", "no decay")
+        pm["halflife"].enabled = decaying
+        pm["decayeps"].enabled = decaying
+        bar = pm["barrier"].value
         bar_on = bar is not None
-        for i in (14, 15):
-            parameters[i].enabled = bar_on
+        pm["barrierfield"].enabled = bar_on
+        pm["barrieragg"].enabled = bar_on
         bar_table = False
         if bar_on:
             try:
                 bar_table = _kind(arcpy.Describe(bar)) == "table"
             except Exception:
                 pass
-        parameters[16].enabled = bar_table
-        parameters[17].enabled = bar_table
-        ing = bar_on or bool(parameters[18].valueAsText)
-        parameters[19].enabled = ing          # tau
-        parameters[20].enabled = ing          # roundtrip
-        parameters[23].enabled = (parameters[22].valueAsText
-                                  == "New feature class")
+        pm["barrierx"].enabled = bar_table
+        pm["barriery"].enabled = bar_table
+        ing = bar_on or bool(_txt(pm, "dem"))
+        pm["tau"].enabled = ing
+        pm["roundtrip"].enabled = ing
+        pm["outfc"].enabled = _txt(pm, "outmode") == "New feature class"
         return
 
     def updateMessages(self, parameters):
-        _shared_messages(parameters, 0, 1, 2, 3, 24, 26)
-        v = [p.valueAsText or "" for p in parameters]
-        target = (v[23] if v[22].startswith("New") and v[23]
-                  else _catalog_of(parameters[0].value))
-        if not (v[27] or "").lower() in ("true", "1", "yes"):
+        pm = _byname(parameters)
+        idx = {p.name: i for i, p in enumerate(parameters)}
+        _shared_messages(parameters, 0, 1, 2, 3, idx["outtable"],
+                         idx["autoproj"])
+        target = (_txt(pm, "outfc")
+                  if _txt(pm, "outmode").startswith("New")
+                  and _txt(pm, "outfc")
+                  else _catalog_of(pm["layer"].value))
+        if not _flag(pm, "shortnames"):
             txt = _refuse_shp_overflow(target, _predict_result_fields(
-                "counts", v[6], v[7], v[19],
-                [f for f in v[5].split(";") if f], [], [],
-                bool(v[9] and v[8] not in ("", "no decay")),
-                bool(parameters[13].value or v[18])))
+                "counts", _txt(pm, "k"), _txt(pm, "r"), _txt(pm, "tau"),
+                [f for f in _txt(pm, "treat").split(";") if f], [], [],
+                bool(_txt(pm, "halflife")
+                     and _txt(pm, "model", "no decay") != "no decay"),
+                bool(pm["barrier"].value or _txt(pm, "dem"))))
             if txt:
-                parameters[22].setErrorMessage(txt + " Or tick "
-                                               "'Allow shortened "
-                                               "field names'.")
+                pm["outmode"].setErrorMessage(
+                    txt + " Or tick 'Allow shortened field names'.")
         return
 
     def execute(self, parameters, messages):
-        v = [p.valueAsText or "" for p in parameters]
-        model = v[8] or "no decay"
-        _run_tool("counts", parameters[0].value, messages,
-                  coord_source=v[1] or None,
-                  x_field=v[2] or None, y_field=v[3] or None,
-                  weight_field=v[4] or None,
-                  treat_fields=[f for f in v[5].split(";") if f],
-                  k_text=v[6], r_text=v[7],
-                  half_life=float(v[9] or 0) if model != "no decay"
-                  else 0.0,
-                  decay_model=model if model != "no decay" else
-                  "negexp",
-                  cat_field=v[10] or None, pop_values_text=v[11],
-                  treat_values_text=v[12],
-                  barrier=parameters[13].value or None,
-                  barrier_field=v[14] or None, barrier_agg=v[15],
-                  barrier_x=v[16] or None, barrier_y=v[17] or None,
-                  extra_dem=v[18] or None, tau_text=v[19],
-                  roundtrip=(v[20] or "").lower() in
-                  ("true", "1", "yes"),
-                  existing=v[21] or "Overwrite",
-                  out_mode=v[22] or "Append to input",
-                  out_fc=v[23] or None, out_table=v[24] or None,
-                  unit=float(v[25] or 100),
-                  auto_project=(v[26] or "").lower() in
-                  ("true", "1", "yes"),
-                  short_names=(v[27] or "").lower() in
-                  ("true", "1", "yes"))
+        pm = _byname(parameters)
+        model = _txt(pm, "model", "no decay")
+        decaying = model not in ("", "no decay")
+        _run_tool("counts", pm["layer"].value, messages,
+                  coord_source=_txt(pm, "coordsrc") or None,
+                  x_field=_txt(pm, "xfield") or None,
+                  y_field=_txt(pm, "yfield") or None,
+                  weight_field=_txt(pm, "pop") or None,
+                  treat_fields=[f for f in _txt(pm, "treat").split(";")
+                                if f],
+                  k_text=_txt(pm, "k"), r_text=_txt(pm, "r"),
+                  half_life=float(_txt(pm, "halflife") or 0)
+                  if decaying else 0.0,
+                  decay_model=model if decaying else "negexp",
+                  decay_eps=float(_txt(pm, "decayeps") or 1e-6),
+                  cat_field=_txt(pm, "catfield") or None,
+                  pop_values_text=_txt(pm, "popvalues"),
+                  treat_values_text=_txt(pm, "treatvalues"),
+                  barrier=pm["barrier"].value or None,
+                  barrier_field=_txt(pm, "barrierfield") or None,
+                  barrier_agg=_txt(pm, "barrieragg"),
+                  barrier_x=_txt(pm, "barrierx") or None,
+                  barrier_y=_txt(pm, "barriery") or None,
+                  extra_dem=pm["dem"].value or None,
+                  tau_text=_txt(pm, "tau"),
+                  roundtrip=_flag(pm, "roundtrip"),
+                  existing=_txt(pm, "existing", "Overwrite"),
+                  out_mode=_txt(pm, "outmode", "Append to input"),
+                  out_fc=_txt(pm, "outfc") or None,
+                  out_table=_txt(pm, "outtable") or None,
+                  unit=float(_txt(pm, "unit") or 100),
+                  auto_project=_flag(pm, "autoproj"),
+                  short_names=_flag(pm, "shortnames"))
 
 
 class ValueStatistics:

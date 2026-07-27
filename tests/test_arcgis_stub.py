@@ -675,14 +675,14 @@ def test_pyt_dialogs_construct_like_pro():
         ps = tool.getParameterInfo()
         assert len({p.name for p in ps}) == len(ps)   # unique names
         tool.updateParameters(ps)                      # must not raise
-    m1 = pyt.CountsShares().getParameterInfo()
-    assert isinstance(m1[0].datatype, list)            # the field bug
-    assert isinstance(m1[13].datatype, list) and \
-        "DERasterDataset" in m1[13].datatype
-    assert m1[15].filter.list[0].startswith("additive")
-    m2 = pyt.ValueStatistics().getParameterInfo()
-    assert m2[6].filter.list == pyt._MEASURES
-    assert m2[7].value == "10 25 75 90"
+    m1 = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
+    assert isinstance(m1["layer"].datatype, list)      # the field bug
+    assert isinstance(m1["barrier"].datatype, list) and \
+        "DERasterDataset" in m1["barrier"].datatype
+    assert m1["barrieragg"].filter.list[0].startswith("additive")
+    m2 = {p.name: p for p in pyt.ValueStatistics().getParameterInfo()}
+    assert m2["measures"].filter.list == pyt._MEASURES
+    assert m2["pcts"].value == "10 25 75 90"
 
 
 # --------------------------------------------- v1.16.2 field-report bugs
@@ -919,9 +919,9 @@ def test_pyt_machine2_dialog_has_output_section():
     tool = pyt.ValueStatistics()
     ps = tool.getParameterInfo()
     names = [p.name for p in ps]
-    assert names[10:14] == ["existing", "outmode", "outfc", "outtable"]
-    assert ps[11].filter.list == ["Append to input",
-                                  "New feature class"]
+    assert {"existing", "outmode", "outfc", "outtable"} <= set(names)
+    assert [p for p in ps if p.name == "outmode"][0].filter.list == \
+        ["Append to input", "New feature class"]
     tool.updateParameters(ps)
     tool.updateMessages(ps)
 
@@ -1035,7 +1035,7 @@ def test_pyt_dialog_warns_about_shapefile_before_run():
             if kind == "ERROR"]
     assert any("10 char" in e for e in errs)
     assert any("shortened field names" in e for e in errs)
-    ps[16].value = True                     # tick the escape hatch
+    [p for p in ps if p.name == "shortnames"][0].value = True
     tool.updateMessages(ps)
     errs2 = [txt for p in ps for kind, txt in p.messages
              if kind == "ERROR" and "10 char" in txt]
@@ -1126,9 +1126,10 @@ def test_pyt_autoproject_unblocks_the_dialog_too():
     state["aux_tables"] = {"degtab": pd.DataFrame(
         {"Longitude": [17.6], "Latitude": [59.8]})}
     pyt = _load_pyt()
-    for tool, i_auto in ((pyt.CountsShares(), 26),
-                         (pyt.ValueStatistics(), 15)):
+    for tool in (pyt.CountsShares(), pyt.ValueStatistics()):
         ps = tool.getParameterInfo()
+        i_auto = [i for i, p in enumerate(ps)
+                  if p.name == "autoproj"][0]
         ps[0].value = "people"
         tool.updateParameters(ps)
         tool.updateMessages(ps)
@@ -1141,7 +1142,7 @@ def test_pyt_autoproject_unblocks_the_dialog_too():
     tool = pyt.CountsShares()               # a TABLE still refuses
     ps = tool.getParameterInfo()
     ps[0].value = "degtab"
-    ps[26].value = True
+    [p for p in ps if p.name == "autoproj"][0].value = True
     tool.updateParameters(ps)
     tool.updateMessages(ps)
     assert any(k == "ERROR" for p in ps for k, _ in p.messages)
@@ -1210,3 +1211,94 @@ def test_pyt_dem_is_read_by_the_host_not_the_package():
     alt = dem_to_cell_altitude(payload, E, N, unit_size=100)
     assert alt[1] > alt[0]                    # the hill rises east
     assert np.isfinite(alt).all()
+
+
+# ------------------------------------------- v1.16.6 CRS + manifest
+def test_pyt_barrier_uses_the_working_crs_not_the_stored_one():
+    """Field finding (17.3 GiB): under auto-projection the points
+    were read in metres while barriers were requested in the layer's
+    stored DEGREE crs, so the friction grid spanned the gap. The
+    barrier reader must be handed the CRS actually used."""
+    t = pd.DataFrame({"OBJECTID": [1, 2, 3],
+                      "SHAPE@X": [17.60, 17.61, 17.62],
+                      "SHAPE@Y": [59.80, 59.81, 59.82]})
+    state = _install_fake_arcpy(t)
+    state["crs_types"] = {"people": "Geographic"}
+    state["extents"] = {"people": (17.5, 59.7, 17.7, 59.9)}
+    state["shape_types"] = {"lake": "Polygon"}
+    seen = {}
+
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+
+    class _SC:
+        def __init__(self, layer, fields, spatial_reference=None):
+            seen["sr"] = spatial_reference
+            self.rows = []
+
+        def __enter__(self):
+            return iter(self.rows)
+
+        def __exit__(self, *a):
+            return False
+    arcpy.da.SearchCursor = _SC
+    msg = _Messages()
+    try:
+        pyt._run_tool("counts", "people", msg, k_text="2",
+                      barrier="lake", barrier_field="Friction",
+                      tau_text="3", auto_project=True)
+    except Exception:
+        pass                       # empty barrier layer: fine
+    assert seen.get("sr") is not None
+    # Uppsala -> SWEREF 99 TM, and crucially a PROJECTED sr
+    assert getattr(seen["sr"], "factoryCode", 0) == 3006
+    assert any("Working CRS" in m for m in msg.log)
+
+
+def test_pyt_writes_a_run_manifest(tmp_path):
+    """Reproducibility: every run leaves a manifest naming the
+    version, the CRS actually used (auto-projected or not), the
+    parameters and the timings."""
+    rng = np.random.default_rng(61)
+    n = 120
+    tab = pd.DataFrame({"Easting": rng.uniform(0, 900, n),
+                        "Northing": rng.uniform(0, 900, n)})
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(t)
+    state["aux_tables"] = {"tbl": tab}
+    pyt = _load_pyt()
+    out = tmp_path / "res.csv"
+    pyt._run_tool("counts", "tbl", _Messages(), k_text="20",
+                  out_table=str(out), unit=250.0)
+    man = pd.read_csv(tmp_path / "res_EquiPop_run.csv").set_index(
+        "item")["value"].to_dict()
+    assert man["engine"] == "counts"
+    assert str(man["k_values"]) == "20"
+    assert float(man["cell_size_m"]) == 250.0
+    assert man["equipop_version"]
+    assert "total_seconds" in man
+
+
+def test_friction_guard_refuses_mixed_units_and_clips_the_far_away():
+    """The lake that became one cell: degrees against metres must be
+    refused with both extents shown - while a legitimately distant
+    barrier cell is simply clipped away."""
+    from equipop.friction import FrictionGrid
+    pop = pd.DataFrame({"x": [445050.0, 445150.0, 445250.0],
+                        "y": [6470050.0, 6470150.0, 6470250.0],
+                        "count_all": [5.0, 5.0, 5.0],
+                        "count_group": [1.0, 1.0, 1.0]})
+    degrees = pd.DataFrame({"x": [13.05], "y": [58.05],
+                            "friction": [8.0]})
+    with pytest.raises(ValueError, match="coordinate system"):
+        FrictionGrid(pop, degrees, unit_size=100)
+    far = pd.DataFrame({"x": [445150.0, 495150.0],
+                        "y": [6470150.0, 6470150.0],
+                        "friction": [8.0, 3.0]})
+    g = FrictionGrid(pop, far, unit_size=100, clip_margin=5000.0)
+    assert g.nx < 100 and g.ny < 100        # the far cell was clipped
+    huge = pd.DataFrame({"x": [445150.0], "y": [6470150.0],
+                         "friction": [8.0]})
+    with pytest.raises(ValueError, match="movement graph"):
+        FrictionGrid(pop, huge, unit_size=1, max_graph_gb=0.001)

@@ -55,9 +55,10 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     if not (k_values or r_values or decay):
         raise ValueError("give k_values, r_values and/or decay")
     n_cells = len(cd)
-    if m_neighbors is None:            # auto-tuned (v1.16.3)
+    if m_neighbors is None:            # auto-tuned (v1.16.3/.6)
         from .cells import auto_m_neighbors
-        m_neighbors = auto_m_neighbors(cd, k_values, r_values)
+        m_neighbors = auto_m_neighbors(cd, k_values, r_values,
+                                       trunc_m=trunc)
     m = min(m_neighbors, n_cells)
     pts = np.c_[cd.E.astype(float), cd.N.astype(float)]
     tree = cKDTree(pts)

@@ -108,11 +108,57 @@ class FrictionGrid:
     def __init__(self, pop: pd.DataFrame, fr: pd.DataFrame | None,
                  unit_size: float = 100.0, default_friction: int = 0,
                  count_all_col: str = "count_all",
-                 count_group_col: str = "count_group"):
+                 count_group_col: str = "count_group",
+                 clip_margin: float = 5000.0,
+                 max_graph_gb: float = 8.0):
         u = int(unit_size)
         self.unit_size = float(unit_size)
 
-        # --- grid domain: bounding box of population + friction cells ---
+        # --- v1.16.6: guard, then CLIP, then build -------------------
+        # Guard for the impossible (units that cannot belong to the
+        # same map), clip the merely large (a national barrier layer
+        # against a small study area), stay silent about the slightly
+        # off (a lake reaching past the edge is normal).
+        px0, px1 = float(pop["x"].min()), float(pop["x"].max())
+        py0, py1 = float(pop["y"].min()), float(pop["y"].max())
+        pw, ph = max(px1 - px0, u), max(py1 - py0, u)
+        if fr is not None and len(fr):
+            fx0, fx1 = float(fr["x"].min()), float(fr["x"].max())
+            fy0, fy1 = float(fr["y"].min()), float(fr["y"].max())
+            fw, fh = max(fx1 - fx0, u), max(fy1 - fy0, u)
+            # separation between the two boxes (0 when they overlap);
+            # measured, not area-based, so a line of points or a
+            # barrier just outside the study area stays legitimate
+            gap_x = max(0.0, max(px0, fx0) - min(px1, fx1))
+            gap_y = max(0.0, max(py0, fy0) - min(py1, fy1))
+            gap = float(np.hypot(gap_x, gap_y))
+            scale = max(pw, ph)
+            ratio = max(pw / fw, fw / pw, ph / fh, fh / ph)
+            if gap > 100.0 * scale or ratio > 1000.0:
+                raise ValueError(
+                    "[friction] the barrier data and the population "
+                    "do not belong to the same map:\n"
+                    f"    population spans {pw:,.0f} x {ph:,.0f} m "
+                    f"around ({px0:,.0f}, {py0:,.0f})\n"
+                    f"    friction   spans {fw:,.0f} x {fh:,.0f} m "
+                    f"around ({fx0:,.0f}, {fy0:,.0f})\n"
+                    "Are they in the SAME coordinate system? Degrees "
+                    "mixed with metres produce exactly this. Nothing "
+                    "was computed.")
+            # clip: friction is only relevant within reach of people
+            margin = float(max(clip_margin, 2 * u))
+            keep = ((fr["x"] >= px0 - margin) & (fr["x"] <= px1 + margin)
+                    & (fr["y"] >= py0 - margin) & (fr["y"] <= py1 + margin))
+            if not bool(keep.all()):
+                dropped = int((~keep).sum())
+                fr = fr[keep]
+                print(f"[friction] {dropped} friction cells lie beyond "
+                      f"the population extent (+{margin:,.0f} m) and "
+                      "were clipped away - they cannot affect any "
+                      "result")
+                if not len(fr):
+                    fr = None
+
         xs = [pop["x"]] + ([fr["x"]] if fr is not None else [])
         ys = [pop["y"]] + ([fr["y"]] if fr is not None else [])
         x0 = int(min(s.min() for s in xs)); x1 = int(max(s.max() for s in xs))
@@ -121,7 +167,17 @@ class FrictionGrid:
         self.nx = (x1 - x0) // u + 1
         self.ny = (y1 - y0) // u + 1
         n = self.nx * self.ny
-        print(f"[friction] grid domain {self.nx} x {self.ny} = {n} cells")
+        need_gb = n * 8 * 8 / 1e9          # 8 edges x int64 per cell
+        print(f"[friction] grid domain {self.nx} x {self.ny} = {n} "
+              f"cells (~{need_gb:.1f} GB for the movement graph)")
+        if need_gb > float(max_graph_gb):
+            raise ValueError(
+                f"[friction] this study area needs about {need_gb:.1f} "
+                f"GB for the movement graph (limit {max_graph_gb:g} "
+                "GB). The effort engines grid the WHOLE bounding box, "
+                "empty ground included. Fixes: a smaller study area, "
+                f"or a bigger cell size (at {2 * u} m it would need "
+                f"~{need_gb / 4:.1f} GB). Nothing was computed.")
 
         def idx(x, y):
             return (((np.asarray(x) - x0) // u) * self.ny

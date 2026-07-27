@@ -23,6 +23,7 @@ from .fastcounts import run_knn_counts
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
                 m_neighbors: int | None = None,
+                decay_eps: float = 1e-6,
                 r_values=None, decay=None,
                 treat_are_counts: bool = False) -> dict:
     """
@@ -102,7 +103,8 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                       "so shares can exceed 1. Set the Population "
                       "field (weight) to the total-persons column.")
                 break
-    res = run_knn_counts(cd, k_values, m_neighbors=m_neighbors,
+    res = run_knn_counts(cd, k_values, decay_eps=decay_eps,
+                         m_neighbors=m_neighbors,
                          r_values=r_values, decay=decay)
 
     # map cell results back to every individual row
@@ -173,6 +175,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              supply_col: str = "supply", half_life_m: float | None = None,
              reach: str = "decay", method: str = "2sfca",
              k_fca: float | None = None, r_fca: float | None = None,
+             decay_eps: float = 1e-6,
              **extra) -> dict:
     """
     One entry point, five engines, row-aligned results:
@@ -200,7 +203,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                         gamma=extra.get("gamma"))
         return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
                            unit_size=unit_size, r_values=r_values,
-                           decay=dec,
+                           decay=dec, decay_eps=decay_eps,
                            treat_are_counts=extra.get(
                                "treat_are_counts", False))
 
