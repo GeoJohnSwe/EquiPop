@@ -151,10 +151,13 @@ def _install_fake_arcpy(table: pd.DataFrame):
     # datatype keywords real Pro accepts (the ones EquiPop uses);
     # SEMICOLON STRINGS ARE INVALID in real arcpy - multiple types
     # must be a LIST (field-found bug, v1.16.1)
+    # Types real Pro is known to marshal. GPComposite is deliberately
+    # ABSENT: a composite column in a value table crashed Pro on Run
+    # (field finding, v1.17.0) - so the simulator refuses it too.
     _DATATYPES = {"GPFeatureLayer", "GPTableView", "DERasterDataset",
                   "GPRasterLayer", "GPString", "GPDouble", "GPBoolean",
                   "GPLong", "Field", "DEFile", "DEFeatureClass",
-                  "GPValueTable", "GPComposite"}
+                  "GPValueTable"}
 
     class Parameter:
         def __init__(self, **kw):
@@ -682,6 +685,13 @@ def test_pyt_dialogs_construct_like_pro():
     assert isinstance(m1["layer"].datatype, list)      # the field bug
     assert m1["barriertable"].datatype == "GPValueTable"
     assert len(m1["barriertable"].columns) == 2      # source + field
+    # every value-table column must be a type Pro can marshal
+    for p in list(m1.values()):
+        for col in getattr(p, "columns", []) or []:
+            assert col[0] in _install_fake_arcpy.__globals__.get(
+                "_ALLOWED_COLS", {"GPTableView", "GPString",
+                                  "GPBoolean", "GPLong", "Field",
+                                  "GPFeatureLayer", "GPDouble"}), col
     assert len(m1["cattable"].columns) == 3          # value/group/pop
     assert {p.category for p in
             pyt.CountsShares().getParameterInfo()} >= {

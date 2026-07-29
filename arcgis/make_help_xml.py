@@ -66,8 +66,12 @@ HELP = {
     "groupscount": "Whether category groups count PERSONS (weighted "
                    "by the population field, so shares have the same "
                    "denominator as N) or PLACES (rows).",
+    "barrierrasters": "Friction rasters, where each cell value is "
+                      "the crossing cost. They combine with the rows "
+                      "of the barrier table by the same overlap "
+                      "rule.",
     "barriertable": "One row per barrier source - a point, line or "
-                    "polygon layer, a table of cells, or a raster - "
+                    "polygon layer, or a table of cells - "
                     "with the field holding its friction. Several "
                     "sources combine per the overlap rule, so a "
                     "river, a railway and a lake can be given "

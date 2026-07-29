@@ -1442,9 +1442,14 @@ class CountsShares:
                   "population", "GPValueTable", required=False),
                _p("groupscount", "Category groups count", "GPString",
                   required=False),
-               _p("barriertable", "Barriers: one row per source "
-                  "(layer, table or raster) and its friction field",
-                  "GPValueTable", required=False),
+               _p("barriertable", "Barriers: one row per point/line/"
+                  "polygon layer or table of cells, with the field "
+                  "holding its friction", "GPValueTable",
+                  required=False),
+               _p("barrierrasters", "Barrier rasters (cell value = "
+                  "friction); combined with the rows above by the "
+                  "same overlap rule", "DERasterDataset",
+                  required=False, multiValue=True),
                _p("barrieragg", "Barrier overlap rule (features "
                   "sharing a cell)", "GPString", required=False),
 
@@ -1480,8 +1485,12 @@ class CountsShares:
         pm["cattable"].columns = [["GPString", "Category value"],
                                   ["GPString", "Group name"],
                                   ["GPBoolean", "In population?"]]
+        # v1.17.1: a GPComposite column took ArcGIS Pro down on Run
+        # (the value table is serialised even when empty). Only
+        # plain, long-supported column types here; rasters get their
+        # own parameter below.
         pm["barriertable"].columns = [
-            ["GPComposite", "Barrier source"],
+            ["GPTableView", "Barrier layer or table"],
             ["GPString", "Friction field"]]
         pm["groupscount"].filter.type = "ValueList"
         pm["groupscount"].filter.list = ["persons (weighted by the "
@@ -1504,6 +1513,7 @@ class CountsShares:
             "catfield": "Groups", "cattable": "Groups",
             "groupscount": "Groups",
             "barriertable": "Barriers and terrain",
+            "barrierrasters": "Barriers and terrain",
             "barrieragg": "Barriers and terrain",
             "dem": "Barriers and terrain", "tau": "Barriers and terrain",
             "roundtrip": "Barriers and terrain",
@@ -1544,7 +1554,8 @@ class CountsShares:
         decaying = _txt(pm, "model", "no decay") not in ("", "no decay")
         pm["halflife"].enabled = decaying
         pm["decayeps"].enabled = decaying
-        bar_on = bool(_vt_rows(pm["barriertable"]))
+        bar_on = bool(_vt_rows(pm["barriertable"])
+                      or _txt(pm, "barrierrasters"))
         pm["barrieragg"].enabled = bar_on
         ing = bar_on or bool(_txt(pm, "dem"))
         pm["tau"].enabled = ing
@@ -1567,7 +1578,9 @@ class CountsShares:
                 [f for f in _txt(pm, "treat").split(";") if f], [], [],
                 bool(_txt(pm, "halflife")
                      and _txt(pm, "model", "no decay") != "no decay"),
-                bool(_vt_rows(pm["barriertable"]) or _txt(pm, "dem"))))
+                bool(_vt_rows(pm["barriertable"])
+                     or _txt(pm, "barrierrasters")
+                     or _txt(pm, "dem"))))
             if txt:
                 pm["outmode"].setErrorMessage(
                     txt + " Or tick 'Allow shortened field names'.")
@@ -1596,7 +1609,10 @@ class CountsShares:
                   cat_field=_txt(pm, "catfield") or None,
                   cat_rows=_vt_rows(pm["cattable"]),
                   groups_count=_txt(pm, "groupscount", "persons"),
-                  barrier_rows=_vt_rows(pm["barriertable"]),
+                  barrier_rows=(_vt_rows(pm["barriertable"])
+                                + [[r, None] for r in
+                                   (_txt(pm, "barrierrasters")
+                                    .split(";")) if r.strip()]),
                   barrier_agg=_txt(pm, "barrieragg"),
                   extra_dem=_ref(pm["dem"].value) or None,
                   tau_text=_txt(pm, "tau"),
