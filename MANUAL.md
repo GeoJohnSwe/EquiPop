@@ -8,6 +8,7 @@
 
 | Version | Contents |
 |---|---|
+| 1.16.8 | The GIS input rework, field-hardened over one day of real testing (#22, John's spec): ONE shared loader for both machines - geometry read directly (never a demand for X/Y columns), guessed-but-overridable coordinate fields for tables, degree CRS refused with the FITTING projection computed from the data (or auto-projected on request, layers only), validation moved into the dialog so Run is blocked BEFORE work starts. Barriers became geometry-aware: point/line/polygon layers, tables and rasters route by what they ARE (lines charge every crossed cell, polygons every covered cell incl. holes/multipart, rasters sample at cell midpoints), overlap rule additive (default) / max / min / mean. Machine 2 gained the explicit full-population field (exact row expansion: k counts PERSONS, median/Gini/percentiles population-weighted), selectable measures (mean median gini sd var se min max count sum range + dynamic pNN), and its own Output section. SPEED: the stats engine's per-origin full sort (quadratic - measured cells x2 -> time x2.7) replaced by KD-tree neighbourhoods with exact recomputation, then density-aware auto-tuning of the search size, then - the field's own finding - a LADDER that widens a thin origin's search x8 instead of re-solving it against every cell (475k-row national run: 1 h 51 min -> 4 min 57 s, of which 3 min was ArcGIS writing fields). Write-back updates matching fields IN PLACE (no DeleteField rewrite -> map layers stay in step with their files) and VERIFIES afterwards, naming the dataset written to. Every run leaves a manifest CSV (version, working CRS + whether auto-projected, all parameters, row/cell counts, per-stage timings); package output is forwarded into Pro's messages pane; numbers parse locale-proof (Swedish decimal commas). DEM and barrier rasters are read by arcpy and handed to the package as arrays - no rasterio inside a Pro clone. Sidecar help XML per tool. Gridby test pack v2 + answer key ships as the cross-door conformance suite. 104 tests |
 | 0.1.0 | Projection, grid snapping, radial k-NN engine, legacy-compatible output, validation against original EquiPop (Berlin, 250 cells) |
 | 0.2.0 | Distance decay (negative exponential, half-life parameterisation), short output-naming scheme, extensible decay-model registry |
 | 0.3.0 | Individual-level in-data with duplicate coordinates, per-variable statistics (ratio, mean, median, SD, SE, entropy, Gini) in three exactness tiers, missing-data handling, distance-sort engine |
@@ -538,6 +539,25 @@ Friction (BFS growth, raster + vector friction layers, combination rules) → Wo
 ### Design decisions - v1.14.1
 - Two treat conventions made EXPLICIT instead of implicit: flags-on-weighted-rows (Stata legacy, default) vs counts-with-total (GIS door, labels' promise). Silent convention collisions are bugs waiting for field tests.
 - Group count exceeding the point's population triggers a loud data-error warning.
+
+### Validation record - v1.16.8 (#22)
+- FIELD (John, 26-28 July 2026, ArcGIS Pro, national register data 475,559 points + Gridby): Gridby answer key reproduced EXACTLY through the Pro door - Test A (counts + shares, k=344/r=344, population-weighted) all 7 columns x 6 probe rows; Test C (value statistics, mean/median/P10/P90/Nv, population-weighted) all 5 columns x 6 rows, e.g. Mean_Income_200 = 26057.788462 verbatim.
+- Fast stats path == exhaustive engine BIT FOR BIT at m = 8, 64, 512 and auto, over k values, radii, binary + value variables, percentiles and Gini (pytest).
+- Counts ladder == exhaustive engine on deliberately urban/rural data where nearly every origin must climb (pytest).
+- numpy rasterizer == shapely rasterizer cell-for-cell for lines and polygons incl. holed rectangle, under both sum and max overlap rules (pytest, geopandas-gated).
+- Full-population weighting == np.average / weighted median known answers; rows with missing population -> Null (pytest).
+- Glue verbatim under fake arcpy: the v1.15 line-shapefile traceback as a named regression (river friction 6 holds N_tau4 to own side); table inputs incl. guessed and chosen X/Y; degree refusals for layer and table; multipart + holed polygon barriers == paths_to_friction; raster midpoint sampling known answer; in-place update calls no DeleteField; post-write verification; localised numbers; raster inputs accept object/name/path (pytest).
+- Help XML covers every parameter of both tools or the build fails (pytest).
+- CI rehearsal without geopandas: 102 passed, 5 skipped.
+
+### Design decisions - v1.16.8
+- Overlap of barrier features stays ADDITIVE by default (John): a river crossed at a railway costs both. max/min/mean available.
+- Degrees are refused, not silently reprojected - unless the user ticks auto-projection, and then only for LAYERS: a bare table's numbers carry no CRS to project from.
+- Shapefile targets whose result names exceed 10 characters are REFUSED with advice rather than auto-truncated (P25/P75 would collide); shortening is opt-in, collision-free by construction, and the mapping is printed and saved.
+- Search size (m) affects SPEED ONLY: any origin not settled inside its neighbourhood - including the tie-ring case - is recomputed exactly. Auto-tuning may therefore be aggressive without risk.
+- Results are written in place when the schema allows it: DeleteField rewrites the whole table, which is both the slowest step and what desynchronises an open map layer from its own file (field-found).
+- The package speaks by printing; the door forwards. One voice for every host, which is also what QGIS/R/SPSS will need.
+- Effort engines grid the WHOLE bounding box (empty ground included), so they carry a scale ceiling the counts engine does not: guarded with an advance memory estimate, a CRS-mismatch refusal, and clipping of friction beyond the population's reach.
 
 ### Validation record - v1.15.0 (#21c)
 - Gridby-river-as-line == CSV-barrier cells EXACTLY; additive stacking 6+4=10 (pytest).

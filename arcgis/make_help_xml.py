@@ -57,6 +57,39 @@ HELP = {
                 "runs roughly four times faster, with a difference "
                 "far below any sampling error. The actual distance "
                 "in metres is reported in the messages.",
+    "cattable": "One row per category value: which group it joins "
+                "(leave blank for none) and whether it counts as "
+                "population. Rows sharing a group name merge into "
+                "that group - so no separators to remember, and a "
+                "value can belong to a group WITHOUT being part of "
+                "the population (services near residents).",
+    "groupscount": "Whether category groups count PERSONS (weighted "
+                   "by the population field, so shares have the same "
+                   "denominator as N) or PLACES (rows).",
+    "barriertable": "One row per barrier source - a point, line or "
+                    "polygon layer, a table of cells, or a raster - "
+                    "with the field holding its friction. Several "
+                    "sources combine per the overlap rule, so a "
+                    "river, a railway and a lake can be given "
+                    "together.",
+    "hlfield": "A field giving each point its OWN half-life in "
+               "metres - an estimated median travel distance, a "
+               "group-specific potential, whatever you have "
+               "estimated. Rows are grouped into bandwidth bins and "
+               "each bin gets its own exact pass.",
+    "hlfromdist": "Self-calibrating bandwidth: enter a k, and each "
+                  "point's own Dist_k - the radius it needed to "
+                  "gather k persons - becomes its half-life. Dense "
+                  "places get sharp kernels, thin places broad ones, "
+                  "with no external estimate.",
+    "hlbins": "How many bandwidth bins to use when the half-life "
+              "varies. More bins follow the distribution more "
+              "closely and cost more passes; distinct values fewer "
+              "than this get an exact pass each.",
+    "seed": "Seed for the parts of EquiPop that use permutations. "
+            "The counting engines are deterministic; this is "
+            "recorded in the run manifest so a pseudo-p-value can be "
+            "reproduced.",
     "catfield": "Build population and groups from the VALUES of one "
                 "column (codes or names both work) instead of "
                 "count fields.",
@@ -114,6 +147,8 @@ HELP = {
     "values": "The numeric fields to describe - income, rent, age. "
               "One set of result columns per field.",
     "measures": "Tick the statistics you want; only those are "
+                "calculated. Leaving every box unticked means the "
+                "classic trio - mean, median and Gini. "
                 "calculated. Nv_<field>_k always reports how many "
                 "neighbours actually had a value.",
     "pcts": "Percentiles as plain numbers, e.g. 10 25 75 90. Used "

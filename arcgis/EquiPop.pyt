@@ -617,6 +617,73 @@ def _refuse_shp_overflow(target, names, messages=None):
     return txt
 
 
+def _categories_from_table(rows, cat_values, messages):
+    """Value-table rows -> (population values, {group: [values]}).
+
+    Columns: category value | group name | in population? The grid
+    retires the ';' / ',' / ':' syntax that produced a group called
+    'shop, school' matching nothing (field test, v1.16.8).
+    """
+    pop_vals, groups = [], {}
+    known = set(cat_values or [])
+    unknown = []
+    for row in rows:
+        val = row[0] if row else ""
+        grp = row[1] if len(row) > 1 else ""
+        inpop = (row[2] if len(row) > 2 else "true").strip().lower()
+        if not val:
+            continue
+        if known and val not in known:
+            unknown.append(val)
+        if inpop not in ("false", "no", "0", "n"):
+            pop_vals.append(val)
+        if grp:
+            groups.setdefault(grp, []).append(val)
+    if unknown:
+        raise arcpy.ExecuteError(
+            f"These values are not in the category field: "
+            f"{', '.join(unknown[:6])}. The field holds: "
+            f"{', '.join(sorted(known)[:12])}"
+            + ("..." if len(known) > 12 else ""))
+    empty = [g for g, vs in groups.items() if not vs]
+    if empty:
+        raise arcpy.ExecuteError(
+            f"Group(s) {', '.join(empty)} have no values - a group "
+            "that matches nothing would only produce columns of "
+            "zeros.")
+    messages.addMessage(
+        f"Categories: population = "
+        f"{', '.join(pop_vals) if pop_vals else '(all rows)'}; "
+        + "; ".join(f"{g} = {', '.join(v)}" for g, v in groups.items())
+        if groups else "no groups")
+    return pop_vals, groups
+
+
+def _collect_barriers(rows, agg, unit, main_sr, messages):
+    """Several barrier sources -> ONE friction frame (v1.17). Each
+    source is read by its own route (lines, polygons, points, table,
+    raster); the overlap rule then combines whatever lands in the
+    same cell - which is what finally makes additive stacking
+    reachable: a river, a railway AND a lake in one run."""
+    from equipop.friction import _agg_cells
+    parts = []
+    for row in rows:
+        src = row[0]
+        fld = row[1] if len(row) > 1 else None
+        parts.append(_barrier_frame(src, fld or None, agg, unit,
+                                    main_sr, None, None, messages))
+    acc: dict = {}
+    for p in parts:
+        for xx, yy, ff in zip(p["x"], p["y"], p["friction"]):
+            acc.setdefault((float(xx), float(yy))
+                           , []).append(float(ff))
+    out = _agg_cells(acc, _agg_key(agg))
+    messages.addMessage(
+        f"{len(parts)} barrier sources -> {len(out)} friction cells "
+        f"(overlap rule: {_agg_key(agg)}).")
+    return out
+
+
 def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_list=(), pct_text="", half_life=0.0,
@@ -628,14 +695,19 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               existing="Overwrite", out_mode="Append to input",
               out_fc=None, out_table=None, extra_dem=None,
               roundtrip=False, auto_project=False,
-              short_names=False, decay_eps: float = 1e-6):
+              short_names=False, decay_eps: float = 1e-6,
+              cat_rows=None, barrier_rows=None,
+              groups_count="persons", half_life_field=None,
+              half_life_from_dist=None, decay_bins: int = 10,
+              seed=None):
     """The single glue path both machines share (stub-validated)."""
     import pandas as pd
     from equipop.stata_bridge import dispatch
 
     extra = list(treat_fields) + list(value_fields) \
         + ([weight_field] if weight_field else []) \
-        + ([cat_field] if cat_field else [])
+        + ([cat_field] if cat_field else []) \
+        + ([half_life_field] if half_life_field else [])
     t_all = time.time()
     stages = []
     with _stage(messages, "reading input", stages), _speaking(messages):
@@ -667,11 +739,35 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
 
     if cat_field:
         from equipop.categorical import categories_to_binary
-        pop_vals = [v.strip() for v in pop_values_text.replace(";", ",")
-                    .split(",") if v.strip()] or None
-        pop_mask, cat_treats = categories_to_binary(
-            np.asarray(data[cat_field]), treat_values_text or "",
-            pop_values=pop_vals)
+        if cat_rows:
+            known = sorted({str(v).strip()
+                            for v in np.asarray(data[cat_field])
+                            if str(v).strip()})
+            pop_vals, groups = _categories_from_table(
+                cat_rows, known, messages)
+            pop_mask, cat_treats = categories_to_binary(
+                np.asarray(data[cat_field]), groups,
+                pop_values=pop_vals or None)
+        else:
+            pop_vals = [v.strip() for v in
+                        pop_values_text.replace(";", ",").split(",")
+                        if v.strip()] or None
+            pop_mask, cat_treats = categories_to_binary(
+                np.asarray(data[cat_field]), treat_values_text or "",
+                pop_values=pop_vals)
+        if str(groups_count).startswith("person") and weight_field:
+            # v1.17 ruling: with a population field set, category
+            # groups count PERSONS, so every share has the same
+            # denominator as N (field test: 4 places over 140 persons)
+            wcol = _numeric(data[weight_field], weight_field, "Input")
+            cat_treats = {g: v * np.nan_to_num(wcol)
+                          for g, v in cat_treats.items()}
+            messages.addMessage(
+                "Category groups count PERSONS (weighted by "
+                f"'{weight_field}') - shares are persons/persons.")
+        else:
+            messages.addMessage(
+                "Category groups count PLACES (rows).")
         x = np.where(pop_mask, x, np.nan)
         y = np.where(pop_mask, y, np.nan)
         messages.addMessage(
@@ -721,7 +817,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     if engine == "counts":
         kw["treat_are_counts"] = True
         fr_df = None
-        if barrier is not None:
+        if barrier_rows:
+            main_sr = getattr(_read_input, "last_sr", None) or \
+                getattr(arcpy.Describe(layer), "spatialReference", None)
+            with _stage(messages, "building barriers", stages), \
+                    _speaking(messages):
+                fr_df = _collect_barriers(barrier_rows, barrier_agg,
+                                          unit, main_sr, messages)
+        elif barrier is not None:
             # the CRS the POINTS were read in - not the layer's stored
             # one. Under auto-projection those differ, and handing the
             # barrier reader the stored (degree) CRS produced a grid
@@ -755,6 +858,25 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                     "Decay over effort is not available - decay "
                     "ignored for this run (backlogged).")
                 half_life = 0.0
+    if engine == "counts" and half_life_field:
+        _check_fields_exist(layer, [half_life_field], "The input")
+        kw["half_life_field"] = _numeric(
+            data[half_life_field], half_life_field, "Input")
+        kw["decay_bins"] = int(decay_bins or 10)
+        messages.addMessage(
+            f"Variable bandwidth: half-life from '{half_life_field}' "
+            f"({np.nanmin(kw['half_life_field']):,.0f}-"
+            f"{np.nanmax(kw['half_life_field']):,.0f} m), "
+            f"{kw['decay_bins']} bins.")
+    elif engine == "counts" and half_life_from_dist:
+        kw["half_life_from_dist"] = int(half_life_from_dist)
+        kw["decay_bins"] = int(decay_bins or 10)
+        messages.addMessage(
+            f"Self-calibrating bandwidth: each point's own "
+            f"Dist_{int(half_life_from_dist)} becomes its half-life, "
+            "so urban form sets the kernel.")
+    if seed is not None:
+        kw["seed"] = int(seed)
     if engine == "counts" and half_life and half_life > 0:
         kw["half_life_m"] = float(half_life)
         kw["decay_model"] = decay_model
@@ -996,6 +1118,44 @@ def _write_manifest(target, rows, messages):
     except Exception as exc:
         messages.addWarningMessage(
             f"Could not write the run manifest ({exc}).")
+
+
+def _vt_rows(param):
+    """Rows of a value table as lists of plain strings (v1.17).
+    Pro hands back a list of lists whose members may be Value
+    objects, so everything is normalised through _ref/str."""
+    v = getattr(param, "value", None)
+    if not v:
+        return []
+    out = []
+    for row in v:
+        cells = row if isinstance(row, (list, tuple)) else [row]
+        out.append([("" if c is None else str(_ref(c))).strip()
+                    for c in cells])
+    return [r for r in out if any(r)]
+
+
+def _distinct_values(layer, field, cap: int = 200):
+    """The values a category field actually holds - so the dialog can
+    OFFER them instead of asking the user to spell them (v1.17)."""
+    if not (layer is not None and field):
+        return []
+    try:
+        arr = arcpy.da.TableToNumPyArray(_ref(layer), [field],
+                                         skip_nulls=False,
+                                         null_value=-9999)
+        vals = []
+        seen = set()
+        for v in arr[field]:
+            t = str(v).strip()
+            if t and t not in seen:
+                seen.add(t)
+                vals.append(t)
+            if len(vals) >= cap:
+                break
+        return sorted(vals)
+    except Exception:
+        return []
 
 
 def _byname(parameters):
@@ -1257,7 +1417,18 @@ class CountsShares:
                   required=False),
                _p("model", "Distance decay", "GPString",
                   required=False),
-               _p("halflife", "Decay half-life in metres", "GPDouble",
+               _p("halflife", "Decay half-life in metres (one value "
+                  "for everybody)", "GPDouble", required=False),
+               _p("hlfield", "OR: half-life from a field - each point "
+                  "keeps its own bandwidth (estimated median "
+                  "distance, group potential...)", "Field",
+                  required=False),
+               _p("hlfromdist", "OR: self-calibrating - use each "
+                  "point's own Dist_k as its half-life (enter the k "
+                  "to calibrate on; urban form sets the bandwidth)",
+                  "GPLong", required=False),
+               _p("hlbins", "Bandwidth bins (variable half-life "
+                  "only; more bins = finer, slower)", "GPLong",
                   required=False),
                _p("decayeps", "Decay cutoff - ignore weights below "
                   "this (smaller = wider search = slower; the "
@@ -1266,24 +1437,17 @@ class CountsShares:
                _p("catfield", "Category field (codes or names) - "
                   "builds population and groups from its VALUES",
                   "Field", required=False),
-               _p("popvalues", "Category values forming the "
-                  "population (comma-separated, no quotes needed; "
-                  "empty = all rows)", "GPString", required=False),
-               _p("treatvalues", "Group categories - typeA; typeB "
-                  "or grouped groupname: typeA, typeB (no quotes "
-                  "needed)", "GPString", required=False),
-               _p("barrier", "Distance ingredient: barriers (point/"
-                  "line/polygon layer, table, or raster)",
-                  ["GPFeatureLayer", "GPTableView", "DERasterDataset"],
+               _p("cattable", "Categories: one row per value - which "
+                  "group it belongs to, and whether it counts as "
+                  "population", "GPValueTable", required=False),
+               _p("groupscount", "Category groups count", "GPString",
                   required=False),
-               _p("barrierfield", "Barrier friction field (crossing "
-                  "cost in rounds)", "Field", required=False),
+               _p("barriertable", "Barriers: one row per source "
+                  "(layer, table or raster) and its friction field",
+                  "GPValueTable", required=False),
                _p("barrieragg", "Barrier overlap rule (features "
                   "sharing a cell)", "GPString", required=False),
-               _p("barrierx", "Barrier X field (tabular barriers)",
-                  "Field", required=False),
-               _p("barriery", "Barrier Y field (tabular barriers)",
-                  "Field", required=False),
+
                _p("dem", "Distance ingredient: elevation raster (DEM)",
                   ["DERasterDataset", "GPRasterLayer"],
                   required=False),
@@ -1306,12 +1470,50 @@ class CountsShares:
                _p("shortnames", "Allow shortened field names when the "
                   "target is a shapefile (10-character cap; names "
                   "stay collision-free and the mapping is printed)",
-                  "GPBoolean", required=False)]
+                  "GPBoolean", required=False),
+               _p("seed", "Random seed (only matters where "
+                  "permutations are used; recorded in the manifest)",
+                  "GPLong", required=False)]
         pm = _byname(ps)
         for nm in ("pop", "treat", "catfield"):
             pm[nm].parameterDependencies = ["layer"]
-        for nm in ("barrierfield", "barrierx", "barriery"):
-            pm[nm].parameterDependencies = ["barrier"]
+        pm["cattable"].columns = [["GPString", "Category value"],
+                                  ["GPString", "Group name"],
+                                  ["GPBoolean", "In population?"]]
+        pm["barriertable"].columns = [
+            ["GPComposite", "Barrier source"],
+            ["GPString", "Friction field"]]
+        pm["groupscount"].filter.type = "ValueList"
+        pm["groupscount"].filter.list = ["persons (weighted by the "
+                                         "population field)",
+                                         "places (rows)"]
+        pm["groupscount"].value = "persons (weighted by the " \
+                                  "population field)"
+        pm["hlfield"].parameterDependencies = ["layer"]
+        pm["hlbins"].value = 10
+        # v1.17: collapsible sections instead of 29 boxes at once
+        SECTION = {
+            "coordsrc": "Coordinates", "xfield": "Coordinates",
+            "yfield": "Coordinates", "autoproj": "Coordinates",
+            "k": "Neighbourhood", "r": "Neighbourhood",
+            "unit": "Neighbourhood", "model": "Neighbourhood",
+            "halflife": "Neighbourhood", "hlfield": "Neighbourhood",
+            "hlfromdist": "Neighbourhood", "hlbins": "Neighbourhood",
+            "decayeps": "Neighbourhood",
+            "pop": "Groups", "treat": "Groups",
+            "catfield": "Groups", "cattable": "Groups",
+            "groupscount": "Groups",
+            "barriertable": "Barriers and terrain",
+            "barrieragg": "Barriers and terrain",
+            "dem": "Barriers and terrain", "tau": "Barriers and terrain",
+            "roundtrip": "Barriers and terrain",
+            "existing": "Output", "outmode": "Output",
+            "outfc": "Output", "outtable": "Output",
+            "shortnames": "Output", "seed": "Advanced",
+        }
+        for nm, cat in SECTION.items():
+            if nm in pm:
+                pm[nm].category = cat
         pm["model"].filter.type = "ValueList"
         pm["model"].filter.list = ["no decay", "negexp", "expnormal",
                                    "expsqrt", "lognormal", "power"]
@@ -1342,18 +1544,8 @@ class CountsShares:
         decaying = _txt(pm, "model", "no decay") not in ("", "no decay")
         pm["halflife"].enabled = decaying
         pm["decayeps"].enabled = decaying
-        bar = pm["barrier"].value
-        bar_on = bar is not None
-        pm["barrierfield"].enabled = bar_on
+        bar_on = bool(_vt_rows(pm["barriertable"]))
         pm["barrieragg"].enabled = bar_on
-        bar_table = False
-        if bar_on:
-            try:
-                bar_table = _kind(arcpy.Describe(bar)) == "table"
-            except Exception:
-                pass
-        pm["barrierx"].enabled = bar_table
-        pm["barriery"].enabled = bar_table
         ing = bar_on or bool(_txt(pm, "dem"))
         pm["tau"].enabled = ing
         pm["roundtrip"].enabled = ing
@@ -1375,7 +1567,7 @@ class CountsShares:
                 [f for f in _txt(pm, "treat").split(";") if f], [], [],
                 bool(_txt(pm, "halflife")
                      and _txt(pm, "model", "no decay") != "no decay"),
-                bool(pm["barrier"].value or _txt(pm, "dem"))))
+                bool(_vt_rows(pm["barriertable"]) or _txt(pm, "dem"))))
             if txt:
                 pm["outmode"].setErrorMessage(
                     txt + " Or tick 'Allow shortened field names'.")
@@ -1397,14 +1589,15 @@ class CountsShares:
                   if decaying else 0.0,
                   decay_model=model if decaying else "negexp",
                   decay_eps=_num(pm, "decayeps", 1e-6) or 1e-6,
+                  half_life_field=_txt(pm, "hlfield") or None,
+                  half_life_from_dist=_num(pm, "hlfromdist") or None,
+                  decay_bins=int(_num(pm, "hlbins", 10) or 10),
+                  seed=_num(pm, "seed"),
                   cat_field=_txt(pm, "catfield") or None,
-                  pop_values_text=_txt(pm, "popvalues"),
-                  treat_values_text=_txt(pm, "treatvalues"),
-                  barrier=pm["barrier"].value or None,
-                  barrier_field=_txt(pm, "barrierfield") or None,
+                  cat_rows=_vt_rows(pm["cattable"]),
+                  groups_count=_txt(pm, "groupscount", "persons"),
+                  barrier_rows=_vt_rows(pm["barriertable"]),
                   barrier_agg=_txt(pm, "barrieragg"),
-                  barrier_x=_txt(pm, "barrierx") or None,
-                  barrier_y=_txt(pm, "barriery") or None,
                   extra_dem=_ref(pm["dem"].value) or None,
                   tau_text=_txt(pm, "tau"),
                   roundtrip=_flag(pm, "roundtrip"),
@@ -1441,7 +1634,8 @@ class ValueStatistics:
                   "this", "Field", required=False),
                _p("values", "Numeric value fields (e.g. income, rent, "
                   "age)", "Field", multiValue=True),
-               _p("measures", "Measures to calculate", "GPString",
+               _p("measures", "Measures to calculate (none ticked = "
+                  "mean, median, gini)", "GPString",
                   multiValue=True, required=False),
                _p("pcts", "Percentiles (plain numbers, e.g. 10 25 75 "
                   "90)", "GPString", required=False),
@@ -1470,6 +1664,27 @@ class ValueStatistics:
         ps[6].filter.list = _MEASURES
         ps[6].value = "mean;median;gini"
         ps[7].value = "10 25 75 90"
+        pm2 = _byname(ps)
+        for nm, cat in {"coordsrc": "Coordinates",
+                        "xfield": "Coordinates",
+                        "yfield": "Coordinates",
+                        "autoproj": "Coordinates",
+                        "k": "Neighbourhood", "r": "Neighbourhood",
+                        "unit": "Neighbourhood",
+                        "fullpop": "Values and measures",
+                        "values": "Values and measures",
+                        "measures": "Values and measures",
+                        "pcts": "Values and measures",
+                        "existing": "Output", "outmode": "Output",
+                        "outfc": "Output", "outtable": "Output",
+                        "shortnames": "Output"}.items():
+            if nm in pm2:
+                pm2[nm].category = cat
+        # v1.17: no preset value on the measures list - Pro merged the
+        # default with new ticks, so unticking mean/median/gini did
+        # not take effect (field finding). Empty now MEANS the
+        # default trio, stated in the label.
+        ps[6].value = None
         ps[10].filter.type = "ValueList"
         ps[10].filter.list = ["Overwrite", "Stop with a message"]
         ps[10].value = "Overwrite"

@@ -20,12 +20,88 @@ from .cells import build_cells
 from .fastcounts import run_knn_counts
 
 
+def _binned_decay_counts(cd, cells, k_values, r_values, decay,
+                         half_life, n_bins, decay_eps, m_neighbors,
+                         n_rows, valid):
+    """VARIABLE-BANDWIDTH decay (v1.17): each row carries its own
+    half-life - an estimated median travel distance, a group
+    potential, or the row's own Dist_k (urban form setting the
+    bandwidth).
+
+    A cell may hold people with different bandwidths, so the pass is
+    run once per QUANTILE BIN of the half-life, restricted to the
+    cells that actually contain that bin's people (`origins=`), with
+    the bin's own Decay. Destination mass and the tree stay global,
+    so every pass is exact; only the kernel differs. Cost is
+    dominated by the widest bin, because the truncation radius
+    scales with the half-life.
+    """
+    from .decay import Decay
+    h = np.asarray(half_life, float)
+    hv = h[np.asarray(valid)]
+    if not np.isfinite(hv).all() or (hv <= 0).any():
+        raise ValueError("[decay] the half-life field holds missing, "
+                         "zero or negative values - every row needs a "
+                         "positive bandwidth in metres")
+    n_bins = max(1, int(n_bins))
+    uniq = np.unique(hv)
+    if len(uniq) <= n_bins:
+        # few distinct bandwidths (a group potential, say): each one
+        # gets its OWN pass - no approximation at all
+        idx = np.searchsorted(uniq, hv)
+    else:
+        cuts = np.unique(np.quantile(
+            hv, np.linspace(0.0, 1.0, n_bins + 1)[1:-1]))
+        idx = np.searchsorted(cuts, hv, side="right")
+    # quantile cuts can skip labels; make the bins consecutive so
+    # row -> frame alignment cannot slip
+    _, idx = np.unique(idx, return_inverse=True)
+    cell_e = np.asarray(cells["_E"])
+    cell_n = np.asarray(cells["_N"])
+    key_to_pos = {(e, n): i for i, (e, n) in
+                  enumerate(zip(cd.E, cd.N))}
+    frames = []
+    print(f"[decay] variable bandwidth: {len(np.unique(idx))} bins "
+          f"over half-lives {hv.min():,.0f}-{hv.max():,.0f} m")
+    for b in range(idx.max() + 1):
+        sel = idx == b
+        hb = float(np.median(hv[sel]))
+        origins = sorted({key_to_pos[(e, n)] for e, n in
+                          zip(cell_e[sel], cell_n[sel])
+                          if (e, n) in key_to_pos})
+        # build a FRESH Decay: beta is derived in __post_init__, so
+        # mutating half_life_m on a copy would leave the old kernel
+        dec_b = Decay(model=decay.model, half_life_m=hb,
+                      gamma=getattr(decay, "gamma", None))
+        print(f"[decay]   bin {int(b) + 1}: half-life {hb:,.0f} m, "
+              f"{int(sel.sum())} rows, {len(origins)} origin cells")
+        part = run_knn_counts(cd, k_values, decay_eps=decay_eps,
+                              m_neighbors=m_neighbors,
+                              r_values=r_values, decay=dec_b,
+                              origins=np.asarray(origins, int))
+        part = part.set_index(["EastWest", "NorthSouth"])
+        frames.append((sel, part))
+    # Rows of a bin read THAT bin's pass. A cell holding people of
+    # two bandwidths legitimately yields two different decayed sums -
+    # one per person - which a single cell-indexed frame cannot say,
+    # so the bins travel separately to the row mapping.
+    row_bin = np.asarray(idx, int)
+    parts = [f[1] for f in frames]
+    # non-decay columns (N, Dist, T, R) are identical across bins -
+    # the union of the passes covers every cell, so any occurrence
+    # serves as the base frame
+    base = pd.concat(parts)
+    base = base[~base.index.duplicated(keep="first")]
+    return parts, row_bin, base
+
+
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
                 m_neighbors: int | None = None,
                 decay_eps: float = 1e-6,
                 r_values=None, decay=None,
-                treat_are_counts: bool = False) -> dict:
+                treat_are_counts: bool = False,
+                decay_half_life=None, decay_bins: int = 10) -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
 
@@ -103,9 +179,16 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                       "so shares can exceed 1. Set the Population "
                       "field (weight) to the total-persons column.")
                 break
-    res = run_knn_counts(cd, k_values, decay_eps=decay_eps,
-                         m_neighbors=m_neighbors,
-                         r_values=r_values, decay=decay)
+    bin_frames = bin_of_row = None
+    if decay is not None and decay_half_life is not None:
+        bin_frames, bin_of_row, base = _binned_decay_counts(
+            cd, cells, k_values, r_values, decay, decay_half_life,
+            decay_bins, decay_eps, m_neighbors, n_rows, valid)
+        res = base.reset_index()
+    else:
+        res = run_knn_counts(cd, k_values, decay_eps=decay_eps,
+                             m_neighbors=m_neighbors,
+                             r_values=r_values, decay=decay)
 
     # map cell results back to every individual row
     res = res.set_index(["EastWest", "NorthSouth"])
@@ -122,9 +205,22 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                      if c in res.columns]
     out = {}
     vidx = np.flatnonzero(valid.to_numpy())
+    decay_cols = {c for c in out_cols
+                  if c.endswith("_inf") or c == "ND_inf"}
     for c in out_cols:
         col = np.full(n_rows, np.nan)
-        col[vidx] = res.loc[keys, c].to_numpy(dtype=float)
+        if bin_frames is not None and c in decay_cols:
+            # each row reads the pass run with ITS OWN bandwidth
+            vals = np.full(len(vidx), np.nan)
+            for b, frame in enumerate(bin_frames):
+                m = bin_of_row == b
+                if not m.any():
+                    continue
+                kk = [keys[i] for i in np.flatnonzero(m)]
+                vals[m] = frame.loc[kk, c].to_numpy(dtype=float)
+            col[vidx] = vals
+        else:
+            col[vidx] = res.loc[keys, c].to_numpy(dtype=float)
         out[c] = col
     n_miss = n_rows - len(vidx)
     if n_miss:
@@ -176,6 +272,8 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              reach: str = "decay", method: str = "2sfca",
              k_fca: float | None = None, r_fca: float | None = None,
              decay_eps: float = 1e-6,
+             half_life_field=None, half_life_from_dist=None,
+             decay_bins: int = 10,
              **extra) -> dict:
     """
     One entry point, five engines, row-aligned results:
@@ -196,14 +294,40 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
 
     if engine == "counts":
         dec = None
-        if half_life_m:
+        if half_life_m or half_life_field is not None \
+                or half_life_from_dist:
             from .decay import Decay
+            # with a variable bandwidth the half-life here is only a
+            # placeholder - every bin builds its own kernel
             dec = Decay(model=extra.get("decay_model", "negexp"),
-                        half_life_m=half_life_m,
+                        half_life_m=float(half_life_m or 1000.0),
                         gamma=extra.get("gamma"))
+        hl = half_life_field
+        if hl is None and half_life_from_dist and dec is not None:
+            # SELF-CALIBRATING bandwidth (v1.17): each row's own
+            # Dist_k - the radius it needed to gather k persons -
+            # becomes its half-life, so urban form sets the
+            # bandwidth instead of an assumed distance. Computed by a
+            # plain k-run first, then fed back as the kernel.
+            k0 = int(half_life_from_dist)
+            first = knn_to_rows(x, y, [k0], weight=weight,
+                                unit_size=unit_size,
+                                treat_are_counts=extra.get(
+                                    "treat_are_counts", False))
+            hl = first[f"Dist_{k0}"]
+            good = np.isfinite(hl) & (hl > 0)
+            if not good.any():
+                raise ValueError(
+                    f"[decay] self-calibration needs Dist_{k0}, but no "
+                    "row got a usable radius")
+            hl = np.where(good, hl, np.nanmedian(hl[good]))
+            print(f"[decay] self-calibrated bandwidth from Dist_{k0}: "
+                  f"{np.nanmin(hl):,.0f}-{np.nanmax(hl):,.0f} m "
+                  f"(median {np.nanmedian(hl):,.0f} m)")
         return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
                            unit_size=unit_size, r_values=r_values,
                            decay=dec, decay_eps=decay_eps,
+                           decay_half_life=hl, decay_bins=decay_bins,
                            treat_are_counts=extra.get(
                                "treat_are_counts", False))
 

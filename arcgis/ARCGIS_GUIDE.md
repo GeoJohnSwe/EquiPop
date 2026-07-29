@@ -18,6 +18,18 @@ default one is locked. The supported route is a clone:
 
 4. Check: `python -c "import equipop; print(equipop.__version__)"`
 
+### Files to copy (v1.16.8)
+Keep these FOUR files together in one folder (e.g. `C:\Data\EQP`):
+
+    EquiPop.pyt                     the toolbox
+    EquiPop.CountsShares.pyt.xml    in-dialog help for machine 1
+    EquiPop.ValueStatistics.pyt.xml in-dialog help for machine 2
+
+The .xml files are what puts the small explanation beside each
+parameter box. Pro caches toolboxes hard: after replacing them,
+remove the toolbox from the project and add it again, or restart
+Pro.
+
 ## 2. Add the toolbox to a project
 
 Copy the `arcgis/EquiPop.pyt` file anywhere convenient (it can live
@@ -122,3 +134,84 @@ Rivers as LINES: in Python, `equipop.friction.features_to_friction`
 turns line/polygon features with a friction field into the barrier
 table (overlaps stack additively); a one-click Pro wrapper for it is
 on the roadmap.
+
+
+## 9. v1.16 - the GIS input rework (what changed for you)
+
+**Coordinates come from the data, not from column names.** Point
+layers are read straight from their geometry - no X/Y columns are
+ever required. Plain tables (CSV, Excel, gdb tables) get their
+coordinate fields guessed and pre-filled, and you can always
+override the guess. Nothing ever asks you to rename a column.
+
+**Coordinates must be metric.** Degree data is refused with the
+projection that FITS your data computed from its own extent (Uppsala
+gets SWEREF 99 TM, Kayseri gets UTM zone 36N). If you tick
+*Auto-project degree data*, a LAYER is instead read on the fly in
+that projection - your stored data is untouched, and the messages
+say which CRS was used. A plain table cannot be auto-projected: its
+numbers carry no CRS to project from.
+
+**Barriers are geometry-aware.** One input accepts a point, line or
+polygon layer, a table of cells, or a raster. Lines charge every
+grid cell they genuinely cross, polygons every cell they cover
+(holes and multipart handled), rasters are sampled at analysis-cell
+midpoints with NoData and zero costing nothing. Where features share
+a cell the *overlap rule* decides: additive by default (a river
+crossed at a railway costs both), or max / min / mean.
+
+**Machine 2 knows about population.** Set the full-population field
+and k counts PERSONS - the median, the Gini and every percentile are
+population-weighted, exactly, by expanding rows to persons. Tick
+only the measures you want; only those are computed. Nv_<field>_k
+always reports how many neighbours actually had a value.
+
+**Output.** Results append to the input layer, or go to a new
+feature class, or - for table inputs - to a .csv carrying your
+coordinates and the original row order. Shapefiles cap field names
+at 10 characters, so long result names are refused BEFORE the run
+with advice; a file geodatabase has no such limit. If you tick
+*Allow shortened field names*, names are shortened without ever
+colliding and the mapping is printed and saved beside the output.
+
+**Re-running is safe.** Fields that already exist are updated in
+place, so nothing is deleted and a map layer never loses sight of
+its own file. After writing, the tool re-reads the target and tells
+you which fields really arrived, naming the dataset.
+
+**Every run leaves a manifest** - `<output>_EquiPop_run.csv` - with
+the EquiPop version, the working CRS (and whether it was
+auto-projected), every parameter, the row and cell counts and the
+per-stage timings. Keep it with the results and the run is
+reproducible a year later.
+
+### Reading the timings
+The messages pane now shows where the time went:
+
+    [time] reading input: 0.9 s
+    [time] calculating: 4 min 44 s
+    [time] writing results to the layer: 1 min 49 s
+    [time] TOTAL: 6 min 58 s - most of it in 'calculating'
+
+The package's own notes appear too (`[fast]`, `[stats]`, `[cells]`).
+Two lines are worth understanding:
+
+- `fast pass with m = N neighbour cells` - how many cells each origin
+  looked at. It affects SPEED ONLY: any origin not settled inside
+  that neighbourhood is recomputed exactly.
+- `N sparse origins need a wider search` - thin-population origins
+  climbing to a wider search. A handful is normal; a storm of them
+  usually means a decay run whose truncation distance is large.
+
+**The strongest speed control is yours: cell size.** Doubling it
+quarters the number of origins. For decay runs, the *decay cutoff*
+box is the second: 1e-6 (default) reaches about 20 half-lives, 1e-3
+about 10 and runs roughly four times faster.
+
+### Scale ceilings, honestly
+Plain counts and statistics run comfortably at national scale (475k
+points, k=444 with a radius: about a minute of calculation). The
+EFFORT engines - barriers and DEM - are different: they build a
+movement graph over the whole bounding box, empty ground included,
+so they suit a bounded study area rather than a country at 100 m.
+The tool estimates the memory first and tells you what to change.

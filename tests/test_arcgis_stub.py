@@ -153,7 +153,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
     # must be a LIST (field-found bug, v1.16.1)
     _DATATYPES = {"GPFeatureLayer", "GPTableView", "DERasterDataset",
                   "GPRasterLayer", "GPString", "GPDouble", "GPBoolean",
-                  "GPLong", "Field", "DEFile", "DEFeatureClass"}
+                  "GPLong", "Field", "DEFile", "DEFeatureClass",
+                  "GPValueTable", "GPComposite"}
 
     class Parameter:
         def __init__(self, **kw):
@@ -170,6 +171,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
             self.enabled = True
             self.parameterDependencies = []
             self.messages = []          # (kind, text) set by tool
+            self.columns = []           # value tables
+            self.category = None        # collapsible section
 
         def setErrorMessage(self, text):
             self.messages.append(("ERROR", text))
@@ -677,8 +680,13 @@ def test_pyt_dialogs_construct_like_pro():
         tool.updateParameters(ps)                      # must not raise
     m1 = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
     assert isinstance(m1["layer"].datatype, list)      # the field bug
-    assert isinstance(m1["barrier"].datatype, list) and \
-        "DERasterDataset" in m1["barrier"].datatype
+    assert m1["barriertable"].datatype == "GPValueTable"
+    assert len(m1["barriertable"].columns) == 2      # source + field
+    assert len(m1["cattable"].columns) == 3          # value/group/pop
+    assert {p.category for p in
+            pyt.CountsShares().getParameterInfo()} >= {
+        "Coordinates", "Neighbourhood", "Groups",
+        "Barriers and terrain", "Output"}
     assert m1["barrieragg"].filter.list[0].startswith("additive")
     m2 = {p.name: p for p in pyt.ValueStatistics().getParameterInfo()}
     assert m2["measures"].filter.list == pyt._MEASURES
@@ -1395,3 +1403,112 @@ def test_pyt_raster_inputs_accept_layer_objects():
     assert pyt._ref(None) is None
     m1 = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
     assert "DERasterDataset" in m1["dem"].datatype   # raster picker
+
+
+# ------------------------------------------------- v1.17 value tables
+def test_pyt_category_value_table():
+    """The grid replaces three text boxes: rows sharing a group name
+    merge (no ';' / ',' / ':' to remember), a value can belong to a
+    group WITHOUT being population, an unknown value is refused
+    naming what the field holds, and groups count PERSONS when a
+    population field is set."""
+    rng = np.random.default_rng(81)
+    n = 240
+    kind = rng.choice(["dwelling", "shop", "school"], n,
+                      p=[0.7, 0.2, 0.1])
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 2000, n),
+                      "SHAPE@Y": rng.uniform(0, 2000, n),
+                      "Pop": rng.integers(1, 9, n).astype(float),
+                      "PlaceType": kind})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    msg = _Messages()
+    rows = [["shop", "services", "true"],
+            ["school", "services", "true"],
+            ["dwelling", "", "true"]]
+    pyt._run_tool("counts", "people", msg, k_text="60",
+                  weight_field="Pop", cat_field="PlaceType",
+                  cat_rows=rows, groups_count="persons")
+    got = state["table"]
+    assert "T_services_60" in got and "R_services_60" in got
+    assert any("count PERSONS" in m for m in msg.log)
+    # shares are persons/persons -> never above 1
+    ok = got.dropna(subset=["R_services_60"])
+    assert (ok["R_services_60"] <= 1.0 + 1e-9).all()
+    # places mode instead
+    msg2 = _Messages()
+    pyt._run_tool("counts", "people", msg2, k_text="60",
+                  weight_field="Pop", cat_field="PlaceType",
+                  cat_rows=rows, groups_count="places (rows)")
+    assert any("count PLACES" in m for m in msg2.log)
+    # a value the field does not hold is refused, naming the values
+    with pytest.raises(arcpy.ExecuteError, match="not in the category"):
+        pyt._run_tool("counts", "people", _Messages(), k_text="60",
+                      cat_field="PlaceType",
+                      cat_rows=[["shopp", "services", "true"]])
+    # group membership WITHOUT population membership
+    msg3 = _Messages()
+    pyt._run_tool("counts", "people", msg3, k_text="60",
+                  cat_field="PlaceType",
+                  cat_rows=[["dwelling", "", "true"],
+                            ["shop", "services", "false"]])
+    assert "T_services_60" in state["table"]
+
+
+def test_pyt_multiple_barrier_sources():
+    """Several barrier sources in one run - the overlap rule finally
+    reachable - must equal the package's own aggregation of the
+    union."""
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [40.0],
+                      "SHAPE@Y": [40.0]})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    sq = [(0.0, 0.0), (200.0, 0.0), (200.0, 200.0), (0.0, 200.0)]
+    line = [(50.0, -50.0), (50.0, 250.0)]
+    state["shape_types"] = {"lake": "Polygon", "river": "Polyline"}
+    state["geom_layers"] = {"lake": [(_geom([sq]), 6.0)],
+                            "river": [(_geom([line]), 4.0)]}
+    rows = [["lake", "Friction"], ["river", "Friction"]]
+    fr_sum = pyt._collect_barriers(rows, "additive (sum)", 100.0,
+                                   None, msg)
+    cells = dict(zip(zip(fr_sum.x, fr_sum.y), fr_sum.friction))
+    assert cells[(50.0, 50.0)] == 10.0       # lake 6 + river 4
+    assert cells[(150.0, 150.0)] == 6.0      # lake only
+    fr_max = pyt._collect_barriers(rows, "max", 100.0, None, msg)
+    cmax = dict(zip(zip(fr_max.x, fr_max.y), fr_max.friction))
+    assert cmax[(50.0, 50.0)] == 6.0
+    assert any("2 barrier sources" in m for m in msg.log)
+
+
+def test_pyt_variable_bandwidth_through_the_dialog():
+    """Half-life from a field, and self-calibration from Dist_k, must
+    reach the engine and produce decayed sums."""
+    rng = np.random.default_rng(82)
+    n = 200
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 2500, n),
+                      "SHAPE@Y": rng.uniform(0, 2500, n),
+                      "MedDist": rng.choice([300.0, 900.0], n)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "people", msg, k_text="40",
+                  decay_model="negexp", half_life_field="MedDist",
+                  decay_bins=4)
+    assert "ND_inf" in state["table"]
+    assert any("Variable bandwidth" in m for m in msg.log)
+    from equipop.stata_bridge import knn_to_rows
+    from equipop.decay import Decay
+    hl = t["MedDist"].to_numpy()
+    ref = knn_to_rows(t["SHAPE@X"].to_numpy(), t["SHAPE@Y"].to_numpy(),
+                      k_values=[40],
+                      decay=Decay(model="negexp", half_life_m=500.0),
+                      decay_half_life=hl, decay_bins=4)["ND_inf"]
+    assert np.allclose(state["table"]["ND_inf"], ref, equal_nan=True)
+    msg2 = _Messages()
+    pyt._run_tool("counts", "people", msg2, k_text="40",
+                  decay_model="negexp", half_life_from_dist=40)
+    assert any("Self-calibrating" in m for m in msg2.log)
