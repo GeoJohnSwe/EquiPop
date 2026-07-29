@@ -1516,7 +1516,7 @@ class CountsShares:
         # own parameter below.
         pm["barriertable"].columns = [
             ["GPTableView", "Barrier layer or table"],
-            ["GPString", "Friction field"]]
+            ["Field", "Friction field"]]     # dropdown per row
         pm["groupscount"].filter.type = "ValueList"
         pm["groupscount"].filter.list = ["persons (weighted by the "
                                          "population field)",
@@ -1571,6 +1571,18 @@ class CountsShares:
     def updateParameters(self, parameters):
         pm = _byname(parameters)
         _trio_update(parameters, 0, 1, 2, 3)
+        # offer the category field's OWN values in the table's first
+        # column, so nothing has to be spelled by hand (v1.17.3)
+        cat = _txt(pm, "catfield")
+        tbl = pm.get("cattable")
+        if cat and tbl is not None:
+            vals = _distinct_values(pm["layer"].value, cat)
+            try:
+                if vals and getattr(tbl, "filters", None):
+                    tbl.filters[0].type = "ValueList"
+                    tbl.filters[0].list = vals
+            except Exception:
+                pass
         _clear_stale_fields(parameters, 0, [i for i, p in
                                             enumerate(parameters)
                                             if p.name in

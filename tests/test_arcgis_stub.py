@@ -175,6 +175,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
             self.parameterDependencies = []
             self.messages = []          # (kind, text) set by tool
             self.columns = []           # value tables
+            self.filters = [types.SimpleNamespace(type=None, list=[])
+                            for _ in range(4)]
             self.category = None        # collapsible section
 
         def setErrorMessage(self, text):
@@ -1556,3 +1558,27 @@ def test_pyt_write_lock_is_reported_not_raw():
     assert "New feature class" in said     # names the way out
     assert "Nothing was" in said           # and says nothing changed
     assert sum("retrying" in m.lower() for m in msg.log) == 3
+
+
+
+def test_pyt_value_table_columns_offer_choices():
+    """Field finding: the friction field had to be TYPED. The column
+    is now a Field dropdown, and the category table offers the
+    category field's own values."""
+    rng = np.random.default_rng(93)
+    n = 40
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 500, n),
+                      "SHAPE@Y": rng.uniform(0, 500, n),
+                      "PlaceType": rng.choice(["dwelling", "shop"], n)})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    assert pm["barriertable"].columns[1][0] == "Field"
+    pm["layer"].value = "people"
+    pm["catfield"].value = "PlaceType"
+    tool.updateParameters(ps)
+    offered = pm["cattable"].filters[0].list
+    assert set(offered) == {"dwelling", "shop"}
