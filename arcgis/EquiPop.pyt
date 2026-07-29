@@ -998,17 +998,42 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "in step.")
         back = {names[c]: c for c in res}
         with _stage(messages, "updating existing fields", stages):
-            with arcpy.da.UpdateCursor(layer, [str(oid)] + reusable) \
-                    as cur:
-                pos = {o: i for i, o in enumerate(
-                    np.asarray(data[oid], np.int64))}
-                for row in cur:
-                    i = pos.get(int(row[0]))
-                    if i is None:
-                        continue
-                    for j, nm in enumerate(reusable, start=1):
-                        row[j] = float(res[back[nm]][i])
-                    cur.updateRow(row)
+            pos = {o: i for i, o in enumerate(
+                np.asarray(data[oid], np.int64))}
+            last = None
+            for attempt in range(3):        # locks are often transient
+                try:
+                    with arcpy.da.UpdateCursor(
+                            layer, [str(oid)] + reusable) as cur:
+                        for row in cur:
+                            i = pos.get(int(row[0]))
+                            if i is None:
+                                continue
+                            for j, nm in enumerate(reusable, start=1):
+                                row[j] = float(res[back[nm]][i])
+                            cur.updateRow(row)
+                    last = None
+                    break
+                except RuntimeError as exc:
+                    last = exc
+                    if "lock" not in str(exc).lower():
+                        raise
+                    time.sleep(1.5)
+                    messages.addWarningMessage(
+                        f"Could not get a write lock (attempt "
+                        f"{attempt + 1}/3) - retrying...")
+            if last is not None:
+                raise arcpy.ExecuteError(
+                    "Cannot get a write lock on the target, so the "
+                    "existing EquiPop fields cannot be updated. "
+                    "Something else is holding the data: an open "
+                    "ATTRIBUTE TABLE for this layer, an active edit "
+                    "session, the file open in another program, or "
+                    "a sync client (OneDrive) touching it. Close "
+                    "those and run again - or choose Output = New "
+                    "feature class, which writes somewhere fresh and "
+                    "needs no lock on the input. Nothing was "
+                    "changed.")
     if stale:
         messages.addWarningMessage(
             f"{len(stale)} existing fields have the wrong type and "

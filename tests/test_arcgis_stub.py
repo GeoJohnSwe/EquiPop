@@ -1522,3 +1522,37 @@ def test_pyt_variable_bandwidth_through_the_dialog():
     pyt._run_tool("counts", "people", msg2, k_text="40",
                   decay_model="negexp", half_life_from_dist=40)
     assert any("Self-calibrating" in m for m in msg2.log)
+
+
+def test_pyt_write_lock_is_reported_not_raw():
+    """Field finding: a re-run whose target is locked (attribute
+    table open, edit session, OneDrive) surfaced arcpy's raw
+    'Cannot acquire a lock'. It must retry, then explain and name
+    the way out."""
+    rng = np.random.default_rng(91)
+    n = 80
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    pyt._run_tool("counts", "people", _Messages(), k_text="20")
+    real = arcpy.da.UpdateCursor
+
+    class _Locked:
+        def __init__(self, *a, **kw):
+            raise RuntimeError("Cannot acquire a lock.")
+    arcpy.da.UpdateCursor = _Locked
+    msg = _Messages()
+    try:
+        with pytest.raises(arcpy.ExecuteError) as err:
+            pyt._run_tool("counts", "people", msg, k_text="20")
+    finally:
+        arcpy.da.UpdateCursor = real
+    said = str(err.value)
+    assert "write lock" in said
+    assert "ATTRIBUTE TABLE" in said       # names the usual cause
+    assert "New feature class" in said     # names the way out
+    assert "Nothing was" in said           # and says nothing changed
+    assert sum("retrying" in m.lower() for m in msg.log) == 3
