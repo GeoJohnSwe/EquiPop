@@ -22,6 +22,16 @@ Tools:
                        among the k nearest PERSONS (full-population
                        aware)
 
+v1.18 SHARED CORE: the parts every door needs - the help text, the
+forwarding of the package's printed voice into the pane, the result
+column names, and the coordinate rules - moved into the package
+(equipop.doors) so the QGIS, R and SPSS doors inherit them instead
+of rebuilding them. This file kept its behaviour exactly; it now
+calls the shared versions. It declares _CONTRACT below: if the
+installed package outgrows it, the door says so and names the fix.
+The package is still imported LAZILY, inside functions, so the
+toolbox opens in Pro even when equipop is not installed.
+
 v1.16 GIS INPUT REWORK: both machines share one loader. Spatial
 inputs are read FROM GEOMETRY (no X/Y attribute columns needed,
 ever); plain tables get guessed-but-overridable X and Y fields;
@@ -31,75 +41,93 @@ row-aligned double fields (Null where coordinates are missing);
 table inputs write a NEW output table.
 """
 
-import contextlib
-import sys
 import time
 
 import numpy as np
 
 import arcpy
 
-class _Reporter:
-    """The package talks by printing (one voice for every door);
-    ArcGIS only shows what goes through the messages object. This
-    forwards package output into the pane line by line, so [cells],
-    [fast] and progress lines are finally visible in Pro - and long
-    runs stop being silent (v1.16.4)."""
-
-    def __init__(self, messages):
-        self.messages = messages
-        self.buf = ""
-
-    def write(self, text):
-        self.buf += str(text)
-        while "\n" in self.buf:
-            line, self.buf = self.buf.split("\n", 1)
-            if line.strip():
-                try:
-                    self.messages.addMessage(line.rstrip())
-                except Exception:
-                    pass
-
-    def flush(self):
-        if self.buf.strip():
-            try:
-                self.messages.addMessage(self.buf.rstrip())
-            except Exception:
-                pass
-        self.buf = ""
+# The shared core this toolbox was built against (equipop.doors).
+# If the package is upgraded past it, the door says so and names the
+# fix instead of failing somewhere obscure.
+_CONTRACT = 1
+_MISSING = (
+    "The EquiPop Python package is not installed in this ArcGIS Pro "
+    "environment. Clone the default environment (Package Manager), "
+    "activate the clone, and in its Python Command Prompt run:  "
+    "pip install equipop")
 
 
-@contextlib.contextmanager
-def _speaking(messages):
-    old = sys.stdout
-    rep = _Reporter(messages)
-    sys.stdout = rep
+def _too_old(found):
+    return (
+        f"This toolbox needs EquiPop 1.18.0 or later, but the package "
+        f"installed in this ArcGIS Pro environment is {found}, which "
+        "has no equipop.doors module. The toolbox files were replaced "
+        "and the package was not. In the Python Command Prompt of "
+        "this environment run:  pip install --upgrade equipop  "
+        "then close and reopen ArcGIS Pro.")
+
+
+def _doors(strict=True):
+    """The shared core, or a loud refusal. Imported lazily on
+    purpose: the toolbox must still OPEN in Pro when the package is
+    absent, so that the dialogs can explain themselves rather than
+    the toolbox simply failing to appear.
+
+    The two ways this goes wrong are told apart, because they have
+    different fixes and the wrong message sends people hunting: the
+    package may be missing entirely, or it may be present but older
+    than this toolbox - the likely case, since the package is
+    upgraded by pip while the toolbox files are replaced by hand."""
     try:
-        yield
-    finally:
-        rep.flush()
-        sys.stdout = old
+        import equipop.doors as D
+    except Exception:
+        try:
+            import equipop
+            found = getattr(equipop, "__version__", "of unknown version")
+        except Exception:
+            found = None
+        if strict:
+            raise arcpy.ExecuteError(
+                _MISSING if found is None else _too_old(found))
+        return None
+    if not getattr(_doors, "_checked", False):
+        try:
+            D.require(_CONTRACT,
+                      door="this EquiPop toolbox (EquiPop.pyt)",
+                      files="EquiPop.pyt and its two .pyt.xml files")
+        except D.DoorError as e:
+            if strict:
+                raise arcpy.ExecuteError(str(e))
+            return None
+        _doors._checked = True
+    return D
+
+
+def _channel(messages):
+    from equipop.doors.report import Channel
+    return Channel.from_arcpy(messages)
+
+
+def _speaking(messages):
+    """Everything the package prints inside this block reaches Pro's
+    message pane, line by line (v1.16.4: a 94-minute run was
+    completely silent)."""
+    from equipop.doors.report import speaking
+    _doors()
+    return speaking(_channel(messages))
 
 
 def _hms(sec):
-    sec = float(sec)
-    if sec < 60:
-        return f"{sec:.1f} s"
-    m, s = divmod(int(round(sec)), 60)
-    h, m = divmod(m, 60)
-    return f"{h} h {m:02d} min {s:02d} s" if h else f"{m} min {s:02d} s"
+    from equipop.doors.report import hms
+    return hms(sec)
 
 
-@contextlib.contextmanager
 def _stage(messages, label, store=None):
     """Time one stage and report it, so a long run says WHERE the
     time went instead of only how long it took in total."""
-    t0 = time.time()
-    yield
-    dt = time.time() - t0
-    if store is not None:
-        store.append((label, dt))
-    messages.addMessage(f"[time] {label}: {_hms(dt)}")
+    from equipop.doors.report import stage
+    return stage(_channel(messages), label, store)
 
 
 _COORD_AUTO = "Auto (geometry if present)"
@@ -115,8 +143,8 @@ _MEASURE_KEY = {"variance": "var"}
 # ----------------------------------------------------------- shared glue
 def _field(name):
     """ArcGIS-safe field name."""
-    out = "".join(ch if ch.isalnum() else "_" for ch in str(name))
-    return (out[:60] or "X")
+    from equipop.doors.fields import safe_field_name
+    return safe_field_name(name)
 
 
 def _agg_key(text):
@@ -199,15 +227,8 @@ def _utm_from_lonlat(lon, lat):
     """Fitting metric CRS straight from coordinate VALUES - the table
     path has no CRS object to ask (field-test gap: degree tables were
     refused without a suggestion)."""
-    try:
-        lon, lat = float(lon), float(lat)
-    except (TypeError, ValueError):
-        return "a metric CRS"
-    if 10.0 <= lon <= 25.0 and 55.0 <= lat <= 70.0:
-        return "SWEREF 99 TM (EPSG:3006)"
-    z = min(max(int((lon + 180.0) // 6) + 1, 1), 60)
-    return (f"WGS 84 / UTM zone {z}{'N' if lat >= 0 else 'S'} "
-            f"(EPSG:{(32600 if lat >= 0 else 32700) + z})")
+    from equipop.doors.loader import metric_crs_hint
+    return metric_crs_hint(lon, lat)
 
 
 def _sample_lonlat(value, gx, gy):
@@ -224,24 +245,14 @@ def _sample_lonlat(value, gx, gy):
 def _resolve_xy_fields(value, xf, yf, context):
     """User choice first; package guess second; loud advice third.
     Never tells the user to rename columns."""
-    from equipop.io import guess_xy_fields
-    if xf and yf:
-        return xf, yf, "chosen"
-    gx, gy, deg = guess_xy_fields(_table_fields(value), context)
-    if deg:
-        lon, lat = _sample_lonlat(value, gx, gy)
-        raise arcpy.ExecuteError(
-            f"{context}: '{gx}'/'{gy}' look like DEGREES (lon/lat) - "
-            f"EquiPop needs metres. Project the data first - for "
-            f"these coordinates {_utm_from_lonlat(lon, lat)} fits "
-            "(add the table as XY layer, then Project). A table "
-            "cannot be auto-projected: its numbers carry no CRS.")
-    if gx and gy:
-        return gx, gy, "guessed"
-    raise arcpy.ExecuteError(
-        f"{context}: could not guess the coordinate columns among "
-        f"{_table_fields(value)} - pick the X field (easting) and "
-        "Y field (northing) in the dialog. No renaming needed.")
+    D = _doors()
+    from equipop.doors.loader import resolve_xy_fields
+    try:
+        return resolve_xy_fields(
+            _table_fields(value), xf, yf, context,
+            sample_lonlat=lambda gx, gy: _sample_lonlat(value, gx, gy))
+    except D.DoorError as e:
+        raise arcpy.ExecuteError(str(e))
 
 
 def _check_fields_exist(layer, fields, context):
@@ -249,17 +260,16 @@ def _check_fields_exist(layer, fields, context):
     number (a k value in a field box - the '55' field-test error) or
     a leftover name from another layer is caught here with advice,
     instead of arcpy's bare "Cannot find field"."""
+    D = _doors()
+    from equipop.doors.loader import check_fields_exist
     try:
-        have = set(_table_fields(layer))
+        have = list(_table_fields(layer))
     except Exception:
         return
-    bad = [f for f in fields if f and f not in have]
-    if bad:
-        raise arcpy.ExecuteError(
-            f"{context}: {', '.join(repr(b) for b in bad)} "
-            f"{'is not a field' if len(bad) == 1 else 'are not fields'}"
-            " of this layer - pick from the dropdown. (Numbers like k "
-            "or radii belong in their own boxes, not in a field box.)")
+    try:
+        check_fields_exist(have, fields, context)
+    except D.DoorError as e:
+        raise arcpy.ExecuteError(str(e))
 
 
 def _numeric(arr, field, context):
@@ -285,7 +295,12 @@ def _numeric(arr, field, context):
 def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
                 context="input", auto_project=False):
     """THE SHARED LOADER (v1.16): one behaviour for both machines.
-    Returns (kind, data dict incl. 'x'/'y', oid name or None)."""
+    Returns the door contract object (equipop.doors.loader.
+    PointInput), which still unpacks as (kind, data dict incl.
+    'x'/'y', oid name or None) - so every door hands the engines the
+    same thing while the reading stays arcpy's business."""
+    _doors()
+    from equipop.doors.loader import PointInput
     desc = arcpy.Describe(layer)
     kind = _kind(desc)
     src = coord_source or _COORD_AUTO
@@ -345,7 +360,9 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
             f"({len(data['x'])} points). Working CRS: "
             f"{_read_input.last_crs_text} - all distances are metres "
             "in this projection.")
-        return "point", data, oid
+        return PointInput("point", data, oid,
+                          crs_text=_read_input.last_crs_text,
+                          note="feature geometry")
 
     # tabular path (a real table, or the user insisted on fields)
     xf, yf, how = _resolve_xy_fields(layer, xf, yf,
@@ -362,7 +379,11 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     messages.addMessage(
         f"Coordinates from attribute fields: X = '{xf}', Y = '{yf}'"
         f" ({how}). X is the easting, Y the northing.")
-    return ("table" if kind == "table" else "point"), data, oid
+    return PointInput("table" if kind == "table" else "point",
+                      data, oid,
+                      crs_text=getattr(_read_input, "last_crs_text",
+                                       "unknown"),
+                      note=f"attribute fields ({how})")
 
 
 def _ref(value):
@@ -536,46 +557,23 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
         "point/line/polygon layer, a table, or a raster.")
 
 
-def _fmt_num(v):
-    f = float(v)
-    return str(int(f)) if f == int(f) else str(f)
-
-
 def _predict_result_fields(engine, k_text, r_text, tau_text,
                            treat_names, value_fields, stats_wanted,
                            decaying, efforting):
     """The columns a run WILL produce (validated against dispatch in
     the simulator suite) - so shapefile targets can be refused
-    BEFORE the computation, not after (field-test finding A4)."""
-    from equipop.stats import stat_prefix
-    ks = [t for t in (k_text or "").split()]
-    rs = [_fmt_num(t) for t in (r_text or "").split()]
-    taus = [_fmt_num(t) for t in (tau_text or "").split()]
-    names = []
-    if engine == "counts":
-        sufs = [k for k in ks] + [f"r{r}" for r in rs]
-        if efforting:
-            sufs = [k for k in ks] + [f"tau{t}" for t in taus]
-            names += [f"Rounds_{k}" for k in ks]
-        for suf in sufs:
-            names.append(f"N_{suf}")
-            for f in treat_names:
-                names += [f"T_{f}_{suf}", f"R_{f}_{suf}"]
-        names += [f"Dist_{k}" for k in ks]
-        if decaying:
-            names.append("ND_inf")
-            for f in treat_names:
-                names += [f"TD_{f}_inf", f"RD_{f}_inf"]
-    else:
-        sufs = [k for k in ks] + [f"r{r}" for r in rs]
-        names += [f"N_{s}" for s in sufs] + ["N_local"]
-        names += [f"Dist_{k}" for k in ks]
-        for f in value_fields:
-            for s in sufs:
-                names.append(f"Nv_{f}_{s}")
-                for st in stats_wanted:
-                    names.append(f"{stat_prefix(st)}_{f}_{s}")
-    return [_field(n) for n in names]
+    BEFORE the computation, not after (field-test finding A4).
+
+    Runs at DIALOG time as well as at run time. With the package
+    missing there is nothing to predict from, and an empty list
+    simply means no pre-check; the run itself still refuses loudly.
+    A half-working dialog is more use than one that will not open."""
+    if _doors(strict=False) is None:
+        return []
+    from equipop.doors.fields import predict_result_fields
+    return predict_result_fields(engine, k_text, r_text, tau_text,
+                                 treat_names, value_fields,
+                                 stats_wanted, decaying, efforting)
 
 
 def _shorten_names(names, cap: int = 10):
@@ -584,37 +582,17 @@ def _shorten_names(names, cap: int = 10):
     that distinguish results - and uniquifies by construction, so
     P25_income_400 and P75_income_400 can never collapse into one
     field. Returns {original: short}."""
-    out, used = {}, set()
-    for n in names:
-        parts = n.split("_")
-        head = parts[0][:4]
-        tail = parts[-1][:4] if len(parts) > 1 else ""
-        mid = "".join(p[:2] for p in parts[1:-1])[:cap]
-        base = (head + mid + tail)[:cap] or "F"
-        cand, i = base, 0
-        while cand in used:
-            i += 1
-            suf = str(i)
-            cand = (base[:cap - len(suf)] + suf)
-        used.add(cand)
-        out[n] = cand
-    return out
+    from equipop.doors.fields import shorten_names
+    return shorten_names(names, cap)
 
 
 def _refuse_shp_overflow(target, names, messages=None):
     """dBASE (shapefile) field names cap at 10 characters - refuse
     with the fix instead of failing after minutes of compute."""
-    if not (target and str(target).lower().endswith(".shp")):
+    if _doors(strict=False) is None:
         return None
-    bad = sorted({n for n in names if len(n) > 10})
-    if not bad:
-        return None
-    txt = (f"The target is a SHAPEFILE and shapefile field names are "
-           f"capped at 10 characters - these results cannot fit: "
-           f"{', '.join(bad[:5])}{'...' if len(bad) > 5 else ''}. "
-           "Write to a NEW feature class in a file geodatabase "
-           "(unlimited names) or, for tables, a .csv output.")
-    return txt
+    from equipop.doors.fields import refuse_short_target
+    return refuse_short_target(target, names)
 
 
 def _categories_from_table(rows, cat_values, messages):

@@ -9,16 +9,16 @@ the manual's version history, and struck from this list.
 | ~~1~~ | DONE v0.7 | Seeded tie-break orientation: a user-settable seed determining the within-ring visiting order in `tie_mode="sequential"`, with the seed written to the metadata log (`settings.seed`) | Ring mode unaffected (order-free by design). Makes sequential mode fully reproducible. |
 | ~~2~~ | DONE v0.7 | Metadata log file — full design agreed, see below | Implement as one batch; pairs with #1. |
 | ~~3~~ | DONE v0.7 (convert path; 6-neighbour hex friction remains) | Hexagonal grids: convert or simply import point/raster data as hexagons (X/Y/Z axial or cube coordinates) | From the original spec. Design thoughts below. |
-| 30 | open v1.16.8 | Category & friction VALUE TABLES in the Pro dialogs (John's Extract-Multi-Values pattern): a grid with *value* (dropdown built from the field's own distinct values), *group name*, *in population?* - retires the `;`/`,`/`:` syntax entirely and expresses "in a group but not in the population" (services near residents). Same grid for MULTI-SOURCE friction: source + friction field per row, so lines + lake + raster finally coexist and the overlap rule becomes reachable at all | Field-found: `shop, school` parsed as ONE group matching zero rows; also today's only way to combine barriers is a single layer |
-| 31 | open v1.16.8 | Persons-versus-places rule for category groups: with a population field set, N counts PERSONS while category flags count ROWS, so R = places / persons silently. Add an explicit control (default: weight categories by the population field) and state it in the messages and manifest | Field-found: T=4 places over N=140 persons |
-| 32 | open v1.16.8 | A group/category matching ZERO rows must be a dialog-time REFUSAL naming the field's actual values, not an info line among fourteen | Silent columns of zeros are exactly the wrongness EquiPop refuses elsewhere |
-| 33 | open v1.16.8 | Collapsible dialog sections via each parameter's `category` property (Coordinates / Neighbourhood / Groups / Barriers and terrain / Output / Advanced) + a full label pass saying what each box DOES | 29 parameters presented at once; John: "they were not fully clear to me watching the menu" |
+| ~~30~~ | DONE v1.17 | Category & friction VALUE TABLES in the Pro dialogs (John's Extract-Multi-Values pattern): a grid with *value* (dropdown built from the field's own distinct values), *group name*, *in population?* - retires the `;`/`,`/`:` syntax entirely and expresses "in a group but not in the population" (services near residents). Same grid for MULTI-SOURCE friction: source + friction field per row, so lines + lake + raster finally coexist and the overlap rule becomes reachable at all | Field-found: `shop, school` parsed as ONE group matching zero rows; also today's only way to combine barriers is a single layer |
+| ~~31~~ | DONE v1.17 | Persons-versus-places rule for category groups: with a population field set, N counts PERSONS while category flags count ROWS, so R = places / persons silently. Add an explicit control (default: weight categories by the population field) and state it in the messages and manifest | Field-found: T=4 places over N=140 persons |
+| ~~32~~ | DONE v1.17 | A group/category matching ZERO rows must be a dialog-time REFUSAL naming the field's actual values, not an info line among fourteen | Silent columns of zeros are exactly the wrongness EquiPop refuses elsewhere |
+| ~~33~~ | DONE v1.17 | Collapsible dialog sections via each parameter's `category` property (Coordinates / Neighbourhood / Groups / Barriers and terrain / Output / Advanced) + a full label pass saying what each box DOES | 29 parameters presented at once; John: "they were not fully clear to me watching the menu" |
 | 34 | open v1.16.8 | Tool help page: summary/usage sections render empty in Pro. Suspect `SyncOnce=TRUE` letting Pro regenerate over the authored text, plus missing `datatype` attributes and plain text where escaped HTML is expected. The per-parameter comments (dialogReference) DO work | Needs one field cycle to confirm |
-| 35 | open v1.16.8 | Individual / local TAU (effort budget from a field or a single value), mirroring variable-bandwidth decay. Easier than decay: the traversal already stops at a budget, so a per-origin budget is just a different stopping value. Naming: N_tau_<field> since the column can no longer carry the number | John: tau is the HARD prism boundary, half-life the soft one - both parameterisable per person is a time-geographic instrument |
-| 36 | open v1.16.8 | Variable-bandwidth decay (the 1.17 theme): half-life from a field or self-calibrated from Dist_k (urban form sets the bandwidth); bucket into quantile bins so cost is dominated by the largest bin; combine several potentials via log-odds / geometric mean of half-lives, all three behind one switch and compared on Gridby | John's ladder: 1 no decay, 2 one parameter, 3 group potentials (Hägerstrand prisms), 4 form-derived, 5 principled merger |
-| 37 | open v1.16.8 | Seed exposure + manifest entry wherever permutations happen (morans_i, sequential tie-break). Engines are otherwise deterministic - note in the manual that this holds as long as summation order does | |
+| ~~35~~ | DONE v1.17 | Individual / local TAU (effort budget from a field or a single value), mirroring variable-bandwidth decay. Easier than decay: the traversal already stops at a budget, so a per-origin budget is just a different stopping value. Naming: N_tau_<field> since the column can no longer carry the number | John: tau is the HARD prism boundary, half-life the soft one - both parameterisable per person is a time-geographic instrument |
+| ~~36~~ | DONE v1.17 | Variable-bandwidth decay (the 1.17 theme): half-life from a field or self-calibrated from Dist_k (urban form sets the bandwidth); bucket into quantile bins so cost is dominated by the largest bin; combine several potentials via log-odds / geometric mean of half-lives, all three behind one switch and compared on Gridby | John's ladder: 1 no decay, 2 one parameter, 3 group potentials (Hägerstrand prisms), 4 form-derived, 5 principled merger |
+| ~~37~~ | DONE v1.17 | Seed exposure + manifest entry wherever permutations happen (morans_i, sequential tie-break). Engines are otherwise deterministic - note in the manual that this holds as long as summation order does | |
 | 38 | open v1.16.8 | Continental segmentation wired into the GUI: origin tiling (bigrun, already built and tested, currently unreachable) with output folder + resume; halo-based full partitioning only if destinations stop fitting, with the halo checked against Dist_k and widened for the origins that touched it; merge on an explicit EQP_ID, never OID (ArcGIS renumbers OIDs on copy) | John's B1-10/C1-2 sketch |
-| 39 | open v1.16.8 | Shared core ahead of the QGIS/R/SPSS doors: one help-text source (package-side, read by both the ArcGIS XML generator and QGIS's shortHelpString), one reporter object, one loader contract. Then QGIS Processing plugin (simulated PyQGIS like the fake arcpy), R via reticulate (file bridge as documented fallback), SPSS via its Python integration. Gridby's answer key becomes the cross-door conformance suite | The ArcGIS glue got fat because three things were reinvented per door |
+| 39 | PART 1 DONE v1.18.0 | ~~Shared core ahead of the QGIS/R/SPSS doors: one help-text source, one reporter object, one loader contract~~ - DELIVERED as `equipop.doors` (help / report / fields / loader), ArcGIS re-pointed, 154 tests green. REMAINING: QGIS Processing plugin (simulated PyQGIS like the fake arcpy), R via reticulate (file bridge as documented fallback), SPSS via its Python integration. Gridby's answer key becomes the cross-door conformance suite | The ArcGIS glue got fat because three things were reinvented per door |
 | 40 | open v1.16.8 | Gridby README: Test E must say to clear BOTH the population field and the group count fields (the key assumes one row = one person) | Documentation error found in the field |
 | 4 | open | Heights / third dimension (D-dimensions) for grids AND hexagons | No suitable test data yet — design can precede data. Thoughts below. |
 
@@ -532,3 +532,84 @@ small batch after.
   bandwidth and individual tau), then the shared-core refactor and
   the QGIS door (39). Stata-UX round (Umut, on his return), #21d
   LISA/FCA tools, writing ch14+15+17.
+
+## v1.18.0 (the shared core - BACKLOG 39, part 1 of 3)
+- ~~39, part 1~~ DONE. `equipop/doors/` now holds what every door was
+  rebuilding: `help.py` (the text beside every box, keyed by
+  parameter name), `report.py` (Channel + Reporter + stage: the
+  package's printed voice into arcpy messages / QGIS feedback /
+  console / silence), `fields.py` (predicted result names, 10-char
+  shortening, the refusal - with the roomy container as an argument
+  so QGIS says GeoPackage where Pro says file geodatabase),
+  `loader.py` (PointInput, the coordinate rules, the projection
+  hint, and DoorError). ArcGIS re-pointed with behaviour unchanged;
+  114 existing tests green untouched + 40 new door-blind ones.
+- Contract check added: each door declares `_CONTRACT`, the package
+  refuses a mismatch by name and says which half to replace. Also
+  closes an old rough edge - a missing package used to give a bare
+  ModuleNotFoundError mid-run; it now gives the pip line.
+- REMAINING in 39: (2) the QGIS Processing plugin against a
+  simulated PyQGIS, the way fake arcpy works - the shared core is
+  the half of this that is now done, and `Channel.from_qgis` and
+  `refuse_short_target(container=...)` exist ready for it; (3)
+  Gridby's answer key through both doors as the conformance suite.
+  Then R (reticulate) and SPSS.
+
+### Found while doing it (not acted on)
+- 41 | open v1.18.0 | MANUAL.md had NO 1.17 row - the release went in
+  without its version row, validation record or design decisions,
+  against the standing convention. A reconstructed row was written
+  in 1.18.0 from the session handover and is marked as such; **John
+  should check it against what actually shipped.** The 1.17
+  validation record was deliberately NOT reconstructed: writing one
+  would mean claiming validation nobody performed.
+- 42 | open v1.18.0 | docs/manual/ (the illustrated ArcGIS
+  walk-through) does not describe variable-bandwidth decay at all -
+  the headline feature of 1.17. Decay gets one sentence in section 2
+  and the ND_/TD_/RD_ columns in section 7, with nothing on
+  half-life from a field or self-calibration from Dist_k. WRITING
+  session item. While there: the manual's own plain-words habit
+  ("two rulers", "doubling it quarters the work", "a finding, not a
+  nuisance") is the model the queued naming pass should copy.
+- 43 | open v1.18.0 | CITATION.cff still says `version: 1.0.0` while
+  the package is at 1.18.0. Left alone deliberately - citation
+  metadata is the author's to set, and it matters more than usual
+  ahead of the Zenodo DOI at 2.0.0.
+- 44 | open v1.18.0 | `make_help_xml.py` still writes
+  `SyncOnce=TRUE`, the suspected cause of item 34 (summary/usage
+  rendering empty in Pro). Untouched this round: it needs one field
+  cycle to confirm, and this was a refactor release. Now a one-line
+  change in a single place whenever that cycle happens.
+- 45 | open v1.18.0 | The simulated-arcpy tests write their output to
+  the Windows-style catalog paths they pretend to use, so a test run
+  on Linux leaves four literal files named `C:\Data\...csv` in the
+  repo root (and one stray figure from the Book build). Harmless,
+  untracked, and cleaned by hand this round - but they belong in
+  pytest's tmp_path, and on Windows those paths are real. Small.
+
+### 1.18.0, second pass: the source archive
+- 46 | DONE v1.18.0 | The `.tar.gz` carried the package and the test
+  CODE but not the ArcGIS toolbox, the Stata door, the fixtures its
+  own tests read, or CITATION.cff. Verified against PyPI, not
+  inferred: unpack the published equipop-1.17.3.tar.gz and 39 of its
+  41 ArcGIS tests fail immediately on the missing EquiPop.pyt. An
+  academic package also went out without its citation file.
+  Long-standing (no MANIFEST.in had ever existed) and not caused by
+  the shared core, but 1.18.0 makes it matter more: the toolbox and
+  the package are now two halves of one thing. MANIFEST.in added;
+  the Book's figures stay out because build.sh regenerates them
+  (4.2 MB of a 4.8 MB archive). Archive now 121 files, 605 KB, and
+  the whole suite - all 154 - passes from inside the unpacked
+  archive alone.
+
+## v1.18.1 (one-line fix, found from John's upgrade routine)
+- The toolbox told the wrong story for the LIKELY half of version
+  skew. John upgrades the package with pip and replaces the toolbox
+  files by hand - two steps, easily done in the wrong order or in
+  the wrong Pro environment. With a new toolbox and an old package,
+  `import equipop.doors` fails and 1.18.0 said "the EquiPop Python
+  package is not installed", sending the user to look for a package
+  sitting right there. It now tells the two cases apart: missing
+  entirely -> install; present but older -> names the version found
+  and says `pip install --upgrade equipop`. Test added and verified
+  to fail against the old message. 155 tests.

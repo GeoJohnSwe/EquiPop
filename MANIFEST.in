@@ -1,0 +1,36 @@
+# What belongs in the source archive (the .tar.gz).
+#
+# Without this file the archive carried the package and the test
+# CODE, but not: the ArcGIS toolbox, the Stata door, the test
+# fixtures those tests read, or CITATION.cff. So the tests it
+# shipped could not run, and an academic package went out without
+# its citation. Long-standing (1.17.3 on PyPI has the same gap);
+# fixed in 1.18.0, where it matters more - the toolbox and the
+# package became two halves of one thing and belong in one archive.
+
+include CITATION.cff
+include MANUAL.md
+include MANUAL_BEGINNER.md
+include MANUAL_TOPICS.md
+include BACKLOG.md
+
+# The doors that pip cannot deliver: a user installs the package,
+# then copies these onto the machine by hand.
+graft arcgis
+graft stata
+
+# Fixtures the shipped tests actually read.
+graft tests/data
+
+# Worked examples, and the Book's sources.
+graft examples
+graft docs
+
+# Never: build leftovers, the Book's compiled output, its node
+# packages, or its figures - build.sh regenerates every figure from
+# examples/cookbook_0*.py, and they were 4.2 MB of a 4.8 MB archive.
+prune docs/book/node_modules
+prune docs/book/figs
+global-exclude *.docx
+global-exclude *.pyc
+global-exclude __pycache__/*
