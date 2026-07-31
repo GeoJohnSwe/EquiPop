@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "equipop"
-version = "1.18.1"
+version = "1.19.0"
 description = "k-nearest neighbour contexts/neighbourhoods on gridded and hexagonal data: bespoke neighbourhoods, friction growth, distance decay, statistics and segregation measures"
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,3 +23,11 @@ Homepage = "https://github.com/GeoJohnSwe/EquiPop"
 
 [tool.setuptools.packages.find]
 include = ["equipop*"]
+
+# The datasets the Book teaches from must travel INSIDE the wheel.
+# Before 1.19.0 the loader reached out to ../examples and ../tests,
+# which exist in a git clone and in the source archive but never in
+# a pip install - so load("gridby"), the first line of chapter 1,
+# failed for every student who installed from PyPI.
+[tool.setuptools.package-data]
+equipop = ["data/*.csv", "data/*.xlsx"]

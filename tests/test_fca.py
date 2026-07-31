@@ -113,10 +113,10 @@ def test_real_labour_market_fixture_regression():
     build time (v1.5.1). Jobs pre-filtered to the residential bbox
     BEFORE the isometry (axis-aligned boxes are not isometry-
     invariant - learned loudly)."""
-    import os
-    base = os.path.join(os.path.dirname(__file__), "data")
-    pl = pd.read_csv(os.path.join(base, "people_syn.csv"))
-    jl = pd.read_csv(os.path.join(base, "jobs_syn.csv"))
+    # Moved into the package in 1.19.0 (a pip install could not reach
+    # tests/data); go through the loader that students use.
+    from equipop.datasets import load
+    pl, jl = load("municipality")
     assert len(jl) == 870 and np.isclose(jl.Jobs.sum(), 7142)
     segs = [{"name": "all", "demand_col": "Working_sum",
              "supply_col": "Jobs"},

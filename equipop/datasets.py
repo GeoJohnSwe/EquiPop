@@ -11,25 +11,39 @@ import numpy as np
 import pandas as pd
 
 _HERE = os.path.dirname(__file__)
-_TESTS = os.path.join(_HERE, "..", "tests", "data")
+_DATA = os.path.join(_HERE, "data")   # ships in the wheel
 
 
 def load(name: str, **kw):
     if name == "gridby":
-        import sys
-        sys.path.insert(0, os.path.join(_HERE, "..", "examples"))
-        from make_gridby import gridby
+        from equipop.gridby import gridby
         return gridby(**kw)
     if name == "municipality":
-        p = pd.read_csv(os.path.join(_TESTS, "people_syn.csv"))
-        j = pd.read_csv(os.path.join(_TESTS, "jobs_syn.csv"))
+        p = pd.read_csv(os.path.join(_DATA, "people_syn.csv"))
+        j = pd.read_csv(os.path.join(_DATA, "jobs_syn.csv"))
         print("[datasets] anonymised municipality pair (joint isometry; "
               "results identical to the register originals)")
         return p, j
     if name == "berlin":
-        return pd.read_excel(os.path.join(_TESTS, "berlin_example.xlsx"))
+        try:
+            return pd.read_excel(os.path.join(_DATA,
+                                              "berlin_example.xlsx"))
+        except ImportError:
+            raise ImportError(
+                "The Berlin table is an Excel file and pandas needs "
+                "openpyxl to read one. Run:  pip install openpyxl  "
+                "(EquiPop does not require it, because this is the "
+                "only dataset that needs it.)")
     if name == "stata_test":
-        return pd.read_stata(os.path.join(_HERE, "..", "stata",
-                                          "stata_test_data.dta"))
+        p = os.path.join(_HERE, "..", "stata", "stata_test_data.dta")
+        if not os.path.exists(p):
+            raise FileNotFoundError(
+                "stata_test_data.dta belongs to the Stata door and is "
+                "not shipped in the pip package - it comes with the "
+                "source archive (the .tar.gz on GitHub) and with the "
+                "repository, in stata/. The other datasets - gridby, "
+                "municipality, berlin - are installed with the "
+                "package and need no files.")
+        return pd.read_stata(p)
     raise ValueError(f"unknown dataset '{name}': gridby / municipality "
                      "/ berlin / stata_test")

@@ -19,7 +19,8 @@ include BACKLOG.md
 graft arcgis
 graft stata
 
-# Fixtures the shipped tests actually read.
+# Fixtures the shipped tests actually read. (The datasets the Book
+# uses moved into equipop/data in 1.19.0 and ride in the wheel.)
 graft tests/data
 
 # Worked examples, and the Book's sources.

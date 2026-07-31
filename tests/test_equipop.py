@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import os
 import pandas as pd
 import pytest
 
@@ -169,7 +170,10 @@ def test_hex_cube_invariant_and_center():
 
 # -------------------------------------------------------- projection
 def test_projection_and_snap_berlin():
-    df = pd.read_excel(DATA / "berlin_example.xlsx",
+    # The Book's datasets moved into the package in 1.19.0 so that a
+    # pip install can reach them; tests follow the package, not a path.
+    from equipop.datasets import _DATA
+    df = pd.read_excel(os.path.join(_DATA, "berlin_example.xlsx"),
                        sheet_name="Indata_and_generated_data", header=1)
     p = snap_to_grid(project_to_metric(df, target_epsg=25832),
                      unit_size=100)
