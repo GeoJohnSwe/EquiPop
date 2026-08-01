@@ -684,19 +684,21 @@ small batch after.
   where sys.executable cannot be the wrong interpreter).
 
 ### Open, in priority order (John's arrangement, 1.19 session)
-- 50 | open | QGIS covers k and radius only. Decay, barriers and
-  terrain, and the category grouping table are in the ArcGIS door
-  and not yet in QGIS. Same shared code underneath - boxes to add,
+- 50 | PARTLY DONE v1.21.0 | QGIS gained the CATEGORY TABLE (with the
+  remainder box) and DISTANCE DECAY. Still missing: BARRIERS and
+  TERRAIN, which need the friction-building path (points/paths to
+  friction, DEM slope) ported to read QGIS layers. Same engine
+  underneath. Same shared code underneath - boxes to add,
   not machinery to build. The remainder box (below) should land here
   at the same time.
-- 51 | open | THE REMAINDER BOX (agreed with John, 1.19 session):
+- ~~51~~ | DONE v1.21.0 | THE REMAINDER BOX (agreed with John, 1.19 session):
   one box under the category table - "Put every other value in this
   group:" - so a few values can be named 'service' and everything
   else falls into 'other', in the population. Today the only way is
   to untick every 'In population?' box, which reads backwards. Build
   the rule in the engine and the help in the shared core so BOTH
   doors get it.
-- 52 | open | GeoPackage attribute table does not refresh after a
+- 52 | PARTLY v1.21.0 (write path fixed; refresh unverified) | GeoPackage attribute table does not refresh after a
   run (John, field, 1.19 session). The toolbox writes with
   ExtendTable and declares NO derived output, so Pro keeps its
   cached schema; removing and re-adding the layer forces a re-read,
@@ -714,3 +716,26 @@ small batch after.
   and the mechanism is proved, this is worth doing.
 - 38 | open | Continental tiling into the GUI. Paused by John.
 - 45 | open | Tests leave literal C:\Data\... files in the repo root.
+
+
+## v1.21.0 (Malta: three GeoPackage findings + the remainder box)
+- ~~46 (Malta a)~~ category dropdown: read through the layer OBJECT,
+  not a path; report success and failure out loud.
+- ~~(Malta b)~~ ExtendTable unsupported on GeoPackage -> _add_columns
+  falls back to AddField + UpdateCursor and explains the trade.
+- ~~(Malta c)~~ CopyFeatures renames the identifier (fid ->
+  OBJECTID); the values now travel with the copy.
+- tests/test_geopackage.py + a GeoPackage-shaped simulator fixture
+  (oid_names, no_extend, a dataSource that refuses to reopen). All
+  three field failures reproduce here first, then pass.
+- ~~51~~ the remainder box, in the engine so both doors share it.
+- Missing-data rules written down for BOTH machines (John's ruling):
+  group counts -> zero; continuous values -> excluded, Nv reports.
+- QGIS: category table + remainder + decay. Fixed: the QGIS reader
+  forced text columns to NaN.
+- 53 | open | The barrier path still converts layers via _ref() and
+  would hit the same GeoPackage wall as the dropdown did. Latent,
+  not yet reported - a barrier from a .gpkg has not been tried.
+- 54 | open | Gridby has NO missing data, so the missing-data rules
+  are tested only on small fixtures. A Gridby variant with holes
+  punched in it would test the documented rule properly.

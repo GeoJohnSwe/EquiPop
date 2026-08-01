@@ -187,14 +187,26 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
 
     @staticmethod
     def _column(feats, names, name):
+        """Numbers as numbers, text as text.
+
+        Forcing everything to float turned a category field of POI
+        types into a column of NaN, so every group matched nothing -
+        found while adding the category table, and invisible until a
+        TEXT field was read. Coordinates and counts are numeric;
+        `fclass` is not, and must survive as itself.
+        """
         i = names.index(name)
-        out = np.empty(len(feats), float)
-        for j, f in enumerate(feats):
-            v = f.attributes()[i]
+        raw = [f.attributes()[i] for f in feats]
+        out = np.empty(len(raw), float)
+        for j, v in enumerate(raw):
             try:
                 out[j] = float(v)
             except (TypeError, ValueError):
                 out[j] = np.nan
+        if len(raw) and np.isnan(out).all() and any(
+                v is not None and str(v).strip() for v in raw):
+            return np.asarray([("" if v is None else str(v).strip())
+                               for v in raw])
         return out
 
     # -- writing -------------------------------------------------

@@ -12,6 +12,7 @@ class should not get different numbers from the same town.
 import os
 import sys
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -195,3 +196,74 @@ def test_the_pane_hears_the_engines_own_voice():
     said = " ".join(fb.info)
     assert "[fast]" in said or "[cells]" in said
     assert "[time] calculating" in said
+
+
+# ------------------------------------------- categories & decay
+def test_a_text_category_field_survives_being_read():
+    """Forcing every column to a number turned a POI-type field into
+    NaN, so every group matched nothing. Numbers as numbers, text as
+    text."""
+    t = pd.DataFrame({"x": [0.0, 100, 200, 300], "y": [0.0] * 4,
+                      "fclass": ["cafe", "bench", "cafe", "atm"]})
+    src = qgis_stub.source_from(t)
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    pts = alg.read_points(src, QgsProcessingFeedback())
+    assert list(pts.data["fclass"]) == ["cafe", "bench", "cafe", "atm"]
+
+
+def _poi_table():
+    return pd.DataFrame({
+        "x": np.linspace(0, 1100, 12), "y": np.zeros(12),
+        "fclass": ["fastfood", "restaurant", "bench", "library",
+                   "cafe", "bench", "fastfood", "atm",
+                   "restaurant", "postbox", "cafe", "bench"]})
+
+
+CAT_ROWS = ["fastfood", "fastfood", "1",
+            "restaurant", "eating", "1",
+            "cafe", "eating", "1"]
+
+
+def test_the_remainder_can_be_kept_out_of_the_population():
+    """Fast food per EATING PLACE: only the values named are the
+    population, so benches and postboxes are not in the denominator."""
+    out, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
+                  k="4", catfield="fclass", cattable=CAT_ROWS,
+                  restgroup="other", restinpop=False)
+    # 6 eating places, 2 of them fast food
+    assert out["R_fastfood_4"].max() == pytest.approx(0.5)
+
+
+def test_the_remainder_can_be_counted_as_population():
+    """Fast food per POI: John's Europe-wide run. Everything present
+    is in the denominator, so the same data gives a lower share."""
+    out, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
+                  k="4", catfield="fclass", cattable=CAT_ROWS,
+                  restgroup="other", restinpop=True)
+    assert out["R_fastfood_4"].max() < 0.5
+    assert "T_other_4" in out.columns
+
+
+def test_the_two_denominators_really_do_differ():
+    """The whole reason the tick exists: same data, same rows, two
+    different and both-correct answers."""
+    src = qgis_stub.source_from(_poi_table())
+    strict, _ = _run(CountsAndShares, src, k="4", catfield="fclass",
+                     cattable=CAT_ROWS, restgroup="other",
+                     restinpop=False)
+    broad, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
+                    k="4", catfield="fclass", cattable=CAT_ROWS,
+                    restgroup="other", restinpop=True)
+    assert strict["R_fastfood_4"].mean() > broad["R_fastfood_4"].mean()
+
+
+def test_decay_is_explained_in_plain_numbers():
+    """The naming pass, applied: say what the curve DOES before what
+    it is called."""
+    out, fb = _run(CountsAndShares, qgis_stub.gridby_source(),
+                   pop="count_all", k="400", model=[1], halflife=500.0)
+    said = " ".join(fb.info)
+    assert "halves every 500 m" in said
+    assert "at 1000 m a quarter" in said
+    assert "ND_inf" in out.columns

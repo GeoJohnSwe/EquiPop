@@ -53,7 +53,9 @@ def _install_fake_arcpy(table: pd.DataFrame):
             shp = ("Table" if key.endswith(".csv")
                    or key in state.get("aux_tables", {}) else "Point")
         d = types.SimpleNamespace(
-            OIDFieldName="OBJECTID", dataType="FeatureLayer",
+            OIDFieldName=state.get("oid_names", {}).get(key,
+                                                        "OBJECTID"),
+            dataType="FeatureLayer",
             catalogPath=state.get("catalog_paths", {}).get(
                 key, f"memory/{key}"),
             spatialReference=_SR(type=state.get("crs_types", {})
@@ -139,11 +141,24 @@ def _install_fake_arcpy(table: pd.DataFrame):
         return out
 
     def ExtendTable(_layer, key, array, akey):
+        # GeoPackage refuses this outright (field, Malta, v1.20):
+        # "The operation is not supported by this implementation."
+        if str(_layer) in state.get("no_extend", set()):
+            raise RuntimeError(
+                "The operation is not supported by this "
+                "implementation.")
         t = _tab().set_index(key)
         add = pd.DataFrame(array).set_index(akey)
         for c in add.columns:
             t[c] = add[c]
         _settab(t.reset_index())
+
+    def AddField(_layer, name, ftype, *a, **kw):
+        t = _tab()
+        if name not in t.columns:
+            t[name] = np.nan
+            _settab(t)
+        state.setdefault("added_fields", []).append(str(name))
 
     class ExecuteError(Exception):
         pass
@@ -205,14 +220,33 @@ def _install_fake_arcpy(table: pd.DataFrame):
         state["table"] = state["table"].drop(columns=list(fields))
 
     def CopyFeatures(_layer, out):
-        state.setdefault("copies", {})[out] = state["table"].copy()
+        # A real copy carries the ROWS across but not the identifier's
+        # NAME: a GeoPackage calls it 'fid', a geodatabase 'OBJECTID'
+        # (field, Malta, v1.20 - this is what made KeyError 'OBJECTID'
+        # possible). The simulator must rename it too, or the bug is
+        # invisible here.
+        t = state["table"].copy()
+        src_oid = state.get("oid_names", {}).get(str(_layer),
+                                                 "OBJECTID")
+        dst_oid = state.get("oid_names", {}).get(str(out), "OBJECTID")
+        if src_oid != dst_oid and src_oid in t.columns:
+            t = t.rename(columns={src_oid: dst_oid})
+        state.setdefault("copies", {})[out] = t
         state["active_copy"] = out          # results now target the copy
 
     mgmt.DeleteField = DeleteField
     mgmt.CopyFeatures = CopyFeatures
+    mgmt.AddField = AddField
 
     def TableToNumPyArray(table, fields, skip_nulls=False,
                           null_value=np.nan):
+        # A GeoPackage's dataSource is a connection DESCRIPTION, and
+        # arcpy refuses to reopen it (field, Malta, v1.20). The
+        # simulator refuses it too, or the door can quietly pass a
+        # path that only fails on a real machine.
+        key = str(table)
+        if key.startswith("Instance=") or ",Dataset=" in key:
+            raise RuntimeError(f"cannot open '{key}'")
         bt = _df_for(table)
 
         def _dt(f):

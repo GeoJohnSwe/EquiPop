@@ -55,6 +55,21 @@ HELP = {
                 "runs roughly four times faster, with a difference "
                 "far below any sampling error. The actual distance "
                 "in metres is reported in the messages.",
+    "restgroup":
+        "Optional. Name only the values you care about in the table "
+        "above, then type a name here - say 'other' - and EVERY "
+        "remaining value of the category field joins that group "
+        "automatically. With 130 POI types this is the difference "
+        "between five rows and a hundred and thirty.",
+    "restinpop":
+        "This tick decides what the shares are shares OF, so it is "
+        "worth a moment. TICKED: the other values count as "
+        "population, so 'fast food' is measured against everything "
+        "present - benches and postboxes included. UNTICKED: only "
+        "the values you named are population, so 'fast food' is "
+        "measured against the eating places you listed. Both are "
+        "real questions and they look identical on screen; pick the "
+        "denominator you mean.",
     "cattable": "One row per category value: which group it joins "
                 "(leave blank for none) and whether it counts as "
                 "population. Rows sharing a group name merge into "

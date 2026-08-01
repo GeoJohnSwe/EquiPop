@@ -662,6 +662,59 @@ def _collect_barriers(rows, agg, unit, main_sr, messages):
     return out
 
 
+def _add_columns(layer, oid, sub, fresh, messages):
+    """Add result columns to a layer, whichever way the target allows.
+
+    The fast way is one bulk call (ExtendTable). A file geodatabase
+    and a shapefile both support it; a GEOPACKAGE does not, and says
+    so with "The operation is not supported by this implementation"
+    (field, Malta, v1.20). That arrived as a raw traceback, which is
+    exactly what this project's dialogs are not supposed to do.
+
+    So: try the fast way, and if the target has no such thing, add
+    the fields and fill them row by row instead. Slower, works
+    everywhere, and it explains which route it took.
+    """
+    try:
+        arcpy.da.ExtendTable(layer, oid, sub, str(oid))
+        return "bulk"
+    except RuntimeError as exc:
+        if "not supported" not in str(exc).lower():
+            raise
+    messages.addMessage(
+        "This target does not support the fast bulk write (a "
+        "GeoPackage does not have it), so the results are written "
+        "row by row instead. Same numbers, slower - a large layer "
+        "will take noticeably longer. A file geodatabase supports "
+        "the fast route.")
+    for name in fresh:
+        try:
+            arcpy.management.AddField(layer, name, "DOUBLE")
+        except Exception as exc:
+            raise arcpy.ExecuteError(
+                f"Could not add the result field '{name}' to the "
+                f"target ({exc}). Write to a NEW feature class in a "
+                "file geodatabase instead - that needs no change to "
+                "the input.")
+    pos = {int(r): i for i, r in enumerate(sub[str(oid)])}
+    try:
+        with arcpy.da.UpdateCursor(layer, [str(oid)] + fresh) as cur:
+            for row in cur:
+                i = pos.get(int(row[0]))
+                if i is None:
+                    continue
+                for j, nm in enumerate(fresh, start=1):
+                    row[j] = float(sub[nm][i])
+                cur.updateRow(row)
+    except RuntimeError as exc:
+        raise arcpy.ExecuteError(
+            f"The result fields were added but could not be filled "
+            f"({exc}). If something is holding the data - an open "
+            "attribute table, an edit session, a sync client - close "
+            "it and run again, or choose Output = New feature class.")
+    return "row-by-row"
+
+
 def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_list=(), pct_text="", half_life=0.0,
@@ -675,6 +728,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               roundtrip=False, auto_project=False,
               short_names=False, decay_eps: float = 1e-6,
               cat_rows=None, barrier_rows=None,
+              rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
               seed=None):
@@ -707,7 +761,22 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(f"Copied input to {out_fc}; results go "
                             "there, input untouched.")
         layer = out_fc
-        oid = arcpy.Describe(layer).OIDFieldName
+        new_oid = arcpy.Describe(layer).OIDFieldName
+        # A copy carries the rows but not the identifier's NAME: a
+        # GeoPackage calls it 'fid', a file geodatabase 'OBJECTID'.
+        # The values were read under the OLD name (field, Malta,
+        # v1.20: KeyError 'OBJECTID'), so carry them across.
+        if new_oid != oid:
+            messages.addMessage(
+                f"The copy names its row identifier '{new_oid}' where "
+                f"the input called it '{oid}' - results are matched on "
+                "row order, which the copy preserves.")
+            if oid in data:
+                data[new_oid] = data[oid]
+            else:
+                data[new_oid] = np.arange(1, len(data["x"]) + 1,
+                                          dtype=np.int64)
+        oid = new_oid
 
     x, y = data["x"], data["y"]
     n_missing = int((~(np.isfinite(x) & np.isfinite(y))).sum())
@@ -725,7 +794,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                 cat_rows, known, messages)
             pop_mask, cat_treats = categories_to_binary(
                 np.asarray(data[cat_field]), groups,
-                pop_values=pop_vals or None)
+                pop_values=pop_vals or None,
+                rest_group=rest_group,
+                rest_in_population=rest_in_population)
         else:
             pop_vals = [v.strip() for v in
                         pop_values_text.replace(";", ",").split(",")
@@ -1025,7 +1096,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         keep = [str(oid)] + fresh
         sub = out[[c for c in out.dtype.names if c in keep]]
         with _stage(messages, "writing results to the layer", stages):
-            arcpy.da.ExtendTable(layer, oid, sub, str(oid))
+            _add_columns(layer, oid, sub, fresh, messages)
     after = {f.name for f in arcpy.ListFields(layer)}
     missing = [c for c in names.values() if c not in after]
     where = _catalog_of(layer) or str(layer)
@@ -1138,27 +1209,53 @@ def _vt_rows(param):
     return [r for r in out if any(r)]
 
 
-def _distinct_values(layer, field, cap: int = 200):
+def _distinct_values(layer, field, cap: int = 200, messages=None):
     """The values a category field actually holds - so the dialog can
-    OFFER them instead of asking the user to spell them (v1.17)."""
+    OFFER them instead of asking the user to spell them (v1.17).
+
+    v1.20.1, Malta: a GeoPackage layer's own dataSource is a
+    connection DESCRIPTION - "Instance=...,Dataset=main.%pois" - and
+    arcpy will not reopen it, so turning the layer into a path
+    emptied this list and the dropdown silently never appeared. Every
+    other read in the run passes the layer OBJECT straight through,
+    which works; this one now does the same, and falls back to a path
+    only if the object is refused. It also SAYS when it fails, rather
+    than returning an empty list and leaving the box looking broken.
+    """
     if not (layer is not None and field):
         return []
-    try:
-        arr = arcpy.da.TableToNumPyArray(_ref(layer), [field],
-                                         skip_nulls=False,
-                                         null_value=-9999)
-        vals = []
-        seen = set()
+    tried, last = [], None
+    for cand in (layer, str(layer), _ref(layer)):
+        if cand is None or cand in tried:
+            continue
+        tried.append(cand)
+        try:
+            arr = arcpy.da.TableToNumPyArray(cand, [field],
+                                             skip_nulls=False)
+        except Exception as exc:
+            last = exc
+            continue
+        vals, seen = [], set()
         for v in arr[field]:
             t = str(v).strip()
-            if t and t not in seen:
+            if t and t.lower() != "none" and t not in seen:
                 seen.add(t)
                 vals.append(t)
             if len(vals) >= cap:
                 break
+        if messages is not None and vals:
+            more = " (first 200)" if len(vals) >= cap else ""
+            messages.addMessage(
+                f"'{field}': {len(vals)} distinct values offered in "
+                f"the category table{more}.")
         return sorted(vals)
-    except Exception:
-        return []
+    if messages is not None:
+        messages.addWarningMessage(
+            f"Could not read the values of '{field}' from this layer, "
+            f"so the category table cannot offer them - type them by "
+            f"hand, or export the layer to a file geodatabase. "
+            f"({last})")
+    return []
 
 
 def _byname(parameters):
@@ -1440,6 +1537,12 @@ class CountsShares:
                _p("catfield", "Category field (codes or names) - "
                   "builds population and groups from its VALUES",
                   "Field", required=False),
+               _p("restgroup", "Put every OTHER value in this group "
+                  "(optional) - name only the values you care about "
+                  "above, and everything else falls here",
+                  "GPString", required=False),
+               _p("restinpop", "...and count those other values as "
+                  "population too", "GPBoolean", required=False),
                _p("cattable", "Categories: one row per value - which "
                   "group it belongs to, and whether it counts as "
                   "population", "GPValueTable", required=False),
@@ -1623,6 +1726,8 @@ class CountsShares:
                   seed=_num(pm, "seed"),
                   cat_field=_txt(pm, "catfield") or None,
                   cat_rows=_vt_rows(pm["cattable"]),
+                  rest_group=_txt(pm, "restgroup") or None,
+                  rest_in_population=_flag(pm, "restinpop"),
                   groups_count=_txt(pm, "groupscount", "persons"),
                   barrier_rows=(_vt_rows(pm["barriertable"])
                                 + [[r, None] for r in
