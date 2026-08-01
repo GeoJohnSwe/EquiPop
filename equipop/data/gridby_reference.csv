@@ -1,4 +1,4 @@
-x,y,Dist_400,Gini_count_group_400,Mean_count_group_400,Med_count_group_400,N_400,N_local,N_r800,Nv_count_group_400,R_minority_400,R_minority_r800,T_minority_400,T_minority_r800
+x,y,Dist_400,Gini_count_group_400,Mean_count_group_400,Med_count_group_400,N_400,N_local,N_r800,Nv_count_group_400,R_count_group_400,R_count_group_r800,T_count_group_400,T_count_group_r800
 50,50,728.0109889,0.3509000931,1.068965517,1,406,7,466,406,0.1256157635,0.1266094421,51,59
 50,150,700,0.3609770756,1.014527845,1,413,2,522,413,0.1162227603,0.1245210728,48,65
 50,250,632.455532,0.3689112014,1.052009456,1,423,4,581,423,0.1205673759,0.1222030981,51,71

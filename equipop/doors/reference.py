@@ -44,7 +44,12 @@ SPEC = {
     "seed": 1848,
     "unit_size": 100.0,
     "weight": "count_all",          # people represented by each row
-    "treat": {"minority": "count_group"},
+    # Named by the FIELD, because that is what a door produces: both
+    # the ArcGIS toolbox and the QGIS plugin pass {field_name: values}
+    # to the engine. A prettier label here would make a reference no
+    # door could ever match - which is exactly what happened in
+    # 1.19.0 and was caught by building the second door.
+    "treat": {"count_group": "count_group"},
     "treat_are_counts": True,       # weighted rows, so these are counts
     "k_values": [400],
     "r_values": [800.0],

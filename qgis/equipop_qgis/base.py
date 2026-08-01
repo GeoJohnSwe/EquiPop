@@ -1,0 +1,248 @@
+# -*- coding: utf-8 -*-
+"""
+base.py - what both QGIS algorithms share.
+
+Almost nothing here is new. The help text, the reporting, the result
+column names and the coordinate rules all come from equipop.doors,
+which the ArcGIS door already uses - that is what the shared core was
+built for in 1.18.0. What is genuinely QGIS's own is reading features
+from a QgsFeatureSource and writing them to a QgsFeatureSink, and
+that is all this file really adds.
+
+Parameter names deliberately MATCH the ArcGIS toolbox: `layer`, `k`,
+`pop`, `treat`, `unit` and so on. The shared help is keyed by
+parameter name, so identical names mean both doors explain
+themselves with identical words - which is the point for teaching,
+where a QGIS student and a Pro student should recognise each other's
+screens.
+"""
+from qgis.core import (QgsCoordinateReferenceSystem,
+                       QgsCoordinateTransform, QgsFeature, QgsField,
+                       QgsFields, QgsProcessingAlgorithm,
+                       QgsProcessingException, QgsProject)
+from qgis.PyQt.QtCore import QVariant
+
+import numpy as np
+
+CONTRACT = 1
+
+
+def _doors():
+    """The shared core, or a refusal that names the fix. QGIS reaches
+    the package through its own Python (the OSGeo4W shell), which is
+    a different environment from the one most users install into, so
+    this failure is worth explaining properly."""
+    try:
+        import equipop.doors as D
+    except Exception:
+        try:
+            import equipop
+            found = getattr(equipop, "__version__", "unknown")
+        except Exception:
+            raise QgsProcessingException(
+                "The EquiPop Python package is not installed in the "
+                "Python that QGIS uses. Open the OSGeo4W Shell (or "
+                "the QGIS Python console) and run:  "
+                "python -m pip install equipop")
+        raise QgsProcessingException(
+            f"This plugin needs EquiPop 1.18.0 or later; the package "
+            f"in QGIS's Python is {found}, which has no equipop.doors "
+            "module. Run:  python -m pip install --upgrade equipop")
+    try:
+        D.require(CONTRACT, door="the EquiPop QGIS plugin",
+                  files="the plugin folder")
+    except D.DoorError as e:
+        raise QgsProcessingException(str(e))
+    return D
+
+
+class EquipopAlgorithm(QgsProcessingAlgorithm):
+    """Everything both tools do the same way."""
+
+    def group(self):
+        return "EquiPop"
+
+    def groupId(self):
+        return "equipop"
+
+    def createInstance(self):
+        return type(self)()
+
+    # -- help, from the one shared source ------------------------
+    @staticmethod
+    def help_for(name):
+        from equipop.doors.help import help_for
+        return help_for(name)
+
+    def shortHelpString(self):
+        """QGIS keeps help in the algorithm class - there is no
+        sidecar XML as in Pro - but the WORDS are the same words."""
+        from equipop.doors.help import summary_for, usage_for
+        tool = self.EQP_TOOL
+        return f"<p>{summary_for(tool)}</p><p>{usage_for(tool)}</p>"
+
+    def add(self, param):
+        """Add a parameter and attach its shared explanation."""
+        try:
+            param.setHelp(self.help_for(param.name()))
+        except Exception:
+            pass
+        self.addParameter(param)
+        return param
+
+    # -- speaking ------------------------------------------------
+    @staticmethod
+    def channel(feedback):
+        from equipop.doors.report import Channel
+        return Channel.from_qgis(feedback)
+
+    # -- reading -------------------------------------------------
+    def read_points(self, source, feedback, xfield=None, yfield=None):
+        """Coordinates out of a QGIS source, by the shared rules.
+
+        Geometry wins over attributes, as in the ArcGIS door.
+        Geographic coordinates are reprojected rather than refused -
+        QGIS makes that easy (QgsCoordinateTransform), so there is no
+        reason to send the user away to project the layer first.
+        """
+        D = _doors()
+        from equipop.doors.loader import (PointInput, resolve_xy_fields,
+                                          metric_crs_hint)
+        ch = self.channel(feedback)
+        names = source.fields().names()
+        feats = list(source.getFeatures())
+        if not feats:
+            raise QgsProcessingException(
+                "The input layer has no features.")
+
+        has_geom = feats[0].hasGeometry()
+        crs = source.sourceCrs()
+        note, crs_text = "", crs.description() or crs.authid()
+
+        if has_geom:
+            tr = None
+            if crs.isGeographic():
+                target = self._metric_target(feats, crs)
+                tr = QgsCoordinateTransform(
+                    crs, target, QgsProject.instance().transformContext())
+                crs_text = target.description() or target.authid()
+                ch.info(
+                    f"The layer is in degrees ({crs.authid()}); EquiPop "
+                    f"needs metres, so coordinates are reprojected to "
+                    f"{crs_text} for this run. The layer itself is not "
+                    "changed.")
+            xs, ys = [], []
+            for f in feats:
+                g = f.geometry()
+                if g is None or g.isEmpty():
+                    xs.append(np.nan)
+                    ys.append(np.nan)
+                    continue
+                if tr is not None:
+                    g.transform(tr)
+                p = g.asPoint()
+                xs.append(p.x())
+                ys.append(p.y())
+            note = "feature geometry"
+            data = {"x": np.asarray(xs, float),
+                    "y": np.asarray(ys, float)}
+        else:
+            try:
+                xf, yf, how = resolve_xy_fields(
+                    names, xfield, yfield, "The input table")
+            except D.DoorError as e:
+                raise QgsProcessingException(str(e))
+            data = {"x": self._column(feats, names, xf),
+                    "y": self._column(feats, names, yf)}
+            note = f"attribute fields ({how}): X = '{xf}', Y = '{yf}'"
+            ch.info(f"Coordinates from {note}. X is the easting, "
+                    "Y the northing.")
+
+        for n in names:
+            if n not in data:
+                data[n] = self._column(feats, names, n)
+
+        if has_geom:
+            ch.info(f"Coordinates read from feature geometry "
+                    f"({len(feats)} points). Working CRS: {crs_text} - "
+                    "all distances are metres in this projection.")
+        self._features = feats
+        return PointInput("point" if has_geom else "table", data,
+                          id_field=None, crs_text=crs_text, note=note)
+
+    @staticmethod
+    def _metric_target(feats, crs):
+        """Name a metric CRS from the coordinates themselves, using
+        the same rule the ArcGIS door uses for tables."""
+        from equipop.doors.loader import metric_crs_hint
+        for f in feats:
+            g = f.geometry()
+            if g is not None and not g.isEmpty():
+                p = g.asPoint()
+                hint = metric_crs_hint(p.x(), p.y())
+                code = hint.split("EPSG:")[-1].rstrip(")") \
+                    if "EPSG:" in hint else "3006"
+                return QgsCoordinateReferenceSystem(f"EPSG:{code}")
+        return QgsCoordinateReferenceSystem("EPSG:3006")
+
+    @staticmethod
+    def _column(feats, names, name):
+        i = names.index(name)
+        out = np.empty(len(feats), float)
+        for j, f in enumerate(feats):
+            v = f.attributes()[i]
+            try:
+                out[j] = float(v)
+            except (TypeError, ValueError):
+                out[j] = np.nan
+        return out
+
+    # -- writing -------------------------------------------------
+    def check_target(self, parameters, names, feedback):
+        """The ten-character trap, in QGIS clothing: a shapefile
+        output caps field names at ten characters, and here a
+        GeoPackage plays the roomy role a file geodatabase plays in
+        Pro. Same shared rule, different neighbour."""
+        from equipop.doors.fields import refuse_short_target
+        target = str(parameters.get(self.OUT) or "")
+        text = refuse_short_target(target, names,
+                                   container="a GeoPackage (.gpkg)")
+        if text:
+            raise QgsProcessingException(text)
+
+    def write(self, parameters, context, source, result, order,
+              feedback):
+        """Original columns, then the results, row for row."""
+        out_fields = QgsFields()
+        for f in source.fields():
+            out_fields.append(f)
+        for name in order:
+            out_fields.append(QgsField(name, QVariant.Double))
+
+        sink, dest = self.parameterAsSink(
+            parameters, self.OUT, context, out_fields,
+            source.wkbType(), source.sourceCrs())
+        if sink is None:
+            raise QgsProcessingException(
+                "No output was created - choose a destination for the "
+                "results.")
+
+        n = len(self._features)
+        for i, f in enumerate(self._features):
+            nf = QgsFeature(out_fields)
+            if f.hasGeometry():
+                nf.setGeometry(f.geometry())
+            vals = list(f.attributes())
+            for name in order:
+                v = result[name][i]
+                vals.append(None if v is None or
+                            (isinstance(v, float) and np.isnan(v))
+                            else float(v))
+            nf.setAttributes(vals)
+            sink.addFeature(nf)
+            if n and i % 5000 == 0:
+                feedback.setProgress(100.0 * i / n)
+        self.channel(feedback).info(
+            f"Wrote {n} rows with {len(order)} new columns: "
+            + ", ".join(order))
+        return dest

@@ -19,6 +19,7 @@ import pytest
 
 import equipop
 from equipop.doors import reference as R
+from equipop.doors.reference import SPEC
 
 
 @pytest.fixture(scope="module")
@@ -50,11 +51,11 @@ def test_the_reference_covers_both_tools():
     """Counts & Shares AND Value Statistics - a door is not finished
     if only half of it is judged."""
     cols = set(R.load_reference().columns)
-    assert {"N_400", "T_minority_400", "R_minority_400",
+    assert {"N_400", "T_count_group_400", "R_count_group_400",
             "Dist_400"} <= cols                       # counts engine
     assert {"Mean_count_group_400", "Gini_count_group_400",
             "Nv_count_group_400"} <= cols             # stats engine
-    assert {"N_r800", "T_minority_r800"} <= cols      # radius path
+    assert {"N_r800", "T_count_group_r800"} <= cols      # radius path
 
 
 def test_the_shipped_reference_still_matches_the_core(fresh):
@@ -130,7 +131,7 @@ def test_the_report_reads_as_sentences(fresh):
     """A door shows this in its message pane, so it has to be
     readable by the person running it, not only by a developer."""
     bad = fresh.copy()
-    bad.loc[7, "R_minority_400"] += 0.5
+    bad.loc[7, "R_count_group_400"] += 0.5
     text = R.explain(R.compare(bad))
     assert text.startswith("Conformance FAILED")
     assert "Worst at x=" in text and "reference" in text
@@ -152,6 +153,46 @@ def test_the_reference_recovers_gridbys_planted_gradient():
     not show the west-east gradient that was planted in the town, it
     would be the wrong table however self-consistent it was."""
     ref = R.load_reference()
-    west = ref.loc[ref.x < 1000, "R_minority_400"].mean()
-    east = ref.loc[ref.x > 5000, "R_minority_400"].mean()
+    west = ref.loc[ref.x < 1000, "R_count_group_400"].mean()
+    east = ref.loc[ref.x > 5000, "R_count_group_400"].mean()
     assert west < 0.18 and east > 0.50 and east - west > 0.3
+
+
+# ------------------------------------------- the other door
+def test_the_arcgis_door_matches_the_same_reference():
+    """The claim the reference exists to support: two doors, one
+    answer. The QGIS half lives in test_qgis_door.py; this is the
+    ArcGIS half, driven through the same simulated arcpy the rest of
+    that suite uses."""
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import test_arcgis_stub as H
+    from equipop.datasets import load
+
+    p = load("gridby")["people"]
+    table = pd.DataFrame({"OBJECTID": np.arange(1, len(p) + 1),
+                          "SHAPE@X": p.x.values, "SHAPE@Y": p.y.values,
+                          "count_all": p.count_all.values,
+                          "count_group": p.count_group.values})
+    state = H._install_fake_arcpy(table)
+    pyt = H._load_pyt()
+
+    class _Quiet:
+        def addMessage(self, _): pass
+        def addWarningMessage(self, _): pass
+        def addErrorMessage(self, _): pass
+
+    m = _Quiet()
+    pyt._run_tool("counts", "lyr", m, treat_fields=["count_group"],
+                  weight_field=SPEC["weight"], k_text="400",
+                  r_text="800", unit=SPEC["unit_size"])
+    pyt._run_tool("stats", "lyr", m, value_fields=["count_group"],
+                  weight_field=SPEC["weight"], k_text="400",
+                  stats_list=["mean", "median", "gini"],
+                  unit=SPEC["unit_size"])
+
+    out = state["table"].rename(columns={"SHAPE@X": "x",
+                                         "SHAPE@Y": "y"})
+    rep = R.compare(out)
+    assert rep["ok"], R.explain(rep)
+    assert rep["rows_compared"] == 2360

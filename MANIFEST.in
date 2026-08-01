@@ -18,6 +18,7 @@ include BACKLOG.md
 # then copies these onto the machine by hand.
 graft arcgis
 graft stata
+graft qgis
 
 # Fixtures the shipped tests actually read. (The datasets the Book
 # uses moved into equipop/data in 1.19.0 and ride in the wheel.)

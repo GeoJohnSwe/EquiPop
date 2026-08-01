@@ -18,7 +18,7 @@ the manual's version history, and struck from this list.
 | ~~36~~ | DONE v1.17 | Variable-bandwidth decay (the 1.17 theme): half-life from a field or self-calibrated from Dist_k (urban form sets the bandwidth); bucket into quantile bins so cost is dominated by the largest bin; combine several potentials via log-odds / geometric mean of half-lives, all three behind one switch and compared on Gridby | John's ladder: 1 no decay, 2 one parameter, 3 group potentials (Hägerstrand prisms), 4 form-derived, 5 principled merger |
 | ~~37~~ | DONE v1.17 | Seed exposure + manifest entry wherever permutations happen (morans_i, sequential tie-break). Engines are otherwise deterministic - note in the manual that this holds as long as summation order does | |
 | 38 | open v1.16.8 | Continental segmentation wired into the GUI: origin tiling (bigrun, already built and tested, currently unreachable) with output folder + resume; halo-based full partitioning only if destinations stop fitting, with the halo checked against Dist_k and widened for the origins that touched it; merge on an explicit EQP_ID, never OID (ArcGIS renumbers OIDs on copy) | John's B1-10/C1-2 sketch |
-| 39 | PART 1 DONE v1.18.0 | ~~Shared core ahead of the QGIS/R/SPSS doors: one help-text source, one reporter object, one loader contract~~ - DELIVERED as `equipop.doors` (help / report / fields / loader), ArcGIS re-pointed, 154 tests green. REMAINING: QGIS Processing plugin (simulated PyQGIS like the fake arcpy), R via reticulate (file bridge as documented fallback), SPSS via its Python integration. Gridby's answer key becomes the cross-door conformance suite | The ArcGIS glue got fat because three things were reinvented per door |
+| ~~39~~ | PARTS 1-2 DONE v1.20.0 | ~~Shared core ahead of the QGIS/R/SPSS doors: one help-text source, one reporter object, one loader contract~~ - DELIVERED as `equipop.doors` (help / report / fields / loader), ArcGIS re-pointed, 154 tests green. REMAINING: QGIS Processing plugin (simulated PyQGIS like the fake arcpy), R via reticulate (file bridge as documented fallback), SPSS via its Python integration. Gridby's answer key becomes the cross-door conformance suite | The ArcGIS glue got fat because three things were reinvented per door |
 | 40 | open v1.16.8 | Gridby README: Test E must say to clear BOTH the population field and the group count fields (the key assumes one row = one person) | Documentation error found in the field |
 | 4 | open | Heights / third dimension (D-dimensions) for grids AND hexagons | No suitable test data yet — design can precede data. Thoughts below. |
 
@@ -665,3 +665,52 @@ small batch after.
   slope, fca and lisa are not in it. Worth extending once a second
   door exists to prove the mechanism, rather than guessing now what
   a door will need.
+
+
+## v1.20.0 (the QGIS door)
+- ~~39 part 2~~ DONE. qgis/equipop_qgis/ - provider, plugin scaffold,
+  and two algorithms (Counts and Shares, Value Statistics) built on
+  equipop.doors. tests/qgis_stub.py simulates PyQGIS the way fake
+  arcpy simulates arcpy. 14 door tests + the conformance pair.
+- ~~39 part 3~~ DONE in effect: BOTH doors now pass the Gridby
+  reference, 2360 rows, every column. That was the definition of a
+  finished door and it is now a test in each suite.
+- FIXED: the 1.19.0 reference named its treatment 'minority' while
+  every door names treatments by FIELD - so no door could ever have
+  matched it. Caught only by building the second door, which is
+  itself the argument for building the second door.
+- qgis/README_QGIS.md - the one-page install note (equipop must
+  reach QGIS's own Python; OSGeo4W shell or the QGIS Python Console,
+  where sys.executable cannot be the wrong interpreter).
+
+### Open, in priority order (John's arrangement, 1.19 session)
+- 50 | open | QGIS covers k and radius only. Decay, barriers and
+  terrain, and the category grouping table are in the ArcGIS door
+  and not yet in QGIS. Same shared code underneath - boxes to add,
+  not machinery to build. The remainder box (below) should land here
+  at the same time.
+- 51 | open | THE REMAINDER BOX (agreed with John, 1.19 session):
+  one box under the category table - "Put every other value in this
+  group:" - so a few values can be named 'service' and everything
+  else falls into 'other', in the population. Today the only way is
+  to untick every 'In population?' box, which reads backwards. Build
+  the rule in the engine and the help in the shared core so BOTH
+  doors get it.
+- 52 | open | GeoPackage attribute table does not refresh after a
+  run (John, field, 1.19 session). The toolbox writes with
+  ExtendTable and declares NO derived output, so Pro keeps its
+  cached schema; removing and re-adding the layer forces a re-read,
+  which is the workaround John found. Likely fix: declare the
+  modified layer as a derived output parameter. UNVERIFIED - needs a
+  field cycle on Malta.gpkg AND on a file geodatabase.
+- 34/44 | open | Tool help page summary/usage renders empty in Pro;
+  SyncOnce=TRUE suspected, one line in make_help_xml.py. Needs a
+  field cycle. Students read this page.
+- 42 | open | docs/manual/ never describes variable-bandwidth decay.
+  WRITING session.
+- 43 | open | CITATION.cff still says version 1.0.0.
+- 49 | open | The reference covers counts and stats; friction,
+  slope, fca and lisa are not in it. Now that a second door exists
+  and the mechanism is proved, this is worth doing.
+- 38 | open | Continental tiling into the GUI. Paused by John.
+- 45 | open | Tests leave literal C:\Data\... files in the repo root.
