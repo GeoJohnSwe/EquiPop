@@ -595,6 +595,64 @@ def _refuse_shp_overflow(target, names, messages=None):
     return refuse_short_target(target, names)
 
 
+def _values_from_table(rows, cat_values, messages, what):
+    """One column: which values belong to a population (v1.22).
+
+    An EMPTY table means EVERY value belongs - which is what makes
+    "fast food per POI" and "fast food per eating place" one edit
+    apart, with no tick to misread.
+    """
+    if not rows:
+        return []
+    vals, unknown = [], []
+    for row in rows:
+        v = str((row[0] if isinstance(row, (list, tuple)) else row)
+                or "").strip()
+        if not v:
+            continue
+        (vals if v in cat_values else unknown).append(v)
+    if unknown:
+        raise arcpy.ExecuteError(
+            f"These values are not in the category field, so the "
+            f"{what} would be empty: {', '.join(sorted(set(unknown)))}."
+            f" Pick from the dropdown - the field's own values are "
+            "offered there.")
+    if vals:
+        messages.addMessage(
+            f"{what.capitalize()}: {len(set(vals))} value(s) - "
+            + ", ".join(sorted(set(vals))[:8])
+            + ("..." if len(set(vals)) > 8 else ""))
+    return sorted(set(vals))
+
+
+def _groups_from_table(rows, cat_values, messages):
+    """Two columns: value, group name. Rows sharing a group name
+    merge, which is how one group is built from several values."""
+    groups, unknown = {}, []
+    for row in (rows or []):
+        if not isinstance(row, (list, tuple)) or len(row) < 2:
+            continue
+        val = str(row[0] or "").strip()
+        grp = str(row[1] or "").strip()
+        if not val or not grp:
+            continue
+        if val not in cat_values:
+            unknown.append(val)
+            continue
+        groups.setdefault(grp, []).append(val)
+    if unknown:
+        raise arcpy.ExecuteError(
+            f"These values are not in the category field: "
+            f"{', '.join(sorted(set(unknown)))}. Pick from the "
+            "dropdown - the field's own values are offered there.")
+    if groups:
+        messages.addMessage(
+            "Treatment groups: "
+            + "; ".join(f"{g} ({len(v)} value(s))"
+                        for g, v in groups.items()))
+    return groups
+
+
 def _categories_from_table(rows, cat_values, messages):
     """Value-table rows -> (population values, {group: [values]}).
 
@@ -728,6 +786,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               roundtrip=False, auto_project=False,
               short_names=False, decay_eps: float = 1e-6,
               cat_rows=None, barrier_rows=None,
+              ref_rows=None, treat_rows=None, treat_value_field=None,
               rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
@@ -739,6 +798,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     extra = list(treat_fields) + list(value_fields) \
         + ([weight_field] if weight_field else []) \
         + ([cat_field] if cat_field else []) \
+        + ([treat_value_field] if treat_value_field else []) \
         + ([half_life_field] if half_life_field else [])
     t_all = time.time()
     stages = []
@@ -786,15 +846,24 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
 
     if cat_field:
         from equipop.categorical import categories_to_binary
-        if cat_rows:
-            known = sorted({str(v).strip()
-                            for v in np.asarray(data[cat_field])
-                            if str(v).strip()})
+        col = np.asarray(data[cat_field])
+        known = sorted({str(v).strip() for v in col if str(v).strip()})
+        if ref_rows is not None or treat_rows is not None:
+            # v1.22: two tables, one per population. An EMPTY
+            # reference table means every row belongs - which is how
+            # "fast food per POI" and "fast food per eating place"
+            # differ, without a tick to misread.
+            pop_vals = _values_from_table(ref_rows, known, messages,
+                                          "reference population")
+            groups = _groups_from_table(treat_rows, known, messages)
+            pop_mask, cat_treats = categories_to_binary(
+                col, groups, pop_values=pop_vals or None,
+                rest_group=rest_group, rest_in_population=None)
+        elif cat_rows:
             pop_vals, groups = _categories_from_table(
                 cat_rows, known, messages)
             pop_mask, cat_treats = categories_to_binary(
-                np.asarray(data[cat_field]), groups,
-                pop_values=pop_vals or None,
+                col, groups, pop_values=pop_vals or None,
                 rest_group=rest_group,
                 rest_in_population=rest_in_population)
         else:
@@ -802,21 +871,36 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                         pop_values_text.replace(";", ",").split(",")
                         if v.strip()] or None
             pop_mask, cat_treats = categories_to_binary(
-                np.asarray(data[cat_field]), treat_values_text or "",
-                pop_values=pop_vals)
-        if str(groups_count).startswith("person") and weight_field:
-            # v1.17 ruling: with a population field set, category
-            # groups count PERSONS, so every share has the same
-            # denominator as N (field test: 4 places over 140 persons)
-            wcol = _numeric(data[weight_field], weight_field, "Input")
-            cat_treats = {g: v * np.nan_to_num(wcol)
-                          for g, v in cat_treats.items()}
-            messages.addMessage(
-                "Category groups count PERSONS (weighted by "
-                f"'{weight_field}') - shares are persons/persons.")
+                col, treat_values_text or "", pop_values=pop_vals)
+
+        # HOW MUCH each row counts in the treatment population.
+        # Its own field, or the reference's if none was given
+        # (v1.22, John: "the same should be possible for the
+        # treatment population").
+        tvf = treat_value_field or weight_field
+        if tvf:
+            tcol = np.nan_to_num(_numeric(data[tvf], tvf, "Input"))
+            cat_treats = {g: v * tcol for g, v in cat_treats.items()}
+            if treat_value_field and weight_field and \
+                    treat_value_field != weight_field:
+                messages.addWarningMessage(
+                    f"The treatment population is counted in "
+                    f"'{treat_value_field}' while the reference "
+                    f"population is counted in '{weight_field}'. The "
+                    f"R_ columns are then a RATIO of two different "
+                    f"things, not a share, and can go above 1. That "
+                    "is a real measure - just not a percentage.")
+            else:
+                messages.addMessage(
+                    f"Treatment population counted in '{tvf}', the "
+                    "same units as the reference - so every R_ column "
+                    "is a share between 0 and 1.")
         else:
             messages.addMessage(
-                "Category groups count PLACES (rows).")
+                "No value field given, so every row counts as one: "
+                "the shares are shares of PLACES, not of people.")
+        # rows outside the reference population take no part in the
+        # run at all - they are not neighbours of anyone
         x = np.where(pop_mask, x, np.nan)
         y = np.where(pop_mask, y, np.nan)
         messages.addMessage(
@@ -1259,33 +1343,31 @@ def _distinct_values(layer, field, cap: int = 200, messages=None):
 
 
 def _grey_the_unused_group_route(pm):
-    """Two ways to define groups; you take one (v1.21.1).
+    """Two ways to name a treatment population; you take one.
 
-    Either you have one column per group with counts inside (register
-    data), or one column of labels whose values you sort into groups
-    (POI data). Choosing one leaves the other's boxes meaningless, and
-    a flat list said so nowhere - John, field: the remainder box
-    invited an answer before there was a field to take values from.
-    Now the unused route goes dim, and the remainder box is
-    unavailable until a category field is chosen, which answers "what
-    am I supposed to type here?" before it is asked.
+    Either one column per group with counts inside (register data),
+    or a category field whose values you sort into groups (POI
+    data). Choosing one leaves the other meaningless, so the unused
+    one goes dim. Everything that reads values from the category
+    field waits until a category field is chosen - which answers
+    "what am I supposed to type here?" before it is asked (John,
+    field, v1.21).
 
-    The population field is NOT one of the alternatives: it is
-    persons-per-row and applies to both routes, so it stays live.
+    The reference population's value field stays live throughout: it
+    says how much each row counts, and that applies whichever route
+    you take.
     """
     cat = _txt(pm, "catfield")
     treat = _txt(pm, "treat")
-    for name in ("catfield", "cattable", "restgroup", "restinpop",
-                 "groupscount"):
+    for name in ("catfield", "reftable", "treattable", "restgroup",
+                 "treatvalue"):
         p = pm.get(name)
-        if p is None:
-            continue
-        # the category route is off only once the OTHER route is used
-        p.enabled = not treat or bool(cat)
-    for name in ("restgroup", "restinpop"):
+        if p is not None:
+            p.enabled = not treat or bool(cat)
+    for name in ("reftable", "treattable", "restgroup"):
         p = pm.get(name)
         if p is not None and p.enabled:
-            p.enabled = bool(cat)      # nothing to collect without it
+            p.enabled = bool(cat)
     p = pm.get("treat")
     if p is not None:
         p.enabled = not cat
@@ -1471,10 +1553,21 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
         # execution path honoured it while validation still refused,
         # so Run stayed greyed out (field-test finding).
         if auto_on and getattr(desc, "shapeType", None):
+            # v1.22: the message goes BOTH places. Beside the tick
+            # that fixes it, because that is where the answer is
+            # (John's suggestion) - and a short pointer on the input,
+            # because Pro does NOT show a warning while its section is
+            # collapsed (John, field), so a message living only inside
+            # Coordinates would be invisible exactly when it matters.
             parameters[i_layer].setWarningMessage(
-                "Input is in degrees - it will be AUTO-PROJECTED to "
-                f"{_utm_advice(desc)} for this analysis. The stored "
-                "data is not modified.")
+                "Input is in degrees - see Coordinates below, where it "
+                "will be auto-projected for this analysis.")
+            if i_autoproj is not None:
+                parameters[i_autoproj].setWarningMessage(
+                    "Input is in degrees - it will be AUTO-PROJECTED "
+                    f"to {_utm_advice(desc)} for this analysis. The "
+                    "stored data is not modified. Untick to refuse "
+                    "degree input instead.")
         else:
             parameters[i_layer].setErrorMessage(txt)
     src = parameters[i_src].valueAsText or _COORD_AUTO
@@ -1538,9 +1631,25 @@ class CountsShares:
         ps = [_p("layer", "Input points (layer) or table",
                  ["GPFeatureLayer", "GPTableView"])]
         _coord_trio(ps)
-        ps += [_p("pop", "Population field - total persons at this "
-                  "point (empty if each point is one person)", "Field",
+        ps += [_p("pop", "How much does each row count? Choose a "
+                  "field holding the number of people (or guests, "
+                  "jobs, revenue...). LEAVE EMPTY and every row "
+                  "counts as one.", "Field", required=False),
+               _p("catfield", "Category field - one column of labels "
+                  "(POI type, tenure, country of birth...). Both "
+                  "tables below read their values from it.", "Field",
                   required=False),
+               _p("reftable", "Which values belong to the reference "
+                  "population? LEAVE EMPTY and every row belongs.",
+                  "GPValueTable", required=False),
+               _p("treatvalue", "How much does each row count in the "
+                  "treatment population? Leave empty to use the same "
+                  "field as the reference above.", "Field",
+                  required=False),
+               _p("treattable", "Which values form which group? One "
+                  "row per value: the value, and the group name it "
+                  "belongs to. Rows sharing a group name merge.",
+                  "GPValueTable", required=False),
                _p("treat", "Group count fields - persons per group at "
                   "this point (0/1 if points are individuals)", "Field",
                   required=False, multiValue=True),
@@ -1567,22 +1676,9 @@ class CountsShares:
                   "this (smaller = wider search = slower; the "
                   "truncation distance is reported in the messages)",
                   "GPDouble", required=False),
-               _p("catfield", "Category field (codes or names) - "
-                  "builds population and groups from its VALUES",
-                  "Field", required=False),
                _p("restgroup", "Name a group for every OTHER value "
-                  "(optional; for example: other) - list only the "
-                  "values you care about in the table above, and "
-                  "every remaining value joins this group",
-                  "GPString", required=False),
-               _p("restinpop", "...and count those other values as "
-                  "population too (ticked: shares are of everything "
-                  "present; unticked: shares are of the values you "
-                  "listed)", "GPBoolean", required=False),
-               _p("cattable", "Categories: one row per value - which "
-                  "group it belongs to, and whether it counts as "
-                  "population", "GPValueTable", required=False),
-               _p("groupscount", "Category groups count", "GPString",
+                  "(optional; for example: other) - the values you "
+                  "did not list above all join it", "GPString",
                   required=False),
                _p("barriertable", "Barriers: one row per point/line/"
                   "polygon layer or table of cells, with the field "
@@ -1624,9 +1720,12 @@ class CountsShares:
         pm = _byname(ps)
         for nm in ("pop", "treat", "catfield"):
             pm[nm].parameterDependencies = ["layer"]
-        pm["cattable"].columns = [["GPString", "Category value"],
-                                  ["GPString", "Group name"],
-                                  ["GPBoolean", "In population?"]]
+        pm["reftable"].columns = [["GPString", "Category value"]]
+        pm["treattable"].columns = [["GPString", "Category value"],
+                                    ["GPString", "Group name"]]
+        pm["reftable"].columns = [["GPString", "Category value"]]
+        pm["treattable"].columns = [["GPString", "Category value"],
+                                    ["GPString", "Group name"]]
         # v1.17.1: a GPComposite column took ArcGIS Pro down on Run
         # (the value table is serialised even when empty). Only
         # plain, long-supported column types here; rasters get their
@@ -1634,12 +1733,6 @@ class CountsShares:
         pm["barriertable"].columns = [
             ["GPTableView", "Barrier layer or table"],
             ["Field", "Friction field"]]     # dropdown per row
-        pm["groupscount"].filter.type = "ValueList"
-        pm["groupscount"].filter.list = ["persons (weighted by the "
-                                         "population field)",
-                                         "places (rows)"]
-        pm["groupscount"].value = "persons (weighted by the " \
-                                  "population field)"
         pm["hlfield"].parameterDependencies = ["layer"]
         pm["hlbins"].value = 10
         # v1.17: collapsible sections instead of 29 boxes at once
@@ -1651,20 +1744,24 @@ class CountsShares:
             "halflife": "Neighbourhood", "hlfield": "Neighbourhood",
             "hlfromdist": "Neighbourhood", "hlbins": "Neighbourhood",
             "decayeps": "Neighbourhood",
-            # GROUPS, in three headings (v1.21.1). There are two
-            # ALTERNATIVE ways to define groups and the flat list said
-            # so nowhere - choose one and four other boxes quietly
-            # stop meaning anything. The population field belongs to
-            # BOTH routes (it is persons-per-row, and it is what makes
-            # category groups count persons rather than places), so it
-            # sits above them rather than inside either.
-            "pop": "Groups",
-            "treat": "Groups: from number columns",
-            "catfield": "Groups: from a category field",
-            "cattable": "Groups: from a category field",
-            "restgroup": "Groups: from a category field",
-            "restinpop": "Groups: from a category field",
-            "groupscount": "Groups: from a category field",
+            # TWO POPULATIONS (v1.22.0, John's design). EquiPop
+            # measures one population against another: the REFERENCE
+            # population is who is around (the k nearest of these),
+            # and the TREATMENT population is what you are counting
+            # among them. The result columns have always said so -
+            # T_ is the treatment, R_ the ratio of the two - but the
+            # dialog spoke of "groups" and "population fields", so
+            # the screen and the results used different words.
+            # A reference population needs no treatment at all: ask
+            # only for Dist_k and you are asking how far away the
+            # k nearest are.
+            "pop": "Reference population - who is around",
+            "catfield": "Reference population - who is around",
+            "reftable": "Reference population - who is around",
+            "treatvalue": "Treatment population - what you measure",
+            "treattable": "Treatment population - what you measure",
+            "treat": "Treatment population - what you measure",
+            "restgroup": "Treatment population - what you measure",
             "barriertable": "Barriers and terrain",
             "barrierrasters": "Barriers and terrain",
             "barrieragg": "Barriers and terrain",
@@ -1703,15 +1800,17 @@ class CountsShares:
         # offer the category field's OWN values in the table's first
         # column, so nothing has to be spelled by hand (v1.17.3)
         cat = _txt(pm, "catfield")
-        tbl = pm.get("cattable")
-        if cat and tbl is not None:
+        tables = [pm.get("reftable"), pm.get("treattable")]
+        if cat and any(t is not None for t in tables):
             vals = _distinct_values(pm["layer"].value, cat)
-            try:
-                if vals and getattr(tbl, "filters", None):
-                    tbl.filters[0].type = "ValueList"
-                    tbl.filters[0].list = vals
-            except Exception:
-                pass
+            for tbl in tables:
+                try:
+                    if vals and tbl is not None and getattr(
+                            tbl, "filters", None):
+                        tbl.filters[0].type = "ValueList"
+                        tbl.filters[0].list = vals
+                except Exception:
+                    pass
         _clear_stale_fields(parameters, 0, [i for i, p in
                                             enumerate(parameters)
                                             if p.name in
@@ -1773,10 +1872,10 @@ class CountsShares:
                   decay_bins=int(_num(pm, "hlbins", 10) or 10),
                   seed=_num(pm, "seed"),
                   cat_field=_txt(pm, "catfield") or None,
-                  cat_rows=_vt_rows(pm["cattable"]),
+                  ref_rows=_vt_rows(pm["reftable"]),
+                  treat_rows=_vt_rows(pm["treattable"]),
+                  treat_value_field=_txt(pm, "treatvalue") or None,
                   rest_group=_txt(pm, "restgroup") or None,
-                  rest_in_population=_flag(pm, "restinpop"),
-                  groups_count=_txt(pm, "groupscount", "persons"),
                   barrier_rows=(_vt_rows(pm["barriertable"])
                                 + [[r, None] for r in
                                    (_txt(pm, "barrierrasters")

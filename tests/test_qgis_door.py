@@ -220,41 +220,45 @@ def _poi_table():
                    "restaurant", "postbox", "cafe", "bench"]})
 
 
-CAT_ROWS = ["fastfood", "fastfood", "1",
-            "restaurant", "eating", "1",
-            "cafe", "eating", "1"]
+# v1.22: two tables. The REFERENCE table says who is around; the
+# TREATMENT table says which of them form which group.
+EATING = ["fastfood", "restaurant", "cafe"]
+TREAT_ROWS = ["fastfood", "fastfood",
+              "restaurant", "eating",
+              "cafe", "eating"]
 
 
-def test_the_remainder_can_be_kept_out_of_the_population():
-    """Fast food per EATING PLACE: only the values named are the
-    population, so benches and postboxes are not in the denominator."""
+def test_listing_the_reference_narrows_the_denominator():
+    """Fast food per EATING PLACE: the reference table names the
+    eating places, so benches and postboxes are not in it."""
     out, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
-                  k="4", catfield="fclass", cattable=CAT_ROWS,
-                  restgroup="other", restinpop=False)
-    # 6 eating places, 2 of them fast food
+                  k="4", catfield="fclass", reftable=EATING,
+                  treattable=TREAT_ROWS)
     assert out["R_fastfood_4"].max() == pytest.approx(0.5)
 
 
-def test_the_remainder_can_be_counted_as_population():
-    """Fast food per POI: John's Europe-wide run. Everything present
-    is in the denominator, so the same data gives a lower share."""
+def test_an_empty_reference_table_means_everything():
+    """Fast food per POI: John's Europe-wide run. Leaving the
+    reference table empty is the whole difference - no tick to
+    misread."""
     out, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
-                  k="4", catfield="fclass", cattable=CAT_ROWS,
-                  restgroup="other", restinpop=True)
+                  k="4", catfield="fclass", reftable=[],
+                  treattable=TREAT_ROWS, restgroup="other")
     assert out["R_fastfood_4"].max() < 0.5
     assert "T_other_4" in out.columns
 
 
 def test_the_two_denominators_really_do_differ():
-    """The whole reason the tick exists: same data, same rows, two
-    different and both-correct answers."""
-    src = qgis_stub.source_from(_poi_table())
-    strict, _ = _run(CountsAndShares, src, k="4", catfield="fclass",
-                     cattable=CAT_ROWS, restgroup="other",
-                     restinpop=False)
-    broad, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
-                    k="4", catfield="fclass", cattable=CAT_ROWS,
-                    restgroup="other", restinpop=True)
+    """Same data, same rows, two correct answers - and the only
+    difference is whether the reference table was filled in."""
+    strict, _ = _run(CountsAndShares,
+                     qgis_stub.source_from(_poi_table()), k="4",
+                     catfield="fclass", reftable=EATING,
+                     treattable=TREAT_ROWS)
+    broad, _ = _run(CountsAndShares,
+                    qgis_stub.source_from(_poi_table()), k="4",
+                    catfield="fclass", reftable=[],
+                    treattable=TREAT_ROWS)
     assert strict["R_fastfood_4"].mean() > broad["R_fastfood_4"].mean()
 
 

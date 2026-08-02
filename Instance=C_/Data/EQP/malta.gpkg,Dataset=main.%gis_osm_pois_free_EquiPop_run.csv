@@ -1,25 +1,25 @@
 item,value
-equipop_version,1.21.1
-run_utc,2026-08-01T08:13:05+00:00
-engine,stats
+equipop_version,1.22.0
+run_utc,2026-08-02T15:03:09+00:00
+engine,counts
 input,"Instance=C:\Data\EQP\malta.gpkg,Dataset=main.%gis_osm_pois_free"
 working_crs,SWEREF99 TM
 auto_projected,False
 cell_size_m,100.0
-k_values,20
+k_values,10
 radii_m,
 effort_budgets_tau,
 decay_model,no decay
 decay_half_life_m,
 decay_cutoff_eps,
-measures,mean
+measures,
 percentiles,
 barrier_source,
 barrier_field,
 barrier_overlap_rule,
 rows_analysed,60
-result_fields,N_local;N_20;Dist_20;Nv_income_20;Mean_income_20
-total_seconds,0.1
+result_fields,N_10;Dist_10;T_eating_10;R_eating_10
+total_seconds,0.0
 time_reading_input_seconds,0.0
 time_calculating_seconds,0.0
-time_writing_results_to_the_layer_seconds,0.1
+time_writing_results_to_the_layer_seconds,0.0

@@ -46,14 +46,14 @@ class CountsAndShares(EquipopAlgorithm):
             "geometry", parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
-            "pop", "Population field - people per row (applies to "
-            "BOTH ways of making groups; leave empty if one row is "
-            "one person)", parentLayerParameterName="layer",
+            "pop", "REFERENCE POPULATION - how much does each row "
+            "count? A field holding people (or guests, jobs, "
+            "revenue). Leave empty and every row counts as one.", parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
-            "treat", "GROUPS FROM NUMBER COLUMNS - one column per "
-            "group, counts inside (leave empty to use a category "
-            "field instead)",
+            "treat", "TREATMENT POPULATION from number columns - "
+            "one column per group, counts inside (leave empty if you "
+            "used the category tables instead)",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric,
             allowMultiple=True, optional=True))
@@ -64,22 +64,25 @@ class CountsAndShares(EquipopAlgorithm):
             "r", "Radii in metres, space separated", optional=True))
         # --- groups from a category field -------------------------
         self.add(QgsProcessingParameterField(
-            "catfield", "GROUPS FROM A CATEGORY FIELD - one column "
-            "of labels (leave empty if you used group columns above)",
+            "catfield", "Category field - one column of labels. Both "
+            "tables below read their values from it.",
             parentLayerParameterName="layer", optional=True))
         self.add(QgsProcessingParameterMatrix(
-            "cattable", "Categories: one row per value - value, group "
-            "name, and 1 or 0 for whether it counts as population",
-            headers=["Category value", "Group name", "In population?"],
-            optional=True))
+            "reftable", "Which values belong to the REFERENCE "
+            "population? One value per row. Leave empty and every "
+            "row belongs.", headers=["Category value"], optional=True))
+        self.add(QgsProcessingParameterField(
+            "treatvalue", "TREATMENT POPULATION - how much does each "
+            "row count? Leave empty to use the same field as the "
+            "reference.", parentLayerParameterName="layer",
+            type=QgsProcessingParameterField.Numeric, optional=True))
+        self.add(QgsProcessingParameterMatrix(
+            "treattable", "Which values form which GROUP? One row "
+            "per value: the value, and the group name it joins.",
+            headers=["Category value", "Group name"], optional=True))
         self.add(QgsProcessingParameterString(
             "restgroup", "...name a group for every OTHER value "
             "(optional; for example: other)", optional=True))
-        self.add(QgsProcessingParameterBoolean(
-            "restinpop", "...and count those other values as "
-            "population too (ticked: shares are of everything "
-            "present; unticked: shares are of the values you listed)",
-            defaultValue=True))
 
         # --- distance decay ---------------------------------------
         self.add(QgsProcessingParameterEnum(
@@ -161,17 +164,30 @@ class CountsAndShares(EquipopAlgorithm):
                                            context) or [None])[0]
         if catfield:
             from equipop.categorical import categories_to_binary
-            rows = self.parameterAsMatrix(parameters, "cattable",
-                                          context)
-            pop_vals, groups = self._groups_from_matrix(rows)
+            pop_vals = [str(v).strip() for v in
+                        (self.parameterAsMatrix(parameters, "reftable",
+                                                context) or [])
+                        if str(v).strip()]
+            groups = self._groups_from_matrix(
+                self.parameterAsMatrix(parameters, "treattable",
+                                       context))
             rest = self.parameterAsString(parameters, "restgroup",
                                           context).strip()
             pop_mask, cat_treats = categories_to_binary(
                 pts.data[catfield], groups,
                 pop_values=pop_vals or None,
-                rest_group=rest or None,
-                rest_in_population=self.parameterAsBool(
-                    parameters, "restinpop", context))
+                rest_group=rest or None, rest_in_population=None)
+            tvf = (self.parameterAsFields(parameters, "treatvalue",
+                                          context) or [None])[0] or pop
+            if tvf:
+                import numpy as _np
+                tcol = _np.nan_to_num(pts.data[tvf].astype(float))
+                cat_treats = {g: v * tcol
+                              for g, v in cat_treats.items()}
+                ch.info(self._units_note(tvf, pop))
+            else:
+                ch.info("No value field given, so every row counts as "
+                        "one: the shares are shares of PLACES.")
             kw.setdefault("treat", {}).update(cat_treats)
             if pop is None:
                 kw["weight"] = pop_mask.astype(float)
@@ -191,23 +207,28 @@ class CountsAndShares(EquipopAlgorithm):
     # ---------------------------------------------------------------
     @staticmethod
     def _groups_from_matrix(rows):
-        """QGIS hands a matrix back as one flat list: value, group,
-        in-population, value, group, in-population... Rows sharing a
-        group name merge, exactly as in the ArcGIS door."""
-        pop_vals, groups = [], {}
+        """QGIS hands a matrix back as ONE FLAT LIST: value, group,
+        value, group... Rows sharing a group name merge, exactly as
+        in the ArcGIS door."""
+        groups = {}
         flat = list(rows or [])
-        for i in range(0, len(flat) - 2, 3):
+        for i in range(0, len(flat) - 1, 2):
             val = str(flat[i] or "").strip()
             grp = str(flat[i + 1] or "").strip()
-            inpop = str(flat[i + 2] if flat[i + 2] is not None
-                        else "1").strip().lower()
-            if not val:
-                continue
-            if inpop not in ("false", "no", "0", "n", ""):
-                pop_vals.append(val)
-            if grp:
+            if val and grp:
                 groups.setdefault(grp, []).append(val)
-        return pop_vals, groups
+        return groups
+
+    @staticmethod
+    def _units_note(tvf, pop):
+        if pop and tvf != pop:
+            return (f"The treatment population is counted in '{tvf}' "
+                    f"while the reference is counted in '{pop}' - the "
+                    "R_ columns are a RATIO of two different things, "
+                    "not a share, and can go above 1.")
+        return (f"Treatment population counted in '{tvf}', the same "
+                "units as the reference - so every R_ column is a "
+                "share between 0 and 1.")
 
     @staticmethod
     def _decay_in_plain_numbers(model, half):

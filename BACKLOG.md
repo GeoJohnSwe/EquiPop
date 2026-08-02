@@ -754,3 +754,27 @@ small batch after.
   `enabled`; the simulator honours both, but only a real Pro can say
   whether the three headings read well on screen. Worth a look in
   the next field cycle.
+
+## v1.22.0 (two populations)
+- The dialog reorganised around REFERENCE and TREATMENT populations,
+  matching the words the T_ and R_ columns have always used.
+- cattable (value/group/in-population) split into reftable (which
+  values are around) and treattable (which values form which group).
+  An EMPTY reference table means everything - the fastfood-per-POI
+  vs fastfood-per-eating-place distinction, with no tick.
+- treatvalue: the treatment population's own value field. Empty =
+  the reference's field (same units, R_ is a share). Different =
+  a ratio, warned about plainly.
+- groupscount RETIRED: the value fields carry that meaning now.
+  Places-over-persons is no longer reachable (it was the 1.17 bug).
+- categories_to_binary gained rest_in_population=None, meaning "the
+  population is decided elsewhere" - needed once a separate
+  reference table exists.
+- Warnings appear beside their fix AND at top level, since Pro hides
+  a warning inside a collapsed section (John, field).
+- 56 | open | Machine 2 (Value Statistics) still uses the old
+  vocabulary - "Full population field", "Numeric value fields". It
+  should be reference-population language too, for the same reason.
+- 57 | open | The old single-table path (cat_rows) is kept in
+  _run_tool for compatibility but is no longer reachable from the
+  dialog. Retire once John confirms no saved tools depend on it.

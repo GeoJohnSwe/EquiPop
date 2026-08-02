@@ -728,10 +728,16 @@ def test_pyt_dialogs_construct_like_pro():
                 "_ALLOWED_COLS", {"GPTableView", "GPString",
                                   "GPBoolean", "GPLong", "Field",
                                   "GPFeatureLayer", "GPDouble"}), col
-    assert len(m1["cattable"].columns) == 3          # value/group/pop
+    # v1.22: two tables, one per population - the reference table
+    # says WHICH values are around, the treatment table says which of
+    # them form which group
+    assert len(m1["reftable"].columns) == 1           # value
+    assert len(m1["treattable"].columns) == 2         # value/group
     assert {p.category for p in
             pyt.CountsShares().getParameterInfo()} >= {
-        "Coordinates", "Neighbourhood", "Groups",
+        "Coordinates", "Neighbourhood",
+        "Reference population - who is around",
+        "Treatment population - what you measure",
         "Barriers and terrain", "Output"}
     assert m1["barrieragg"].filter.list[0].startswith("additive")
     m2 = {p.name: p for p in pyt.ValueStatistics().getParameterInfo()}
@@ -1192,7 +1198,12 @@ def test_pyt_autoproject_unblocks_the_dialog_too():
         tool.updateMessages(ps)
         kinds = [k for k, _ in ps[0].messages]
         assert "ERROR" not in kinds and "WARNING" in kinds
-        assert any("3006" in txt for _, txt in ps[0].messages)
+        # v1.22: the CRS advice moved next to the tick that fixes it,
+        # and the input keeps a short pointer - because Pro hides a
+        # warning while its section is collapsed (John, field), so the
+        # detail alone would be invisible exactly when it matters.
+        assert any("Coordinates" in txt for _, txt in ps[0].messages)
+        assert any("3006" in txt for _, txt in ps[i_auto].messages)
     tool = pyt.CountsShares()               # a TABLE still refuses
     ps = tool.getParameterInfo()
     ps[0].value = "degtab"
@@ -1479,16 +1490,19 @@ def test_pyt_category_value_table():
                   cat_rows=rows, groups_count="persons")
     got = state["table"]
     assert "T_services_60" in got and "R_services_60" in got
-    assert any("count PERSONS" in m for m in msg.log)
+    assert any("same units as the reference" in m for m in msg.log)
     # shares are persons/persons -> never above 1
     ok = got.dropna(subset=["R_services_60"])
     assert (ok["R_services_60"] <= 1.0 + 1e-9).all()
-    # places mode instead
+    # PLACES instead: clear the value field and BOTH populations
+    # count one per row. v1.22 will not mix them - counting places
+    # against persons was the 1.17 field bug (4 places over 140
+    # persons), so the only way to places is to ask for it on both
+    # sides, which is what leaving the field empty means.
     msg2 = _Messages()
     pyt._run_tool("counts", "people", msg2, k_text="60",
-                  weight_field="Pop", cat_field="PlaceType",
-                  cat_rows=rows, groups_count="places (rows)")
-    assert any("count PLACES" in m for m in msg2.log)
+                  cat_field="PlaceType", cat_rows=rows)
+    assert any("shares of PLACES" in m for m in msg2.log)
     # a value the field does not hold is refused, naming the values
     with pytest.raises(arcpy.ExecuteError, match="not in the category"):
         pyt._run_tool("counts", "people", _Messages(), k_text="60",
@@ -1614,5 +1628,5 @@ def test_pyt_value_table_columns_offer_choices():
     pm["layer"].value = "people"
     pm["catfield"].value = "PlaceType"
     tool.updateParameters(ps)
-    offered = pm["cattable"].filters[0].list
+    offered = pm["treattable"].filters[0].list
     assert set(offered) == {"dwelling", "shop"}

@@ -70,6 +70,30 @@ HELP = {
         "measured against the eating places you listed. Both are "
         "real questions and they look identical on screen; pick the "
         "denominator you mean.",
+    "reftable":
+        "Which values of the category field belong to the REFERENCE "
+        "population - the people or places whose k nearest form each "
+        "neighbourhood. Leave it EMPTY and every row belongs. This "
+        "one choice decides what your shares are shares OF: list the "
+        "eating places and 'fast food' is measured against eating "
+        "places; leave it empty and the same run measures fast food "
+        "against every point in the layer.",
+    "treattable":
+        "Which values form which GROUP in the treatment population - "
+        "the thing you are counting inside each neighbourhood. One "
+        "row per value: the value, and the name of the group it "
+        "joins. Rows sharing a group name merge, so 'restaurant', "
+        "'cafe' and 'pub' can all become 'eating'. You get a T_ "
+        "column (the count) and an R_ column (its share of the "
+        "reference population) for each group.",
+    "treatvalue":
+        "How much each row counts in the TREATMENT population. Leave "
+        "it empty and the reference population's field is used, which "
+        "is almost always what you want: both populations counted in "
+        "the same units, so every share sits between 0 and 1. Give a "
+        "different field and the R_ columns become a ratio of two "
+        "different things - revenue per guest, say - which is a real "
+        "measure but not a percentage.",
     "cattable": "One row per category value: which group it joins "
                 "(leave blank for none) and whether it counts as "
                 "population. Rows sharing a group name merge into "

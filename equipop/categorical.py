@@ -37,8 +37,11 @@ def categories_to_binary(cat, treat_spec, pop_values=None,
     rest_group : optional name for EVERY value not named above -
                  "name the few you care about, the rest fall here"
     rest_in_population : whether those remaining values count as
-                 population. This is the whole choice, and it decides
-                 the DENOMINATOR:
+                 population. Pass None when the population is decided
+                 SOMEWHERE ELSE - which is the case from v1.22, where
+                 a separate reference table names the population and
+                 the remainder is purely a way of grouping what is
+                 left over. Otherwise it decides the DENOMINATOR:
 
                    True  - the share is "of everything present"
                            (fastfood per POI: benches and postboxes
@@ -74,12 +77,13 @@ def categories_to_binary(cat, treat_spec, pop_values=None,
 
     if pop_values:
         pv = [_clean(v) for v in pop_values]
-        if rest_group and rest_in_population:
+        if rest_group and rest_in_population is True:
             pv = sorted(set(pv) | set(rest))
         pop = np.isin(c, pv)
     else:
         pop = np.ones(len(c), bool)
-    if rest_group and rest and not rest_in_population and not pop_values:
+    if (rest_group and rest and rest_in_population is False
+            and not pop_values):
         # "the rest are NOT population" only means something when a
         # population was named; otherwise everything is population
         # anyway and the tick would silently do nothing.
@@ -91,19 +95,22 @@ def categories_to_binary(cat, treat_spec, pop_values=None,
         treats[name] = arr
         if arr.sum() == 0 and not (rest_group
                                    and name == str(rest_group).strip()
-                                   and not rest_in_population):
+                                   and rest_in_population is False):
             # a deliberately excluded remainder group is EXPECTED to
             # be zero - that is what "not in the population" means,
             # and warning about it would be noise
             print(f"[categorical] treatment '{name}' matched ZERO rows "
                   f"- check spelling against the column's values")
     if rest_group:
-        print(f"[categorical] '{rest_group}' collected {len(rest)} "
-              f"remaining value(s), "
-              + ("IN the population (shares are of everything present)"
+        where = ("as a treatment group; the reference table decides "
+                 "the population"
+                 if rest_in_population is None else
+                 "IN the population (shares are of everything present)"
                  if rest_in_population else
                  "OUTSIDE the population (shares are of the values you "
-                 "named)"))
+                 "named)")
+        print(f"[categorical] '{rest_group}' collected {len(rest)} "
+              f"remaining value(s), {where}")
     print(f"[categorical] population {int(pop.sum())}/{len(c)} rows"
           + ("" if pop_values is None else f" (filter: {pop_values})")
           + f"; treatments: "

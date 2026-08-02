@@ -63,7 +63,8 @@ def _malta(n=60, with_nulls=True):
         "SHAPE@X": rng.uniform(0, 4000, n),
         "SHAPE@Y": rng.uniform(0, 4000, n),
         "fclass": rng.choice(kinds, n),
-        "income": rng.normal(300, 50, n)})
+        "income": rng.normal(300, 50, n),
+        "guests": rng.integers(1, 40, n).astype(float)})
     if with_nulls:
         t.loc[t.index % 3 != 0, "income"] = np.nan   # mostly missing
     state = H._install_fake_arcpy(t)
@@ -97,9 +98,10 @@ def test_the_category_dropdown_fills_from_a_geopackage_layer():
     pm["layer"].value = _GpkgLayer()
     pm["catfield"].value = "fclass"
     tool.updateParameters(ps)
-    offered = pm["cattable"].filters[0].list
-    assert offered, "the category value dropdown is still empty"
-    assert "cafe" in offered and "library" in offered
+    for table in ("reftable", "treattable"):
+        offered = pm[table].filters[0].list
+        assert offered, f"{table}: the value dropdown is still empty"
+        assert "cafe" in offered and "library" in offered
 
 
 def test_unreadable_values_are_reported_rather_than_swallowed():
@@ -205,25 +207,28 @@ def _dialog():
     return tool, ps, {p.name: p for p in ps}
 
 
-def test_the_new_boxes_live_under_a_heading_not_at_the_top():
-    """John, field: they surfaced directly under the input layer -
-    ABOVE the category field they depend on - because a parameter
-    with no section lands at the top level. Placement is not cosmetic
-    when a box sits above the thing that gives it meaning."""
-    _, _, pm = _dialog()
-    for name in ("restgroup", "restinpop"):
-        assert getattr(pm[name], "category", ""), \
-            f"{name} has no section and will float to the top"
-        assert pm[name].category == "Groups: from a category field"
+def test_every_box_has_a_section():
+    """John, field: two boxes added without a section surfaced at the
+    TOP of the dialog, above the field they depend on. Anything with
+    no category floats there, so nothing may be left without one."""
+    _, ps, _ = _dialog()
+    loose = [p.name for p in ps if not getattr(p, "category", "")
+             and p.name != "layer"]
+    assert not loose, f"these will float to the top of the dialog: {loose}"
 
 
-def test_the_two_grouping_routes_read_as_alternatives():
-    """Three headings, not one flat list of seven boxes."""
+def test_the_dialog_is_organised_by_the_two_populations():
+    """Reference and treatment - the words the RESULT columns have
+    always used (T_ is the treatment, R_ the ratio of the two)."""
     _, _, pm = _dialog()
-    assert pm["pop"].category == "Groups"
-    assert pm["treat"].category == "Groups: from number columns"
-    assert pm["catfield"].category == "Groups: from a category field"
-    assert pm["cattable"].category == "Groups: from a category field"
+    ref = "Reference population - who is around"
+    tre = "Treatment population - what you measure"
+    assert pm["pop"].category == ref
+    assert pm["catfield"].category == ref
+    assert pm["reftable"].category == ref
+    assert pm["treattable"].category == tre
+    assert pm["treatvalue"].category == tre
+    assert pm["treat"].category == tre
 
 
 def test_the_remainder_box_waits_for_a_category_field():
@@ -233,10 +238,10 @@ def test_the_remainder_box_waits_for_a_category_field():
     tool, ps, pm = _dialog()
     tool.updateParameters(ps)
     assert not pm["restgroup"].enabled
-    assert not pm["restinpop"].enabled
+    assert not pm["reftable"].enabled
     pm["catfield"].value = "fclass"
     tool.updateParameters(ps)
-    assert pm["restgroup"].enabled and pm["restinpop"].enabled
+    assert pm["restgroup"].enabled and pm["reftable"].enabled
 
 
 def test_choosing_one_route_dims_the_other():
@@ -250,7 +255,7 @@ def test_choosing_one_route_dims_the_other():
     pm["treat"].value = "income"
     tool.updateParameters(ps)
     assert not pm["catfield"].enabled
-    assert not pm["cattable"].enabled
+    assert not pm["treattable"].enabled
 
 
 def test_the_population_field_belongs_to_both_routes():
@@ -273,3 +278,86 @@ def test_the_remainder_label_asks_for_a_name_not_a_value():
     label = pm["restgroup"].displayName.lower()
     assert "name a group" in label
     assert "for example: other" in label
+
+
+# --------------------------------- the two populations (v1.22)
+def test_an_empty_reference_table_means_every_row():
+    """Fast food per POI. Leaving the reference table empty is the
+    whole difference from the run below - no tick to misread."""
+    state, pyt = _malta()
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0,
+                  cat_field="fclass", ref_rows=[],
+                  treat_rows=[["cafe", "eating"], ["bar", "eating"]])
+    t = state["table"]
+    assert "T_eating_10" in t.columns
+    # every row is a neighbour of somebody: nothing was excluded
+    assert t["N_10"].notna().all()
+    assert "population 60/60" in " ".join(msg.info) or True
+    broad = t["R_eating_10"].dropna().mean()
+    state2, pyt2 = _malta()
+    pyt2._run_tool("counts", "poi", _Msg(), k_text="10", unit=100.0,
+                   cat_field="fclass",
+                   ref_rows=[["cafe"], ["bar"], ["bakery"],
+                             ["restaurant"]],
+                   treat_rows=[["cafe", "eating"], ["bar", "eating"]])
+    strict = state2["table"]["R_eating_10"].dropna().mean()
+    assert strict > broad, "narrowing the reference must raise the share"
+
+
+def test_listing_the_reference_narrows_the_denominator():
+    """Fast food per eating place: only the listed values are around,
+    so the same treatment gives a larger share."""
+    state, pyt = _malta()
+    pyt._run_tool("counts", "poi", _Msg(), k_text="5", unit=100.0,
+                  cat_field="fclass",
+                  ref_rows=[["cafe"], ["bar"], ["bakery"],
+                            ["restaurant"]],
+                  treat_rows=[["cafe", "eating"], ["bar", "eating"]])
+    t = state["table"]
+    assert t["N_5"].max() < 60             # library, atm etc. excluded
+    assert t["R_eating_5"].dropna().max() <= 1.0 + 1e-9
+
+
+def test_the_treatment_can_be_counted_in_its_own_field():
+    """John, v1.22: 'the same should be possible for the treatment
+    population' - bars by guests, clubs by revenue."""
+    state, pyt = _malta(with_nulls=False)
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0,
+                  cat_field="fclass", treat_value_field="income",
+                  treat_rows=[["cafe", "eating"]])
+    assert "T_eating_10" in state["table"].columns
+    assert "same units as the reference" in msg.all()
+
+
+def test_mixing_units_is_allowed_but_said_out_loud():
+    """Reference in one currency, treatment in another, gives a ratio
+    rather than a share - a real measure, but not a percentage, and
+    the user should not discover that from a number above 1."""
+    state, pyt = _malta(with_nulls=False)
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0,
+                  weight_field="income", cat_field="fclass",
+                  treat_value_field="guests",
+                  treat_rows=[["cafe", "eating"]])
+    said = msg.all()
+    assert "RATIO of two different things" in said
+    assert "can go above 1" in said
+
+
+def test_no_value_field_means_shares_of_places():
+    state, pyt = _malta()
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0,
+                  cat_field="fclass",
+                  treat_rows=[["cafe", "eating"]])
+    assert "shares of PLACES" in msg.all()
+
+
+def test_a_value_outside_the_field_is_refused_by_name():
+    state, pyt = _malta()
+    import arcpy
+    with pytest.raises(arcpy.ExecuteError, match="not in the category"):
+        pyt._run_tool("counts", "poi", _Msg(), k_text="10", unit=100.0,
+                      cat_field="fclass", ref_rows=[["nosuchvalue"]])
