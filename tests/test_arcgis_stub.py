@@ -46,8 +46,28 @@ def _install_fake_arcpy(table: pd.DataFrame):
     class _SR(types.SimpleNamespace):
         pass
 
+    def _unalias(key):
+        """A catalog path resolves back to the layer it describes.
+
+        v1.22.1: the door now asks Describe() for catalogPath, which
+        is what a GeoPackage needs. The simulator hands out
+        "memory/<name>" and the Malta fixture hands out a real-looking
+        .gpkg path, so both must lead home again - otherwise the
+        simulator fails where real arcpy would succeed.
+        """
+        k = str(key)
+        for name, path in state.get("catalog_paths", {}).items():
+            if k == str(path):
+                return name
+        if k.startswith("memory/"):
+            return k[len("memory/"):]
+        return k
+
     def Describe(_layer):
-        key = str(_layer)
+        # v1.22.1: describing a CATALOG PATH must describe the layer
+        # it belongs to - the door now resolves layers through
+        # Describe().catalogPath, so a path comes back round.
+        key = _unalias(_layer)
         shp = state.get("shape_types", {}).get(key)
         if shp is None:
             shp = ("Table" if key.endswith(".csv")
@@ -68,7 +88,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
         if shp in ("Point", "Multipoint", "Polyline", "Polygon"):
             d.shapeType = shp
         elif shp == "Raster":
-            m = state["rasters"][key]
+            m = state["rasters"][_unalias(key)]
             d.dataType = "RasterDataset"
             d.extent = types.SimpleNamespace(XMin=m["xmin"],
                                              YMax=m["ymax"])
@@ -80,7 +100,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
         return d
 
     def _df_for(key):
-        key = str(key)
+        key = _unalias(key)
         if key in state.get("aux_tables", {}):
             return state["aux_tables"][key]
         if key in state.get("layers", {}):
@@ -147,6 +167,10 @@ def _install_fake_arcpy(table: pd.DataFrame):
             raise RuntimeError(
                 "The operation is not supported by this "
                 "implementation.")
+        if str(_layer) in state.get("path_only", set()):
+            raise RuntimeError(
+                "The operation is not supported by this "
+                "implementation.")
         t = _tab().set_index(key)
         add = pd.DataFrame(array).set_index(akey)
         for c in add.columns:
@@ -154,6 +178,10 @@ def _install_fake_arcpy(table: pd.DataFrame):
         _settab(t.reset_index())
 
     def AddField(_layer, name, ftype, *a, **kw):
+        if str(_layer) in state.get("path_only", set()):
+            raise RuntimeError(
+                f"ERROR 000852: Cannot add field {name} to "
+                f"{_layer}")
         t = _tab()
         if name not in t.columns:
             t[name] = np.nan
@@ -266,7 +294,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
         """Rows = state["geom_layers"][layer]: tuples whose first
         element is a fake geometry (see _geom)."""
         def __init__(self, layer, fields, spatial_reference=None):
-            self.rows = state["geom_layers"][str(layer)]
+            self.rows = state["geom_layers"][_unalias(layer)]
 
         def __enter__(self):
             return iter(self.rows)
@@ -302,7 +330,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
                 self.df.loc[self.df.index[self.i], f] = v
 
     def RasterToNumPyArray(value):
-        return state["rasters"][str(value)]["array"]
+        return state["rasters"][_unalias(value)]["array"]
 
     def ListFieldsAny(obj):
         t = _df_for(obj)
@@ -1455,8 +1483,13 @@ def test_pyt_raster_inputs_accept_layer_objects():
     for handed in ("dem", _ParamValue("dem")):
         pay = pyt._raster_payload(handed, msg)
         assert pay["array"].shape == (10, 10)
-    assert pyt._ref(_ParamValue("dem")) == "dem"
-    assert pyt._ref("dem") == "dem"
+    # v1.22.1: _ref resolves through Describe().catalogPath, because
+    # that is the only handle a GeoPackage accepts (John, Malta:
+    # AddField refused the layer and accepted the path). It must still
+    # lead back to the same data, whether given a name or an object.
+    assert pyt._ref(_ParamValue("dem")) == pyt._ref("dem")
+    assert pyt._raster_payload(pyt._ref("dem"), msg)["array"].shape \
+        == (10, 10)
     assert pyt._ref(None) is None
     m1 = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
     assert "DERasterDataset" in m1["dem"].datatype   # raster picker

@@ -390,8 +390,37 @@ def _ref(value):
     """arcpy is inconsistent: Describe() and cursors accept a Layer
     OBJECT, while RasterToNumPyArray insists on a path or a Raster
     (v1.16.7 field finding: 'Expected a Raster instance or path
-    name'). Normalise to something every call accepts."""
-    if value is None or isinstance(value, str):
+    name'). Normalise to something every call accepts.
+
+    v1.22.1, Malta - this is THE GeoPackage fix. `catalogPath` was
+    already listed below, but it does not live on the Layer: it
+    lives on its DESCRIBE, so that branch never fired and every
+    caller fell through to `dataSource`, which for a GeoPackage is a
+    connection DESCRIPTION arcpy itself refuses:
+
+        Instance=C:\\...\\malta.gpkg,Dataset=main.%gis_osm_pois_free
+
+    while the catalog path is an ordinary, workable path:
+
+        C:\\...\\malta.gpkg\\malta.gpkg\\main.gis_osm_pois_free
+
+    John proved the difference directly: AddField refused the layer
+    object and accepted the catalog path. One missing Describe()
+    behind an empty dropdown, a refused write, and a whole evening.
+    """
+    if value is None:
+        return value
+    # Describe FIRST, and for names as well as objects: a layer name
+    # describes to its catalog path, and a path describes to itself,
+    # so this is safe for both and is the only route that reaches a
+    # GeoPackage's workable path.
+    try:
+        p = getattr(arcpy.Describe(value), "catalogPath", None)
+        if isinstance(p, str) and p:
+            return p
+    except Exception:
+        pass
+    if isinstance(value, str):
         return value
     for attr in ("value", "catalogPath", "dataSource"):
         v = getattr(value, attr, None)
@@ -723,31 +752,30 @@ def _collect_barriers(rows, agg, unit, main_sr, messages):
 def _add_columns(layer, oid, sub, fresh, messages):
     """Add result columns to a layer, whichever way the target allows.
 
-    The fast way is one bulk call (ExtendTable). A file geodatabase
-    and a shapefile both support it; a GEOPACKAGE does not, and says
-    so with "The operation is not supported by this implementation"
-    (field, Malta, v1.20). That arrived as a raw traceback, which is
-    exactly what this project's dialogs are not supposed to do.
-
-    So: try the fast way, and if the target has no such thing, add
-    the fields and fill them row by row instead. Slower, works
-    everywhere, and it explains which route it took.
+    v1.22.1: everything here goes through the CATALOG PATH, not the
+    layer object. A GeoPackage refuses both ExtendTable and AddField
+    when handed the layer, and accepts the catalog path (John proved
+    it directly). So the fast route is tried against the path first
+    and usually works; the row-by-row route remains for targets that
+    genuinely have no bulk write.
     """
-    try:
-        arcpy.da.ExtendTable(layer, oid, sub, str(oid))
-        return "bulk"
-    except RuntimeError as exc:
-        if "not supported" not in str(exc).lower():
-            raise
+    target = _ref(layer)
+    for handle in (target, layer):
+        try:
+            arcpy.da.ExtendTable(handle, oid, sub, str(oid))
+            return "bulk"
+        except RuntimeError as exc:
+            if "not supported" not in str(exc).lower():
+                raise
+        except Exception:
+            continue
     messages.addMessage(
-        "This target does not support the fast bulk write (a "
-        "GeoPackage does not have it), so the results are written "
-        "row by row instead. Same numbers, slower - a large layer "
-        "will take noticeably longer. A file geodatabase supports "
-        "the fast route.")
+        "This target does not support the fast bulk write, so the "
+        "results are written row by row instead. Same numbers, "
+        "slower - a large layer will take noticeably longer.")
     for name in fresh:
         try:
-            arcpy.management.AddField(layer, name, "DOUBLE")
+            arcpy.management.AddField(target, name, "DOUBLE")
         except Exception as exc:
             raise arcpy.ExecuteError(
                 f"Could not add the result field '{name}' to the "
@@ -756,7 +784,7 @@ def _add_columns(layer, oid, sub, fresh, messages):
                 "the input.")
     pos = {int(r): i for i, r in enumerate(sub[str(oid)])}
     try:
-        with arcpy.da.UpdateCursor(layer, [str(oid)] + fresh) as cur:
+        with arcpy.da.UpdateCursor(target, [str(oid)] + fresh) as cur:
             for row in cur:
                 i = pos.get(int(row[0]))
                 if i is None:

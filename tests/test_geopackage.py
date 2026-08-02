@@ -33,6 +33,8 @@ import test_arcgis_stub as H                        # noqa: E402
 
 GPKG = (r"Instance=C:\Data\EQP\malta.gpkg,"
         r"Dataset=main.%gis_osm_pois_free")
+# What Describe reports, and what actually works (John, field):
+CATALOG = r"C:\Data\EQP\malta.gpkg\malta.gpkg\main.gis_osm_pois_free"
 
 
 class _Msg:
@@ -70,7 +72,8 @@ def _malta(n=60, with_nulls=True):
     state = H._install_fake_arcpy(t)
     state["oid_names"] = {"poi": "fid"}
     state["no_extend"] = {"poi"}
-    state["catalog_paths"] = {"poi": GPKG}
+    state["catalog_paths"] = {"poi": CATALOG}
+    state["path_only"] = {"poi"}      # the layer is refused; the path works
     return state, H._load_pyt()
 
 
@@ -80,7 +83,7 @@ class _GpkgLayer:
 
     def __init__(self, name="poi"):
         self.name = name
-        self.dataSource = GPKG
+        self.dataSource = GPKG        # unusable, as Pro reports it
 
     def __str__(self):
         return self.name
@@ -134,18 +137,36 @@ def test_reading_the_values_is_reported_when_it_works():
 
 
 # ------------------------------------- 2. the unsupported write
-def test_new_fields_are_written_even_without_the_bulk_call():
-    """A GeoPackage has no ExtendTable. Fall back to adding the
-    fields and filling them row by row - slower, works everywhere -
-    and say so rather than showing a traceback."""
+def test_a_geopackage_is_written_through_its_catalog_path():
+    """v1.22.1, and the point of the whole Malta round: a GeoPackage
+    refuses the LAYER and accepts its CATALOG PATH. John proved it -
+    AddField failed on the layer object with ERROR 000852 and
+    succeeded on the path. So the write simply works now, with no
+    fallback and no apology."""
     state, pyt = _malta()
     msg = _Msg()
     pyt._run_tool("counts", "poi", msg, weight_field=None,
                   k_text="10", unit=100.0)
     cols = set(state["table"].columns)
     assert "N_10" in cols and "Dist_10" in cols
-    said = msg.all().lower()
-    assert "row by row" in said or "slower" in said
+    assert "row by row" not in msg.all().lower(), \
+        "the slow route should not be needed once the path is used"
+    assert not state.get("added_fields"), \
+        "fields were added one at a time; the bulk write should have " \
+        "worked through the catalog path"
+
+
+def test_the_slow_route_still_exists_for_a_target_that_needs_it():
+    """Kept for any target with genuinely no bulk write - and it
+    explains the trade rather than failing."""
+    state, pyt = _malta()
+    state["no_extend"] = {r"C:\Data\EQP\malta.gpkg\malta.gpkg"
+                          r"\main.gis_osm_pois_free", "poi"}
+    state["path_only"] = set()          # AddField works here
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0)
+    assert "N_10" in state["table"].columns
+    assert "row by row" in msg.all().lower()
 
 
 def test_the_bulk_call_is_still_used_where_it_works():

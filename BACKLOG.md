@@ -733,9 +733,9 @@ small batch after.
   group counts -> zero; continuous values -> excluded, Nv reports.
 - QGIS: category table + remainder + decay. Fixed: the QGIS reader
   forced text columns to NaN.
-- 53 | open | The barrier path still converts layers via _ref() and
-  would hit the same GeoPackage wall as the dropdown did. Latent,
-  not yet reported - a barrier from a .gpkg has not been tried.
+- ~~53~~ | DONE v1.22.1 | The barrier path went through the same
+  _ref(), so the catalogPath fix closes it too - though a barrier
+  from a .gpkg still has not been FIELD-tested.
 - 54 | open | Gridby has NO missing data, so the missing-data rules
   are tested only on small fixtures. A Gridby variant with holes
   punched in it would test the documented rule properly.
@@ -778,3 +778,17 @@ small batch after.
 - 57 | open | The old single-table path (cat_rows) is kept in
   _run_tool for compatibility but is no longer reachable from the
   dialog. Retire once John confirms no saved tools depend on it.
+
+## v1.22.1 (the one-line root of the Malta round)
+- _ref() now resolves through arcpy.Describe(value).catalogPath, for
+  names as well as objects. catalogPath is not an attribute of a
+  Layer - it belongs to its Describe - so the branch that was meant
+  to produce a workable path never ran, and everything fell through
+  to dataSource, which a GeoPackage reports as an unusable
+  connection string.
+- One line behind three field failures. The write, the dropdown and
+  (latently) the barriers all used the same helper.
+- The simulator models it: the layer is refused, the catalog path is
+  accepted, and a catalog path resolves back to its layer.
+- 58 | open | A GeoPackage barrier layer has still never been run in
+  the field. The code path is now believed sound; only Pro can say.
