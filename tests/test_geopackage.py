@@ -195,3 +195,81 @@ def test_a_missing_value_leaves_the_person_in_the_neighbourhood():
     assert (t["Nv_income_20"] < t["N_20"]).any()
     assert (t["Nv_income_20"] > 0).any()
     assert t["Mean_income_20"].notna().any()
+
+
+# ------------------------------------------- the Groups dialog
+def _dialog():
+    state, pyt = _malta()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    return tool, ps, {p.name: p for p in ps}
+
+
+def test_the_new_boxes_live_under_a_heading_not_at_the_top():
+    """John, field: they surfaced directly under the input layer -
+    ABOVE the category field they depend on - because a parameter
+    with no section lands at the top level. Placement is not cosmetic
+    when a box sits above the thing that gives it meaning."""
+    _, _, pm = _dialog()
+    for name in ("restgroup", "restinpop"):
+        assert getattr(pm[name], "category", ""), \
+            f"{name} has no section and will float to the top"
+        assert pm[name].category == "Groups: from a category field"
+
+
+def test_the_two_grouping_routes_read_as_alternatives():
+    """Three headings, not one flat list of seven boxes."""
+    _, _, pm = _dialog()
+    assert pm["pop"].category == "Groups"
+    assert pm["treat"].category == "Groups: from number columns"
+    assert pm["catfield"].category == "Groups: from a category field"
+    assert pm["cattable"].category == "Groups: from a category field"
+
+
+def test_the_remainder_box_waits_for_a_category_field():
+    """It asks for a GROUP NAME, and there is nothing to collect
+    until a category field is chosen - so it should not invite an
+    answer before then."""
+    tool, ps, pm = _dialog()
+    tool.updateParameters(ps)
+    assert not pm["restgroup"].enabled
+    assert not pm["restinpop"].enabled
+    pm["catfield"].value = "fclass"
+    tool.updateParameters(ps)
+    assert pm["restgroup"].enabled and pm["restinpop"].enabled
+
+
+def test_choosing_one_route_dims_the_other():
+    tool, ps, pm = _dialog()
+    pm["catfield"].value = "fclass"
+    tool.updateParameters(ps)
+    assert not pm["treat"].enabled, \
+        "number-column groups should dim once a category field is set"
+
+    tool, ps, pm = _dialog()
+    pm["treat"].value = "income"
+    tool.updateParameters(ps)
+    assert not pm["catfield"].enabled
+    assert not pm["cattable"].enabled
+
+
+def test_the_population_field_belongs_to_both_routes():
+    """It is persons-per-row, not one of the alternatives - it is
+    also what makes category groups count PERSONS rather than places
+    (the 1.17 rule), so dimming it would be wrong."""
+    tool, ps, pm = _dialog()
+    pm["catfield"].value = "fclass"
+    tool.updateParameters(ps)
+    assert pm["pop"].enabled
+    tool, ps, pm = _dialog()
+    pm["treat"].value = "income"
+    tool.updateParameters(ps)
+    assert pm["pop"].enabled
+
+
+def test_the_remainder_label_asks_for_a_name_not_a_value():
+    """John read it as wanting 'restaurant'. It wants 'other'."""
+    _, _, pm = _dialog()
+    label = pm["restgroup"].displayName.lower()
+    assert "name a group" in label
+    assert "for example: other" in label

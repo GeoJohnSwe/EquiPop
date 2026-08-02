@@ -739,3 +739,18 @@ small batch after.
 - 54 | open | Gridby has NO missing data, so the missing-data rules
   are tested only on small fixtures. A Gridby variant with holes
   punched in it would test the documented rule properly.
+
+## v1.21.1 (the Groups section, made legible)
+- Placement bug from 1.21.0: restgroup/restinpop had no SECTION, so
+  Pro floated them to the top of the dialog, above the field they
+  depend on. One missing line in the SECTION map; found in the field
+  within a day, which is the argument for shipping small.
+- Groups split into three headings; the unused route greys out; the
+  remainder box waits for a category field. Population field stays
+  live in both, since it applies to both.
+- Labels: the remainder box asks for a group NAME with an example.
+- QGIS: same clarity by ordering and wording (no sections there).
+- 55 | open | The dialog-structure tests assert Pro's `category` and
+  `enabled`; the simulator honours both, but only a real Pro can say
+  whether the three headings read well on screen. Worth a look in
+  the next field cycle.

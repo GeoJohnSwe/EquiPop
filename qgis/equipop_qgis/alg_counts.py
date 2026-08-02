@@ -46,11 +46,14 @@ class CountsAndShares(EquipopAlgorithm):
             "geometry", parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
-            "pop", "Population field (people per row; leave empty if "
-            "one row is one person)", parentLayerParameterName="layer",
+            "pop", "Population field - people per row (applies to "
+            "BOTH ways of making groups; leave empty if one row is "
+            "one person)", parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
-            "treat", "Group fields (counts of the group in each row)",
+            "treat", "GROUPS FROM NUMBER COLUMNS - one column per "
+            "group, counts inside (leave empty to use a category "
+            "field instead)",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric,
             allowMultiple=True, optional=True))
@@ -61,8 +64,8 @@ class CountsAndShares(EquipopAlgorithm):
             "r", "Radii in metres, space separated", optional=True))
         # --- groups from a category field -------------------------
         self.add(QgsProcessingParameterField(
-            "catfield", "Category field (codes or names) - builds "
-            "population and groups from its VALUES",
+            "catfield", "GROUPS FROM A CATEGORY FIELD - one column "
+            "of labels (leave empty if you used group columns above)",
             parentLayerParameterName="layer", optional=True))
         self.add(QgsProcessingParameterMatrix(
             "cattable", "Categories: one row per value - value, group "
@@ -70,11 +73,13 @@ class CountsAndShares(EquipopAlgorithm):
             headers=["Category value", "Group name", "In population?"],
             optional=True))
         self.add(QgsProcessingParameterString(
-            "restgroup", "Put every OTHER value in this group "
-            "(optional)", optional=True))
+            "restgroup", "...name a group for every OTHER value "
+            "(optional; for example: other)", optional=True))
         self.add(QgsProcessingParameterBoolean(
             "restinpop", "...and count those other values as "
-            "population too", defaultValue=True))
+            "population too (ticked: shares are of everything "
+            "present; unticked: shares are of the values you listed)",
+            defaultValue=True))
 
         # --- distance decay ---------------------------------------
         self.add(QgsProcessingParameterEnum(

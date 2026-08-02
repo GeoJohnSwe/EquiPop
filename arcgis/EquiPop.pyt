@@ -1258,6 +1258,39 @@ def _distinct_values(layer, field, cap: int = 200, messages=None):
     return []
 
 
+def _grey_the_unused_group_route(pm):
+    """Two ways to define groups; you take one (v1.21.1).
+
+    Either you have one column per group with counts inside (register
+    data), or one column of labels whose values you sort into groups
+    (POI data). Choosing one leaves the other's boxes meaningless, and
+    a flat list said so nowhere - John, field: the remainder box
+    invited an answer before there was a field to take values from.
+    Now the unused route goes dim, and the remainder box is
+    unavailable until a category field is chosen, which answers "what
+    am I supposed to type here?" before it is asked.
+
+    The population field is NOT one of the alternatives: it is
+    persons-per-row and applies to both routes, so it stays live.
+    """
+    cat = _txt(pm, "catfield")
+    treat = _txt(pm, "treat")
+    for name in ("catfield", "cattable", "restgroup", "restinpop",
+                 "groupscount"):
+        p = pm.get(name)
+        if p is None:
+            continue
+        # the category route is off only once the OTHER route is used
+        p.enabled = not treat or bool(cat)
+    for name in ("restgroup", "restinpop"):
+        p = pm.get(name)
+        if p is not None and p.enabled:
+            p.enabled = bool(cat)      # nothing to collect without it
+    p = pm.get("treat")
+    if p is not None:
+        p.enabled = not cat
+
+
 def _byname(parameters):
     """Parameters by NAME, not position. Inserting one parameter used
     to shift every index after it (v1.16.6 - it has caused two bugs
@@ -1537,12 +1570,15 @@ class CountsShares:
                _p("catfield", "Category field (codes or names) - "
                   "builds population and groups from its VALUES",
                   "Field", required=False),
-               _p("restgroup", "Put every OTHER value in this group "
-                  "(optional) - name only the values you care about "
-                  "above, and everything else falls here",
+               _p("restgroup", "Name a group for every OTHER value "
+                  "(optional; for example: other) - list only the "
+                  "values you care about in the table above, and "
+                  "every remaining value joins this group",
                   "GPString", required=False),
                _p("restinpop", "...and count those other values as "
-                  "population too", "GPBoolean", required=False),
+                  "population too (ticked: shares are of everything "
+                  "present; unticked: shares are of the values you "
+                  "listed)", "GPBoolean", required=False),
                _p("cattable", "Categories: one row per value - which "
                   "group it belongs to, and whether it counts as "
                   "population", "GPValueTable", required=False),
@@ -1615,9 +1651,20 @@ class CountsShares:
             "halflife": "Neighbourhood", "hlfield": "Neighbourhood",
             "hlfromdist": "Neighbourhood", "hlbins": "Neighbourhood",
             "decayeps": "Neighbourhood",
-            "pop": "Groups", "treat": "Groups",
-            "catfield": "Groups", "cattable": "Groups",
-            "groupscount": "Groups",
+            # GROUPS, in three headings (v1.21.1). There are two
+            # ALTERNATIVE ways to define groups and the flat list said
+            # so nowhere - choose one and four other boxes quietly
+            # stop meaning anything. The population field belongs to
+            # BOTH routes (it is persons-per-row, and it is what makes
+            # category groups count persons rather than places), so it
+            # sits above them rather than inside either.
+            "pop": "Groups",
+            "treat": "Groups: from number columns",
+            "catfield": "Groups: from a category field",
+            "cattable": "Groups: from a category field",
+            "restgroup": "Groups: from a category field",
+            "restinpop": "Groups: from a category field",
+            "groupscount": "Groups: from a category field",
             "barriertable": "Barriers and terrain",
             "barrierrasters": "Barriers and terrain",
             "barrieragg": "Barriers and terrain",
@@ -1652,6 +1699,7 @@ class CountsShares:
     def updateParameters(self, parameters):
         pm = _byname(parameters)
         _trio_update(parameters, 0, 1, 2, 3)
+        _grey_the_unused_group_route(pm)
         # offer the category field's OWN values in the table's first
         # column, so nothing has to be spelled by hand (v1.17.3)
         cat = _txt(pm, "catfield")

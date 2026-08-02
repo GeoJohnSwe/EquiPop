@@ -1,6 +1,6 @@
 item,value
-equipop_version,1.21.0
-run_utc,2026-08-01T06:40:26+00:00
+equipop_version,1.21.1
+run_utc,2026-08-01T08:13:05+00:00
 engine,stats
 input,"Instance=C:\Data\EQP\malta.gpkg,Dataset=main.%gis_osm_pois_free"
 working_crs,SWEREF99 TM
@@ -22,4 +22,4 @@ result_fields,N_local;N_20;Dist_20;Nv_income_20;Mean_income_20
 total_seconds,0.1
 time_reading_input_seconds,0.0
 time_calculating_seconds,0.0
-time_writing_results_to_the_layer_seconds,0.0
+time_writing_results_to_the_layer_seconds,0.1
