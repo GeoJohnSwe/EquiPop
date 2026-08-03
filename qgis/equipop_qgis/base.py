@@ -81,12 +81,33 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         tool = self.EQP_TOOL
         return f"<p>{summary_for(tool)}</p><p>{usage_for(tool)}</p>"
 
-    def add(self, param):
-        """Add a parameter and attach its shared explanation."""
+    def add(self, param, advanced=False):
+        """Add a parameter, attach its shared explanation, and
+        optionally tuck it into QGIS's Advanced area.
+
+        QGIS Processing builds ONE flat list - there are no
+        collapsible sections as in Pro, and no dependable greying.
+        The single grouping it does offer is the "Advanced
+        parameters" area, so the boxes most runs never touch go
+        there and the everyday list stays short (v1.25, John).
+
+        setHelp() feeds the tooltip that appears when the cursor
+        rests on a box - which is as close as QGIS gets to Pro's
+        per-parameter help, and it comes from the same shared source
+        so both doors explain a box in the same words.
+        """
         try:
             param.setHelp(self.help_for(param.name()))
         except Exception:
             pass
+        if advanced:
+            try:
+                from qgis.core import QgsProcessingParameterDefinition
+                param.setFlags(
+                    param.flags()
+                    | QgsProcessingParameterDefinition.FlagAdvanced)
+            except Exception:
+                pass
         self.addParameter(param)
         return param
 

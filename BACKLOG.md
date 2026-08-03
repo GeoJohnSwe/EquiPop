@@ -853,3 +853,24 @@ small batch after.
   input is a .shp and the output is not a new feature class. It may
   be too eager - a shapefile NOT in a map is fine, and the toolbox
   cannot tell from the path alone. Watch whether it becomes noise.
+
+## v1.25.0 (QGIS layout; a parity gap)
+- FOUND: 1.23.0's QGIS edit half-applied - refmode never reached the
+  QGIS door, so the reference ladder existed only in Pro. The parity
+  test checked QGIS names are a SUBSET of Pro's, which a missing box
+  satisfies. Now checked both ways against a named CORE set.
+- QGIS layout, within what Processing allows: Advanced area for the
+  rarely-touched boxes, numbered labels (1 / 1a / 2 / 2b / 3 / 4),
+  ladder order, tooltips from the shared help.
+- qgisMinimumVersion 3.16 -> 3.28, with "tested on 3.42" stated.
+- [stata] full population now names the total.
+- 63 | open | STILL MISSING IN QGIS: barriers and terrain. Deferred
+  again rather than started half-finished - it needs the friction
+  building path (points/paths to friction, DEM slope) ported to read
+  QGIS layers, which is a round of its own.
+- 64 | open | MACHINE 2 vocabulary (was 60) - not started.
+- 65 | open | The OneDrive warning did not fire on John's run. Most
+  likely that run predates 1.24.0; confirm before hunting.
+- 66 | open | Editing multi-line Python by blind string replacement
+  damaged alg_counts.py this round; recovered from the release zip.
+  Read the real text first (view/sed), then str_replace against it.

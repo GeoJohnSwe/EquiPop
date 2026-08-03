@@ -91,7 +91,8 @@ def door_output():
     """Both tools run over Gridby exactly as the reference spec
     describes, and merged the way a user would end up with them."""
     counts, _ = _run(CountsAndShares, qgis_stub.gridby_source(),
-                     pop=SPEC["weight"], treat=["count_group"],
+                     refmode=[1], pop=SPEC["weight"],
+                     treatmode=[1], treat=["count_group"],
                      k="400", r="800", unit=SPEC["unit_size"])
     stats, _ = _run(ValueStatistics, qgis_stub.gridby_source(),
                     pop=SPEC["weight"], values=["count_group"],
@@ -130,7 +131,7 @@ def test_degrees_are_reprojected_rather_than_refused():
                       "y": [57.7, 57.71, 57.72, 57.73],
                       "pop": [1.0, 1, 1, 1]})
     src = qgis_stub.source_from(t, crs="EPSG:4326")
-    out, fb = _run(CountsAndShares, src, pop="pop", k="2")
+    out, fb = _run(CountsAndShares, src, refmode=[1], pop="pop", k="2")
     said = " ".join(fb.info)
     assert "degrees" in said and "reprojected" in said
     assert "not changed" in said
@@ -142,7 +143,7 @@ def test_a_table_without_geometry_uses_the_shared_coordinate_rules():
                       "North_RT90": [0.0, 0, 100, 100],
                       "pop": [1.0, 1, 1, 1]})
     src = qgis_stub.source_from(t, geometry=False)
-    out, fb = _run(CountsAndShares, src, pop="pop", k="2")
+    out, fb = _run(CountsAndShares, src, refmode=[1], pop="pop", k="2")
     assert "guessed" in " ".join(fb.info)
     assert len(out) == 4
 
@@ -151,7 +152,7 @@ def test_an_empty_layer_is_refused_in_qgis_currency():
     src = qgis_stub.source_from(
         pd.DataFrame({"x": [], "y": [], "pop": []}))
     with pytest.raises(QgsProcessingException) as e:
-        _run(CountsAndShares, src, pop="pop", k="2")
+        _run(CountsAndShares, src, refmode=[1], pop="pop", k="2")
     assert "no features" in str(e.value)
 
 
@@ -159,7 +160,7 @@ def test_asking_for_no_neighbourhood_is_refused():
     src = qgis_stub.source_from(
         pd.DataFrame({"x": [0.0, 1], "y": [0.0, 1], "pop": [1.0, 1]}))
     with pytest.raises(QgsProcessingException) as e:
-        _run(CountsAndShares, src, pop="pop", k="", r="")
+        _run(CountsAndShares, src, refmode=[1], pop="pop", k="", r="")
     assert "at least one k" in str(e.value)
 
 
@@ -181,7 +182,7 @@ def test_a_shapefile_target_is_refused_naming_a_geopackage():
                       "some_long_group_name": [1.0, 0, 1]}))
     with pytest.raises(QgsProcessingException) as e:
         _run(CountsAndShares, src, pop="pop",
-             treat=["some_long_group_name"], k="2",
+             treatmode=[1], treat=["some_long_group_name"], k="2",
              outfc="/tmp/results.shp")
     msg = str(e.value)
     assert "SHAPEFILE" in msg and "GeoPackage" in msg
@@ -192,7 +193,7 @@ def test_the_pane_hears_the_engines_own_voice():
     """The package prints; QGIS shows only what is pushed to it. The
     shared reporter is the join."""
     src = qgis_stub.gridby_source()
-    _, fb = _run(CountsAndShares, src, pop="count_all", k="400")
+    _, fb = _run(CountsAndShares, src, refmode=[1], pop="count_all", k="400")
     said = " ".join(fb.info)
     assert "[fast]" in said or "[cells]" in said
     assert "[time] calculating" in said
@@ -232,8 +233,8 @@ def test_listing_the_reference_narrows_the_denominator():
     """Fast food per EATING PLACE: the reference table names the
     eating places, so benches and postboxes are not in it."""
     out, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
-                  k="4", catfield="fclass", reftable=EATING,
-                  treattable=TREAT_ROWS)
+                  k="4", refmode=[2], catfield="fclass", reftable=EATING,
+                  treatmode=[2], treattable=TREAT_ROWS)
     assert out["R_fastfood_4"].max() == pytest.approx(0.5)
 
 
@@ -242,8 +243,9 @@ def test_an_empty_reference_table_means_everything():
     reference table empty is the whole difference - no tick to
     misread."""
     out, _ = _run(CountsAndShares, qgis_stub.source_from(_poi_table()),
-                  k="4", catfield="fclass", reftable=[],
-                  treattable=TREAT_ROWS, restgroup="other")
+                  k="4", refmode=[2], catfield="fclass", reftable=[],
+                  treatmode=[2], treattable=TREAT_ROWS,
+                  restgroup="other")
     assert out["R_fastfood_4"].max() < 0.5
     assert "T_other_4" in out.columns
 
@@ -253,12 +255,12 @@ def test_the_two_denominators_really_do_differ():
     difference is whether the reference table was filled in."""
     strict, _ = _run(CountsAndShares,
                      qgis_stub.source_from(_poi_table()), k="4",
-                     catfield="fclass", reftable=EATING,
-                     treattable=TREAT_ROWS)
+                     refmode=[2], catfield="fclass", reftable=EATING,
+                     treatmode=[2], treattable=TREAT_ROWS)
     broad, _ = _run(CountsAndShares,
                     qgis_stub.source_from(_poi_table()), k="4",
-                    catfield="fclass", reftable=[],
-                    treattable=TREAT_ROWS)
+                    refmode=[2], catfield="fclass", reftable=[],
+                    treatmode=[2], treattable=TREAT_ROWS)
     assert strict["R_fastfood_4"].mean() > broad["R_fastfood_4"].mean()
 
 
@@ -266,8 +268,74 @@ def test_decay_is_explained_in_plain_numbers():
     """The naming pass, applied: say what the curve DOES before what
     it is called."""
     out, fb = _run(CountsAndShares, qgis_stub.gridby_source(),
-                   pop="count_all", k="400", model=[1], halflife=500.0)
+                   refmode=[1], pop="count_all", k="400", model=[1],
+                   halflife=500.0)
     said = " ".join(fb.info)
     assert "halves every 500 m" in said
     assert "at 1000 m a quarter" in said
     assert "ND_inf" in out.columns
+
+
+# --------------------------------- parity, BOTH directions (v1.25)
+# The one-way check missed a real gap: 1.23.0 gave Pro a `refmode`
+# ladder and the QGIS edit only half-applied, so the reference
+# section had no ladder there at all. Every QGIS name existed in Pro,
+# so the old test passed. A door can fall behind as easily as it can
+# drift ahead.
+CORE = {"layer", "pop", "treat", "k", "r", "unit", "catfield",
+        "reftable", "treattable", "restgroup", "refmode", "treatmode",
+        "treatcatfield", "keepoutside", "model", "halflife",
+        "decayeps", "xfield", "yfield"}
+
+
+def _qgis_names():
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    return {p.name() for p in alg.parameterDefinitions()}
+
+
+def test_qgis_has_every_core_box_that_pro_has():
+    missing = CORE - _qgis_names()
+    assert not missing, (
+        f"the QGIS door is missing {sorted(missing)} - a box added to "
+        "Pro was not carried across")
+
+
+def test_the_ladder_is_present_in_qgis_too():
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    pm = {p.name(): p for p in alg.parameterDefinitions()}
+    assert len(pm["refmode"].options) == 3
+    assert len(pm["treatmode"].options) == 3
+    assert len(pm["keepoutside"].options) == 2
+
+
+def test_the_rarely_touched_boxes_are_in_the_advanced_area():
+    """QGIS has no sections; this is the one grouping it offers."""
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    adv = {p.name() for p in alg.parameterDefinitions()
+           if p.isAdvanced()}
+    assert {"unit", "decayeps", "xfield", "yfield"} <= adv
+    assert "refmode" not in adv and "k" not in adv
+
+
+def test_the_labels_carry_their_step_number():
+    """QGIS builds one flat list, so the grouping has to live in the
+    wording."""
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    pm = {p.name(): p.description() for p in
+          alg.parameterDefinitions()}
+    assert pm["refmode"].startswith("1 ")
+    assert pm["pop"].startswith("1a ")
+    assert pm["treatmode"].startswith("2 ")
+    assert pm["treattable"].startswith("2b ")
+    assert pm["k"].startswith("3 ")
+
+
+def test_the_default_run_needs_only_a_layer_and_a_k():
+    """Rung 1 of both ladders: every point counts as one, no
+    treatment. The simplest question EquiPop answers."""
+    out, _ = _run(CountsAndShares, qgis_stub.gridby_source(), k="50")
+    assert "N_50" in out.columns and "Dist_50" in out.columns

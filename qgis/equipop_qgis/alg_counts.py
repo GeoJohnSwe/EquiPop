@@ -54,72 +54,83 @@ class CountsAndShares(EquipopAlgorithm):
         self.add(QgsProcessingParameterField(
             "xfield", "X field (easting) - only for tables without "
             "geometry", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            type=QgsProcessingParameterField.Numeric, optional=True),
+            advanced=True)
         self.add(QgsProcessingParameterField(
             "yfield", "Y field (northing) - only for tables without "
             "geometry", parentLayerParameterName="layer",
+            type=QgsProcessingParameterField.Numeric, optional=True),
+            advanced=True)
+        self.add(QgsProcessingParameterEnum(
+            "refmode", "1 \u25b8 REFERENCE POPULATION - how is it "
+            "defined?", options=REF_MODES, defaultValue=0))
+        self.add(QgsProcessingParameterField(
+            "pop", "1a \u25b8 ...count field - how many people (or "
+            "guests, jobs) each row stands for",
+            parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
-            "pop", "REFERENCE POPULATION - how much does each row "
-            "count? A field holding people (or guests, jobs, "
-            "revenue). Leave empty and every row counts as one.", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            "catfield", "1b \u25b8 ...type field - the column holding "
+            "the kind of each object",
+            parentLayerParameterName="layer", optional=True))
+        self.add(QgsProcessingParameterMatrix(
+            "reftable", "1c \u25b8 ...types to INCLUDE in the "
+            "reference population, one per row",
+            headers=["Type"], optional=True))
+        self.add(QgsProcessingParameterEnum(
+            "keepoutside", "1d \u25b8 ...rows whose type is NOT "
+            "included", options=OUTSIDE_MODES, defaultValue=0))
+
+        self.add(QgsProcessingParameterEnum(
+            "treatmode", "2 \u25b8 TREATMENT POPULATION - how is it "
+            "defined? (no count field: k belongs to the reference "
+            "population, so the treatment is counted in the same "
+            "units)", options=TREAT_MODES, defaultValue=0))
         self.add(QgsProcessingParameterField(
-            "treat", "...group count fields - one column per group, "
-            "holding TOTALS, never averages",
+            "treatcatfield", "2a \u25b8 ...type field for the groups "
+            "(usually the same column - choose it here too)",
+            parentLayerParameterName="layer", optional=True))
+        self.add(QgsProcessingParameterMatrix(
+            "treattable", "2b \u25b8 ...groups: one row per type - "
+            "the type, and the group name it joins",
+            headers=["Type", "Group name"], optional=True))
+        self.add(QgsProcessingParameterString(
+            "restgroup", "2c \u25b8 ...name a group for every OTHER "
+            "type (optional; for example: other)", optional=True))
+        self.add(QgsProcessingParameterField(
+            "treat", "2d \u25b8 ...group count fields - one column "
+            "per group, holding TOTALS, never averages",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric,
             allowMultiple=True, optional=True))
-        self.add(QgsProcessingParameterString(
-            "k", "k - neighbourhood sizes in people, space separated",
-            defaultValue="400", optional=True))
-        self.add(QgsProcessingParameterString(
-            "r", "Radii in metres, space separated", optional=True))
-        # --- groups from a category field -------------------------
-        self.add(QgsProcessingParameterField(
-            "catfield", "...type field - the column holding the kind "
-            "of each object",
-            parentLayerParameterName="layer", optional=True))
-        self.add(QgsProcessingParameterMatrix(
-            "reftable", "...types to INCLUDE in the reference "
-            "population, one per row",
-            headers=["Type"], optional=True))
-        self.add(QgsProcessingParameterEnum(
-            "keepoutside", "...rows whose type is NOT included",
-            options=OUTSIDE_MODES, defaultValue=0))
-        self.add(QgsProcessingParameterEnum(
-            "treatmode", "TREATMENT POPULATION - how is it defined? "
-            "(no count field: k belongs to the reference population, "
-            "so the treatment is counted in the same units)",
-            options=TREAT_MODES, defaultValue=0))
-        self.add(QgsProcessingParameterField(
-            "treatcatfield", "...type field for the groups (usually "
-            "the same column - choose it here too)",
-            parentLayerParameterName="layer", optional=True))
-        self.add(QgsProcessingParameterMatrix(
-            "treattable", "...groups: one row per type - the type, "
-            "and the group name it joins",
-            headers=["Type", "Group name"], optional=True))
-        self.add(QgsProcessingParameterString(
-            "restgroup", "...name a group for every OTHER value "
-            "(optional; for example: other)", optional=True))
 
-        # --- distance decay ---------------------------------------
+        self.add(QgsProcessingParameterString(
+            "k", "3 \u25b8 k - neighbourhood sizes in people, space "
+            "separated", defaultValue="400", optional=True))
+        self.add(QgsProcessingParameterString(
+            "r", "3a \u25b8 ...or radii in metres, space separated",
+            optional=True))
+
         self.add(QgsProcessingParameterEnum(
-            "model", "Distance decay", options=DECAY_MODELS,
+            "model", "4 \u25b8 distance decay", options=DECAY_MODELS,
             defaultValue=0))
         self.add(QgsProcessingParameterNumber(
-            "halflife", "Half-life in metres (the distance at which "
-            "weight halves)", defaultValue=0.0, optional=True,
-            type=QgsProcessingParameterNumber.Double))
-        self.add(QgsProcessingParameterNumber(
-            "decayeps", "Ignore weights below this (truncation)",
-            defaultValue=1e-6, optional=True,
+            "halflife", "4a \u25b8 ...half-life in metres (the "
+            "distance at which weight halves)", defaultValue=0.0,
+            optional=True,
             type=QgsProcessingParameterNumber.Double))
 
+        # Rarely touched: into QGIS's Advanced area, so the everyday
+        # list stays short (v1.25, John - QGIS has no sections, and
+        # this is the one grouping it does offer).
         self.add(QgsProcessingParameterNumber(
-            "unit", "Cell size in metres", defaultValue=100.0,
-            type=QgsProcessingParameterNumber.Double))
+            "decayeps", "Ignore decay weights below this "
+            "(truncation)", defaultValue=1e-6, optional=True,
+            type=QgsProcessingParameterNumber.Double), advanced=True)
+        self.add(QgsProcessingParameterNumber(
+            "unit", "Cell size in metres - bigger cells mean fewer "
+            "origins and faster runs", defaultValue=100.0,
+            type=QgsProcessingParameterNumber.Double), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -180,9 +191,13 @@ class CountsAndShares(EquipopAlgorithm):
         if treats:
             kw["treat"] = {t: pts.data[t] for t in treats}
 
+        refmode = (self.parameterAsEnums(parameters, "refmode",
+                                         context) or [0])[0]
+        if refmode == 0:
+            pop = None            # every point counts as one
         catfield = (self.parameterAsFields(parameters, "catfield",
                                            context) or [None])[0]
-        if catfield:
+        if refmode == 2 and catfield:
             from equipop.categorical import categories_to_binary
             pop_vals = [str(v).strip() for v in
                         (self.parameterAsMatrix(parameters, "reftable",

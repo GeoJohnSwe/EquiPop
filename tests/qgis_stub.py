@@ -294,8 +294,14 @@ class QgsFeatureSink:
 
 
 # ------------------------------------------------------- parameters
+class QgsProcessingParameterDefinition:
+    FlagAdvanced = 1
+    FlagOptional = 2
+
+
 class _Param:
     def __init__(self, name, description="", *a, **kw):
+        self._flags = 0
         self.name_, self.description_ = name, description
         self.optional = kw.get("optional", False)
         self.defaultValue_ = kw.get("defaultValue", None)
@@ -313,6 +319,16 @@ class _Param:
 
     def setHelp(self, text):
         self.help_ = text
+
+    def flags(self):
+        return self._flags
+
+    def setFlags(self, f):
+        self._flags = f
+
+    def isAdvanced(self):
+        return bool(self._flags
+                    & QgsProcessingParameterDefinition.FlagAdvanced)
 
 
 class QgsProcessingParameterFeatureSource(_Param):
@@ -435,6 +451,7 @@ _NAMES = [
     "QgsProcessingParameterNumber", "QgsProcessingParameterBoolean",
     "QgsProcessingParameterEnum", "QgsProcessingParameterMatrix",
     "QgsProcessingParameterFeatureSink",
+    "QgsProcessingParameterDefinition",
 ]
 
 

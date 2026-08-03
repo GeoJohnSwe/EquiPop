@@ -356,8 +356,14 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         E, N = _snap(dv["_x"], dv["_y"], unit_size)   # per INPUT row
         if weight is not None:
             n_persons = int(dv["_rep"].sum())
-            print(f"[stata] full population: {len(dv)} rows -> "
-                  f"{n_persons} persons (k counts PERSONS)")
+            skipped = len(df) - len(dv)
+            print(f"[stata] full population: {len(dv)} of {len(df)} "
+                  f"rows carry a usable count -> {n_persons} persons "
+                  f"(k counts PERSONS)")
+            if skipped:
+                print(f"[stata] {skipped} row(s) have no count (empty "
+                      "or zero) and take no part in the k-search - "
+                      "they still receive their own results")
             dv = dv.loc[dv.index.repeat(dv["_rep"])] \
                    .drop(columns="_rep").reset_index(drop=True)
         cd = build_cells(dv, "_x", "_y", value_vars=list(values),
