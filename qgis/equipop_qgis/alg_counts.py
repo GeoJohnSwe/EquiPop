@@ -19,6 +19,18 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
 
 DECAY_MODELS = ["no decay", "negexp", "gauss", "linear"]
 
+# The same ladder as the ArcGIS door, in the same order. QGIS has no
+# collapsible sections and no dependable greying, so here the ladder
+# shows through ORDER and WORDING instead.
+REF_MODES = ["every point counts as one",
+             "a field holds the count",
+             "only selected types, with a count field"]
+TREAT_MODES = ["not measuring one - distances and counts only",
+               "one column per group, counts inside",
+               "types from a type field, grouped"]
+OUTSIDE_MODES = ["give them results, counting as zero",
+                 "leave their results Null"]
+
 import numpy as np
 
 from .base import EquipopAlgorithm
@@ -53,9 +65,8 @@ class CountsAndShares(EquipopAlgorithm):
             "revenue). Leave empty and every row counts as one.", parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
-            "treat", "TREATMENT POPULATION from number columns - "
-            "one column per group, counts inside (leave empty if you "
-            "used the category tables instead)",
+            "treat", "...group count fields - one column per group, "
+            "holding TOTALS, never averages",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric,
             allowMultiple=True, optional=True))
@@ -66,27 +77,29 @@ class CountsAndShares(EquipopAlgorithm):
             "r", "Radii in metres, space separated", optional=True))
         # --- groups from a category field -------------------------
         self.add(QgsProcessingParameterField(
-            "catfield", "Category field - one column of labels. Both "
-            "tables below read their values from it.",
+            "catfield", "...type field - the column holding the kind "
+            "of each object",
             parentLayerParameterName="layer", optional=True))
         self.add(QgsProcessingParameterMatrix(
-            "reftable", "Which values belong to the REFERENCE "
-            "population? One value per row. Leave empty and every "
-            "row belongs.", headers=["Category value"], optional=True))
+            "reftable", "...types to INCLUDE in the reference "
+            "population, one per row",
+            headers=["Type"], optional=True))
+        self.add(QgsProcessingParameterEnum(
+            "keepoutside", "...rows whose type is NOT included",
+            options=OUTSIDE_MODES, defaultValue=0))
+        self.add(QgsProcessingParameterEnum(
+            "treatmode", "TREATMENT POPULATION - how is it defined? "
+            "(no count field: k belongs to the reference population, "
+            "so the treatment is counted in the same units)",
+            options=TREAT_MODES, defaultValue=0))
         self.add(QgsProcessingParameterField(
-            "treatvalue", "TREATMENT POPULATION - how much does each "
-            "row count? Leave empty to use the same field as the "
-            "reference.", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            "treatcatfield", "...type field for the groups (usually "
+            "the same column - choose it here too)",
+            parentLayerParameterName="layer", optional=True))
         self.add(QgsProcessingParameterMatrix(
-            "treattable", "Which values form which GROUP? One row "
-            "per value: the value, and the group name it joins.",
-            headers=["Category value", "Group name"], optional=True))
-        self.add(QgsProcessingParameterBoolean(
-            "keepoutside", "Keep rows that are NOT in the reference "
-            "population and give them results too (they count as "
-            "zero people - nobody's neighbour - but they still get "
-            "to see what is around them)", defaultValue=True))
+            "treattable", "...groups: one row per type - the type, "
+            "and the group name it joins",
+            headers=["Type", "Group name"], optional=True))
         self.add(QgsProcessingParameterString(
             "restgroup", "...name a group for every OTHER value "
             "(optional; for example: other)", optional=True))
@@ -178,14 +191,18 @@ class CountsAndShares(EquipopAlgorithm):
             groups = self._groups_from_matrix(
                 self.parameterAsMatrix(parameters, "treattable",
                                        context))
+            tcatf = (self.parameterAsFields(parameters,
+                                            "treatcatfield", context)
+                     or [None])[0] or catfield
             rest = self.parameterAsString(parameters, "restgroup",
                                           context).strip()
-            pop_mask, cat_treats = categories_to_binary(
-                pts.data[catfield], groups,
+            pop_mask, _ = categories_to_binary(
+                pts.data[catfield], {}, pop_values=pop_vals or None)
+            _, cat_treats = categories_to_binary(
+                pts.data[tcatf], groups,
                 pop_values=pop_vals or None,
                 rest_group=rest or None, rest_in_population=None)
-            tvf = (self.parameterAsFields(parameters, "treatvalue",
-                                          context) or [None])[0] or pop
+            tvf = pop
             if tvf:
                 tcol = np.nan_to_num(pts.data[tvf].astype(float))
                 cat_treats = {g: v * tcol
@@ -196,8 +213,8 @@ class CountsAndShares(EquipopAlgorithm):
                         "one: the shares are shares of PLACES.")
             kw.setdefault("treat", {}).update(cat_treats)
             outside = int((~pop_mask).sum())
-            if self.parameterAsBool(parameters, "keepoutside",
-                                    context):
+            if (self.parameterAsEnums(parameters, "keepoutside",
+                                      context) or [0])[0] == 0:
                 # John's rule: outside the reference population means
                 # zero people - nobody's neighbour - but the row
                 # still gets its own results.

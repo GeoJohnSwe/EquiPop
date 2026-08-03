@@ -810,3 +810,26 @@ small batch after.
   Expected yes (OGC format, QGIS's native default). If so it is a
   real argument for teaching on QGIS with .gpkg data - worth knowing
   before September.
+
+## v1.23.0 (the ladder made visible)
+- refmode / treatmode: three rungs each, simplest first, with the
+  boxes a rung does not need greyed out. John's design, agreed by
+  sketching the structure back and forth before any code.
+- treatvalue RETIRED (reverses 1.22.0): k is confined to the
+  reference population, so the treatment shares its units. Every R_
+  is a share by construction.
+- treatcatfield added: the treatment names its own type column, so
+  its section reads on its own.
+- keepoutside is a two-way choice, not a tick (John: "should be an
+  active choice").
+- Help now states totals-vs-averages: machine 1 SUMS its group
+  columns; per-point averages belong in machine 2, which weights by
+  the reference population. Verified empirically: two locations, 10
+  people at 100 and 1 person at 1000, give the weighted 181.82 and
+  not the unweighted 550, with Nv reporting 11 persons not 2 rows.
+- 60 | open | MACHINE 2 still uses the old vocabulary and has no
+  ladder. Same treatment needed: a reference-population section with
+  the same three rungs, and value fields named as values (weighted
+  by the reference), not as "treatment".
+- 61 | open | The dialog structure is simulator-proved only. Whether
+  three rungs and the greying READ well in Pro is John's call.

@@ -36,7 +36,12 @@ HELP = {
            "decides how far the k-search must travel.",
     "treat": "Group counts: persons of the group at this point (use "
              "0/1 when points are individuals). Produces T_<group>_k "
-             "(count) and R_<group>_k (share).",
+             "(count) and R_<group>_k (share). These columns are "
+             "ADDED UP across the neighbourhood, so give TOTALS, "
+             "never averages: total income at this point, not mean "
+             "income per person here. A per-point average belongs in "
+             "tool 2 (Value Statistics), which weights it by the "
+             "reference population instead of summing it.",
     "k": "One or more k values, space-separated (200 1600). Each k "
          "gives its own neighbourhood: the nearest k PERSONS, so the "
          "radius floats and Dist_k reports it.",
@@ -71,13 +76,38 @@ HELP = {
         "real questions and they look identical on screen; pick the "
         "denominator you mean.",
     "keepoutside":
-        "What happens to a row that is NOT in the reference "
-        "population - a library, when the reference is eating "
-        "places. TICKED (the default): it counts as zero people, so "
-        "it is nobody's neighbour and changes no one else's numbers, "
-        "but it still gets its own results - you learn what is "
-        "around the library. UNTICKED: it is dropped from the run "
-        "and its results are Null.",
+        "What happens to a row whose type you did NOT include - a "
+        "library, when the reference population is eating places. "
+        "'Give them results, counting as zero' (the default): the "
+        "library is nobody's neighbour and changes no one else's "
+        "numbers, but it still gets its own results, so you can ask "
+        "what is around the library. 'Leave their results Null': the "
+        "row is dropped from the run entirely. Note that a row you "
+        "DID include whose count field is empty behaves like the "
+        "first case anyway - zero people, still gets results.",
+    "refmode":
+        "How the reference population is built, from the simplest "
+        "way upward. 'Every point counts as one' needs nothing else - "
+        "one row, one thing. 'A field holds the count' is for rows "
+        "that stand for several people (or guests, or dwellings). "
+        "'Only selected types' is for a layer holding many kinds of "
+        "object where only some belong: eating places among all POIs, "
+        "say. Boxes that the chosen way does not need are greyed out.",
+    "treatmode":
+        "How the treatment population is built - the thing you count "
+        "inside each neighbourhood. 'Not measuring one' is a real "
+        "answer: you then get N and Dist_k alone, which is how far "
+        "away the k nearest are. 'One column per group' suits data "
+        "with a column of counts per group. 'Types from a type field' "
+        "suits a labelled column, and you say which labels form which "
+        "group. There is no count field here: k belongs to the "
+        "reference population, so the treatment is counted in the "
+        "same units and every share sits between 0 and 1.",
+    "treatcatfield":
+        "The column holding the type of each object, for building "
+        "the groups. Usually the same column the reference "
+        "population used - choose it here as well, so this section "
+        "reads on its own.",
     "reftable":
         "Which values of the category field belong to the REFERENCE "
         "population - the people or places whose k nearest form each "
@@ -94,7 +124,7 @@ HELP = {
         "'cafe' and 'pub' can all become 'eating'. You get a T_ "
         "column (the count) and an R_ column (its share of the "
         "reference population) for each group.",
-    "treatvalue":
+    "treatvalue_RETIRED":
         "How much each row counts in the TREATMENT population. Leave "
         "it empty and the reference population's field is used, which "
         "is almost always what you want: both populations counted in "

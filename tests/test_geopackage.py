@@ -100,6 +100,7 @@ def test_the_category_dropdown_fills_from_a_geopackage_layer():
     pm = {p.name: p for p in ps}
     pm["layer"].value = _GpkgLayer()
     pm["catfield"].value = "fclass"
+    pm["treatcatfield"].value = "fclass"
     tool.updateParameters(ps)
     for table in ("reftable", "treattable"):
         offered = pm[table].filters[0].list
@@ -248,49 +249,8 @@ def test_the_dialog_is_organised_by_the_two_populations():
     assert pm["catfield"].category == ref
     assert pm["reftable"].category == ref
     assert pm["treattable"].category == tre
-    assert pm["treatvalue"].category == tre
+    assert pm["treatmode"].category == tre
     assert pm["treat"].category == tre
-
-
-def test_the_remainder_box_waits_for_a_category_field():
-    """It asks for a GROUP NAME, and there is nothing to collect
-    until a category field is chosen - so it should not invite an
-    answer before then."""
-    tool, ps, pm = _dialog()
-    tool.updateParameters(ps)
-    assert not pm["restgroup"].enabled
-    assert not pm["reftable"].enabled
-    pm["catfield"].value = "fclass"
-    tool.updateParameters(ps)
-    assert pm["restgroup"].enabled and pm["reftable"].enabled
-
-
-def test_choosing_one_route_dims_the_other():
-    tool, ps, pm = _dialog()
-    pm["catfield"].value = "fclass"
-    tool.updateParameters(ps)
-    assert not pm["treat"].enabled, \
-        "number-column groups should dim once a category field is set"
-
-    tool, ps, pm = _dialog()
-    pm["treat"].value = "income"
-    tool.updateParameters(ps)
-    assert not pm["catfield"].enabled
-    assert not pm["treattable"].enabled
-
-
-def test_the_population_field_belongs_to_both_routes():
-    """It is persons-per-row, not one of the alternatives - it is
-    also what makes category groups count PERSONS rather than places
-    (the 1.17 rule), so dimming it would be wrong."""
-    tool, ps, pm = _dialog()
-    pm["catfield"].value = "fclass"
-    tool.updateParameters(ps)
-    assert pm["pop"].enabled
-    tool, ps, pm = _dialog()
-    pm["treat"].value = "income"
-    tool.updateParameters(ps)
-    assert pm["pop"].enabled
 
 
 def test_the_remainder_label_asks_for_a_name_not_a_value():
@@ -340,31 +300,30 @@ def test_listing_the_reference_narrows_the_denominator():
     assert t["R_eating_5"].dropna().max() <= 1.0 + 1e-9
 
 
-def test_the_treatment_can_be_counted_in_its_own_field():
-    """John, v1.22: 'the same should be possible for the treatment
-    population' - bars by guests, clubs by revenue."""
+def test_the_treatment_is_counted_in_the_references_units():
+    """v1.23, John's ruling: k is confined to the reference
+    population, so the treatment is counted the same way and every
+    R_ column is a share by construction - never a ratio of two
+    different things."""
     state, pyt = _malta(with_nulls=False)
     msg = _Msg()
     pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0,
-                  cat_field="fclass", treat_value_field="income",
+                  weight_field="guests", cat_field="fclass",
                   treat_rows=[["cafe", "eating"]])
-    assert "T_eating_10" in state["table"].columns
+    t = state["table"]
+    assert "T_eating_10" in t.columns
+    assert (t["R_eating_10"].dropna() <= 1.0 + 1e-9).all()
     assert "same units as the reference" in msg.all()
 
 
-def test_mixing_units_is_allowed_but_said_out_loud():
-    """Reference in one currency, treatment in another, gives a ratio
-    rather than a share - a real measure, but not a percentage, and
-    the user should not discover that from a number above 1."""
+def test_the_treatment_may_use_its_own_type_column():
+    """v1.23: the treatment names its own type field, so its section
+    reads on its own instead of reaching into another one."""
     state, pyt = _malta(with_nulls=False)
-    msg = _Msg()
-    pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0,
-                  weight_field="income", cat_field="fclass",
-                  treat_value_field="guests",
+    pyt._run_tool("counts", "poi", _Msg(), k_text="10", unit=100.0,
+                  cat_field="fclass", treat_cat_field="fclass",
                   treat_rows=[["cafe", "eating"]])
-    said = msg.all()
-    assert "RATIO of two different things" in said
-    assert "can go above 1" in said
+    assert "T_eating_10" in state["table"].columns
 
 
 def test_no_value_field_means_shares_of_places():
@@ -446,7 +405,38 @@ def test_the_old_behaviour_is_still_available():
 
 def test_keeping_rows_is_the_default_in_the_dialog():
     _, _, pm = _dialog()
-    assert pm["keepoutside"].value is True
+    assert pm["keepoutside"].value.startswith("give them results")
+
+
+def test_the_dialog_offers_the_ladder_of_ways_to_build_each():
+    """John's design: three rungs each, simplest first."""
+    _, _, pm = _dialog()
+    assert len(pm["refmode"].filter.list) == 3
+    assert pm["refmode"].value.startswith("every point")
+    assert len(pm["treatmode"].filter.list) == 3
+    assert pm["treatmode"].value.startswith("not measuring")
+
+
+def test_each_rung_shows_only_the_boxes_it_needs():
+    tool, ps, pm = _dialog()
+    tool.updateParameters(ps)
+    assert not pm["pop"].enabled          # rung 1 needs nothing else
+    assert not pm["reftable"].enabled
+    assert not pm["treat"].enabled
+
+    pm["refmode"].value = "a field holds the count"
+    tool.updateParameters(ps)
+    assert pm["pop"].enabled and not pm["reftable"].enabled
+
+    pm["refmode"].value = "only selected types, with a count field"
+    tool.updateParameters(ps)
+    assert pm["pop"].enabled and pm["catfield"].enabled
+    assert pm["reftable"].enabled and pm["keepoutside"].enabled
+
+    pm["treatmode"].value = "types from a type field, grouped"
+    tool.updateParameters(ps)
+    assert pm["treattable"].enabled and pm["treatcatfield"].enabled
+    assert not pm["treat"].enabled
 
 
 # ------------------------- the GeoPackage notice (v1.22.2)

@@ -1665,7 +1665,11 @@ def test_pyt_value_table_columns_offer_choices():
     pm = {p.name: p for p in ps}
     assert pm["barriertable"].columns[1][0] == "Field"
     pm["layer"].value = "people"
+    # v1.23: each population names its own type field, so each table
+    # fills from the field beside it - no reaching into another
+    # section for the values
     pm["catfield"].value = "PlaceType"
+    pm["treatcatfield"].value = "PlaceType"
     tool.updateParameters(ps)
-    offered = pm["treattable"].filters[0].list
-    assert set(offered) == {"dwelling", "shop"}
+    assert set(pm["reftable"].filters[0].list) == {"dwelling", "shop"}
+    assert set(pm["treattable"].filters[0].list) == {"dwelling", "shop"}

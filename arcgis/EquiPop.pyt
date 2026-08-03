@@ -815,6 +815,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               short_names=False, decay_eps: float = 1e-6,
               cat_rows=None, barrier_rows=None,
               ref_rows=None, treat_rows=None, treat_value_field=None,
+              ref_mode=None, treat_mode=None, treat_cat_field=None,
               keep_outside=True,
               rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
@@ -827,8 +828,12 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     extra = list(treat_fields) + list(value_fields) \
         + ([weight_field] if weight_field else []) \
         + ([cat_field] if cat_field else []) \
-        + ([treat_value_field] if treat_value_field else []) \
+        + ([treat_cat_field] if treat_cat_field else []) \
         + ([half_life_field] if half_life_field else [])
+    # the same column can now be named by more than one box (the two
+    # type fields are usually the same), and arcpy refuses a field
+    # list with a repeat
+    extra = list(dict.fromkeys(f for f in extra if f))
     t_all = time.time()
     stages = []
     with _stage(messages, "reading input", stages), _speaking(messages):
@@ -885,9 +890,19 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             # differ, without a tick to misread.
             pop_vals = _values_from_table(ref_rows, known, messages,
                                           "reference population")
-            groups = _groups_from_table(treat_rows, known, messages)
-            pop_mask, cat_treats = categories_to_binary(
-                col, groups, pop_values=pop_vals or None,
+            # the treatment names its OWN type column (v1.23): it is
+            # usually the same one, but reading it from a box in
+            # another section was the hidden dependency John hit
+            tcol = (np.asarray(data[treat_cat_field])
+                    if treat_cat_field and treat_cat_field != cat_field
+                    else col)
+            tknown = sorted({str(v).strip() for v in tcol
+                             if str(v).strip()})
+            groups = _groups_from_table(treat_rows, tknown, messages)
+            pop_mask, _ = categories_to_binary(
+                col, {}, pop_values=pop_vals or None)
+            _, cat_treats = categories_to_binary(
+                tcol, groups, pop_values=pop_vals or None,
                 rest_group=rest_group, rest_in_population=None)
         elif cat_rows:
             pop_vals, groups = _categories_from_table(
@@ -907,7 +922,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         # Its own field, or the reference's if none was given
         # (v1.22, John: "the same should be possible for the
         # treatment population").
-        tvf = treat_value_field or weight_field
+        # k is confined to the REFERENCE population (John, v1.23),
+        # so the treatment is counted in the reference's own units -
+        # which is what makes every R_ column a share by construction
+        # rather than a ratio of two different things.
+        tvf = weight_field
         if tvf:
             tcol = np.nan_to_num(_numeric(data[tvf], tvf, "Input"))
             cat_treats = {g: v * tcol for g, v in cat_treats.items()}
@@ -1398,6 +1417,27 @@ def _distinct_values(layer, field, cap: int = 200, messages=None):
     return []
 
 
+REF_MODES = ["every point counts as one",
+             "a field holds the count",
+             "only selected types, with a count field"]
+TREAT_MODES = ["not measuring one - distances and counts only",
+               "one column per group, counts inside",
+               "types from a type field, grouped"]
+OUTSIDE_MODES = ["give them results, counting as zero",
+                 "leave their results Null"]
+
+
+def _mode(pm, name, modes):
+    """Which rung of the ladder the user is on. Matching is on the
+    leading words so the wording can be improved later without
+    breaking a saved tool."""
+    txt = (_txt(pm, name) or modes[0]).strip().lower()
+    for i, m in enumerate(modes):
+        if txt.startswith(m.split(" -")[0][:18].lower()):
+            return i
+    return 0
+
+
 def _warn_if_geopackage(parameters, i_layer, desc):
     """Say it BEFORE the run, not after (v1.22.2).
 
@@ -1431,34 +1471,44 @@ def _warn_if_geopackage(parameters, i_layer, desc):
 
 
 def _grey_the_unused_group_route(pm):
-    """Two ways to name a treatment population; you take one.
+    """Show only the boxes the chosen rung of the ladder needs.
 
-    Either one column per group with counts inside (register data),
-    or a category field whose values you sort into groups (POI
-    data). Choosing one leaves the other meaningless, so the unused
-    one goes dim. Everything that reads values from the category
-    field waits until a category field is chosen - which answers
-    "what am I supposed to type here?" before it is asked (John,
-    field, v1.21).
+    John's design, v1.23: each population is built one of three ways,
+    from the simplest upward, and the earlier flat list made the
+    ladder invisible - every box was on screen whether it meant
+    anything or not.
 
-    The reference population's value field stays live throughout: it
-    says how much each row counts, and that applies whichever route
-    you take.
+        REFERENCE      1 every point counts as one   (nothing else)
+                       2 a field holds the count     (count field)
+                       3 only selected types         (+ type field,
+                                                      types, and what
+                                                      happens to the
+                                                      rest)
+        TREATMENT      1 not measuring one           (nothing else)
+                       2 one column per group        (group columns)
+                       3 types from a type field     (+ type field,
+                                                      groups, rest)
+
+    The treatment has NO count field of its own: k is confined to the
+    reference population, so the treatment is counted in the same
+    units and every R_ column is a share by construction.
     """
-    cat = _txt(pm, "catfield")
-    treat = _txt(pm, "treat")
-    for name in ("catfield", "reftable", "treattable", "restgroup",
-                 "treatvalue"):
+    ref = _mode(pm, "refmode", REF_MODES)
+    tre = _mode(pm, "treatmode", TREAT_MODES)
+    on = {
+        "pop": ref in (1, 2),
+        "catfield": ref == 2,
+        "reftable": ref == 2,
+        "keepoutside": ref == 2,
+        "treatcatfield": tre == 2,
+        "treattable": tre == 2,
+        "restgroup": tre == 2,
+        "treat": tre == 1,
+    }
+    for name, enabled in on.items():
         p = pm.get(name)
         if p is not None:
-            p.enabled = not treat or bool(cat)
-    for name in ("reftable", "treattable", "restgroup"):
-        p = pm.get(name)
-        if p is not None and p.enabled:
-            p.enabled = bool(cat)
-    p = pm.get("treat")
-    if p is not None:
-        p.enabled = not cat
+            p.enabled = enabled
 
 
 def _byname(parameters):
@@ -1720,33 +1770,34 @@ class CountsShares:
         ps = [_p("layer", "Input points (layer) or table",
                  ["GPFeatureLayer", "GPTableView"])]
         _coord_trio(ps)
-        ps += [_p("pop", "How much does each row count? Choose a "
-                  "field holding the number of people (or guests, "
-                  "jobs, revenue...). LEAVE EMPTY and every row "
-                  "counts as one.", "Field", required=False),
-               _p("catfield", "Category field - one column of labels "
-                  "(POI type, tenure, country of birth...). Both "
-                  "tables below read their values from it.", "Field",
+        ps += [_p("refmode", "How is the reference population "
+                  "defined?", "GPString", required=False),
+               _p("pop", "Count field - how many people (or guests, "
+                  "jobs, dwellings) each row stands for", "Field",
                   required=False),
-               _p("reftable", "Which values belong to the reference "
-                  "population? LEAVE EMPTY and every row belongs.",
-                  "GPValueTable", required=False),
-               _p("keepoutside", "Keep rows that are NOT in the "
-                  "reference population, and give them results too "
-                  "(they count as zero people - nobody's neighbour - "
-                  "but they still get to see what is around them). "
-                  "Untick to leave them Null.", "GPBoolean",
+               _p("catfield", "Type field - the column holding the "
+                  "kind of each object (POI type, tenure, country of "
+                  "birth...)", "Field", required=False),
+               _p("reftable", "Types to INCLUDE in the reference "
+                  "population - one per row, picked from the type "
+                  "field's own values", "GPValueTable",
                   required=False),
-               _p("treatvalue", "How much does each row count in the "
-                  "treatment population? Leave empty to use the same "
-                  "field as the reference above.", "Field",
+               _p("keepoutside", "Rows whose type is NOT included",
+                  "GPString", required=False),
+               _p("treatmode", "How is the treatment population "
+                  "defined?", "GPString", required=False),
+               _p("treatcatfield", "Type field for the groups (often "
+                  "the same column as above - choose it here too)",
+                  "Field", required=False),
+               _p("treattable", "Groups: one row per type - the type, "
+                  "and the group name it joins. Rows sharing a group "
+                  "name merge.", "GPValueTable", required=False),
+               _p("restgroup", "Name a group for every OTHER type "
+                  "(optional; for example: other)", "GPString",
                   required=False),
-               _p("treattable", "Which values form which group? One "
-                  "row per value: the value, and the group name it "
-                  "belongs to. Rows sharing a group name merge.",
-                  "GPValueTable", required=False),
-               _p("treat", "Group count fields - persons per group at "
-                  "this point (0/1 if points are individuals)", "Field",
+               _p("treat", "Group count fields - one column per "
+                  "group, holding how many of that group each row "
+                  "stands for (TOTALS, not averages)", "Field",
                   required=False, multiValue=True),
                _p("k", "k values (space-separated, e.g. 200 1600)",
                   "GPString", required=False),
@@ -1771,10 +1822,6 @@ class CountsShares:
                   "this (smaller = wider search = slower; the "
                   "truncation distance is reported in the messages)",
                   "GPDouble", required=False),
-               _p("restgroup", "Name a group for every OTHER value "
-                  "(optional; for example: other) - the values you "
-                  "did not list above all join it", "GPString",
-                  required=False),
                _p("barriertable", "Barriers: one row per point/line/"
                   "polygon layer or table of cells, with the field "
                   "holding its friction", "GPValueTable",
@@ -1815,14 +1862,24 @@ class CountsShares:
         pm = _byname(ps)
         for nm in ("pop", "treat", "catfield"):
             pm[nm].parameterDependencies = ["layer"]
-        pm["reftable"].columns = [["GPString", "Category value"]]
-        pm["treattable"].columns = [["GPString", "Category value"],
+        for nm, modes in (("refmode", REF_MODES),
+                          ("treatmode", TREAT_MODES),
+                          ("keepoutside", OUTSIDE_MODES)):
+            pm[nm].filter.type = "ValueList"
+            pm[nm].filter.list = list(modes)
+            pm[nm].value = modes[0]
+        pm["reftable"].columns = [["GPString", "Type"]]
+        pm["treattable"].columns = [["GPString", "Type"],
                                     ["GPString", "Group name"]]
-        pm["keepoutside"].value = True
-        pm["reftable"].columns = [["GPString", "Category value"]]
-        pm["treattable"].columns = [["GPString", "Category value"],
+        for nm, modes in (("refmode", REF_MODES),
+                          ("treatmode", TREAT_MODES),
+                          ("keepoutside", OUTSIDE_MODES)):
+            pm[nm].filter.type = "ValueList"
+            pm[nm].filter.list = list(modes)
+            pm[nm].value = modes[0]
+        pm["reftable"].columns = [["GPString", "Type"]]
+        pm["treattable"].columns = [["GPString", "Type"],
                                     ["GPString", "Group name"]]
-        pm["keepoutside"].value = True
         # v1.17.1: a GPComposite column took ArcGIS Pro down on Run
         # (the value table is serialised even when empty). Only
         # plain, long-supported column types here; rasters get their
@@ -1852,14 +1909,16 @@ class CountsShares:
             # A reference population needs no treatment at all: ask
             # only for Dist_k and you are asking how far away the
             # k nearest are.
+            "refmode": "Reference population - who is around",
             "pop": "Reference population - who is around",
             "catfield": "Reference population - who is around",
             "reftable": "Reference population - who is around",
             "keepoutside": "Reference population - who is around",
-            "treatvalue": "Treatment population - what you measure",
+            "treatmode": "Treatment population - what you measure",
+            "treatcatfield": "Treatment population - what you measure",
             "treattable": "Treatment population - what you measure",
-            "treat": "Treatment population - what you measure",
             "restgroup": "Treatment population - what you measure",
+            "treat": "Treatment population - what you measure",
             "barriertable": "Barriers and terrain",
             "barrierrasters": "Barriers and terrain",
             "barrieragg": "Barriers and terrain",
@@ -1898,17 +1957,19 @@ class CountsShares:
         # offer the category field's OWN values in the table's first
         # column, so nothing has to be spelled by hand (v1.17.3)
         cat = _txt(pm, "catfield")
-        tables = [pm.get("reftable"), pm.get("treattable")]
-        if cat and any(t is not None for t in tables):
-            vals = _distinct_values(pm["layer"].value, cat)
-            for tbl in tables:
-                try:
-                    if vals and tbl is not None and getattr(
-                            tbl, "filters", None):
-                        tbl.filters[0].type = "ValueList"
-                        tbl.filters[0].list = vals
-                except Exception:
-                    pass
+        for field_name, tbl_name in (("catfield", "reftable"),
+                                     ("treatcatfield", "treattable")):
+            fld = _txt(pm, field_name)
+            tbl = pm.get(tbl_name)
+            if not fld or tbl is None:
+                continue
+            vals = _distinct_values(pm["layer"].value, fld)
+            try:
+                if vals and getattr(tbl, "filters", None):
+                    tbl.filters[0].type = "ValueList"
+                    tbl.filters[0].list = vals
+            except Exception:
+                pass
         _clear_stale_fields(parameters, 0, [i for i, p in
                                             enumerate(parameters)
                                             if p.name in
@@ -1970,10 +2031,13 @@ class CountsShares:
                   decay_bins=int(_num(pm, "hlbins", 10) or 10),
                   seed=_num(pm, "seed"),
                   cat_field=_txt(pm, "catfield") or None,
+                  ref_mode=_mode(pm, "refmode", REF_MODES),
+                  treat_mode=_mode(pm, "treatmode", TREAT_MODES),
                   ref_rows=_vt_rows(pm["reftable"]),
                   treat_rows=_vt_rows(pm["treattable"]),
-                  treat_value_field=_txt(pm, "treatvalue") or None,
-                  keep_outside=_flag(pm, "keepoutside"),
+                  treat_cat_field=_txt(pm, "treatcatfield") or None,
+                  keep_outside=(_mode(pm, "keepoutside",
+                                      OUTSIDE_MODES) == 0),
                   rest_group=_txt(pm, "restgroup") or None,
                   barrier_rows=(_vt_rows(pm["barriertable"])
                                 + [[r, None] for r in
