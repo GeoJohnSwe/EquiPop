@@ -382,3 +382,104 @@ def test_a_value_outside_the_field_is_refused_by_name():
     with pytest.raises(arcpy.ExecuteError, match="not in the category"):
         pyt._run_tool("counts", "poi", _Msg(), k_text="10", unit=100.0,
                       cat_field="fclass", ref_rows=[["nosuchvalue"]])
+
+
+# ------------------- rows outside the reference (v1.22.2)
+def test_rows_outside_the_reference_still_get_their_own_results():
+    """John's rule: a library is not an eating place, but you can
+    still ask what is around the library. It counts as ZERO people -
+    nobody's neighbour - and receives results of its own."""
+    state, pyt = _malta()
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="5", unit=100.0,
+                  cat_field="fclass",
+                  ref_rows=[["cafe"], ["bar"], ["bakery"],
+                            ["restaurant"]],
+                  treat_rows=[["cafe", "eating"]])
+    t = state["table"]
+    outside = t["fclass"].isin(["library", "atm", "artwork",
+                                "supermarket"])
+    assert outside.any(), "fixture should contain non-eating places"
+    assert t.loc[outside, "N_5"].notna().all(), \
+        "a row outside the reference must still get results"
+    assert "still get their own results" in msg.all()
+
+
+def test_a_row_outside_the_reference_is_nobody_s_neighbour():
+    """Counting as zero means exactly that: including the libraries
+    must not change what the cafes see."""
+    state, pyt = _malta()
+    pyt._run_tool("counts", "poi", _Msg(), k_text="5", unit=100.0,
+                  cat_field="fclass",
+                  ref_rows=[["cafe"], ["bar"], ["bakery"],
+                            ["restaurant"]],
+                  treat_rows=[["cafe", "eating"]])
+    kept = state["table"]
+    inside = kept["fclass"].isin(["cafe", "bar", "bakery",
+                                  "restaurant"])
+    ref = kept.loc[inside, "R_eating_5"].dropna()
+
+    state2, pyt2 = _malta()
+    pyt2._run_tool("counts", "poi", _Msg(), k_text="5", unit=100.0,
+                   cat_field="fclass",
+                   ref_rows=[["cafe"], ["bar"], ["bakery"],
+                             ["restaurant"]],
+                   treat_rows=[["cafe", "eating"]],
+                   keep_outside=False)
+    dropped = state2["table"]
+    ref2 = dropped.loc[inside, "R_eating_5"].dropna()
+    assert np.allclose(ref.to_numpy(), ref2.to_numpy(), equal_nan=True)
+
+
+def test_the_old_behaviour_is_still_available():
+    state, pyt = _malta()
+    msg = _Msg()
+    pyt._run_tool("counts", "poi", msg, k_text="5", unit=100.0,
+                  cat_field="fclass", ref_rows=[["cafe"], ["bar"]],
+                  treat_rows=[["cafe", "eating"]],
+                  keep_outside=False)
+    t = state["table"]
+    outside = ~t["fclass"].isin(["cafe", "bar"])
+    assert t.loc[outside, "N_5"].isna().all()
+    assert "DROPPED" in msg.all()
+
+
+def test_keeping_rows_is_the_default_in_the_dialog():
+    _, _, pm = _dialog()
+    assert pm["keepoutside"].value is True
+
+
+# ------------------------- the GeoPackage notice (v1.22.2)
+def test_a_geopackage_input_is_flagged_before_the_run():
+    """Pro will not show new fields on a GeoPackage layer in the map
+    - an Esri limitation open from Pro 3.0.2 to 3.5.2. Saying so at
+    the dialog turns a mystery into a choice."""
+    state, pyt = _malta()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "poi"
+    pm["k"].value = "10"
+    tool.updateMessages(ps)
+    said = " ".join(t for _, t in pm["layer"].messages)
+    assert "GEOPACKAGE" in said
+    assert "New feature class" in said
+    assert "not an EquiPop one" in said
+
+
+def test_a_geodatabase_input_is_not_flagged():
+    rng = np.random.default_rng(2)
+    t = pd.DataFrame({"OBJECTID": np.arange(1, 11),
+                      "SHAPE@X": rng.uniform(0, 900, 10),
+                      "SHAPE@Y": rng.uniform(0, 900, 10)})
+    state = H._install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\work.gdb\people"}
+    pyt = H._load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "people"
+    pm["k"].value = "5"
+    tool.updateMessages(ps)
+    said = " ".join(t for _, t in pm["layer"].messages)
+    assert "GEOPACKAGE" not in said

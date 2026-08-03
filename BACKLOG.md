@@ -698,7 +698,7 @@ small batch after.
   to untick every 'In population?' box, which reads backwards. Build
   the rule in the engine and the help in the shared core so BOTH
   doors get it.
-- 52 | PARTLY v1.21.0 (write path fixed; refresh unverified) | GeoPackage attribute table does not refresh after a
+- ~~52~~ | CLOSED v1.22.2 as NOT OURS | GeoPackage attribute table does not refresh after a
   run (John, field, 1.19 session). The toolbox writes with
   ExtendTable and declares NO derived output, so Pro keeps its
   cached schema; removing and re-adding the layer forces a re-read,
@@ -792,3 +792,21 @@ small batch after.
   accepted, and a catalog path resolves back to its layer.
 - 58 | open | A GeoPackage barrier layer has still never been run in
   the field. The code path is now believed sound; only Pro can say.
+
+## v1.22.2 (rows outside the reference; the GeoPackage verdict)
+- keep_outside (default TRUE, John's ruling): a row outside the
+  reference population counts as ZERO people - nobody's neighbour -
+  but still gets its own results. Was: dropped, Null. Both doors.
+  A test asserts keeping them does not move the numbers of the rows
+  already inside, which is what "counts as zero" has to mean.
+- 52 CLOSED as a HOST limitation, evidenced not inferred: Pro does
+  not show new fields on a GeoPackage layer in a map; Add Field is
+  greyed out with "the table or its schema is read only" on a clean
+  project. Esri community enhancement request open, reported from
+  Pro 3.0.2 through 3.5.2, and the same files behave normally in
+  QGIS. The dialog now warns at DIALOG time and points at Output =
+  New feature class.
+- 59 | open | Does the QGIS door refresh GeoPackage fields properly?
+  Expected yes (OGC format, QGIS's native default). If so it is a
+  real argument for teaching on QGIS with .gpkg data - worth knowing
+  before September.

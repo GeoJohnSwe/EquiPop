@@ -815,6 +815,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               short_names=False, decay_eps: float = 1e-6,
               cat_rows=None, barrier_rows=None,
               ref_rows=None, treat_rows=None, treat_value_field=None,
+              keep_outside=True,
               rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
@@ -872,6 +873,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(f"{n_missing} rows with missing coordinates"
                             " -> Null results (EquiPop convention).")
 
+    ref_weight = None
     if cat_field:
         from equipop.categorical import categories_to_binary
         col = np.asarray(data[cat_field])
@@ -927,12 +929,33 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             messages.addMessage(
                 "No value field given, so every row counts as one: "
                 "the shares are shares of PLACES, not of people.")
-        # rows outside the reference population take no part in the
-        # run at all - they are not neighbours of anyone
-        x = np.where(pop_mask, x, np.nan)
-        y = np.where(pop_mask, y, np.nan)
+        outside = int((~pop_mask).sum())
+        if keep_outside:
+            # v1.22.2, John's rule: a row outside the reference
+            # population counts as ZERO people - it is nobody's
+            # neighbour - but it still gets results of its own. "If
+            # it was a library it was counted as zero but it got the
+            # results (fastfood / all eating establishments)."
+            base = (_numeric(data[weight_field], weight_field, "Input")
+                    if weight_field else np.ones(len(x)))
+            ref_weight = np.nan_to_num(base) * pop_mask
+            if outside:
+                messages.addMessage(
+                    f"{outside} row(s) are outside the reference "
+                    "population: they count as zero people, so they "
+                    "are nobody's neighbour - but they still get "
+                    "their own results (what is around THEM). Untick "
+                    "'keep rows outside...' to drop them instead.")
+        else:
+            x = np.where(pop_mask, x, np.nan)
+            y = np.where(pop_mask, y, np.nan)
+            if outside:
+                messages.addMessage(
+                    f"{outside} row(s) are outside the reference "
+                    "population and are DROPPED: they get Null "
+                    "results.")
         messages.addMessage(
-            f"Category mode: population {int(pop_mask.sum())} rows; "
+            f"Reference population: {int(pop_mask.sum())} rows; "
             f"treatments: {', '.join(cat_treats) or '(none)'}")
 
     treat_names = list(treat_fields) + (list(cat_treats)
@@ -974,6 +997,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     if weight_field:
         kw["weight"] = _numeric(data[weight_field], weight_field,
                                 "Input")
+    if ref_weight is not None:
+        # rows outside the reference population weigh nothing, so they
+        # are nobody's neighbour - and this must win over the plain
+        # population field, which knows nothing about the reference
+        kw["weight"] = ref_weight
 
     if engine == "counts":
         kw["treat_are_counts"] = True
@@ -1370,6 +1398,38 @@ def _distinct_values(layer, field, cap: int = 200, messages=None):
     return []
 
 
+def _warn_if_geopackage(parameters, i_layer, desc):
+    """Say it BEFORE the run, not after (v1.22.2).
+
+    ArcGIS Pro will not show new fields added to a GeoPackage layer
+    that sits in a map: the layer holds a read-only view of the
+    schema, and Add Field is greyed out with "the table or its schema
+    is read only" on a freshly opened project. Esri's own community
+    has this open as an enhancement request, unresolved from Pro
+    3.0.2 through 3.5.2, so it is a host limitation and not something
+    a toolbox can repair.
+
+    The results DO get written - arcpy adds fields to a GeoPackage
+    happily through its catalog path - they just never appear in the
+    map until the layer is added again. Telling the user first turns
+    a mystery into a choice.
+    """
+    try:
+        path = str(getattr(desc, "catalogPath", "") or "")
+    except Exception:
+        return
+    if ".gpkg" not in path.lower():
+        return
+    parameters[i_layer].setWarningMessage(
+        "This layer comes from a GEOPACKAGE. The results will be "
+        "written correctly, but ArcGIS Pro does not show new fields "
+        "added to a GeoPackage layer already in the map - you would "
+        "have to remove the layer and add it again to see them. That "
+        "is a Pro limitation, not an EquiPop one. Set Output = 'New "
+        "feature class' and point it at a file geodatabase to avoid "
+        "it entirely.")
+
+
 def _grey_the_unused_group_route(pm):
     """Two ways to name a treatment population; you take one.
 
@@ -1598,6 +1658,7 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
                     "degree input instead.")
         else:
             parameters[i_layer].setErrorMessage(txt)
+    _warn_if_geopackage(parameters, i_layer, desc)
     src = parameters[i_src].valueAsText or _COORD_AUTO
     if kind == "table" and not (parameters[i_outtable].valueAsText):
         parameters[i_outtable].setErrorMessage(
@@ -1670,6 +1731,12 @@ class CountsShares:
                _p("reftable", "Which values belong to the reference "
                   "population? LEAVE EMPTY and every row belongs.",
                   "GPValueTable", required=False),
+               _p("keepoutside", "Keep rows that are NOT in the "
+                  "reference population, and give them results too "
+                  "(they count as zero people - nobody's neighbour - "
+                  "but they still get to see what is around them). "
+                  "Untick to leave them Null.", "GPBoolean",
+                  required=False),
                _p("treatvalue", "How much does each row count in the "
                   "treatment population? Leave empty to use the same "
                   "field as the reference above.", "Field",
@@ -1751,9 +1818,11 @@ class CountsShares:
         pm["reftable"].columns = [["GPString", "Category value"]]
         pm["treattable"].columns = [["GPString", "Category value"],
                                     ["GPString", "Group name"]]
+        pm["keepoutside"].value = True
         pm["reftable"].columns = [["GPString", "Category value"]]
         pm["treattable"].columns = [["GPString", "Category value"],
                                     ["GPString", "Group name"]]
+        pm["keepoutside"].value = True
         # v1.17.1: a GPComposite column took ArcGIS Pro down on Run
         # (the value table is serialised even when empty). Only
         # plain, long-supported column types here; rasters get their
@@ -1786,6 +1855,7 @@ class CountsShares:
             "pop": "Reference population - who is around",
             "catfield": "Reference population - who is around",
             "reftable": "Reference population - who is around",
+            "keepoutside": "Reference population - who is around",
             "treatvalue": "Treatment population - what you measure",
             "treattable": "Treatment population - what you measure",
             "treat": "Treatment population - what you measure",
@@ -1903,6 +1973,7 @@ class CountsShares:
                   ref_rows=_vt_rows(pm["reftable"]),
                   treat_rows=_vt_rows(pm["treattable"]),
                   treat_value_field=_txt(pm, "treatvalue") or None,
+                  keep_outside=_flag(pm, "keepoutside"),
                   rest_group=_txt(pm, "restgroup") or None,
                   barrier_rows=(_vt_rows(pm["barriertable"])
                                 + [[r, None] for r in

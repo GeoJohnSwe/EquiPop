@@ -70,6 +70,14 @@ HELP = {
         "measured against the eating places you listed. Both are "
         "real questions and they look identical on screen; pick the "
         "denominator you mean.",
+    "keepoutside":
+        "What happens to a row that is NOT in the reference "
+        "population - a library, when the reference is eating "
+        "places. TICKED (the default): it counts as zero people, so "
+        "it is nobody's neighbour and changes no one else's numbers, "
+        "but it still gets its own results - you learn what is "
+        "around the library. UNTICKED: it is dropped from the run "
+        "and its results are Null.",
     "reftable":
         "Which values of the category field belong to the REFERENCE "
         "population - the people or places whose k nearest form each "

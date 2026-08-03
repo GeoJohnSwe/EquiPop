@@ -19,6 +19,8 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
 
 DECAY_MODELS = ["no decay", "negexp", "gauss", "linear"]
 
+import numpy as np
+
 from .base import EquipopAlgorithm
 
 
@@ -80,6 +82,11 @@ class CountsAndShares(EquipopAlgorithm):
             "treattable", "Which values form which GROUP? One row "
             "per value: the value, and the group name it joins.",
             headers=["Category value", "Group name"], optional=True))
+        self.add(QgsProcessingParameterBoolean(
+            "keepoutside", "Keep rows that are NOT in the reference "
+            "population and give them results too (they count as "
+            "zero people - nobody's neighbour - but they still get "
+            "to see what is around them)", defaultValue=True))
         self.add(QgsProcessingParameterString(
             "restgroup", "...name a group for every OTHER value "
             "(optional; for example: other)", optional=True))
@@ -180,8 +187,7 @@ class CountsAndShares(EquipopAlgorithm):
             tvf = (self.parameterAsFields(parameters, "treatvalue",
                                           context) or [None])[0] or pop
             if tvf:
-                import numpy as _np
-                tcol = _np.nan_to_num(pts.data[tvf].astype(float))
+                tcol = np.nan_to_num(pts.data[tvf].astype(float))
                 cat_treats = {g: v * tcol
                               for g, v in cat_treats.items()}
                 ch.info(self._units_note(tvf, pop))
@@ -189,8 +195,28 @@ class CountsAndShares(EquipopAlgorithm):
                 ch.info("No value field given, so every row counts as "
                         "one: the shares are shares of PLACES.")
             kw.setdefault("treat", {}).update(cat_treats)
-            if pop is None:
+            outside = int((~pop_mask).sum())
+            if self.parameterAsBool(parameters, "keepoutside",
+                                    context):
+                # John's rule: outside the reference population means
+                # zero people - nobody's neighbour - but the row
+                # still gets its own results.
+                base = (pts.data[pop].astype(float) if pop
+                        else np.ones(pts.n))
+                kw["weight"] = np.nan_to_num(base) * pop_mask
+                if outside:
+                    ch.info(f"{outside} row(s) are outside the "
+                            "reference population: they count as "
+                            "zero people, but still get their own "
+                            "results.")
+            else:
                 kw["weight"] = pop_mask.astype(float)
+                keep = pop_mask.astype(bool)
+                pts.data["x"] = np.where(keep, pts.data["x"], np.nan)
+                pts.data["y"] = np.where(keep, pts.data["y"], np.nan)
+                if outside:
+                    ch.info(f"{outside} row(s) are outside the "
+                            "reference population and are DROPPED.")
 
         ch.info(f"Calculating (counts engine, {pts.n} rows, cell size "
                 f"{float(unit):g} m).")

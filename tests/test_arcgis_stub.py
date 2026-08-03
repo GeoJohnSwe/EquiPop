@@ -440,7 +440,13 @@ def test_pyt_rerun_overwrite_and_category_and_newoutput(tmp_path):
     got = state["table"]
     assert "R_food_20" in got
     school = got.fclass == "school"
-    assert got.loc[school, "N_20"].isna().all()      # excluded -> Null
+    # v1.22.2, John's ruling: a row outside the reference population
+    # counts as ZERO people - nobody's neighbour - but it still gets
+    # its own results. "If it was a library it was counted as zero
+    # but it got the results." Untick keep_outside for the old
+    # behaviour, which is tested just below.
+    assert got.loc[school, "N_20"].notna().all()
+    assert (got.loc[school, "R_food_20"] <= 1.0 + 1e-9).all()
     ok = got.loc[~school, ["T_food_20", "N_20"]].dropna()
     assert (ok["T_food_20"] <= ok["N_20"]).all()     # sanity: T <= N
 
