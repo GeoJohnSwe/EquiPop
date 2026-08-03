@@ -749,26 +749,87 @@ def _collect_barriers(rows, agg, unit, main_sr, messages):
     return out
 
 
+def _write_failure(exc, what, target):
+    """Say which of the three things went wrong, in the words the
+    1.17 field round earned - and never throw the original away.
+
+    v1.24: the add-fields path had no lock handling at all. The
+    UPDATE path has retried and explained since 1.17; adding NEW
+    fields fell straight through to a message about geodatabases,
+    which was wrong for John's shapefile (locked by being open in a
+    map) and wrong again for his geodatabase (sitting in OneDrive).
+    A previous version also swallowed the original error entirely,
+    so the real reason had to be rediscovered by hand.
+    """
+    text = str(exc)
+    low = text.lower()
+    path = str(target)
+    if "lock" in low or "000852" in low or "schema" in low:
+        why = ("Something is holding this data, so new fields cannot "
+               "be added. Usual causes: an open ATTRIBUTE TABLE for "
+               "this layer, an active edit session, the file open in "
+               "another program, or a sync client (OneDrive, Dropbox) "
+               "touching it. A SHAPEFILE also takes a schema lock "
+               "simply by being in an open map - remove the layer, or "
+               "write somewhere else.")
+        if ".shp" in path.lower():
+            why += (" (Shapefiles are the strictest here; a file "
+                    "geodatabase is not affected by being in a map.)")
+    elif "not supported" in low:
+        why = ("This format does not support the operation at all.")
+    else:
+        why = "The target refused the change."
+    if _in_sync_folder(path):
+        why += (" NOTE: this path is inside a cloud-synced folder. "
+                "Esri does not support working there - the sync "
+                "client alters files that are meant to stay locked. "
+                "Move the data to an ordinary local folder.")
+    return arcpy.ExecuteError(
+        f"Could not {what} on {path}. {why} You can also choose "
+        f"Output = 'New feature class' and point it at a file "
+        f"geodatabase, which writes somewhere fresh and needs no "
+        f"lock on the input. Nothing was changed. "
+        f"(ArcGIS said: {text.strip()})")
+
+
+def _in_sync_folder(path):
+    """OneDrive, Dropbox and friends - named by Esri as a cause of
+    exactly this class of failure."""
+    low = str(path).lower()
+    return any(m in low for m in ("onedrive", "dropbox", "google drive",
+                                  "sharepoint", "icloud", "box sync"))
+
+
 def _add_columns(layer, oid, sub, fresh, messages):
     """Add result columns to a layer, whichever way the target allows.
 
-    v1.22.1: everything here goes through the CATALOG PATH, not the
-    layer object. A GeoPackage refuses both ExtendTable and AddField
-    when handed the layer, and accepts the catalog path (John proved
-    it directly). So the fast route is tried against the path first
-    and usually works; the row-by-row route remains for targets that
-    genuinely have no bulk write.
+    Everything goes through the CATALOG PATH, not the layer object: a
+    GeoPackage refuses both ExtendTable and AddField when handed the
+    layer and accepts the path (v1.22.1, John proved it directly).
     """
     target = _ref(layer)
-    for handle in (target, layer):
-        try:
-            arcpy.da.ExtendTable(handle, oid, sub, str(oid))
-            return "bulk"
-        except RuntimeError as exc:
-            if "not supported" not in str(exc).lower():
-                raise
-        except Exception:
-            continue
+    first = None
+    try:
+        arcpy.da.ExtendTable(target, oid, sub, str(oid))
+        return "bulk"
+    except Exception as exc:
+        first = exc
+        if "not supported" not in str(exc).lower():
+            # not a format limit - a lock or a refusal. Retry, the
+            # way the update path has since 1.17: locks are often
+            # transient.
+            for attempt in range(2):
+                time.sleep(1.5)
+                messages.addWarningMessage(
+                    f"The target refused the write (attempt "
+                    f"{attempt + 1}/2) - retrying...")
+                try:
+                    arcpy.da.ExtendTable(target, oid, sub, str(oid))
+                    return "bulk"
+                except Exception as exc2:
+                    first = exc2
+            raise _write_failure(first, "add the result fields",
+                                 target)
     messages.addMessage(
         "This target does not support the fast bulk write, so the "
         "results are written row by row instead. Same numbers, "
@@ -777,11 +838,8 @@ def _add_columns(layer, oid, sub, fresh, messages):
         try:
             arcpy.management.AddField(target, name, "DOUBLE")
         except Exception as exc:
-            raise arcpy.ExecuteError(
-                f"Could not add the result field '{name}' to the "
-                f"target ({exc}). Write to a NEW feature class in a "
-                "file geodatabase instead - that needs no change to "
-                "the input.")
+            raise _write_failure(exc, f"add the result field "
+                                 f"'{name}'", target)
     pos = {int(r): i for i, r in enumerate(sub[str(oid)])}
     try:
         with arcpy.da.UpdateCursor(target, [str(oid)] + fresh) as cur:
@@ -792,12 +850,9 @@ def _add_columns(layer, oid, sub, fresh, messages):
                 for j, nm in enumerate(fresh, start=1):
                     row[j] = float(sub[nm][i])
                 cur.updateRow(row)
-    except RuntimeError as exc:
-        raise arcpy.ExecuteError(
-            f"The result fields were added but could not be filled "
-            f"({exc}). If something is holding the data - an open "
-            "attribute table, an edit session, a sync client - close "
-            "it and run again, or choose Output = New feature class.")
+    except Exception as exc:
+        raise _write_failure(exc, "fill the new result fields",
+                             target)
     return "row-by-row"
 
 
@@ -1438,6 +1493,54 @@ def _mode(pm, name, modes):
     return 0
 
 
+def _check_output_target(parameters, i_layer, desc):
+    """Both gates, not just the second one (v1.24).
+
+    Three things were only discovered after pressing Run and waiting:
+    an empty output path when New feature class was chosen, a target
+    inside a cloud-synced folder, and a shapefile that cannot gain
+    fields while it sits in an open map. All three are knowable at
+    the dialog.
+    """
+    pm = _byname(parameters)
+    mode = _txt(pm, "outmode")
+    out = pm.get("outfc")
+    if mode == "New feature class" and out is not None:
+        if not _txt(pm, "outfc"):
+            out.setErrorMessage(
+                "Choose where the new feature class goes - a name "
+                "and path, for example "
+                r"C:\Data\work.gdb\points_eqp. A file geodatabase "
+                "keeps full-length field names; a shapefile caps "
+                "them at ten characters.")
+        elif _in_sync_folder(_txt(pm, "outfc")):
+            out.setWarningMessage(
+                "This output is inside a cloud-synced folder "
+                "(OneDrive, Dropbox). Esri does not support working "
+                "there: the sync client alters files that are meant "
+                "to stay locked, which shows up as 'cannot add "
+                "field' and, at worst, as a damaged geodatabase. An "
+                "ordinary local folder is safer.")
+
+    try:
+        path = str(getattr(desc, "catalogPath", "") or "")
+    except Exception:
+        return
+    if _in_sync_folder(path):
+        parameters[i_layer].setWarningMessage(
+            "This layer lives in a cloud-synced folder (OneDrive, "
+            "Dropbox). Esri does not support working there and it "
+            "commonly blocks adding fields. Consider copying the "
+            "data to an ordinary local folder.")
+    elif path.lower().endswith(".shp") and mode != "New feature class":
+        parameters[i_layer].setWarningMessage(
+            "This is a SHAPEFILE in an open map, and Pro holds a "
+            "schema lock on it while the layer is loaded - so new "
+            "result fields may be refused. If that happens, either "
+            "remove the layer from the map and run again, or set "
+            "Output = 'New feature class'.")
+
+
 def _warn_if_geopackage(parameters, i_layer, desc):
     """Say it BEFORE the run, not after (v1.22.2).
 
@@ -1575,10 +1678,21 @@ def _numlist(text):
 
 
 def _p(name, display, dtype, **kw):
+    """One parameter, with the direction stated.
+
+    v1.24, John's field finding: every box here was declared as an
+    INPUT, including the two that name an output. Pro then opens the
+    browse dialog in "pick an existing thing" mode - existing feature
+    classes can be chosen, which made overwriting look possible, but
+    typing a NEW name gives "Cannot access <name>". So a new feature
+    class could never be created from the dialog. True since the
+    toolbox was written; it only surfaced once Output = New feature
+    class became the advice for locked and GeoPackage targets.
+    """
     p = arcpy.Parameter(name=name, displayName=display,
                         datatype=dtype, parameterType=kw.pop(
                             "required", True) and "Required" or "Optional",
-                        direction="Input")
+                        direction=kw.pop("direction", "Input"))
     for k, v in kw.items():
         setattr(p, k, v)
     return p
@@ -1709,6 +1823,7 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
         else:
             parameters[i_layer].setErrorMessage(txt)
     _warn_if_geopackage(parameters, i_layer, desc)
+    _check_output_target(parameters, i_layer, desc)
     src = parameters[i_src].valueAsText or _COORD_AUTO
     if kind == "table" and not (parameters[i_outtable].valueAsText):
         parameters[i_outtable].setErrorMessage(
@@ -1844,9 +1959,10 @@ class CountsShares:
                   "GPString", required=False),
                _p("outmode", "Output", "GPString", required=False),
                _p("outfc", "New feature class (name/path)",
-                  "DEFeatureClass", required=False),
+                  "DEFeatureClass", required=False,
+                  direction="Output"),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
-                  "DEFile", required=False),
+                  "DEFile", required=False, direction="Output"),
                _p("unit", "Cell size (m)", "GPDouble", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
@@ -2092,9 +2208,10 @@ class ValueStatistics:
                _p("outmode", "Output", "GPString", required=False),
                _p("outfc", "New feature class (name/path - use a "
                   "file geodatabase for unlimited field names)",
-                  "DEFeatureClass", required=False),
+                  "DEFeatureClass", required=False,
+                  direction="Output"),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
-                  "DEFile", required=False),
+                  "DEFile", required=False, direction="Output"),
                _p("unit", "Cell size (m)", "GPDouble", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "

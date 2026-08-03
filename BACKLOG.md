@@ -833,3 +833,23 @@ small batch after.
   by the reference), not as "treatment".
 - 61 | open | The dialog structure is simulator-proved only. Whether
   three rungs and the greying READ well in Pro is John's call.
+
+## v1.24.0 (four write-path bugs from one evening in the field)
+- outfc/outtable declared direction="Output". Every parameter was an
+  INPUT, so Pro's browse dialog would not create a new feature class
+  ("Cannot access anyfile"). Present since the toolbox was written.
+  The simulator checked names, types and sections but never
+  DIRECTION - now it does, and the check was verified to fail when
+  the bug is put back.
+- _write_failure(): one diagnosis for locks / unsupported formats /
+  refusals, keeping the ORIGINAL arcpy error in the message. The add
+  path also retries, as the update path has since 1.17.
+- Cloud-synced folders (OneDrive, Dropbox, SharePoint...) named on
+  input and output, in both doors. Esri documents this as
+  unsupported and the symptoms match exactly.
+- Dialog-time checks: missing output path, synced folder, shapefile
+  in an open map.
+- 62 | open | The shapefile-in-a-map warning fires whenever the
+  input is a .shp and the output is not a new feature class. It may
+  be too eager - a shapefile NOT in a map is fine, and the toolbox
+  cannot tell from the path alone. Watch whether it becomes noise.

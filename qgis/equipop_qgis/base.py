@@ -210,6 +210,13 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         return out
 
     # -- writing -------------------------------------------------
+    @staticmethod
+    def in_sync_folder(path):
+        low = str(path).lower()
+        return any(m in low for m in ("onedrive", "dropbox",
+                                      "google drive", "sharepoint",
+                                      "icloud", "box sync"))
+
     def check_target(self, parameters, names, feedback):
         """The ten-character trap, in QGIS clothing: a shapefile
         output caps field names at ten characters, and here a
@@ -221,6 +228,13 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                                    container="a GeoPackage (.gpkg)")
         if text:
             raise QgsProcessingException(text)
+        if self.in_sync_folder(target):
+            self.channel(feedback).warning(
+                "This output is inside a cloud-synced folder "
+                "(OneDrive, Dropbox). Sync clients alter files that "
+                "are meant to stay locked while GIS software writes "
+                "them, which shows up as mysterious write failures. "
+                "An ordinary local folder is safer.")
 
     def write(self, parameters, context, source, result, order,
               feedback):

@@ -473,3 +473,149 @@ def test_a_geodatabase_input_is_not_flagged():
     tool.updateMessages(ps)
     said = " ".join(t for _, t in pm["layer"].messages)
     assert "GEOPACKAGE" not in said
+
+
+# ------------------- writing to the target (v1.24, John's evening)
+def test_the_output_boxes_are_declared_as_outputs():
+    """John, field: 'Cannot access anyfile'. Every parameter was
+    declared as an INPUT, including the two that name an output, so
+    Pro opened the browse dialog in pick-an-existing-thing mode.
+    Existing feature classes could be chosen - which made overwriting
+    look possible - but a NEW name could never be created. True since
+    the toolbox was written, invisible until New feature class became
+    the advice for locked targets."""
+    state, pyt = _malta()
+    for cls in (pyt.CountsShares, pyt.ValueStatistics):
+        pm = {p.name: p for p in cls().getParameterInfo()}
+        for name in ("outfc", "outtable"):
+            assert pm[name].direction == "Output", \
+                f"{cls.__name__}.{name} is declared as an input; Pro " \
+                "will not let anyone create a new one"
+
+
+def test_every_other_box_is_still_an_input():
+    """The fix must not spread: an input declared as an output would
+    make Pro try to CREATE the thing the user meant to choose."""
+    state, pyt = _malta()
+    pm = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
+    for name, p in pm.items():
+        if name in ("outfc", "outtable"):
+            continue
+        assert p.direction == "Input", f"{name} is an output"
+
+
+def test_a_locked_target_gets_the_lock_message_not_a_format_guess():
+    """The 1.17 lock wording reached only the UPDATE path. Adding NEW
+    fields fell through to a message about geodatabases - wrong for a
+    shapefile locked by being in a map."""
+    state, pyt = _malta()
+    state["catalog_paths"] = {"poi": r"C:\Data\TestBed\gridby.shp"}
+    state["no_extend"] = set()
+    state["path_only"] = set()
+
+    import arcpy
+    real = arcpy.da.ExtendTable
+
+    def _locked(*a, **kw):
+        raise RuntimeError(
+            "ERROR 000852: Cannot add field N_10 to gridby_points")
+    arcpy.da.ExtendTable = _locked
+    try:
+        with pytest.raises(arcpy.ExecuteError) as e:
+            pyt._run_tool("counts", "poi", _Msg(), k_text="10",
+                          unit=100.0)
+    finally:
+        arcpy.da.ExtendTable = real
+    msg = str(e.value)
+    assert "ATTRIBUTE TABLE" in msg and "edit session" in msg
+    assert "schema lock" in msg or "SHAPEFILE" in msg
+    assert "ERROR 000852" in msg, \
+        "the original error must travel with the explanation"
+
+
+def test_a_transient_lock_is_retried_before_giving_up():
+    """Locks are often momentary - the update path has retried since
+    1.17 and the add path now does too."""
+    state, pyt = _malta()
+    state["no_extend"] = set()
+    state["path_only"] = set()
+    import arcpy
+    real = arcpy.da.ExtendTable
+    calls = {"n": 0}
+
+    def _flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise RuntimeError("Cannot acquire a lock")
+        return real(*a, **kw)
+    arcpy.da.ExtendTable = _flaky
+    msg = _Msg()
+    try:
+        pyt._run_tool("counts", "poi", msg, k_text="10", unit=100.0)
+    finally:
+        arcpy.da.ExtendTable = real
+    assert calls["n"] >= 2
+    assert "retrying" in msg.all()
+    assert "N_10" in state["table"].columns
+
+
+def test_a_cloud_synced_target_is_named_in_the_failure():
+    state, pyt = _malta()
+    state["catalog_paths"] = {
+        "poi": r"C:\Users\jo\OneDrive - OsloMet\work.gdb\poi"}
+    state["no_extend"] = set()
+    state["path_only"] = set()
+    import arcpy
+    real = arcpy.da.ExtendTable
+    arcpy.da.ExtendTable = lambda *a, **kw: (_ for _ in ()).throw(
+        RuntimeError("ERROR 000852: Cannot add field"))
+    try:
+        with pytest.raises(arcpy.ExecuteError) as e:
+            pyt._run_tool("counts", "poi", _Msg(), k_text="10",
+                          unit=100.0)
+    finally:
+        arcpy.da.ExtendTable = real
+    assert "cloud-synced" in str(e.value)
+    assert "Esri does not support" in str(e.value)
+
+
+# --------------------------------- both gates, not just the second
+def test_a_missing_output_path_is_caught_at_the_dialog():
+    """It was only reported after Run - and after the computation."""
+    state, pyt = _malta()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "poi"
+    pm["k"].value = "10"
+    pm["outmode"].value = "New feature class"
+    tool.updateMessages(ps)
+    said = " ".join(t for _, t in pm["outfc"].messages)
+    assert "Choose where the new feature class goes" in said
+
+
+def test_a_shapefile_in_a_map_is_warned_about_before_the_run():
+    state, pyt = _malta()
+    state["catalog_paths"] = {"poi": r"C:\Data\TestBed\gridby.shp"}
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "poi"
+    pm["k"].value = "10"
+    tool.updateMessages(ps)
+    said = " ".join(t for _, t in pm["layer"].messages)
+    assert "schema lock" in said and "New feature class" in said
+
+
+def test_a_synced_input_folder_is_warned_about():
+    state, pyt = _malta()
+    state["catalog_paths"] = {
+        "poi": r"C:\Users\jo\OneDrive - OsloMet\data.gdb\poi"}
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "poi"
+    pm["k"].value = "10"
+    tool.updateMessages(ps)
+    said = " ".join(t for _, t in pm["layer"].messages)
+    assert "cloud-synced" in said
