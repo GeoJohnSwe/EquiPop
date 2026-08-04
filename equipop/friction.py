@@ -184,9 +184,16 @@ class FrictionGrid:
                     + ((np.asarray(y) - y0) // u)).astype(np.int64)
 
         # --- per-node arrays ---
-        self.friction = np.full(n, default_friction, dtype=np.int64)
+        # FLOAT, not int (v1.27): a facilitator is a FRACTION of a
+        # round - -0.9 means a tenth of the usual cost - and an
+        # integer grid truncated it to 0, so the parameter was
+        # accepted and silently ignored. Barriers were unaffected
+        # because whole numbers survive truncation, which is why this
+        # went unnoticed.
+        self.friction = np.full(n, float(default_friction), float)
         if fr is not None:
-            self.friction[idx(fr["x"], fr["y"])] = fr["friction"].astype(int)
+            self.friction[idx(fr["x"], fr["y"])] = \
+                fr["friction"].astype(float)
 
         self.count_all = np.zeros(n)
         self.count_group = np.zeros(n)
@@ -378,6 +385,38 @@ def run_knn_friction(
 # shares one tested rasterizer.
 # ===================================================================
 
+def _check_cost_range(vals, where):
+    """Costs may go BELOW zero, but never to -1 or past it.
+
+    Entering a cell costs 1 + friction, so the value is a delay
+    expressed in rounds:
+
+        friction  3    -> the cell costs 4 rounds (a river)
+        friction  0    -> the cell costs 1 round  (open ground)
+        friction -0.5  -> the cell costs half a round (a fast road)
+        friction -0.9  -> a tenth of a round (a motorway)
+        friction -1    -> free, and that is where the model stops
+
+    Free movement is not a neighbourhood: k could be gathered from
+    anywhere at no cost, and the shortest-path expansion has nothing
+    left to order. So -1 and below are refused, while anything above
+    -1 is a FACILITATOR - the accessibility counterpart to a barrier
+    (v1.27, John: "what if I want a facilitator rather than
+    friction?").
+    """
+    v = np.asarray(vals, float)
+    bad = v <= -1.0
+    if bad.any():
+        worst = float(np.nanmin(v))
+        raise ValueError(
+            f"[friction] {where}: friction of {worst:g} would make "
+            "movement free or better than free. Entering a cell "
+            "costs 1 + friction, so -1 is the floor: -0.5 halves a "
+            "cell's cost, -0.9 makes it a tenth. Use a value above "
+            "-1 for a facilitator (a fast road), 0 for open ground, "
+            "and a positive value for a barrier.")
+
+
 def features_to_friction(features, value_field: str = "friction",
                          unit_size: float = 100.0,
                          default_value: float | None = None,
@@ -408,10 +447,7 @@ def features_to_friction(features, value_field: str = "friction",
     else:
         raise ValueError(f"[friction] features need a '{value_field}' "
                          "column or a default_value")
-    if (vals < 0).any():
-        raise ValueError("[friction] negative friction values - "
-                         "speedups are not supported (yet); costs "
-                         "must be >= 0")
+    _check_cost_range(vals, "feature values")
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}
     n_cells = 0
@@ -578,10 +614,7 @@ def paths_to_friction(features, values=None, unit_size: float = 100.0,
     if np.isnan(vals).any():
         raise ValueError("[friction] missing (null) friction values - "
                          "fill or filter the value field first")
-    if (vals < 0).any():
-        raise ValueError("[friction] negative friction values - "
-                         "speedups are not supported (yet); costs "
-                         "must be >= 0")
+    _check_cost_range(vals, "feature values")
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}
     for feat, v in zip(features, vals):
@@ -661,9 +694,7 @@ def points_to_friction(x, y, values, unit_size: float = 100.0,
         raise ValueError(f"[friction] {int(bad.sum())} rows with "
                          "missing coordinates or friction values - "
                          "fill or filter them first")
-    if (v < 0).any():
-        raise ValueError("[friction] negative friction values - "
-                         "costs must be >= 0")
+    _check_cost_range(v, "point values")
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}
     for xi, yi, vi in zip(x, y, v):

@@ -84,9 +84,16 @@ def test_points_paths_raster_converters_and_overlap():
         points_to_friction([1], [1], [1], 100, agg="median")
     with pytest.raises(ValueError, match="missing"):
         points_to_friction([1.0], [1.0], [np.nan], 100)
-    with pytest.raises(ValueError, match="negative"):
+    # v1.27: costs may go BELOW zero - a facilitator is a fraction of
+    # a round - but never to -1, where a cell becomes free and there
+    # is no neighbourhood left to speak of
+    with pytest.raises(ValueError, match="floor"):
         paths_to_friction([{"type": "line",
                             "parts": [[(0, 0), (10, 10)]]}], [-1], 100)
+    fast = paths_to_friction([{"type": "line",
+                               "parts": [[(0, 0), (10, 10)]]}],
+                             [-0.9], 100)
+    assert float(fast.friction.iloc[0]) == pytest.approx(-0.9)
     # conventions on the numpy rasterizer alone
     kiss = paths_to_friction([{"type": "line",
                                "parts": [[(950.0, 950.0),

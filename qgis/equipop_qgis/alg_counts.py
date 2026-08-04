@@ -168,6 +168,8 @@ class CountsAndShares(EquipopAlgorithm):
         from equipop.stata_bridge import dispatch
 
         ch = self.channel(feedback)
+        from .base import check_versions
+        check_versions(ch)
         source = self.parameterAsSource(parameters, "layer", context)
         if source is None:
             raise QgsProcessingException("No input layer was given.")

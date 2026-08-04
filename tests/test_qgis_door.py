@@ -564,3 +564,108 @@ def test_a_named_group_still_gets_its_columns_over_effort():
                   treatmode=[1], treat=["grp"], k="4",
                   barrier=_river_source(), barrierfield="cost")
     assert "T_grp_4" in out.columns and "R_grp_4" in out.columns
+
+
+# ------------------------------- facilitators (v1.27, John)
+def test_a_facilitator_pulls_distant_people_closer():
+    """The accessibility counterpart to a barrier. Entering a cell
+    costs 1 + friction, so -0.9 makes a cell a tenth of the usual
+    effort - a motorway. B is farther in metres and nearer in
+    ROUNDS, so it joins the neighbourhood ahead of A."""
+    from equipop.friction import points_to_friction
+    from equipop.stata_bridge import dispatch
+    x = np.array([0.0, 150.0, 0.0])
+    y = np.array([0.0, 0.0, 350.0])
+    w = np.ones(3)
+    ys = np.arange(0.0, 400.0, 50.0)
+    road = points_to_friction(np.zeros(len(ys)), ys,
+                              np.full(len(ys), -0.9), unit_size=50.0)
+    plain = dispatch("counts", x, y, unit_size=50.0, k_values=[2],
+                     weight=w)
+    fast = dispatch("friction", x, y, unit_size=50.0, k_values=[2],
+                    weight=w, friction_file=road)
+    assert np.asarray(plain["Dist_2"])[0] == pytest.approx(150.0)
+    assert np.asarray(fast["Dist_2"])[0] == pytest.approx(350.0)
+    assert np.asarray(fast["Rounds_2"])[0] < 1.0
+
+
+def test_fractional_friction_is_not_truncated():
+    """It was: the friction grid held INTEGERS, so -0.9 became 0 and
+    the facilitator was accepted and silently ignored. Barriers were
+    unaffected because whole numbers survive truncation, which is
+    why it went unnoticed."""
+    from equipop.friction import points_to_friction
+    from equipop.stata_bridge import dispatch
+    x = np.array([0.0, 100.0, 200.0])
+    y = np.zeros(3)
+    ys = np.zeros(3)
+    road = points_to_friction(np.array([0.0, 100.0, 200.0]), ys,
+                              np.full(3, -0.75), unit_size=50.0)
+    res = dispatch("friction", x, y, unit_size=50.0, k_values=[3],
+                   weight=np.ones(3), friction_file=road)
+    rounds = float(np.asarray(res["Rounds_3"])[0])
+    # four steps at 0.25 each, not four steps at 1 each: a truncated
+    # grid would give a whole number
+    assert rounds < 3.0, f"friction was truncated: Rounds_3 = {rounds}"
+    assert rounds != round(rounds), "looks like an integer grid"
+
+
+@pytest.mark.parametrize("value", [-1.0, -1.5, -20.0])
+def test_free_movement_is_refused_with_the_floor_named(value):
+    """-1 makes a cell free, which is not a neighbourhood: k could
+    be gathered from anywhere at no cost."""
+    from equipop.friction import points_to_friction
+    with pytest.raises(ValueError) as e:
+        points_to_friction(np.zeros(3), np.arange(3.0) * 50,
+                           np.full(3, value), unit_size=50.0)
+    msg = str(e.value)
+    assert "-1 is the floor" in msg
+    assert "-0.5 halves" in msg and "facilitator" in msg
+
+
+# ------------------------------- refusals that read (v1.27)
+def test_a_line_layer_as_INPUT_is_refused_in_words():
+    """John, field: choosing the roads layer as the input gave a raw
+    TypeError from deep inside the reader."""
+    import qgis_stub as Q
+    from qgis.core import QgsGeometry
+    t = pd.DataFrame({"friction": [3.0, 3.0]})
+    src = Q.source_from(t, geometry=False)
+    feats = list(src.getFeatures())
+    for f in feats:
+        f.setGeometry(QgsGeometry.fromParts(
+            [[(0.0, 0.0), (100.0, 0.0)]], wkb=2))
+    src.getFeatures = lambda *a: iter(feats)
+    src.wkbType = lambda: 2
+    with pytest.raises(QgsProcessingException) as e:
+        _run(CountsAndShares, src, k="2")
+    msg = str(e.value)
+    assert "measures what is around POINTS" in msg
+    assert "lines" in msg and "BARRIER box" in msg
+
+
+def test_a_barrier_smaller_than_one_cell_is_refused_before_the_engine():
+    """Malta's roads against Sweden's POIs: the geographic problem
+    must be reported before the engine complains about values."""
+    from equipop_qgis.barriers import _extent_check
+    feats = [{"type": "line",
+              "parts": [[(14.40, 35.85), (14.55, 35.90)]]}]
+    with pytest.raises(QgsProcessingException) as e:
+        _extent_check(feats, [3.0], 100.0, "Barrier layer",
+                      CountsAndShares.channel(QgsProcessingFeedback()))
+    assert "less than one 100 m cell" in str(e.value)
+    assert "DEGREES" in str(e.value)
+
+
+def test_a_version_mismatch_is_mentioned_once():
+    from equipop_qgis.base import check_versions
+    fb = QgsProcessingFeedback()
+    import equipop_qgis
+    real = equipop_qgis.__version__
+    try:
+        equipop_qgis.__version__ = "9.9.9"
+        check_versions(CountsAndShares.channel(fb))
+    finally:
+        equipop_qgis.__version__ = real
+    said = " ".join(fb.warnings)
+    assert "9.9.9" in said and "pip install --upgrade equipop" in said

@@ -907,7 +907,7 @@ small batch after.
 - The effort engine emitted T_/R_ with no treatment given. Fixed in
   friction.py and the merge in stata_bridge.py; the counts engine
   was already right.
-- 70 | open | FACILITATORS (John's academic question, worth a real
+- ~~70~~ | DONE v1.27.0 | FACILITATORS (John's academic question, worth a real
   answer). Entering a cell costs 1 + friction, so a facilitator is a
   value between -1 and 0: -0.5 halves the cost of a cell, -0.9 makes
   it a tenth. The engine currently refuses anything below zero,
@@ -917,3 +917,24 @@ small batch after.
   to barriers for accessibility work. Needs a decision on what
   happens at exactly -1 and whether the shortest-path expansion
   stays well-behaved.
+
+## v1.27.0 (facilitators)
+- Costs may now go below zero, down to but not including -1.
+  _check_cost_range() names the floor and what the values mean.
+- THE reason it could not have been a quiet change: FrictionGrid
+  held np.int64, so -0.9 became 0. Now float. Barriers were immune
+  to this because whole numbers survive truncation - a good example
+  of a bug that only a new feature could reveal.
+- Refusals that read: a line layer as INPUT; a barrier smaller than
+  one cell, checked BEFORE the engine's value validation.
+- check_versions(): plugin and package versions compared, since the
+  contract number only moves on structural change.
+- 71 | open | The ArcGIS door has no facilitator help text yet and
+  its barrier help still says costs must be positive. Same for the
+  Book (ch09) - queued with the friction/delay writing session.
+- 72 | open | Dist_k under effort is NOT a radius: the neighbourhood
+  is a shape moulded by the cost surface, and Dist_k is how far away
+  the last person reached happened to be. Comparing Dist_k with and
+  without a barrier measures how much the barrier REARRANGED the
+  world. Worth a paragraph in the book (John's insight, and Claude
+  was wrong about it first).

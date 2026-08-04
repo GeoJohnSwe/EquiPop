@@ -56,6 +56,30 @@ def _doors():
     return D
 
 
+def check_versions(channel):
+    """Say when the two halves are from different releases.
+
+    The contract number only changes when something STRUCTURAL does,
+    so an older package can sit quietly under a newer plugin and run
+    with old behaviour - which cost an exchange when a fix that lived
+    in the package looked like it had not worked (John, v1.26.1).
+    A mismatch is not an error; it is worth one line.
+    """
+    try:
+        import equipop
+        from . import __version__ as plugin_version
+        pkg = getattr(equipop, "__version__", "unknown")
+        if pkg != plugin_version:
+            channel.warning(
+                f"The EquiPop plugin is version {plugin_version} but "
+                f"the equipop package in QGIS's Python is {pkg}. They "
+                "usually ship together - if something behaves as it "
+                "did before an update, run:  python -m pip install "
+                "--upgrade equipop  and restart QGIS.")
+    except Exception:
+        pass
+
+
 class EquipopAlgorithm(QgsProcessingAlgorithm):
     """Everything both tools do the same way."""
 
@@ -136,6 +160,20 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException(
                 "The input layer has no features.")
 
+        if feats[0].hasGeometry():
+            try:
+                from qgis.core import QgsWkbTypes
+                gt = QgsWkbTypes.geometryType(source.wkbType())
+            except Exception:
+                gt = 0
+            if gt != 0:
+                kind = {1: "lines", 2: "polygons"}.get(gt, "that shape")
+                raise QgsProcessingException(
+                    f"This tool measures what is around POINTS, and "
+                    f"the layer you chose holds {kind}. Use a point "
+                    "layer for the input - a roads or boundaries "
+                    "layer belongs in the BARRIER box instead, where "
+                    "it turns distance into effort.")
         has_geom = feats[0].hasGeometry()
         crs = source.sourceCrs()
         note, crs_text = "", crs.description() or crs.authid()

@@ -103,8 +103,11 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
             channel.warning(
                 f"{label}: {int((~ok).sum())} point(s) with missing "
                 "coordinates or friction were dropped.")
-        fr = points_to_friction(x[ok], y[ok], v[ok],
-                                unit_size=float(unit), agg=agg)
+        try:
+            fr = points_to_friction(x[ok], y[ok], v[ok],
+                                    unit_size=float(unit), agg=agg)
+        except ValueError as exc:
+            raise QgsProcessingException(f"{label}: {exc}")
         channel.info(f"{label}: {len(fr)} friction cells from "
                      f"{int(ok.sum())} points (overlap rule: {agg}).")
         return fr
@@ -136,8 +139,12 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
     if not features:
         raise QgsProcessingException(
             f"{label}: no usable geometry found.")
-    fr = paths_to_friction(features, values, unit_size=float(unit),
-                           agg=agg)
+    _extent_check(features, values, unit, label, channel)
+    try:
+        fr = paths_to_friction(features, values,
+                               unit_size=float(unit), agg=agg)
+    except ValueError as exc:
+        raise QgsProcessingException(f"{label}: {exc}")
     channel.info(f"{label}: {len(fr)} friction cells from "
                  f"{len(features)} feature(s) (overlap rule: {agg}).")
     return fr
@@ -209,6 +216,33 @@ def raster_to_friction_layer(raster_layer, unit, channel,
     channel.info(f"{label}: sampled at analysis-cell midpoints -> "
                  f"{len(fr)} friction cells (NoData or zero = free).")
     return fr
+
+
+def _extent_check(features, values, unit, label, channel):
+    """Look at WHERE the barrier is before asking the engine to grind
+    it (v1.27).
+
+    John gave Malta's roads as a barrier for Sweden's POIs. The
+    plausibility check would have said so plainly - but the engine's
+    own value validation ran first and complained about something
+    else entirely, so the useful message never appeared. Cheap
+    checks go first.
+    """
+    import numpy as _np
+    xs = [p[0] for feat in features for part in feat["parts"]
+          for p in part]
+    ys = [p[1] for feat in features for part in feat["parts"]
+          for p in part]
+    if not xs:
+        return
+    span = max(max(xs) - min(xs), max(ys) - min(ys))
+    if span < float(unit):
+        raise QgsProcessingException(
+            f"{label}: the whole barrier spans {span:,.1f} m, which "
+            f"is less than one {unit:g} m cell. It cannot block "
+            "anything. The usual cause is a barrier still in DEGREES "
+            "while the analysis runs in metres - check its "
+            "coordinate system.")
 
 
 def check_plausible(fr, n_features, points_xy, unit, label,
