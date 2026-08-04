@@ -437,10 +437,14 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             if merged is None:
                 merged = res
             else:
+                # v1.26.1: a run with NO treatment produces no T_/R_
+                # columns at all, so take only what is actually there
                 keep = [c for c in res.columns
-                        if c.startswith(("T_", "R_"))]
+                        if c.startswith(("T_", "R_"))
+                        and c in res.columns]
                 key = res.columns[:2].tolist()
-                merged = merged.merge(res[key + keep], on=key)
+                if keep:
+                    merged = merged.merge(res[key + keep], on=key)
         cols = [c for c in merged.columns if c.split("_")[0]
                 in ("N", "T", "R", "Dist", "Rounds")]
         return _map_back(merged, list(zip(E, N)), cols, valid, n_rows)

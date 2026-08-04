@@ -139,6 +139,12 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         has_geom = feats[0].hasGeometry()
         crs = source.sourceCrs()
         note, crs_text = "", crs.description() or crs.authid()
+        # v1.26.1: remember the CRS the run actually WORKS in, not
+        # the one the layer arrived in. A barrier compared against
+        # the arrival CRS is left unprojected when both are degrees -
+        # and 40,678 Maltese roads then collapse into a single 100 m
+        # cell, silently and plausibly (John, field).
+        self.working_crs = crs
 
         if has_geom:
             tr = None
@@ -147,6 +153,7 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 tr = QgsCoordinateTransform(
                     crs, target, QgsProject.instance().transformContext())
                 crs_text = target.description() or target.authid()
+                self.working_crs = target
                 ch.info(
                     f"The layer is in degrees ({crs.authid()}); EquiPop "
                     f"needs metres, so coordinates are reprojected to "

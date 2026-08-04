@@ -279,7 +279,9 @@ class CountsAndShares(EquipopAlgorithm):
                             "reference population and are DROPPED.")
 
         fr, dem_payload = self._effort_ingredients(
-            parameters, context, ch, unit, source.sourceCrs())
+            parameters, context, ch, unit,
+            getattr(self, "working_crs", source.sourceCrs()),
+            points_xy=(pts.data["x"], pts.data["y"]))
         engine = "counts"
         if fr is not None or dem_payload is not None:
             # a different ENGINE, not just an extra argument: effort
@@ -323,11 +325,12 @@ class CountsAndShares(EquipopAlgorithm):
 
     # ---------------------------------------------------------------
     def _effort_ingredients(self, parameters, context, ch, unit,
-                            working_crs):
+                            working_crs, points_xy=None):
         """Barriers and terrain, read the QGIS way and handed to the
         shared engine (v1.26). Returns (friction table or None, DEM
         payload or None)."""
-        from .barriers import (barrier_to_friction, merge_friction,
+        from .barriers import (barrier_to_friction, check_plausible,
+                               merge_friction,
                                raster_to_friction_layer)
         agg = ["sum", "max", "min", "mean"][
             (self.parameterAsEnums(parameters, "barrieragg", context)
@@ -337,8 +340,12 @@ class CountsAndShares(EquipopAlgorithm):
         if vec is not None:
             field = (self.parameterAsFields(parameters, "barrierfield",
                                             context) or [None])[0]
-            tables.append(barrier_to_friction(
-                vec, field, unit, agg, ch, working_crs))
+            table = barrier_to_friction(vec, field, unit, agg, ch,
+                                        working_crs)
+            if points_xy is not None:
+                check_plausible(table, vec.featureCount(), points_xy,
+                                float(unit), "Barrier layer", ch)
+            tables.append(table)
         rast = self.parameterAsRasterLayer(parameters, "barrierraster",
                                            context)
         if rast is not None:

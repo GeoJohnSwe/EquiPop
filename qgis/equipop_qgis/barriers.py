@@ -211,6 +211,70 @@ def raster_to_friction_layer(raster_layer, unit, channel,
     return fr
 
 
+def check_plausible(fr, n_features, points_xy, unit, label,
+                    channel):
+    """Refuse a friction surface that cannot be right (v1.26.1).
+
+    Malta, John's field test: 40,678 roads produced ONE friction
+    cell, the run finished in 0.1 s, and 8,730 rows were filled with
+    confident nonsense. The cause was a CRS mistake, but the deeper
+    fault was that nothing objected to an absurd result.
+
+    Two checks, both cheap and both about ORDERS OF MAGNITUDE rather
+    than exactness:
+
+      * a great many features collapsing into almost no cells means
+        the barrier is in the wrong units - degrees against metres
+        is the usual reason;
+      * a barrier whose cells lie nowhere near the points cannot
+        block anything, so it is either the wrong layer or the wrong
+        projection.
+
+    A wrong barrier is worse than no barrier: no barrier is visibly
+    absent, while a wrong one looks like it worked.
+    """
+    import numpy as _np
+    if fr is None or not len(fr):
+        return
+    n_cells = len(fr)
+    if n_features >= 50 and n_cells <= max(2, n_features // 1000):
+        raise QgsProcessingException(
+            f"{label}: {n_features} features produced only "
+            f"{n_cells} friction cell(s) at a cell size of {unit:g} "
+            "m. That cannot be right - the barrier has almost no "
+            "extent in the working coordinate system. The usual "
+            "cause is a barrier layer in DEGREES while the analysis "
+            "runs in metres: whole countries then fall inside a "
+            "single cell. Check the barrier layer's CRS, or project "
+            "it to the same metric system as the points.")
+
+    x, y = points_xy
+    fx = _np.asarray(fr["x"], float)
+    fy = _np.asarray(fr["y"], float)
+    px = _np.asarray(x, float)
+    py = _np.asarray(y, float)
+    px = px[_np.isfinite(px)]
+    py = py[_np.isfinite(py)]
+    if not len(px) or not len(fx):
+        return
+    pad = 50.0 * float(unit)
+    overlaps = (fx.max() >= px.min() - pad and fx.min() <= px.max() + pad
+                and fy.max() >= py.min() - pad
+                and fy.min() <= py.max() + pad)
+    if not overlaps:
+        raise QgsProcessingException(
+            f"{label}: the barrier lies nowhere near the points. The "
+            f"barrier spans x {fx.min():,.0f}-{fx.max():,.0f}, "
+            f"y {fy.min():,.0f}-{fy.max():,.0f}, while the points "
+            f"span x {px.min():,.0f}-{px.max():,.0f}, "
+            f"y {py.min():,.0f}-{py.max():,.0f}. Nothing would be "
+            "blocked. Check that the barrier is the layer you meant "
+            "and that its coordinate system matches.")
+    channel.info(
+        f"{label}: {n_cells} friction cells from {n_features} "
+        f"feature(s), overlapping the points - looks sane.")
+
+
 def merge_friction(tables, agg, channel):
     """Several barrier sources into one surface.
 

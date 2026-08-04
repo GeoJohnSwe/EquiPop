@@ -894,3 +894,26 @@ small batch after.
   Python list of features and loops per attribute. Worth optimising
   before continental work.
 - 69 | open | MACHINE 2 vocabulary - still not started (was 64).
+
+## v1.26.1 (Malta's barrier day)
+- The barrier was reprojected against the layer's ARRIVAL CRS, not
+  the WORKING CRS of the run. Degrees vs degrees -> no transform ->
+  40,678 roads in one 100 m cell. base.py now remembers the working
+  CRS and the barrier path uses it.
+- check_plausible(): refuses a friction surface that cannot be
+  right (mass collapse into few cells; no overlap with the points),
+  naming the likely cause. THE lesson of the round - the CRS bug was
+  one instance of a class, and only the guard catches the class.
+- The effort engine emitted T_/R_ with no treatment given. Fixed in
+  friction.py and the merge in stata_bridge.py; the counts engine
+  was already right.
+- 70 | open | FACILITATORS (John's academic question, worth a real
+  answer). Entering a cell costs 1 + friction, so a facilitator is a
+  value between -1 and 0: -0.5 halves the cost of a cell, -0.9 makes
+  it a tenth. The engine currently refuses anything below zero,
+  which is stricter than the mathematics requires - the true floor
+  is -1, where movement becomes free. Relaxing it would let
+  motorways be modelled as genuinely faster, the natural counterpart
+  to barriers for accessibility work. Needs a decision on what
+  happens at exactly -1 and whether the shortest-path expansion
+  stays well-behaved.

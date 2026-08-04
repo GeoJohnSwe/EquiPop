@@ -451,3 +451,116 @@ def test_a_multipart_barrier_uses_every_part():
                                [(50.0, 0.0), (50.0, 100.0)]], wkb=2)
     parts = _paths_of(g)
     assert len(parts) == 2
+
+
+# ------------------- Malta, John's barrier day (v1.26.1)
+def _degree_roads(n=200):
+    """Roads in DEGREES, as OSM data arrives - the exact shape of
+    John's failure."""
+    import qgis_stub as Q
+    from qgis.core import QgsGeometry
+    t = pd.DataFrame({"friction": [3.0] * n})
+    src = Q.source_from(t, crs="EPSG:4326", geometry=False)
+    feats = list(src.getFeatures())
+    for i, f in enumerate(feats):
+        y0 = 35.85 + i * 0.0005
+        f.setGeometry(QgsGeometry.fromParts(
+            [[(14.40, y0), (14.55, y0)]], wkb=2))
+    src.getFeatures = lambda *a: iter(feats)
+    src.wkbType = lambda: 2
+    src.featureCount = lambda: n
+    return src
+
+
+def test_a_barrier_left_in_degrees_is_refused_not_computed():
+    """John, field: 40,678 Maltese roads produced ONE friction cell,
+    the run finished in 0.1 s, and 8,730 rows were filled with
+    confident nonsense. The CRS bug is fixed - but the deeper fault
+    was that nothing objected to an absurd result, so this guards
+    the class rather than the instance."""
+    from equipop_qgis.barriers import check_plausible
+    import pandas as _pd
+    collapsed = _pd.DataFrame({"x": [0.0], "y": [0.0],
+                               "friction": [3.0]})
+    ch = QgsProcessingFeedback()
+    with pytest.raises(QgsProcessingException) as e:
+        check_plausible(collapsed, 40678,
+                        (np.array([450000.0, 460000.0]),
+                         np.array([3960000.0, 3970000.0])),
+                        100.0, "Barrier layer",
+                        CountsAndShares.channel(ch))
+    msg = str(e.value)
+    assert "40678 features produced only 1 friction cell" in msg
+    assert "DEGREES" in msg and "CRS" in msg
+
+
+def test_a_barrier_somewhere_else_entirely_is_refused():
+    from equipop_qgis.barriers import check_plausible
+    import pandas as _pd
+    elsewhere = _pd.DataFrame({"x": np.arange(300) * 100.0,
+                               "y": np.zeros(300),
+                               "friction": np.full(300, 3.0)})
+    ch = QgsProcessingFeedback()
+    with pytest.raises(QgsProcessingException) as e:
+        check_plausible(elsewhere, 300,
+                        (np.array([9e6, 9.1e6]), np.array([4e6, 4.1e6])),
+                        100.0, "Barrier layer",
+                        CountsAndShares.channel(ch))
+    assert "nowhere near the points" in str(e.value)
+
+
+def test_a_sane_barrier_passes_and_says_so():
+    from equipop_qgis.barriers import check_plausible
+    import pandas as _pd
+    fr = _pd.DataFrame({"x": np.arange(300) * 100.0,
+                        "y": np.zeros(300),
+                        "friction": np.full(300, 3.0)})
+    fb = QgsProcessingFeedback()
+    check_plausible(fr, 300, (np.arange(20) * 100.0, np.zeros(20)),
+                    100.0, "Barrier layer",
+                    CountsAndShares.channel(fb))
+    assert any("looks sane" in m for m in fb.info)
+
+
+def test_the_barrier_is_reprojected_to_the_WORKING_crs():
+    """The bug itself: points in degrees are reprojected for the run,
+    so the barrier must be compared against the CRS the run WORKS in,
+    not the one the layer arrived in. Comparing degrees with degrees
+    concluded 'no transform needed' and left the roads unprojected."""
+    t = pd.DataFrame({"x": [13.0, 13.01, 13.02, 13.03],
+                      "y": [57.7, 57.71, 57.72, 57.73],
+                      "pop": [1.0, 1, 1, 1]})
+    src = qgis_stub.source_from(t, crs="EPSG:4326")
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    alg.read_points(src, QgsProcessingFeedback())
+    assert alg.working_crs.authid() != "EPSG:4326", \
+        "the working CRS is still the arrival CRS - a barrier would " \
+        "not be reprojected and would collapse into one cell"
+    assert not alg.working_crs.isGeographic()
+
+
+def test_no_treatment_means_no_empty_treatment_columns():
+    """John, field: a run with no treatment came back with T_40 and
+    R_40 - columns of nothing that look like results. The counts
+    engine had always been right here; the effort engine had not, so
+    the two disagreed about what an empty question answers."""
+    src = qgis_stub.source_from(_line_of_points())
+    out, _ = _run(CountsAndShares, src, refmode=[1], pop="pop",
+                  k="4", barrier=_river_source(),
+                  barrierfield="cost")
+    stray = [c for c in out.columns
+             if c.startswith(("T_", "R_"))]
+    assert not stray, f"invented treatment columns: {stray}"
+    assert "Rounds_4" in out.columns
+
+
+def test_a_named_group_still_gets_its_columns_over_effort():
+    src = qgis_stub.source_from(
+        pd.DataFrame({"x": np.arange(12) * 100.0,
+                      "y": np.zeros(12), "pop": np.ones(12),
+                      "grp": np.r_[np.ones(6), np.zeros(6)]}))
+    out, _ = _run(CountsAndShares, src, refmode=[1], pop="pop",
+                  treatmode=[1], treat=["grp"], k="4",
+                  barrier=_river_source(), barrierfield="cost")
+    assert "T_grp_4" in out.columns and "R_grp_4" in out.columns

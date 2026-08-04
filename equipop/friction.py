@@ -241,6 +241,12 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
     origins = np.arange(n_pop) if origins is None else np.asarray(origins)
     n_org = len(origins)
     ca, cg = grid.count_all[grid.pop_idx], grid.count_group[grid.pop_idx]
+    # v1.26.1, John's field run: with NO treatment given, the effort
+    # engine still emitted T_<k> and R_<k> - a column of nothing that
+    # looks like a result. The counts engine has always returned just
+    # N_ and Dist_ in that case, so the two engines disagreed about
+    # what an empty question answers.
+    _has_group = bool(np.nansum(np.abs(cg)) > 0)
     results = []
 
     for start in range(0, n_org, chunk):
@@ -265,9 +271,10 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
             def rec_tau(tv):     # effort isochrone: everything within tv
                 lab = f"tau{tv:g}"
                 rec[f"N_{lab}"] = sum_all
-                rec[f"T_{lab}"] = sum_grp
-                rec[f"R_{lab}"] = (sum_grp / sum_all if sum_all
-                                   else np.nan)
+                if _has_group:
+                    rec[f"T_{lab}"] = sum_grp
+                    rec[f"R_{lab}"] = (sum_grp / sum_all if sum_all
+                                       else np.nan)
 
             j = 0
             while j < n_pop and (pending or pending_tau):
@@ -288,16 +295,19 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 while pending and sum_all >= pending[0]:
                     k = pending.pop(0)
                     rec[f"N_{k}"] = sum_all
-                    rec[f"T_{k}"] = sum_grp
-                    rec[f"R_{k}"] = sum_grp / sum_all
+                    if _has_group:
+                        rec[f"T_{k}"] = sum_grp
+                        rec[f"R_{k}"] = sum_grp / sum_all
                     rec[f"Dist_{k}"] = dist_m
                     rec[f"Rounds_{k}"] = rounds_now
             for tv in pending_tau:  # isochrone swallows all reachable
                 rec_tau(tv)
             for k in pending:      # unreached: partial (spec section 12)
                 rec[f"N_{k}"] = sum_all
-                rec[f"T_{k}"] = sum_grp
-                rec[f"R_{k}"] = sum_grp / sum_all if sum_all else np.nan
+                if _has_group:
+                    rec[f"T_{k}"] = sum_grp
+                    rec[f"R_{k}"] = (sum_grp / sum_all if sum_all
+                                     else np.nan)
                 rec[f"Dist_{k}"] = dist_m
                 rec[f"Rounds_{k}"] = rounds_now
             rec["SumN"] = sum_all
@@ -308,9 +318,13 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
     out = pd.DataFrame(results)
     fixed = ["Id", "EastWest", "NorthSouth", "CountAllLocal",
              "CountGroupLocal", "SumN", "MaxDistance"]
-    per_k = [f"{p}_{k}" for k in k_values
-             for p in ("N", "T", "R", "Dist", "Rounds")]
-    per_tau = [f"{p}_tau{tv:g}" for tv in tau_values for p in ("N", "T", "R")]
+    # with no treatment there are no T_/R_ columns to ask for
+    parts = ("N", "T", "R", "Dist", "Rounds") if _has_group else \
+            ("N", "Dist", "Rounds")
+    tau_parts = ("N", "T", "R") if _has_group else ("N",)
+    per_k = [f"{p}_{k}" for k in k_values for p in parts]
+    per_tau = [f"{p}_tau{tv:g}" for tv in tau_values
+               for p in tau_parts]
     return out[fixed + per_k + per_tau]
 
 
