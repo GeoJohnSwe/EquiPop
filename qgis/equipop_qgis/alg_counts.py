@@ -8,6 +8,7 @@ numbers are checked against the shared Gridby reference, so a QGIS
 student and a Pro student get the same answers out of the same town.
 """
 from qgis.core import (QgsProcessing, QgsProcessingException,
+                       QgsProcessingParameterRasterLayer,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterEnum,
                        QgsProcessingParameterFeatureSink,
@@ -30,6 +31,7 @@ TREAT_MODES = ["not measuring one - distances and counts only",
                "types from a type field, grouped"]
 OUTSIDE_MODES = ["give them results, counting as zero",
                  "leave their results Null"]
+AGG_MODES = ["additive (costs add up)", "max", "min", "mean"]
 
 import numpy as np
 
@@ -119,6 +121,32 @@ class CountsAndShares(EquipopAlgorithm):
             "distance at which weight halves)", defaultValue=0.0,
             optional=True,
             type=QgsProcessingParameterNumber.Double))
+
+        # --- barriers and terrain: distance becomes EFFORT ---------
+        self.add(QgsProcessingParameterFeatureSource(
+            "barrier", "5 \u25b8 barrier layer - a river, railway or "
+            "lake that costs effort to cross (optional)",
+            [QgsProcessing.TypeVectorAnyGeometry], optional=True))
+        self.add(QgsProcessingParameterField(
+            "barrierfield", "5a \u25b8 ...its friction field - the "
+            "crossing cost in rounds",
+            parentLayerParameterName="barrier", optional=True))
+        self.add(QgsProcessingParameterRasterLayer(
+            "barrierraster", "5b \u25b8 ...or a friction RASTER "
+            "(cost per cell; NoData or zero = free)", optional=True))
+        self.add(QgsProcessingParameterRasterLayer(
+            "dem", "5c \u25b8 ...and/or an elevation raster, so "
+            "SLOPE costs effort", optional=True))
+        self.add(QgsProcessingParameterString(
+            "tau", "5d \u25b8 effort budgets, space separated - how "
+            "many rounds each person may spend (gives N_tau columns)",
+            optional=True))
+        self.add(QgsProcessingParameterBoolean(
+            "roundtrip", "5e \u25b8 charge the return journey too "
+            "(there and back)", defaultValue=False), advanced=True)
+        self.add(QgsProcessingParameterEnum(
+            "barrieragg", "5f \u25b8 where barriers overlap",
+            options=AGG_MODES, defaultValue=0), advanced=True)
 
         # Rarely touched: into QGIS's Advanced area, so the everyday
         # list stays short (v1.25, John - QGIS has no sections, and
@@ -250,10 +278,41 @@ class CountsAndShares(EquipopAlgorithm):
                     ch.info(f"{outside} row(s) are outside the "
                             "reference population and are DROPPED.")
 
-        ch.info(f"Calculating (counts engine, {pts.n} rows, cell size "
-                f"{float(unit):g} m).")
+        fr, dem_payload = self._effort_ingredients(
+            parameters, context, ch, unit, source.sourceCrs())
+        engine = "counts"
+        if fr is not None or dem_payload is not None:
+            # a different ENGINE, not just an extra argument: effort
+            # is walked in rounds over a cost surface, which is a
+            # different calculation from counting by distance
+            engine = "slope" if dem_payload is not None else "friction"
+            ch.info(
+                "Distance ingredients given, so this run uses the "
+                "EFFORT engine: neighbours are farther away in ROUNDS "
+                "rather than metres. It takes longer, and Rounds / "
+                "N_tau columns join or replace Dist.")
+            if fr is not None:
+                kw["friction_file"] = fr
+            if dem_payload is not None:
+                kw["dem"] = dem_payload
+            kw["roundtrip"] = self.parameterAsBool(
+                parameters, "roundtrip", context)
+            kw.pop("r_values", None)     # a radius over effort is
+            tau = self.parameterAsString(  # not defined
+                parameters, "tau", context).strip()
+            if tau:
+                kw["tau_values"] = [float(v) for v in tau.split()]
+            if decaying:
+                ch.warning(
+                    "Decay over effort is not available, so decay is "
+                    "ignored for this run.")
+                for key in ("decay_model", "half_life_m", "decay_eps"):
+                    kw.pop(key, None)
+
+        ch.info(f"Calculating ({engine} engine, {pts.n} rows, cell "
+                f"size {float(unit):g} m).")
         with stage(ch, "calculating"), speaking(ch):
-            res = dispatch("counts", pts.data["x"], pts.data["y"], **kw)
+            res = dispatch(engine, pts.data["x"], pts.data["y"], **kw)
 
         order = [n for n in names if n in res] + \
                 [n for n in res if n not in names]
@@ -263,6 +322,67 @@ class CountsAndShares(EquipopAlgorithm):
         return {self.OUT: dest}
 
     # ---------------------------------------------------------------
+    def _effort_ingredients(self, parameters, context, ch, unit,
+                            working_crs):
+        """Barriers and terrain, read the QGIS way and handed to the
+        shared engine (v1.26). Returns (friction table or None, DEM
+        payload or None)."""
+        from .barriers import (barrier_to_friction, merge_friction,
+                               raster_to_friction_layer)
+        agg = ["sum", "max", "min", "mean"][
+            (self.parameterAsEnums(parameters, "barrieragg", context)
+             or [0])[0]]
+        tables = []
+        vec = self.parameterAsSource(parameters, "barrier", context)
+        if vec is not None:
+            field = (self.parameterAsFields(parameters, "barrierfield",
+                                            context) or [None])[0]
+            tables.append(barrier_to_friction(
+                vec, field, unit, agg, ch, working_crs))
+        rast = self.parameterAsRasterLayer(parameters, "barrierraster",
+                                           context)
+        if rast is not None:
+            tables.append(raster_to_friction_layer(rast, unit, ch))
+        fr = merge_friction(tables, agg, ch)
+
+        dem_layer = self.parameterAsRasterLayer(parameters, "dem",
+                                                context)
+        dem = None
+        if dem_layer is not None:
+            dem = self._dem_payload(dem_layer, ch)
+        return fr, dem
+
+    @staticmethod
+    def _dem_payload(layer, ch):
+        """Elevation as an array plus its geo-reference - the same
+        shape the ArcGIS door hands over, so the slope engine cannot
+        tell the doors apart."""
+        import numpy as _np
+        try:
+            p = layer.dataProvider()
+            block = p.block(1, layer.extent(), layer.width(),
+                            layer.height())
+            arr = _np.array([[block.value(r, c)
+                              for c in range(layer.width())]
+                             for r in range(layer.height())],
+                            dtype=float)
+            ext = layer.extent()
+            # the key names are the engine's, not ours - the ArcGIS
+            # door hands over exactly this shape, so the slope engine
+            # cannot tell the two doors apart
+            payload = {"array": arr,
+                       "x_min": float(ext.xMinimum()),
+                       "y_max": float(ext.yMaximum()),
+                       "cell_w": ext.width() / layer.width(),
+                       "cell_h": ext.height() / layer.height(),
+                       "nodata": p.sourceNoDataValue(1)}
+        except Exception as exc:
+            raise QgsProcessingException(
+                f"Could not read the elevation raster ({exc}).")
+        ch.info(f"Elevation raster read: {arr.shape[0]} x "
+                f"{arr.shape[1]} cells - slope will cost effort.")
+        return payload
+
     @staticmethod
     def _groups_from_matrix(rows):
         """QGIS hands a matrix back as ONE FLAT LIST: value, group,

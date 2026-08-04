@@ -40,6 +40,8 @@ class QgsPointXY:
 class QgsGeometry:
     def __init__(self, pt=None):
         self._pt = pt
+        self._parts = []
+        self._wkb = 1
 
     @staticmethod
     def fromPointXY(pt):
@@ -51,14 +53,45 @@ class QgsGeometry:
         return self._pt
 
     def isEmpty(self):
-        return self._pt is None
+        return self._pt is None and not self._parts
 
     def isNull(self):
-        return self._pt is None
+        return self.isEmpty()
 
     def transform(self, tr):
-        self._pt = tr.transform(self._pt)
+        if self._pt is not None:
+            self._pt = tr.transform(self._pt)
+        if self._parts:
+            self._parts = [[tr.transform(p) for p in part]
+                           for part in self._parts]
         return 0
+
+    # -- lines and polygons --------------------------------------
+    def isMultipart(self):
+        return len(self._parts) > 1
+
+    def wkbType(self):
+        return self._wkb
+
+    def asPolyline(self):
+        return self._parts[0] if self._parts else []
+
+    def asMultiPolyline(self):
+        return self._parts
+
+    def asPolygon(self):
+        return self._parts[:1]
+
+    def asMultiPolygon(self):
+        return [[p] for p in self._parts]
+
+    @staticmethod
+    def fromParts(parts, wkb=2):
+        g = QgsGeometry()
+        g._parts = [[QgsPointXY(x, y) for x, y in part]
+                    for part in parts]
+        g._wkb = wkb
+        return g
 
 
 # ----------------------------------------------------------- fields
@@ -363,6 +396,79 @@ class QgsProcessingParameterFeatureSink(_Param):
     pass
 
 
+class QgsProcessingParameterRasterLayer(_Param):
+    pass
+
+
+class QgsWkbTypes:
+    """Point = 0, Line = 1, Polygon = 2, as in PyQGIS."""
+    PointGeometry, LineGeometry, PolygonGeometry = 0, 1, 2
+
+    @staticmethod
+    def geometryType(wkb):
+        return {1: 0, 2: 1, 3: 2, 100: 0}.get(int(wkb), 0)
+
+
+class _Block:
+    def __init__(self, arr):
+        self.a = arr
+
+    def value(self, r, c):
+        return float(self.a[r][c])
+
+
+class _Extent:
+    def __init__(self, x0, y0, x1, y1):
+        self._v = (x0, y0, x1, y1)
+
+    def xMinimum(self):
+        return self._v[0]
+
+    def yMaximum(self):
+        return self._v[3]
+
+    def width(self):
+        return self._v[2] - self._v[0]
+
+    def height(self):
+        return self._v[3] - self._v[1]
+
+
+class _Provider:
+    def __init__(self, arr, nodata=None):
+        self.arr, self._nd = arr, nodata
+
+    def block(self, band, extent, w, h):
+        return _Block(self.arr)
+
+    def sourceNoDataValue(self, band):
+        return self._nd
+
+
+class FakeRasterLayer:
+    """Enough of QgsRasterLayer for the friction and slope paths."""
+
+    def __init__(self, arr, xmin=0.0, ymax=1000.0, cw=100.0,
+                 ch=100.0, nodata=None):
+        import numpy as _np
+        self.arr = _np.asarray(arr, float)
+        self._p = _Provider(self.arr, nodata)
+        h, w = self.arr.shape
+        self._ext = _Extent(xmin, ymax - h * ch, xmin + w * cw, ymax)
+
+    def dataProvider(self):
+        return self._p
+
+    def extent(self):
+        return self._ext
+
+    def width(self):
+        return self.arr.shape[1]
+
+    def height(self):
+        return self.arr.shape[0]
+
+
 class QgsProcessing:
     TypeVectorPoint, TypeVector, TypeVectorAnyGeometry = 0, 1, 2
 
@@ -413,6 +519,9 @@ class QgsProcessingAlgorithm:
     def parameterAsMatrix(self, parameters, name, context):
         return parameters.get(name) or []
 
+    def parameterAsRasterLayer(self, parameters, name, context):
+        return parameters.get(name)
+
     def parameterAsEnums(self, parameters, name, context):
         v = parameters.get(name)
         return list(v) if isinstance(v, (list, tuple)) else (
@@ -452,6 +561,7 @@ _NAMES = [
     "QgsProcessingParameterEnum", "QgsProcessingParameterMatrix",
     "QgsProcessingParameterFeatureSink",
     "QgsProcessingParameterDefinition",
+    "QgsProcessingParameterRasterLayer", "QgsWkbTypes",
 ]
 
 

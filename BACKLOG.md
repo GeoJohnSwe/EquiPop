@@ -864,7 +864,7 @@ small batch after.
   ladder order, tooltips from the shared help.
 - qgisMinimumVersion 3.16 -> 3.28, with "tested on 3.42" stated.
 - [stata] full population now names the total.
-- 63 | open | STILL MISSING IN QGIS: barriers and terrain. Deferred
+- ~~63~~ | DONE v1.26.0 | Barriers and terrain in QGIS. Deferred
   again rather than started half-finished - it needs the friction
   building path (points/paths to friction, DEM slope) ported to read
   QGIS layers, which is a round of its own.
@@ -874,3 +874,23 @@ small batch after.
 - 66 | open | Editing multi-line Python by blind string replacement
   damaged alg_counts.py this round; recovered from the release zip.
   Read the real text first (view/sed), then str_replace against it.
+
+## v1.26.0 (barriers and terrain in QGIS)
+- qgis/equipop_qgis/barriers.py: vector barriers (points, lines,
+  polygons, multipart), friction rasters, elevation for slope, tau
+  budgets, round-trip, overlap rule. Reprojected to the working CRS.
+- The engine wants features as {"type": ..., "parts": ...} - line
+  charged by LENGTH, polygon by AREA - and friction means a
+  DIFFERENT ENGINE (friction/slope), not an extra argument. Both
+  found by test, not by reading.
+- Parity test corrected: it now asserts every box in either door has
+  an entry in the shared help, rather than requiring identical
+  widget names. Pro's barrier VALUE TABLE and QGIS's layer+field are
+  the same idea in two hosts.
+- 67 | open | QGIS barriers are simulator-proved only. The ArcGIS
+  round is the evidence for how far that is from proved.
+- 68 | open | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
+  of calculation (John, field, 8730 points). read_points builds a
+  Python list of features and loops per attribute. Worth optimising
+  before continental work.
+- 69 | open | MACHINE 2 vocabulary - still not started (was 64).

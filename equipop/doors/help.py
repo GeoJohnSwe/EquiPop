@@ -141,6 +141,12 @@ HELP = {
     "groupscount": "Whether category groups count PERSONS (weighted "
                    "by the population field, so shares have the same "
                    "denominator as N) or PLACES (rows).",
+    "barrierraster":
+        "A raster of crossing costs, one number per cell: how much "
+        "effort it takes to pass through there. NoData or zero means "
+        "free. Use it when the obstacle is continuous - marshland, "
+        "rough terrain, a built-up core - rather than a line on a "
+        "map.",
     "barrierrasters": "Friction rasters, where each cell value is "
                       "the crossing cost. They combine with the rows "
                       "of the barrier table by the same overlap "

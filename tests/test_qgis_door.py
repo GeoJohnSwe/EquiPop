@@ -65,18 +65,24 @@ def test_every_parameter_carries_the_shared_explanation():
             f"{cls.__name__}: no help for {missing_help(names)}"
 
 
-def test_the_two_doors_use_the_same_parameter_names():
-    """Student parity, made testable: a name that matches means the
-    same box is explained with the same words in Pro and in QGIS."""
-    src = open(os.path.join(ROOT, "arcgis", "EquiPop.pyt")).read()
+def test_the_two_doors_explain_the_same_box_the_same_way():
+    """Student parity, made testable. The contract is not that the
+    two dialogs use identical WIDGETS - Pro has a barrier value
+    table where QGIS has a layer and a field - but that every box in
+    either door draws its words from the one shared help source. A
+    name with no entry there would be explained twice, differently,
+    or not at all."""
+    from equipop.doors.help import HELP
     for cls in (CountsAndShares, ValueStatistics):
         alg = cls()
         alg.initAlgorithm()
         for p in alg.parameterDefinitions():
-            assert f'"{p.name()}"' in src, (
-                f"QGIS uses a parameter name '{p.name()}' that the "
-                "ArcGIS toolbox does not - the two doors would then "
-                "explain the same idea with different words")
+            if p.name() == alg.OUT:
+                continue
+            assert p.name() in HELP, (
+                f"{cls.__name__}: '{p.name()}' has no entry in "
+                "equipop.doors.help, so the two doors cannot explain "
+                "it with the same words")
 
 
 def test_the_help_page_is_built_from_the_shared_summary():
@@ -339,3 +345,109 @@ def test_the_default_run_needs_only_a_layer_and_a_k():
     treatment. The simplest question EquiPop answers."""
     out, _ = _run(CountsAndShares, qgis_stub.gridby_source(), k="50")
     assert "N_50" in out.columns and "Dist_50" in out.columns
+
+
+# ------------------------------- barriers and terrain (v1.26)
+def _river_source():
+    """A vertical line at x = 450, costing 5 rounds to cross."""
+    import qgis_stub as Q
+    from qgis.core import QgsGeometry
+    t = pd.DataFrame({"cost": [5.0]})
+    src = Q.source_from(t, geometry=False)
+
+    class _WithGeom(type(src)):
+        pass
+    feats = list(src.getFeatures())
+    geom = QgsGeometry.fromParts([[(450.0, -100.0), (450.0, 900.0)]],
+                                 wkb=2)
+    feats[0].setGeometry(geom)
+    src.getFeatures = lambda *a: iter(feats)
+    src.wkbType = lambda: 2
+    return src
+
+
+def _line_of_points(n=12, step=100.0):
+    return pd.DataFrame({"x": np.arange(n) * step,
+                         "y": np.zeros(n),
+                         "pop": np.ones(n)})
+
+
+def test_a_barrier_switches_the_run_to_the_effort_engine():
+    src = qgis_stub.source_from(_line_of_points())
+    out, fb = _run(CountsAndShares, src, refmode=[1], pop="pop",
+                   k="4", barrier=_river_source(),
+                   barrierfield="cost", tau="3")
+    said = " ".join(fb.info)
+    assert "EFFORT engine" in said
+    assert "friction cells" in said
+    assert any(c.startswith("Rounds_") or c.startswith("N_tau")
+               for c in out.columns), list(out.columns)
+
+
+def test_a_barrier_actually_separates_the_two_sides():
+    """The point of a barrier: people across the river are farther
+    away in ROUNDS than their metres suggest."""
+    src = qgis_stub.source_from(_line_of_points())
+    with_river, _ = _run(CountsAndShares, src, refmode=[1], pop="pop",
+                         k="4", barrier=_river_source(),
+                         barrierfield="cost")
+    plain, _ = _run(CountsAndShares,
+                    qgis_stub.source_from(_line_of_points()),
+                    refmode=[1], pop="pop", k="4")
+    assert not with_river.equals(plain), \
+        "the barrier changed nothing - it is not reaching the engine"
+
+
+def test_a_barrier_without_a_friction_field_is_refused_kindly():
+    src = qgis_stub.source_from(_line_of_points())
+    with pytest.raises(QgsProcessingException) as e:
+        _run(CountsAndShares, src, refmode=[1], pop="pop", k="4",
+             barrier=_river_source())
+    msg = str(e.value)
+    assert "friction field" in msg and "rounds" in msg
+
+
+def test_a_friction_raster_is_read_and_reported():
+    import qgis_stub as Q
+    grid = np.zeros((10, 10))
+    grid[:, 4] = 5.0                      # a wall of cost
+    src = qgis_stub.source_from(_line_of_points())
+    out, fb = _run(CountsAndShares, src, refmode=[1], pop="pop",
+                   k="4",
+                   barrierraster=Q.FakeRasterLayer(grid, xmin=0.0,
+                                                   ymax=1000.0))
+    assert "friction cells" in " ".join(fb.info)
+    assert len(out) == 12
+
+
+def test_an_elevation_raster_turns_slope_into_effort():
+    import qgis_stub as Q
+    hill = np.tile(np.arange(10.0) * 20.0, (10, 1))
+    src = qgis_stub.source_from(_line_of_points())
+    out, fb = _run(CountsAndShares, src, refmode=[1], pop="pop",
+                   k="4", dem=Q.FakeRasterLayer(hill, xmin=0.0,
+                                                ymax=1000.0))
+    said = " ".join(fb.info)
+    assert "Elevation raster read" in said
+    assert "EFFORT engine" in said
+
+
+def test_decay_is_refused_over_effort_rather_than_quietly_wrong():
+    src = qgis_stub.source_from(_line_of_points())
+    _, fb = _run(CountsAndShares, src, refmode=[1], pop="pop", k="4",
+                 barrier=_river_source(), barrierfield="cost",
+                 model=[1], halflife=300.0)
+    assert any("Decay over effort is not available" in w
+               for w in fb.warnings)
+
+
+def test_a_multipart_barrier_uses_every_part():
+    """A river arrives as ONE feature with many parts. Taking only
+    the first would look like a working barrier while quietly
+    leaking."""
+    from equipop_qgis.barriers import _paths_of
+    from qgis.core import QgsGeometry
+    g = QgsGeometry.fromParts([[(0.0, 0.0), (0.0, 100.0)],
+                               [(50.0, 0.0), (50.0, 100.0)]], wkb=2)
+    parts = _paths_of(g)
+    assert len(parts) == 2
