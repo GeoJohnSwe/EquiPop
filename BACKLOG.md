@@ -19,36 +19,96 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-1. **78** — the QGIS plugin dies at LOAD on a stale package, and the sentence explaining it cannot reach the user; a door that will not open outranks one that opens slowly
+1. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's next destination, and machine 3 waits behind it
 2. **68** — measured, on the door John teaches with, and continental work waits on it
-3. **76** — the half of the machine 2 round John deferred; 1.29 was the groundwork for it
+3. **83** — machine 2 gives Null where machine 1 gives results; the ladder made the gap reachable
 4. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
 5. **58** — same evening: a GeoPackage barrier layer has still never been run
 6. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
-7. **44** — the suspected one-line cause of 34; they travel together
-8. **34** — Pro renders the help page empty; needs one field cycle to confirm
-9. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
-10. **45** — small, but these files ship inside every release zip
-11. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
-12. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
-13. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
-14. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
-15. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
-16. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
-17. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
-18. **55** — same: the simulator honours category and enabled, only Pro can say they read well
-19. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
-20. **57** — retire the old single-table path once John confirms no saved tool needs it
-21. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
-22. **40** — one sentence in the Gridby README
-23. **4** — heights / third dimension - design can precede data, and there is no data yet
-24. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
-25. **79** — icon.png has been promised since the beginning and never shipped
-26. **66** — not a task: a standing caution about editing multi-line Python
+7. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
+8. **44** — the suspected one-line cause of 34; they travel together
+9. **34** — Pro renders the help page empty; needs one field cycle to confirm
+10. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
+11. **45** — small, but these files ship inside every release zip
+12. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
+13. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
+14. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
+15. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
+16. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
+17. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
+18. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
+19. **55** — same: the simulator honours category and enabled, only Pro can say they read well
+20. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
+21. **57** — retire the old single-table path once John confirms no saved tool needs it
+22. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
+23. **40** — one sentence in the Gridby README
+24. **4** — heights / third dimension - design can precede data, and there is no data yet
+25. **82** — machines 3 and 4 ship as a separate package; needs machine DISCOVERY in both doors first
+26. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
+27. **79** — icon.png has been promised since the beginning and never shipped
+28. **66** — not a task: a standing caution about editing multi-line Python
 
 ## Still to do — detail, in the order above
 
-- 78 | open v1.29.1 | THE PLUGIN DIES AT LOAD when the equipop
+- ~~83~~ | DONE v1.29.2 | MACHINE 2 CANNOT GIVE RESULTS TO A NON-MEMBER,
+  and machine 1 can. John's rule since 1.22.2 is that a row outside
+  the reference population counts as ZERO - nobody's neighbour - but
+  still gets its own results. In stata_bridge.dispatch the stats path
+  does `valid = valid & (rep > 0)`, so a zero-weight row is dropped
+  as an ORIGIN and _map_back gives it NaN. Measured, identical setup,
+  600 rows with 300 outside: machine 1 Null for 0 of 300, machine 2
+  Null for 300 of 300. Not a co-location artefact - scattered and
+  co-located behave the same.
+  Exposed by the 1.29.2 ladder, which gave machine 2 its first way of
+  putting a row outside the reference population; the inconsistency
+  had simply been unreachable before.
+  John's ruling: make it the USER's choice (option C). The box
+  already exists and already says it - `keepoutside`, "give them
+  results, counting as zero" / "leave their results Null" - so the
+  dialog is right and only the engine has to catch up. Default stays
+  "give them results", matching machine 1.
+  THE HARD PART: a zero-weight row alone in a 100 m cell has no cell
+  in the population grid, so the engine needs an origin that is not
+  a member. Own round, with its own tests.
+  ALSO FIXED HERE: the engine PRINTED "they still receive their own
+  results" while doing the opposite. A false reassurance is worse
+  than silence.
+
+- 82 | open v1.29.2 | MACHINES 3 AND 4 SHIP SEPARATELY, as
+  `equipop-demography` (John's ruling, 1.29.2 session: "alternative
+  A"). Machine 3 = demographic measures (life expectancy, fertility,
+  CDR/CBR/ASFR, dependency ratios); machine 4 = space syntax. The
+  reason is access control during development, and the honest form
+  of that is DISTRIBUTION, not a password: EquiPop is MIT and public
+  on PyPI, so any check inside shipped Python is a line the reader
+  can delete. A second wheel, given to named people, actually
+  controls access - and demographic estimates that reach print must
+  stay auditable, so obfuscated analysis code would fight the very
+  purpose of the tool.
+  WHAT THIS NEEDS FROM THE DOORS FIRST: provider.py hard-codes its
+  two algorithms and the .pyt hard-codes its two tools, so a machine
+  living in another package cannot appear at all. The doors must
+  DISCOVER machines rather than list them. That is the same change
+  that lets tests/door_parity.py scale past two hand-written lists,
+  and it rests on the discipline fixed in 78 - a missing half gives
+  absence and a sentence, never a traceback. Order: 78 (done),
+  then discovery, then the machines themselves.
+
+- 81 | open v1.29.1 | THE BOOK DOES NOT MENTION QGIS. Not once, in
+  any of the fifteen chapters - checked. There is ch15 for the
+  ArcGIS door and ch16 for Stata, and nothing for the door John
+  actually teaches with. The QGIS door shipped in 1.20.0, has been
+  field-tested twice (Malta, 1.26.1) and reached parity with Pro in
+  1.29.0, so a reader of the Book would not learn it exists. John's
+  instruction (1.29.1): the QGIS plugin should be covered the same
+  way the Pro toolbox is. NOT a chapter to bolt on in a hurry - the
+  Book's principle is that the two doors are the SAME document with
+  different pictures, so ch15 and the new chapter should be written
+  as a pair and the parity of 1.29.0 is what makes that honest now.
+  Queued deliberately for the NEXT BOOK RUN, with the other writing
+  items (42), not squeezed into a code release.
+
+- ~~78~~ | DONE v1.29.2 | THE PLUGIN DIES AT LOAD when the equipop
   package is older than the plugin. `alg_counts.py` calls
   `_decay_choices()` at MODULE level, so the import runs before QGIS
   has an algorithm to attach a message to - and every guard
@@ -69,12 +129,12 @@ appeared twice; the weaker copy is gone.*
   see the simulator flattering itself; 1.29.1 exists because nothing
   did.
 
-- 68 | open | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
+- ~~68~~ | DONE v1.29.2 | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
   of calculation (John, field, 8730 points). read_points builds a
   Python list of features and loops per attribute. Worth optimising
   before continental work.
 
-- 76 | open v1.29.0 | THE MACHINE 2 LADDER. 1.29 gave machine 2
+- ~~76~~ | DONE v1.29.2 | THE MACHINE 2 LADDER. 1.29 gave machine 2
   machine 1's words and made insertion safe (it now reads its boxes
   by NAME); the ladder itself was deferred by John - "change the
   words first, we can test the ladder later". What is missing: a
@@ -1057,6 +1117,38 @@ small batch after.
 - USAGE[ValueStatistics] still said "full-population field", retired
   in 1.29.0. Fixed, and neutralised (people, jobs, dwellings).
 - 269 tests (265 + 4). QGIS findings FIELD-CONFIRMED on 3.42.1.
+
+## v1.29.2 (the door opens, reads fast, and machine 2 keeps John's rule)
+
+- 78 THE PLUGIN NO LONGER DIES AT LOAD. One line did it: the decay
+  list was built at MODULE level, so a package older than the plugin
+  killed the import before QGIS had anything to attach a message to.
+  Every guard for that case lived inside processAlgorithm. Built on
+  USE now; shortHelpString survives a missing package; both of Pro's
+  probes ported, including the OLD-package one, which is the harder
+  case because `import equipop` succeeds and only the newest module
+  inside is absent.
+- 68 WAS MISNAMED. It blamed the GeoPackage. Materialising 8,730
+  features took 0.11 s. The cost was ours: attributes() once PER
+  FIELD, each call building a list of EVERY field and keeping one
+  value. 31 fields on John's layer - result columns from earlier runs
+  - so 270,630 calls converting 8.4 million values to obtain 270,630.
+  Every run made the next one slower, squared. One pass now: 5.40 s
+  -> 1.00 s measured on the real file.
+- 76 THE LADDER, reference side only. Machine 2 can restrict who is
+  around: "the mean income of the nearest 400 RESIDENTS" in a layer
+  that also holds workplaces. Pro's getParameterInfo still counted
+  boxes by POSITION and would have slid the measures list onto the
+  percentiles box; converted, with two tests that did the same.
+- 83, FOUND BY 76 WITHIN MINUTES. ORIGIN and MEMBER were one set in
+  machine 2. Now separate, so a non-member gets its own results, as
+  machine 1 has always done. The k-search needed no change - that was
+  tested from an empty cell BEFORE any bookkeeping was touched. An
+  unknown count is treated as machine 1 treats it (John's ruling).
+- Two pre-existing tests asserted the OLD behaviour and were
+  REVERSED deliberately, with the reason on the line.
+- 274 tests. The QGIS numbers are field-measured on 3.42.1; the
+  ladder is simulator-only in both doors and wants an evening.
 
 ## Done
 

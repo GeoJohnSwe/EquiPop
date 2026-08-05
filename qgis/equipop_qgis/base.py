@@ -108,9 +108,18 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         does not say what is inside, so a reader who never opens it
         would not learn that the effort engine exists.
         """
-        from equipop.doors.help import (VOCAB_QGIS, summary_for,
-                                        usage_for)
         tool = self.EQP_TOOL
+        try:
+            from equipop.doors.help import (VOCAB_QGIS, summary_for,
+                                            usage_for)
+        except Exception:
+            # v1.29.2: the help panel is not worth losing the plugin
+            # over. Say the one useful thing instead of raising.
+            return ("<p>The EquiPop Python package is not readable "
+                    "from the Python QGIS uses, so this tool cannot "
+                    "describe itself. In the OSGeo4W Shell run: "
+                    "<b>python -m pip install --upgrade equipop</b> "
+                    "and restart QGIS.</p>")
         extra = ""
         # v1.29.1: PyQGIS has no isAdvanced(). This is how the
         # flag is WRITTEN in add() below - read it back the
@@ -201,6 +210,8 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                     "layer belongs in the BARRIER box instead, where "
                     "it turns distance into effort.")
         has_geom = feats[0].hasGeometry()
+        # every attribute, once (v1.29.2 - see _columns for why)
+        cols = self._columns(feats, names)
         crs = source.sourceCrs()
         note, crs_text = "", crs.description() or crs.authid()
         # v1.26.1: remember the CRS the run actually WORKS in, not
@@ -244,15 +255,14 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                     names, xfield, yfield, "The input table")
             except D.DoorError as e:
                 raise QgsProcessingException(str(e))
-            data = {"x": self._column(feats, names, xf),
-                    "y": self._column(feats, names, yf)}
+            data = {"x": cols[xf], "y": cols[yf]}
             note = f"attribute fields ({how}): X = '{xf}', Y = '{yf}'"
             ch.info(f"Coordinates from {note}. X is the easting, "
                     "Y the northing.")
 
         for n in names:
             if n not in data:
-                data[n] = self._column(feats, names, n)
+                data[n] = cols[n]
 
         if has_geom:
             ch.info(f"Coordinates read from feature geometry "
@@ -278,7 +288,40 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         return QgsCoordinateReferenceSystem("EPSG:3006")
 
     @staticmethod
+    def _columns(feats, names):
+        """EVERY column, in ONE pass over the features (v1.29.2).
+
+        This used to be one pass PER FIELD, and each pass called
+        f.attributes(), which builds a fresh Python list of EVERY
+        field for that feature and then keeps one value. Cost was
+        features x fields x fields.
+
+        Measured by John on the real file, QGIS 3.42.1: 8,730 Malta
+        POIs carrying 31 fields - four original plus result columns
+        from earlier runs - took 5.40 s that way against 1.00 s this
+        way. 270,630 attributes() calls became 8,730, and 8.4 million
+        value conversions became 270,630, of which none are thrown
+        away. The whole read fell from 5.56 s to 1.17 s.
+
+        Worth keeping in mind WHY it grew: every run appends result
+        columns to the layer, so each run made the next one slower,
+        squared. Materialising the features was never the problem -
+        that was 0.11 s, so the GeoPackage was innocent all along,
+        which is not what BACKLOG 68 assumed.
+        """
+        rows = [f.attributes() for f in feats]
+        return {name: EquipopAlgorithm._convert([r[i] for r in rows])
+                for i, name in enumerate(names)}
+
+    @staticmethod
     def _column(feats, names, name):
+        """One column. Kept for callers that want a single field."""
+        i = names.index(name)
+        return EquipopAlgorithm._convert(
+            [f.attributes()[i] for f in feats])
+
+    @staticmethod
+    def _convert(raw):
         """Numbers as numbers, text as text.
 
         Forcing everything to float turned a category field of POI
@@ -287,8 +330,6 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         TEXT field was read. Coordinates and counts are numeric;
         `fclass` is not, and must survive as itself.
         """
-        i = names.index(name)
-        raw = [f.attributes()[i] for f in feats]
         out = np.empty(len(raw), float)
         for j, v in enumerate(raw):
             try:

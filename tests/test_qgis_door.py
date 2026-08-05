@@ -740,3 +740,198 @@ def test_the_help_says_where_the_effort_engine_went():
     text = alg.shortHelpString()
     assert "Advanced parameters" in text
     assert "barriers and terrain" in text.lower()
+
+
+# ------------------------- v1.29.2: the door opens with nothing behind it
+_QGIS_NO_PACKAGE = r'''
+import os, sys
+ROOT = r"{root}"
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+sys.path.insert(0, os.path.join(ROOT, "qgis"))
+import qgis_stub
+qgis_stub.install()
+
+# make `equipop` genuinely unimportable, as on a machine where pip
+# was never run
+for m in [m for m in sys.modules if m.split(".")[0] == "equipop"]:
+    del sys.modules[m]
+
+
+class _Block:
+    def find_spec(self, name, path=None, target=None):
+        if name == "equipop" or name.startswith("equipop."):
+            raise ImportError("no equipop here")
+        return None
+
+
+sys.meta_path.insert(0, _Block())
+
+# the plugin must still IMPORT, register both algorithms, and build
+# its dialogs - the explanation belongs at Run, not at load
+from equipop_qgis.provider import EquipopProvider
+prov = EquipopProvider()
+prov.loadAlgorithms()
+names = sorted(a.name() for a in prov._algs)
+assert names == ["countsandshares", "valuestatistics"], names
+for alg in prov._algs:
+    alg.initAlgorithm()
+    assert alg.parameterDefinitions(), "no boxes built"
+    txt = alg.shortHelpString()
+    assert "pip install" in txt, txt[:200]
+print("OK")
+'''
+
+
+def test_the_plugin_still_loads_when_the_package_is_missing():
+    """v1.29.2, BACKLOG 78. QGIS imports a plugin at STARTUP. Until
+    now alg_counts.py called _decay_choices() at module level, so a
+    missing or OLD package killed the import - and with it the whole
+    plugin, before QGIS had an algorithm to attach a message to. Every
+    guard written for exactly that situation (check_versions, the
+    DoorError contract, the 'install equipop' sentence) lives inside
+    processAlgorithm and could never run. A guard downstream of its
+    own failure is not a guard.
+
+    Pro learned this in 1.16 and has had this test since; the QGIS
+    door never inherited it, and it cost John an hour in the field.
+
+    Separate interpreter, because it must make equipop genuinely
+    unimportable."""
+    import subprocess
+    out = subprocess.run(
+        [sys.executable, "-c", _QGIS_NO_PACKAGE.replace("{root}", ROOT)],
+        capture_output=True, text=True, cwd=ROOT)
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert "OK" in out.stdout
+
+
+_QGIS_OLD_PACKAGE = r'''
+import os, sys
+ROOT = r"{root}"
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+sys.path.insert(0, os.path.join(ROOT, "qgis"))
+import qgis_stub
+qgis_stub.install()
+
+for m in [m for m in sys.modules if m.split(".")[0] == "equipop"]:
+    del sys.modules[m]
+
+
+class _Old:
+    """An equipop that IS installed but predates decaynames - John's
+    machine on 2026-08-05: plugin 1.29.0, package 1.27.0."""
+
+    def find_spec(self, name, path=None, target=None):
+        if name == "equipop.doors.decaynames":
+            raise ImportError(
+                "No module named 'equipop.doors.decaynames'")
+        return None
+
+
+sys.meta_path.insert(0, _Old())
+
+from equipop_qgis.provider import EquipopProvider
+prov = EquipopProvider()
+prov.loadAlgorithms()
+assert len(prov._algs) == 2, prov._algs
+for alg in prov._algs:
+    alg.initAlgorithm()
+    assert alg.parameterDefinitions(), "no boxes built"
+# the rest of the package still works, so the words are still there
+assert "neighbourhood" in prov._algs[0].shortHelpString().lower()
+print("OK")
+'''
+
+
+def test_the_plugin_still_loads_when_the_package_is_a_release_behind():
+    """v1.29.2, BACKLOG 78 - the exact shape of John's field failure.
+
+    A package that is INSTALLED but older than the plugin is the
+    common case, not the rare one: the plugin folder is replaced by
+    hand while pip is a separate step that is easy to forget. It is
+    also the harder case, because `import equipop` succeeds and only
+    the newest module inside it is absent, so a naive check for the
+    package finds one and reports all well.
+
+    The plugin must load anyway. An out-of-date half is a sentence,
+    never a traceback."""
+    import subprocess
+    out = subprocess.run(
+        [sys.executable, "-c", _QGIS_OLD_PACKAGE.replace("{root}", ROOT)],
+        capture_output=True, text=True, cwd=ROOT)
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert "OK" in out.stdout
+
+
+# ------------------------------ v1.29.2: machine 2's reference ladder
+def _mixed_town(n=600):
+    """Half residents, half workplaces, with clearly different
+    incomes - so a restriction that fails to bite is obvious."""
+    rng = np.random.default_rng(292)
+    kind = np.where(np.arange(n) % 2 == 0, "resident", "workplace")
+    return pd.DataFrame({
+        "x": rng.uniform(0, 3000, n),
+        "y": rng.uniform(0, 3000, n),
+        "kind": kind,
+        "Income": np.where(kind == "resident", 200.0, 900.0),
+        "People": np.where(kind == "resident", 4.0, 1.0),
+    })
+
+
+def test_machine2_ladder_restricts_who_is_around():
+    """BACKLOG 76. Machine 2 could not restrict its reference
+    population at all: every row was automatically in it. "The mean
+    income of the nearest 400 RESIDENTS" in a layer that also holds
+    workplaces was impossible.
+
+    Rung 3 makes it possible, and John's rule decides the rest: a row
+    outside the reference population weighs ZERO - it enters no
+    statistic - but it STILL GETS ITS OWN RESULTS. Zeros stay
+    invisible and are placeholders for output only (John, 1.29.2).
+    """
+    t = _mixed_town()
+    src = qgis_stub._Source(t, "EPSG:3006")
+
+    everyone, _ = _run(ValueStatistics, src, pop="People",
+                       values=["Income"], measures=[0], k="100")
+    residents, fb = _run(ValueStatistics, src, pop="People",
+                         values=["Income"], measures=[0], k="100",
+                         refmode=2, catfield="kind",
+                         reftable=["resident"], keepoutside=0)
+
+    col = "Mean_Income_100"
+    assert col in everyone and col in residents
+
+    # unrestricted: a blend of 200 and 900. restricted: residents only.
+    assert everyone[col].mean() > 300, "workplaces should pull it up"
+    assert abs(residents[col].mean() - 200.0) < 1e-6, (
+        "with only residents in the reference population every mean "
+        f"must be 200; got {residents[col].mean()}")
+
+    # ...and the excluded rows are still THERE as rows
+    assert len(residents) == len(t), "rows outside must not be dropped"
+
+    # ...and BACKLOG 83: a non-member still gets its own results.
+    # A workplace weighs zero and enters nobody's statistic, but it
+    # may still ask what is around IT - and what is around it is
+    # residents, so it reads 200 like everyone else. Machine 1 has
+    # always done this; machine 2 dropped such rows until v1.29.2,
+    # because expanding rows by their count makes a zero-count row
+    # vanish. ORIGIN and MEMBER are now separate sets.
+    outside = (t["kind"] == "workplace").to_numpy()
+    assert residents[col][outside].notna().all(), (
+        "a workplace is nobody's neighbour, but it still gets to ask "
+        "what is around IT (John's rule, 1.22.2)")
+    assert abs(residents[col][outside].mean() - 200.0) < 1e-6, (
+        "a non-member sees the same residents everyone else sees")
+
+    # the Null half of the same choice: keepoutside=1 drops them
+    dropped, _ = _run(ValueStatistics, src, pop="People",
+                      values=["Income"], measures=[0], k="100",
+                      refmode=2, catfield="kind",
+                      reftable=["resident"], keepoutside=1)
+    assert dropped[col][outside].isna().all(), (
+        "'leave their results Null' must still mean Null - the "
+        "choice is the user's (John's ruling, BACKLOG 83)")
+    assert dropped[col][~outside].notna().all(), (
+        "...but members keep their results either way")

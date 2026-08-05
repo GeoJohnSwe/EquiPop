@@ -2197,9 +2197,23 @@ class ValueStatistics:
         ps = [_p("layer", "Input points (layer) or table",
                  ["GPFeatureLayer", "GPTableView"])]
         _coord_trio(ps)
-        ps += [_p("pop", "Reference population: count field - how "
-                  "many each row stands for (empty = one each); k is "
-                  "measured against this", "Field", required=False),
+        # v1.29.2: machine 1's ladder, in machine 1's words. The
+        # REFERENCE side only (John's ruling) - machine 2's treatment
+        # is a set of numbers, so there is nothing to choose there.
+        ps += [_p("refmode", "How is the reference population "
+                  "defined?", "GPString", required=False),
+               _p("pop", "Count field - how many each row stands for "
+                  "(empty = one each); k is measured against this",
+                  "Field", required=False),
+               _p("catfield", "Type field - the column holding the "
+                  "kind of each object (POI type, tenure, country of "
+                  "birth...)", "Field", required=False),
+               _p("reftable", "Types to INCLUDE in the reference "
+                  "population - one per row, picked from the type "
+                  "field's own values", "GPValueTable",
+                  required=False),
+               _p("keepoutside", "Rows whose type is NOT included",
+                  "GPString", required=False),
                _p("values", "Treatment values - the numeric fields to "
                   "measure (e.g. income, rent, age)", "Field",
                   multiValue=True),
@@ -2228,20 +2242,34 @@ class ValueStatistics:
                   "target is a shapefile (10-character cap; names "
                   "stay collision-free and the mapping is printed)",
                   "GPBoolean", required=False)]
-        ps[4].parameterDependencies = ["layer"]
-        ps[5].parameterDependencies = ["layer"]
-        ps[6].filter.type = "ValueList"
-        ps[6].filter.list = _MEASURES
-        ps[6].value = "mean;median;gini"
-        ps[7].value = "10 25 75 90"
+        # v1.29.2: BY NAME. This block still counted boxes off by
+        # position after 1.29.0 converted the rest of machine 2, and
+        # the ladder above inserts four of them - which would have
+        # moved the measures list onto the percentiles box, silently.
         pm2 = _byname(ps)
+        for nm in ("pop", "values", "catfield"):
+            pm2[nm].parameterDependencies = ["layer"]
+        pm2["measures"].filter.type = "ValueList"
+        pm2["measures"].filter.list = _MEASURES
+        pm2["measures"].value = "mean;median;gini"
+        pm2["pcts"].value = "10 25 75 90"
+        for nm, modes in (("refmode", REF_MODES),
+                          ("keepoutside", OUTSIDE_MODES)):
+            pm2[nm].filter.type = "ValueList"
+            pm2[nm].filter.list = list(modes)
+            pm2[nm].value = modes[0]
+        pm2["reftable"].columns = [["GPString", "Type"]]
         for nm, cat in {"coordsrc": "Coordinates",
                         "xfield": "Coordinates",
                         "yfield": "Coordinates",
                         "autoproj": "Coordinates",
                         "k": "Neighbourhood", "r": "Neighbourhood",
                         "unit": "Neighbourhood",
+                        "refmode": "Reference population - who is around",
                         "pop": "Reference population - who is around",
+                        "catfield": "Reference population - who is around",
+                        "reftable": "Reference population - who is around",
+                        "keepoutside": "Reference population - who is around",
                         "values": "Treatment values - what you measure",
                         "measures": "Treatment values - what you measure",
                         "pcts": "Treatment values - what you measure",
@@ -2254,15 +2282,17 @@ class ValueStatistics:
         # default with new ticks, so unticking mean/median/gini did
         # not take effect (field finding). Empty now MEANS the
         # default trio, stated in the label.
-        ps[6].value = None
-        ps[10].filter.type = "ValueList"
-        ps[10].filter.list = ["Overwrite", "Stop with a message"]
-        ps[10].value = "Overwrite"
-        ps[11].filter.type = "ValueList"
-        ps[11].filter.list = ["Append to input", "New feature class"]
-        ps[11].value = "Append to input"
-        ps[13].direction = "Output"
-        ps[14].value = 100.0
+        pm2["measures"].value = None
+        pm2["existing"].filter.type = "ValueList"
+        pm2["existing"].filter.list = ["Overwrite",
+                                       "Stop with a message"]
+        pm2["existing"].value = "Overwrite"
+        pm2["outmode"].filter.type = "ValueList"
+        pm2["outmode"].filter.list = ["Append to input",
+                                      "New feature class"]
+        pm2["outmode"].value = "Append to input"
+        pm2["outtable"].direction = "Output"
+        pm2["unit"].value = 100.0
         return ps
 
     def updateParameters(self, parameters):
@@ -2318,6 +2348,11 @@ class ValueStatistics:
                   x_field=_txt(pm, "xfield") or None,
                   y_field=_txt(pm, "yfield") or None,
                   weight_field=_txt(pm, "pop") or None,
+                  cat_field=_txt(pm, "catfield") or None,
+                  ref_mode=_mode(pm, "refmode", REF_MODES),
+                  ref_rows=_vt_rows(pm["reftable"]),
+                  keep_outside=(_mode(pm, "keepoutside",
+                                      OUTSIDE_MODES) == 0),
                   value_fields=[f for f in
                                 _txt(pm, "values").split(";") if f],
                   stats_list=[m.strip("' ") for m in

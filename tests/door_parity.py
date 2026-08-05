@@ -30,4 +30,9 @@ CORE = {"layer", "pop", "treat", "k", "r", "unit", "catfield",
 # reference population; `values` the treatment fields measured over
 # it. No ladder here yet - that is a later release, deliberately.
 CORE_M2 = {"layer", "xfield", "yfield", "pop", "values", "measures",
-           "pcts", "k", "r", "unit"}
+           "pcts", "k", "r", "unit",
+           # v1.29.2, the ladder: machine 2 can now restrict WHO is
+           # around, the same three rungs and the same words as
+           # machine 1. Reference side only - the treatment here is a
+           # set of numbers, so there is nothing to choose.
+           "refmode", "catfield", "reftable", "keepoutside"}

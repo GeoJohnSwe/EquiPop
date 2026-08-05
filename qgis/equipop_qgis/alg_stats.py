@@ -12,11 +12,17 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
                        QgsProcessingParameterFeatureSource,
                        QgsProcessingParameterField,
                        QgsProcessingParameterNumber,
-                       QgsProcessingParameterString)
+                       QgsProcessingParameterString,
+                       QgsProcessingParameterMatrix)
+
+import numpy as np
 
 from .base import EquipopAlgorithm
 
 MEASURES = ["mean", "median", "gini", "min", "max", "sd"]
+
+
+from .alg_counts import OUTSIDE_MODES, REF_MODES
 
 
 class ValueStatistics(EquipopAlgorithm):
@@ -42,10 +48,28 @@ class ValueStatistics(EquipopAlgorithm):
             "yfield", "Y field (northing) - only for tables without "
             "geometry", parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
+        # v1.29.2: machine 1's ladder, same names, same words. The
+        # REFERENCE side only - machine 2's treatment is a set of
+        # numbers, so there is nothing to choose there (John's ruling).
+        self.add(QgsProcessingParameterEnum(
+            "refmode", "1 \u25b8 REFERENCE POPULATION - how is it "
+            "defined?", options=REF_MODES, defaultValue=0))
         self.add(QgsProcessingParameterField(
-            "pop", "Population field (people per row)",
+            "pop", "1a \u25b8 ...count field - how many each row "
+            "stands for (people, jobs, dwellings)",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric, optional=True))
+        self.add(QgsProcessingParameterField(
+            "catfield", "1b \u25b8 ...type field - the column holding "
+            "the kind of each object",
+            parentLayerParameterName="layer", optional=True))
+        self.add(QgsProcessingParameterMatrix(
+            "reftable", "1c \u25b8 ...types to INCLUDE in the "
+            "reference population, one per row",
+            headers=["Type"], optional=True))
+        self.add(QgsProcessingParameterEnum(
+            "keepoutside", "1d \u25b8 ...rows whose type is NOT "
+            "included", options=OUTSIDE_MODES, defaultValue=0))
         self.add(QgsProcessingParameterField(
             "values", "Value fields to summarise",
             parentLayerParameterName="layer",
@@ -122,6 +146,45 @@ class ValueStatistics(EquipopAlgorithm):
             kw["r_values"] = [float(v) for v in r_text.split()]
         if pop:
             kw["weight"] = pts.data[pop]
+        # v1.29.2, the ladder's third rung. John's rule, unchanged:
+        # a row outside the reference population weighs ZERO - it is
+        # nobody's neighbour and contributes to no statistic - but it
+        # still gets its own results. Zeroing the weight is the whole
+        # mechanism; machine 2 already weights everything by it, so
+        # no engine change is needed.
+        refmode = (self.parameterAsEnums(parameters, "refmode",
+                                         context) or [0])[0]
+        catfield = (self.parameterAsFields(parameters, "catfield",
+                                           context) or [None])[0]
+        if refmode == 2 and catfield:
+            from equipop.categorical import categories_to_binary
+            wanted = [str(v).strip() for v in
+                      (self.parameterAsMatrix(parameters, "reftable",
+                                              context) or [])
+                      if str(v).strip()]
+            mask, _ = categories_to_binary(
+                pts.data[catfield], {}, pop_values=wanted or None)
+            base = (np.nan_to_num(np.asarray(pts.data[pop], float))
+                    if pop else np.ones(len(mask)))
+            outside = int((~mask).sum())
+            if (self.parameterAsEnums(parameters, "keepoutside",
+                                      context) or [0])[0] == 0:
+                kw["weight"] = base * mask
+                if outside:
+                    ch.info(
+                        f"{outside} row(s) are outside the reference "
+                        "population: they count as zero, so they are "
+                        "nobody's neighbour and enter no statistic - "
+                        "but they still get their own results.")
+            else:
+                kw["weight"] = base * mask
+                pts.data["x"] = np.where(mask, pts.data["x"], np.nan)
+                pts.data["y"] = np.where(mask, pts.data["y"], np.nan)
+                if outside:
+                    ch.info(f"{outside} row(s) are outside the "
+                            "reference population and are DROPPED: "
+                            "they get Null results.")
+            ch.info(f"Reference population: {int(mask.sum())} rows.")
 
         ch.info(f"Calculating (stats engine, {pts.n} rows, cell size "
                 f"{float(unit):g} m). Measures: " + " ".join(wanted))

@@ -1123,12 +1123,17 @@ def test_pyt_field_box_holding_a_number_refused():
                       weight_field="55", k_text="55")
     tool = pyt.ValueStatistics()
     ps = tool.getParameterInfo()
-    ps[0].value = "people"
-    ps[4].value = "55"                     # stale/typed junk
-    ps[5].value = "Income;Ghost"           # one real, one stale
+    # v1.29.2: BY NAME. The ladder inserted four boxes here, and a
+    # test that counts positions would have moved silently onto its
+    # neighbour and still passed - which is the failure this whole
+    # dialog was converted away from.
+    pm = {q.name: q for q in ps}
+    pm["layer"].value = "people"
+    pm["pop"].value = "55"                  # stale/typed junk
+    pm["values"].value = "Income;Ghost"     # one real, one stale
     tool.updateParameters(ps)
-    assert ps[4].value is None
-    assert ps[5].valueAsText == "Income"
+    assert pm["pop"].value is None
+    assert pm["values"].valueAsText == "Income"
 
 
 def test_pyt_autoproject_checkbox_and_table_advice(tmp_path):
@@ -1202,9 +1207,10 @@ def test_pyt_dialog_warns_about_shapefile_before_run():
     pyt = _load_pyt()
     tool = pyt.ValueStatistics()
     ps = tool.getParameterInfo()
-    ps[0].value = "people"
-    ps[5].value = "Income"
-    ps[8].value = "200"
+    pm = {q.name: q for q in ps}
+    pm["layer"].value = "people"
+    pm["values"].value = "Income"
+    pm["k"].value = "200"
     tool.updateParameters(ps)
     tool.updateMessages(ps)
     errs = [txt for p in ps for kind, txt in p.messages

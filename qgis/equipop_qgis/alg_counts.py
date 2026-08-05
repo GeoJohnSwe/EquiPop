@@ -18,14 +18,30 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString)
 
+# What the dropdown shows when the package cannot be read. NOT a
+# guess at the engine's models - one honest option, and the person
+# gets the real sentence the moment they press Run (v1.29.2).
+DECAY_FALLBACK = ["no decay"]
+
+
 def _decay_choices():
     """From the ENGINE, never from memory (v1.28): the old list
-    offered 'gauss' and 'linear', neither of which exists."""
-    from equipop.doors.decaynames import choices
-    return choices()
+    offered 'gauss' and 'linear', neither of which exists.
 
-
-DECAY_MODELS = _decay_choices()
+    Never raises (v1.29.2). This used to be called at MODULE level,
+    so a package older than the plugin killed the whole plugin at
+    import - before QGIS had an algorithm to attach a message to,
+    and therefore before any of the guards written for exactly that
+    situation could speak. John, field, 1.29.0: plugin 1.29.0 on
+    package 1.27.0 gave a bare traceback and no EquiPop at all,
+    while `check_versions()` sat inside processAlgorithm with the
+    explanation already written in it.
+    """
+    try:
+        from equipop.doors.decaynames import choices
+        return choices()
+    except Exception:
+        return list(DECAY_FALLBACK)
 
 # The same ladder as the ArcGIS door, in the same order. QGIS has no
 # collapsible sections and no dependable greying, so here the ladder
@@ -121,8 +137,8 @@ class CountsAndShares(EquipopAlgorithm):
             optional=True))
 
         self.add(QgsProcessingParameterEnum(
-            "model", "4 \u25b8 distance decay", options=DECAY_MODELS,
-            defaultValue=0))
+            "model", "4 \u25b8 distance decay",
+            options=_decay_choices(), defaultValue=0))
         self.add(QgsProcessingParameterNumber(
             "halflife", "4a \u25b8 ...half-life in metres (the "
             "distance at which weight halves)", defaultValue=0.0,
@@ -206,8 +222,9 @@ class CountsAndShares(EquipopAlgorithm):
 
         from equipop.doors.decaynames import (curve_in_plain_numbers,
                                                model_from_choice)
-        model = model_from_choice(DECAY_MODELS[(self.parameterAsEnums(
-            parameters, "model", context) or [0])[0]])
+        model = model_from_choice(_decay_choices()[
+            (self.parameterAsEnums(parameters, "model", context)
+             or [0])[0]])
         half = self.parameterAsDouble(parameters, "halflife", context)
         decaying = model is not None and half > 0
 

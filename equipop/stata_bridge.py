@@ -244,6 +244,40 @@ def _snap(x, y, unit):
     return E.astype(np.int64), N.astype(np.int64)
 
 
+def _add_empty_origin_cells(cd, E, N, value_vars):
+    """Cells that are ORIGINS but hold no population (v1.29.2).
+
+    A row outside the reference population weighs zero, so it
+    contributes no individuals and its cell never appears in the
+    grid - yet it is still entitled to ask what is around it
+    (John's rule, 1.22.2). The k-search copes with an empty cell
+    perfectly well: it simply reaches outward until it has k
+    persons, which is exactly the intended meaning.
+    """
+    have = set(zip(np.asarray(cd.E).tolist(), np.asarray(cd.N).tolist()))
+    want = [p for p in dict.fromkeys(zip(np.asarray(E).tolist(),
+                                         np.asarray(N).tolist()))
+            if p not in have]
+    if not want:
+        return cd
+    ex, ny = zip(*want)
+    cd.E = np.append(np.asarray(cd.E, float), np.asarray(ex, float))
+    cd.N = np.append(np.asarray(cd.N, float), np.asarray(ny, float))
+    cd.n = np.append(np.asarray(cd.n), np.zeros(len(want), dtype=cd.n.dtype))
+    for v in value_vars:
+        cd.value_arrays[v] = list(cd.value_arrays[v]) + \
+            [np.array([], float) for _ in want]
+    for v, arr in list(cd.binary_sums.items()):
+        cd.binary_sums[v] = np.append(np.asarray(arr, float),
+                                      np.zeros(len(want), float))
+    if cd.labels is not None:
+        cd.labels = list(cd.labels) + [None] * len(want)
+    print(f"[cells] {len(want)} origin cell(s) hold no population - "
+          "they are nobody's neighbour but still get their own "
+          "results")
+    return cd
+
+
 def _map_back(res, keys, cols, valid, n_rows):
     """Cell-level frame -> row-aligned dict (NaN for invalid rows)."""
     res = res.set_index(["EastWest", "NorthSouth"]) \
@@ -339,35 +373,50 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             a = np.asarray(arr, float)
             a = np.where(a > 8.9e307, np.nan, a)
             df[v] = a
+        members = valid
         if weight is not None:
             # v1.16 FULL-POPULATION field: each row carries this many
             # persons; k is measured against PERSONS, and every value
             # statistic weights by population - implemented EXACTLY by
             # expanding rows to persons (median/Gini/percentiles come
-            # out weighted by construction). Rows with missing or
-            # non-positive population are excluded (Null results).
+            # out weighted by construction).
+            #
+            # v1.29.2, BACKLOG 83: a row with no count is not a
+            # MEMBER, but it is still an ORIGIN. John's rule since
+            # 1.22.2 - a row outside the reference population counts
+            # as ZERO, is nobody's neighbour, and STILL GETS ITS OWN
+            # RESULTS. Machine 1 has always done this; machine 2
+            # dropped such rows entirely, because expanding by the
+            # count makes a zero-count row vanish. So ORIGIN and
+            # MEMBER are now separate sets. A door that wants Null
+            # instead says so by NaN-ing the coordinates, which is
+            # how `keepoutside` has always worked.
             w = np.asarray(weight, float)
             w = np.where(w > 8.9e307, np.nan, w)
             rep = np.where(np.isfinite(w) & (w > 0),
                            np.round(w), 0).astype(np.int64)
-            valid = valid & (rep > 0)
+            members = valid & (rep > 0)
             df["_rep"] = rep
         dv = df[valid]
         E, N = _snap(dv["_x"], dv["_y"], unit_size)   # per INPUT row
+        pop = df[members]
         if weight is not None:
-            n_persons = int(dv["_rep"].sum())
-            skipped = len(df) - len(dv)
-            print(f"[stata] full population: {len(dv)} of {len(df)} "
+            n_persons = int(pop["_rep"].sum())
+            outside = int(valid.sum() - members.sum())
+            print(f"[stata] full population: {len(pop)} of {len(df)} "
                   f"rows carry a usable count -> {n_persons} persons "
                   f"(k counts PERSONS)")
-            if skipped:
-                print(f"[stata] {skipped} row(s) have no count (empty "
-                      "or zero) and take no part in the k-search - "
-                      "they still receive their own results")
-            dv = dv.loc[dv.index.repeat(dv["_rep"])] \
-                   .drop(columns="_rep").reset_index(drop=True)
+            if outside:
+                print(f"[stata] {outside} row(s) have no count (empty "
+                      "or zero): they count as ZERO and are nobody's "
+                      "neighbour, but they still get their own "
+                      "results - what is around THEM.")
+            pop = pop.loc[pop.index.repeat(pop["_rep"])] \
+                     .drop(columns="_rep").reset_index(drop=True)
+        dv = pop
         cd = build_cells(dv, "_x", "_y", value_vars=list(values),
                          unit_size=unit_size)
+        cd = _add_empty_origin_cells(cd, E, N, list(values))
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            stats=stats or {v: ["mean", "median", "gini"]
                                            for v in values})

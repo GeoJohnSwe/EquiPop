@@ -69,7 +69,15 @@ def test_full_population_expansion_weighted_exact():
     res2 = dispatch("stats", x, y, values={"inc": inc},
                     weight=np.array([2.0, np.nan, 1.0]), k_values=[2],
                     unit_size=100)
-    assert np.isnan(res2["Mean_inc_2"][1])          # no pop -> Null
+    # v1.29.2, BACKLOG 83 - this assertion used to read "no pop ->
+    # Null" and is deliberately REVERSED. A row with no count is not
+    # a MEMBER (it adds nobody to the population) but it is still an
+    # ORIGIN: it may ask what is around it, and machine 1 has always
+    # answered. Row 1 sits on top of row 0's two persons, so the two
+    # nearest persons both earn 10.
+    assert res2["Nv_inc_2"][1] == 2                 # it found them
+    assert res2["Mean_inc_2"][1] == 10.0            # and answers
+    assert res2["N_2"][1] == 2                      # persons, not rows
 
 
 def test_points_paths_raster_converters_and_overlap():
@@ -286,3 +294,37 @@ def test_self_calibrating_bandwidth_follows_urban_form():
     dist = res["Dist_40"]
     town = dist < np.nanmedian(dist)
     assert np.nanmean(dist[town]) < np.nanmean(dist[~town])
+
+
+def test_a_missing_count_means_the_same_in_both_machines():
+    """John's ruling, v1.29.2: an UNKNOWN count is treated exactly as
+    machine 1 treats it - as zero. So a row with a missing count adds
+    nobody to the population, is nobody's neighbour, and still gets
+    its own results. The two machines must not diverge here again:
+    they did until 1.29.2, and nobody noticed because machine 2 had
+    no way to put a row outside the reference population."""
+    x = np.array([50.0, 50.0, 250.0])
+    y = np.full(3, 50.0)
+    both = {}
+    for label, w in (("nan", np.array([2.0, np.nan, 1.0])),
+                     ("zero", np.array([2.0, 0.0, 1.0]))):
+        both[label] = dispatch(
+            "stats", x, y, values={"inc": np.array([10.0, 20.0, 99.0])},
+            weight=w, k_values=[2], unit_size=100)
+    for key in both["nan"]:
+        a = np.asarray(both["nan"][key], float)
+        b = np.asarray(both["zero"][key], float)
+        assert np.allclose(a, b, equal_nan=True), (
+            f"{key}: a missing count and a zero count must give the "
+            f"same answer - got {a} against {b}")
+
+    counts = dispatch("counts", x, y, weight=np.array([2.0, np.nan, 1.0]),
+                      k_values=[2], unit_size=100)
+    stats = both["nan"]
+    assert np.isfinite(counts["N_2"][1]), \
+        "machine 1 gives the unknown-count row results"
+    assert np.isfinite(stats["N_2"][1]), \
+        "and so, since v1.29.2, does machine 2"
+    assert counts["N_2"][1] == stats["N_2"][1], (
+        "the two machines must agree on how many persons that row "
+        "found around it")
