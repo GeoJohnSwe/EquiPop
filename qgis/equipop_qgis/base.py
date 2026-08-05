@@ -20,7 +20,11 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsCoordinateTransform, QgsFeature, QgsField,
                        QgsFields, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProject)
-from qgis.PyQt.QtCore import QVariant
+# v1.29.3: QGIS 3.38 moved field types to QMetaType and
+# deprecated the older typed QgsField constructor. The
+# declared minimum rose to 3.38 with it (John's ruling);
+# writing fallbacks for two LTRs was the alternative.
+from qgis.PyQt.QtCore import QMetaType
 
 import numpy as np
 
@@ -94,9 +98,26 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
 
     # -- help, from the one shared source ------------------------
     @staticmethod
+    def _as_html(text):
+        """QGIS renders help as HTML; the shared text is not HTML.
+
+        v1.29.3, John spotted it in the dialog: the panel read
+        "Nv__k reports how many neighbours had a usable value". The
+        text says Nv_<field>_k, and Qt swallowed <field> as an
+        unknown tag. Five shared texts carry <field> or <group>, so
+        the QGIS door had been naming columns that do not exist -
+        Nv__k, T__k, R__k. Pro shows them correctly, which is the
+        same shape of fault as the geodatabase tooltip: one text,
+        two doors, and only one of them renders markup.
+        """
+        return (str(text).replace("&", "&amp;")
+                         .replace("<", "&lt;").replace(">", "&gt;"))
+
+    @staticmethod
     def help_for(name):
         from equipop.doors.help import VOCAB_QGIS, help_for
-        return help_for(name, vocab=VOCAB_QGIS)
+        return EquipopAlgorithm._as_html(
+            help_for(name, vocab=VOCAB_QGIS))
 
     def shortHelpString(self):
         """QGIS keeps help in the algorithm class - there is no
@@ -137,8 +158,9 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 "and effort budgets. Also the cell size, which is the "
                 "speed control, and the X/Y fields for tables with no "
                 "geometry.</p>")
-        return (f"<p>{summary_for(tool, VOCAB_QGIS)}</p>"
-                f"<p>{usage_for(tool, VOCAB_QGIS)}</p>" + extra)
+        esc = self._as_html
+        return (f"<p>{esc(summary_for(tool, VOCAB_QGIS))}</p>"
+                f"<p>{esc(usage_for(tool, VOCAB_QGIS))}</p>" + extra)
 
     def add(self, param, advanced=False):
         """Add a parameter, attach its shared explanation, and
@@ -376,7 +398,7 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         for f in source.fields():
             out_fields.append(f)
         for name in order:
-            out_fields.append(QgsField(name, QVariant.Double))
+            out_fields.append(QgsField(name, QMetaType.Type.Double))
 
         sink, dest = self.parameterAsSink(
             parameters, self.OUT, context, out_fields,

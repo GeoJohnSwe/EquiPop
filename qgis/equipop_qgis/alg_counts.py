@@ -216,9 +216,9 @@ class CountsAndShares(EquipopAlgorithm):
                 "radius in metres - otherwise there is no "
                 "neighbourhood to measure.")
         unit = self.parameterAsDouble(parameters, "unit", context) or 100.0
-        pop = (self.parameterAsFields(parameters, "pop", context) or
+        pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
-        treats = self.parameterAsFields(parameters, "treat", context)
+        treats = self.parameterAsStrings(parameters, "treat", context)
 
         from equipop.doors.decaynames import (curve_in_plain_numbers,
                                                model_from_choice)
@@ -236,9 +236,9 @@ class CountsAndShares(EquipopAlgorithm):
         with stage(ch, "reading input"):
             pts = self.read_points(
                 source, feedback,
-                (self.parameterAsFields(parameters, "xfield", context)
+                (self.parameterAsStrings(parameters, "xfield", context)
                  or [None])[0],
-                (self.parameterAsFields(parameters, "yfield", context)
+                (self.parameterAsStrings(parameters, "yfield", context)
                  or [None])[0])
 
         kw = dict(unit_size=float(unit), treat_are_counts=True)
@@ -262,39 +262,79 @@ class CountsAndShares(EquipopAlgorithm):
                                          context) or [0])[0]
         if refmode == 0:
             pop = None            # every point counts as one
-        catfield = (self.parameterAsFields(parameters, "catfield",
+        catfield = (self.parameterAsStrings(parameters, "catfield",
                                            context) or [None])[0]
-        if refmode == 2 and catfield:
+        # v1.29.3, BACKLOG 85. The two ladders are INDEPENDENT - that
+        # is what separating reference from treatment was for in
+        # 1.22.0 - but this whole block used to be nested inside
+        # `refmode == 2`, so choosing "every point counts as one" for
+        # the REFERENCE silently switched the TREATMENT grouping off.
+        # John, field, 3.42.1: refmode=0 with treatmode=2 produced
+        # N_223 and Dist_223 and nothing else, with no message at
+        # all. Pro was always right - it hands both modes to the
+        # shared engine and lets _run_tool decide; QGIS reimplemented
+        # the logic locally and coupled them.
+        treatmode = (self.parameterAsEnums(parameters, "treatmode",
+                                           context) or [0])[0]
+        pop_vals = [str(v).strip() for v in
+                    (self.parameterAsMatrix(parameters, "reftable",
+                                            context) or [])
+                    if str(v).strip()]
+        if pop_vals and refmode != 2:
+            ch.info("A list of reference types was given, but the "
+                    "reference population is not on the 'only "
+                    "selected types' rung - the list is IGNORED. "
+                    "QGIS cannot grey a box out the way Pro does, so "
+                    "this notice is the only warning you get.")
+            pop_vals = []
+
+        restricting = refmode == 2 and bool(catfield)
+        grouping = treatmode == 2
+        if restricting or grouping:
             from equipop.categorical import categories_to_binary
-            pop_vals = [str(v).strip() for v in
-                        (self.parameterAsMatrix(parameters, "reftable",
-                                                context) or [])
-                        if str(v).strip()]
             groups = self._groups_from_matrix(
                 self.parameterAsMatrix(parameters, "treattable",
-                                       context))
-            tcatf = (self.parameterAsFields(parameters,
+                                       context)) if grouping else {}
+            tcatf = (self.parameterAsStrings(parameters,
                                             "treatcatfield", context)
                      or [None])[0] or catfield
             rest = self.parameterAsString(parameters, "restgroup",
                                           context).strip()
-            pop_mask, _ = categories_to_binary(
-                pts.data[catfield], {}, pop_values=pop_vals or None)
-            _, cat_treats = categories_to_binary(
-                pts.data[tcatf], groups,
-                pop_values=pop_vals or None,
-                rest_group=rest or None, rest_in_population=None)
+            pop_mask = (categories_to_binary(
+                pts.data[catfield], {},
+                pop_values=pop_vals or None)[0] if restricting
+                else np.ones(pts.n, bool))
+            cat_treats = {}
+            if grouping:
+                if not tcatf:
+                    raise QgsProcessingException(
+                        "The treatment ladder is on 'types from a "
+                        "type field, grouped', but no type field was "
+                        "given (box 2a).")
+                _, cat_treats = categories_to_binary(
+                    pts.data[tcatf], groups,
+                    pop_values=pop_vals or None,
+                    rest_group=rest or None, rest_in_population=None)
+                if not cat_treats:
+                    raise QgsProcessingException(
+                        "The treatment ladder is on 'types from a "
+                        "type field, grouped', but no groups came "
+                        f"out of '{tcatf}'. Box 2b needs one row per "
+                        "type, with the group name beside it - "
+                        "otherwise there is nothing to count and the "
+                        "run would produce distances only.")
             tvf = pop
-            if tvf:
+            if cat_treats and tvf:
                 tcol = np.nan_to_num(pts.data[tvf].astype(float))
                 cat_treats = {g: v * tcol
                               for g, v in cat_treats.items()}
                 ch.info(self._units_note(tvf, pop))
-            else:
+            elif cat_treats:
                 ch.info("No value field given, so every row counts as "
                         "one: the shares are shares of PLACES.")
-            kw.setdefault("treat", {}).update(cat_treats)
-            outside = int((~pop_mask).sum())
+            if cat_treats:
+                kw.setdefault("treat", {}).update(cat_treats)
+            outside = int((~pop_mask).sum()) if restricting else 0
             if (self.parameterAsEnums(parameters, "keepoutside",
                                       context) or [0])[0] == 0:
                 # John's rule: outside the reference population means
@@ -377,7 +417,7 @@ class CountsAndShares(EquipopAlgorithm):
         tables = []
         vec = self.parameterAsSource(parameters, "barrier", context)
         if vec is not None:
-            field = (self.parameterAsFields(parameters, "barrierfield",
+            field = (self.parameterAsStrings(parameters, "barrierfield",
                                             context) or [None])[0]
             table = barrier_to_friction(vec, field, unit, agg, ch,
                                         working_crs)

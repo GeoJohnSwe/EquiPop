@@ -935,3 +935,127 @@ def test_machine2_ladder_restricts_who_is_around():
         "choice is the user's (John's ruling, BACKLOG 83)")
     assert dropped[col][~outside].notna().all(), (
         "...but members keep their results either way")
+
+
+def test_a_polygon_barrier_reaches_the_engine_in_one_piece():
+    """v1.29.3, John's field crash on gridby_lake_polygon.shp:
+    "'float' object is not subscriptable" in paths_to_friction.
+
+    The engine wants LINES as points per part and POLYGONS as RINGS
+    per part - a polygon may have holes, and it is charged by AREA
+    as outer ring minus inner ones. barriers.py flattened polygons to
+    a bare list of rings, so `for ring in part` walked the POINTS of
+    one ring and p[0] met a float.
+
+    It survived because the QGIS tests had NO polygon barrier at all.
+    The simulator was right this time; nobody asked it the question.
+    BACKLOG 67 said in as many words that QGIS barriers were
+    simulator-proved only - this is what that meant.
+    """
+    from equipop_qgis.barriers import _paths_of
+
+    square = [qgis_stub.QgsPointXY(0, 0), qgis_stub.QgsPointXY(0, 300),
+              qgis_stub.QgsPointXY(300, 300), qgis_stub.QgsPointXY(300, 0),
+              qgis_stub.QgsPointXY(0, 0)]
+    poly = qgis_stub.QgsGeometry.fromPolygonXY([square])
+    parts = _paths_of(poly)
+
+    assert len(parts) == 1, "one polygon, one part"
+    ring = parts[0][0]
+    assert isinstance(ring, list) and isinstance(ring[0], tuple), (
+        "a polygon part must hold RINGS of (x, y) - flattening it to "
+        "a list of points is the field crash")
+    assert len(ring) >= 4
+
+    # ...and the engine accepts it
+    from equipop.friction import paths_to_friction
+    fr = paths_to_friction([{"type": "polygon", "parts": parts}],
+                           [5.0], 100.0)
+    assert len(fr) > 0, "the lake should charge some cells"
+
+    # a LINE must keep the flat shape - the two are different
+    line = qgis_stub.QgsGeometry.fromPolylineXY(
+        [qgis_stub.QgsPointXY(0, 0), qgis_stub.QgsPointXY(500, 0)])
+    lparts = _paths_of(line)
+    assert isinstance(lparts[0][0], tuple), \
+        "a line part is points, not rings"
+
+
+@pytest.mark.parametrize("label,params,expected",
+                         [(c[0], c[1], c[2]) for c in
+                          __import__("door_parity").LADDER_CASES])
+def test_every_ladder_combination_produces_the_columns_it_should(
+        label, params, expected):
+    """BACKLOG 86. Names were checked; behaviour never was.
+
+    QGIS nested the treatment ladder inside the reference ladder, so
+    `refmode=0` with `treatmode=2` quietly produced distances only -
+    no T_, no R_, no message (John, field, 3.42.1). Both doors
+    offered the same boxes throughout, which is all door_parity.py
+    could see.
+
+    Every rung combination must yield the columns it promises. A
+    combination nobody lists is a combination nobody checks."""
+    rng = np.random.default_rng(86)
+    n = 400
+    t = pd.DataFrame({
+        "x": rng.uniform(0, 2000, n), "y": rng.uniform(0, 2000, n),
+        "fclass": rng.choice(["cafe", "bar", "school"], n),
+        "Population": rng.integers(1, 6, n).astype(float)})
+    src = qgis_stub._Source(t, "EPSG:32633")
+    got, _ = _run(CountsAndShares, src, k="100", **params)
+    stems = {c.rsplit("_", 1)[0] for c in got.columns
+             if c.startswith(("N_", "Dist_", "T_", "R_"))}
+    assert stems == expected, (
+        f"[{label}] expected {sorted(expected)}, got {sorted(stems)} "
+        "- the two ladders are independent, so a reference rung must "
+        "never switch the treatment side off")
+
+
+def test_no_deprecated_qgis_api_is_called():
+    """BACKLOG 84. QGIS 3.42 warned on every one of John's runs:
+    parameterAsFields() (deprecated 3.40, use parameterAsStrings) and
+    the older typed QgsField constructor (QMetaType since 3.38).
+    Warnings, not errors - until QGIS removes them, at which point
+    the door stops opening exactly as it did on 2026-08-05.
+
+    Note what NO tool of ours could see: stub_audit.py checks that a
+    method EXISTS, and a deprecated method exists perfectly well. The
+    simulator cannot represent "this works but is dying" at all. The
+    guard that found these was John reading the QGIS log."""
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    door = os.path.join(os.path.dirname(here), "qgis", "equipop_qgis")
+    gone = {"parameterAsFields": "use parameterAsStrings (3.32+)",
+            "QVariant.Double": "use QMetaType.Type.Double (3.38+)",
+            "QVariant.String": "use QMetaType.Type.QString (3.38+)"}
+    bad = []
+    for f in sorted(os.listdir(door)):
+        if not f.endswith(".py"):
+            continue
+        for i, line in enumerate(open(os.path.join(door, f),
+                                      encoding="utf-8"), 1):
+            code = line.split("#")[0]
+            for name, why in gone.items():
+                if name in code:
+                    bad.append(f"{f}:{i} {name} - {why}")
+    assert not bad, "deprecated QGIS API in use:\n  " + "\n  ".join(bad)
+
+
+def test_the_declared_minimum_matches_the_api_actually_used():
+    """v1.29.3. The 1.29.3 build shipped with the minimum still at
+    3.28 while the code had already moved to QMetaType (3.38) and
+    parameterAsStrings (3.32) - caught by checking the artifact after
+    staging, not by any test. A promise in metadata.txt that the code
+    cannot keep is a plugin that installs and then fails."""
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    meta = os.path.join(os.path.dirname(here), "qgis", "equipop_qgis",
+                        "metadata.txt")
+    line = [l for l in open(meta, encoding="utf-8")
+            if l.startswith("qgisMinimumVersion")]
+    assert line, "no qgisMinimumVersion declared"
+    got = tuple(int(x) for x in line[0].split("=")[1].strip().split("."))
+    assert got >= (3, 38), (
+        f"declared minimum {got} is below 3.38, but the door uses "
+        "QMetaType field types (3.38) and parameterAsStrings (3.32)")

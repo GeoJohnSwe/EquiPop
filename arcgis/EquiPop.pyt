@@ -934,9 +934,20 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                             " -> Null results (EquiPop convention).")
 
     ref_weight = None
-    if cat_field:
+    cat_treats = {}          # v1.29.3: defined whether or not a
+    pop_mask = None          # category field was given
+    # v1.29.3, BACKLOG 85/86: this used to be `if cat_field:` - the
+    # REFERENCE type field - so asking for grouped treatments without
+    # restricting the reference population produced distances only,
+    # silently. Found in QGIS by John (field, 3.42.1); the behavioural
+    # parity test added for 86 then found the SAME fault here, in the
+    # door that had been declared correct from reading the code. The
+    # two ladders are independent: either type field is enough to
+    # start.
+    if cat_field or treat_cat_field:
         from equipop.categorical import categories_to_binary
-        col = np.asarray(data[cat_field])
+        col = np.asarray(data[cat_field if cat_field
+                              else treat_cat_field])
         known = sorted({str(v).strip() for v in col if str(v).strip()})
         if ref_rows is not None or treat_rows is not None:
             # v1.22: two tables, one per population. An EMPTY
@@ -955,7 +966,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                              if str(v).strip()})
             groups = _groups_from_table(treat_rows, tknown, messages)
             pop_mask, _ = categories_to_binary(
-                col, {}, pop_values=pop_vals or None)
+                col, {},
+                pop_values=(pop_vals or None) if cat_field else None)
             _, cat_treats = categories_to_binary(
                 tcol, groups, pop_values=pop_vals or None,
                 rest_group=rest_group, rest_in_population=None)
@@ -1066,7 +1078,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     if treat_fields:
         kw["treat"] = {f: _numeric(data[f], f, "Input")
                        for f in treat_fields}
-    if cat_field and cat_treats:
+    if cat_treats:                       # v1.29.3: not `cat_field and`
         kw.setdefault("treat", {}).update(cat_treats)
     if weight_field:
         kw["weight"] = _numeric(data[weight_field], weight_field,

@@ -36,3 +36,34 @@ CORE_M2 = {"layer", "xfield", "yfield", "pop", "values", "measures",
            # machine 1. Reference side only - the treatment here is a
            # set of numbers, so there is nothing to choose.
            "refmode", "catfield", "reftable", "keepoutside"}
+
+
+# v1.29.3, BACKLOG 86: parity of BEHAVIOUR, not just of names.
+#
+# The lists above ask whether both doors offer the same boxes. They
+# cannot ask whether the same boxes DO the same thing, and that is
+# how BACKLOG 85 survived: QGIS nested the treatment ladder inside
+# the reference ladder, so both doors offered `treatmode` and only
+# one of them honoured it. Names agreed perfectly while the answers
+# differed - silently, with no message and two columns missing.
+#
+# Each case is a set of dialog choices that must give the SAME
+# result columns through either door. Add a case whenever a rung,
+# mode or switch is added; a combination nobody lists is a
+# combination nobody checks.
+LADDER_CASES = [
+    ("plain counts", dict(refmode=0, treatmode=0), {"N", "Dist"}),
+    ("groups, reference on rung 1",
+     dict(refmode=0, treatmode=2, treatcatfield="fclass",
+          treattable=["bar", "social"]),
+     {"N", "Dist", "T_social", "R_social"}),
+    ("groups, reference on rung 2",
+     dict(refmode=1, pop="Population", treatmode=2,
+          treatcatfield="fclass", treattable=["bar", "social"]),
+     {"N", "Dist", "T_social", "R_social"}),
+    ("groups, reference on rung 3",
+     dict(refmode=2, catfield="fclass", reftable=["cafe", "bar"],
+          treatmode=2, treatcatfield="fclass",
+          treattable=["bar", "social"]),
+     {"N", "Dist", "T_social", "R_social"}),
+]

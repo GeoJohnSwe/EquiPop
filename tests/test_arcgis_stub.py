@@ -1761,3 +1761,47 @@ def test_pyt_value_table_columns_offer_choices():
     tool.updateParameters(ps)
     assert set(pm["reftable"].filters[0].list) == {"dwelling", "shop"}
     assert set(pm["treattable"].filters[0].list) == {"dwelling", "shop"}
+
+
+@pytest.mark.parametrize("label,params,expected",
+                         [(c[0], c[1], c[2]) for c in
+                          __import__("door_parity").LADDER_CASES])
+def test_pro_gives_the_same_columns_for_every_ladder_combination(
+        label, params, expected):
+    """BACKLOG 86, the other door. The SAME cases run through Pro, so
+    the doors are compared on what they DO and not merely on what
+    they offer. Pro was the correct one when this was written - it
+    hands both modes to the shared engine and lets _run_tool decide -
+    but "correct today" is not a guard.
+
+    Driven at _run_tool rather than through the dialog: the simulated
+    arcpy resolves any string in a value table to a layer path, so
+    'bar' arrives as 'memory/bar'. That is a stub infidelity worth
+    its own item; it must not stop the behaviour being checked."""
+    rng = np.random.default_rng(86)
+    n = 400
+    t = pd.DataFrame({
+        "OBJECTID": np.arange(1, n + 1),
+        "SHAPE@X": rng.uniform(0, 2000, n),
+        "SHAPE@Y": rng.uniform(0, 2000, n),
+        "fclass": rng.choice(["cafe", "bar", "school"], n),
+        "Population": rng.integers(1, 6, n).astype(float)})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    kw = dict(k_text="100", ref_mode=params.get("refmode", 0),
+              treat_mode=params.get("treatmode", 0))
+    if "pop" in params:
+        kw["weight_field"] = params["pop"]
+    if params.get("refmode") == 2:
+        kw["cat_field"] = params["catfield"]
+        kw["ref_rows"] = [[v] for v in params["reftable"]]
+    if params.get("treatmode") == 2:
+        kw["treat_cat_field"] = params["treatcatfield"]
+        kw["treat_rows"] = [list(params["treattable"])]
+    pyt._run_tool("counts", "people", _Messages(), **kw)
+    stems = {c.rsplit("_", 1)[0] for c in state["table"].columns
+             if c.startswith(("N_", "Dist_", "T_", "R_"))}
+    assert stems == expected, (
+        f"[{label}] Pro gave {sorted(stems)}, expected "
+        f"{sorted(expected)} - the doors must agree on BEHAVIOUR, "
+        "which is what BACKLOG 85 showed names alone cannot promise")

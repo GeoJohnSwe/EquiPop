@@ -151,7 +151,19 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
 
 
 def _paths_of(geom):
-    """Every part of a line or polygon as a list of (x, y).
+    """Every part of a line or polygon, in the shape the engine wants.
+
+    THE TWO SHAPES ARE NOT THE SAME (v1.29.3, John, field, 3.42.1):
+      line    -> parts = [ [(x, y), ...], ... ]      points per part
+      polygon -> parts = [ [ring, ring], ... ]       RINGS per part
+    A polygon needs the extra level because a part may have holes,
+    and the engine charges it by AREA using the outer ring minus the
+    inner ones. This flattened polygons to a list of rings, so the
+    engine's `for ring in part` walked the POINTS of one ring and
+    `p[0]` met a float: "'float' object is not subscriptable" on the
+    first real lake anyone tried. Never caught, because the QGIS
+    tests had no polygon barrier at all - the simulator was right
+    and simply never asked.
 
     Multipart matters: a river arrives as one feature with many
     parts, and taking only the first would leave most of it
@@ -167,19 +179,20 @@ def _paths_of(geom):
                         parts.append([(p.x(), p.y()) for p in line])
             else:
                 for poly in geom.asMultiPolygon():
-                    for ring in poly:
-                        if len(ring) >= 3:
-                            parts.append([(p.x(), p.y())
-                                          for p in ring])
+                    rings = [[(p.x(), p.y()) for p in ring]
+                             for ring in poly if len(ring) >= 3]
+                    if rings:
+                        parts.append(rings)
         else:
             if QgsWkbTypes.geometryType(geom.wkbType()) == 1:
                 line = geom.asPolyline()
                 if len(line) >= 2:
                     parts.append([(p.x(), p.y()) for p in line])
             else:
-                for ring in geom.asPolygon():
-                    if len(ring) >= 3:
-                        parts.append([(p.x(), p.y()) for p in ring])
+                rings = [[(p.x(), p.y()) for p in ring]
+                         for ring in geom.asPolygon() if len(ring) >= 3]
+                if rings:
+                    parts.append(rings)
     except Exception as exc:
         raise QgsProcessingException(
             f"Could not read the barrier geometry ({exc}).")
@@ -229,10 +242,16 @@ def _extent_check(features, values, unit, label, channel):
     checks go first.
     """
     import numpy as _np
-    xs = [p[0] for feat in features for part in feat["parts"]
-          for p in part]
-    ys = [p[1] for feat in features for part in feat["parts"]
-          for p in part]
+    def _points(feat):
+        for part in feat["parts"]:
+            if feat.get("type") == "polygon":
+                for ring in part:
+                    yield from ring
+            else:
+                yield from part
+
+    xs = [p[0] for feat in features for p in _points(feat)]
+    ys = [p[1] for feat in features for p in _points(feat)]
     if not xs:
         return
     span = max(max(xs) - min(xs), max(ys) - min(ys))

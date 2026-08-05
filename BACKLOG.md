@@ -19,36 +19,92 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-1. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's next destination, and machine 3 waits behind it
-2. **68** — measured, on the door John teaches with, and continental work waits on it
-3. **83** — machine 2 gives Null where machine 1 gives results; the ladder made the gap reachable
-4. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
-5. **58** — same evening: a GeoPackage barrier layer has still never been run
-6. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
-7. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
-8. **44** — the suspected one-line cause of 34; they travel together
-9. **34** — Pro renders the help page empty; needs one field cycle to confirm
-10. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
-11. **45** — small, but these files ship inside every release zip
-12. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
-13. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
-14. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
-15. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
-16. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
-17. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
-18. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
-19. **55** — same: the simulator honours category and enabled, only Pro can say they read well
-20. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
-21. **57** — retire the old single-table path once John confirms no saved tool needs it
-22. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
-23. **40** — one sentence in the Gridby README
-24. **4** — heights / third dimension - design can precede data, and there is no data yet
-25. **82** — machines 3 and 4 ship as a separate package; needs machine DISCOVERY in both doors first
-26. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
-27. **79** — icon.png has been promised since the beginning and never shipped
-28. **66** — not a task: a standing caution about editing multi-line Python
+1. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's destination, and machine 3 waits behind it
+2. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
+3. **58** — same evening: a GeoPackage barrier layer has still never been run
+4. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
+5. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
+6. **44** — the suspected one-line cause of 34; they travel together
+7. **34** — Pro renders the help page empty; needs one field cycle to confirm
+8. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
+9. **45** — small, but these files ship inside every release zip
+10. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
+11. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
+12. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
+13. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
+14. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
+15. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
+16. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
+17. **55** — same: the simulator honours category and enabled, only Pro can say they read well
+18. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
+19. **57** — retire the old single-table path once John confirms no saved tool needs it
+20. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
+21. **40** — one sentence in the Gridby README
+22. **4** — heights / third dimension - design can precede data, and there is no data yet
+23. **82** — machines 3 and 4 ship as a separate package; needs machine DISCOVERY in both doors first
+24. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
+25. **79** — icon.png has been promised since the beginning and never shipped
+26. **66** — not a task: a standing caution about editing multi-line Python
 
 ## Still to do — detail, in the order above
+
+- 87 | open v1.29.3 | THE SIMULATED ARCPY RESOLVES ANY STRING IN A
+  VALUE TABLE TO A LAYER PATH, so 'bar' arrives as 'memory/bar' and a
+  test that fills reftable through the dialog is refused with "these
+  values are not in the category field". Found while writing the
+  behavioural parity test for 86, which had to be driven at
+  _run_tool instead. A stub that is WRONG rather than merely sparse:
+  it makes a real path untestable through the dialog, which is
+  exactly where John meets it.
+
+- 88 | open v1.29.3 | POLYGON BARRIERS have never been run in Pro.
+  1.29.3 fixed the QGIS path after John's crash, and _paths_of is a
+  QGIS-side function - but nobody has pointed the ArcGIS toolbox at
+  a lake either, and the two doors build their geometry payloads
+  separately. One field run answers it.
+
+- ~~85~~ | DONE v1.29.3 | THE TREATMENT LADDER IS IGNORED UNLESS THE
+  REFERENCE LADDER IS ON RUNG 3 - QGIS door only. alg_counts.py line
+  ~267 nests the whole grouping block inside `if refmode == 2 and
+  catfield:`, so treatmode=2 does nothing when refmode is 0 or 1.
+  John, field, 3.42.1: refmode=0, treatmode=2, treatcatfield=fclass,
+  treattable=[bar, social] produced N_223 and Dist_223 and NOTHING
+  else - no T_, no R_, and NO MESSAGE. Reproduced here: the same run
+  with refmode=2 gives T_social_100 and R_social_100.
+  The two ladders are INDEPENDENT by design - that is what separating
+  reference from treatment was for in 1.22.0. Pro is correct: it
+  passes ref_mode and treat_mode to _run_tool and lets the shared
+  engine decide. QGIS reimplemented the logic locally and coupled
+  them. So the doors agree perfectly on NAMES and disagree on
+  BEHAVIOUR - which door_parity.py cannot see. Predates 1.29.2.
+  WHILE THERE: John also filled reftable while on rung 1, where it
+  is ignored. QGIS Processing cannot grey boxes out as Pro does, so
+  nothing stopped him. A box that is filled but ignored must SAY so.
+
+- ~~86~~ | DONE v1.29.3 | PARITY IS CHECKED FOR NAMES, NEVER FOR
+  BEHAVIOUR. tests/door_parity.py asks whether both doors offer the
+  same boxes. It cannot ask whether the same boxes DO the same
+  thing, which is how 85 lived undetected. What is wanted: one
+  fixture, the same inputs through both doors, and the result
+  columns and values compared - the cross-door conformance reference
+  already does this for a single default run, so the machinery
+  exists; it needs to cover the LADDER combinations. Worth more than
+  the fix for 85, because it catches the next one too.
+
+- ~~84~~ | DONE v1.29.3 | RAISE qgisMinimumVersion TO 3.38 and clear two
+  deprecations (John's ruling). QGIS 3.42 warns on every run:
+  parameterAsFields() deprecated in 3.40, use parameterAsStrings()
+  (added 3.32); and the QgsField(name, QVariant.Double) constructor,
+  from the QVariant -> QMetaType migration around 3.38. 12 call
+  sites for the first, 1 for the second. The declared minimum is
+  3.28, so BOTH replacements are newer than what we promise - hence
+  the ruling to raise it rather than write fallbacks.
+  NOTE THE NEW CLASS OF DRIFT: stub_audit.py checks that a method
+  EXISTS, and a deprecated method exists perfectly well. The
+  simulator cannot see "this works but is dying" at all. The cheap
+  guard is free, because QGIS already does it: read the QGIS log
+  after a field run and treat a DeprecationWarning as a release
+  blocker. That is how these were found.
 
 - ~~83~~ | DONE v1.29.2 | MACHINE 2 CANNOT GIVE RESULTS TO A NON-MEMBER,
   and machine 1 can. John's rule since 1.22.2 is that a row outside
@@ -1149,6 +1205,36 @@ small batch after.
   REVERSED deliberately, with the reason on the line.
 - 274 tests. The QGIS numbers are field-measured on 3.42.1; the
   ladder is simulator-only in both doors and wants an evening.
+
+## v1.29.3 (John's field evening, and the bug in the door we thought was fine)
+
+- POLYGON BARRIERS CRASHED on the first real lake. Lines are points
+  per part, polygons are RINGS per part - a lake may have islands and
+  is charged by AREA. _paths_of flattened one level too far. It
+  survived because the QGIS tests had NO polygon barrier and COULD
+  not: the stub lacked QgsGeometry.fromPolygonXY, which real PyQGIS
+  has. A stub too GENEROUS certifies code that cannot run; a stub too
+  SPARSE narrows what can be asked, and the gap looks like coverage.
+- 85 THE TWO LADDERS ARE INDEPENDENT AGAIN. treatmode was ignored
+  unless refmode was on rung 3. An empty grouping now refuses loudly,
+  and a reference table filled on the wrong rung says it is ignored -
+  QGIS cannot grey a box out, so the notice is the only warning.
+- 86 PARITY OF BEHAVIOUR. door_parity.LADDER_CASES runs the same
+  dialog combinations through BOTH doors and compares the columns.
+  On its first run it found that PRO HAD THE SAME BUG, twice over,
+  in _run_tool - after Claude had told John Pro was correct, having
+  read the code rather than run it. Add a rung, add a case.
+- 84 DEPRECATIONS CLEARED, minimum raised 3.28 -> 3.38 (John's
+  ruling). The stub DROPPED parameterAsFields so nothing can regress.
+  Worth remembering: stub_audit checks that a method EXISTS, and a
+  deprecated method exists perfectly well - John reading the QGIS log
+  is the only thing that catches this class.
+- THE HELP PANEL WAS NAMING COLUMNS THAT DO NOT EXIST. QGIS renders
+  the help as HTML and Qt ate <field> and <group>, so it printed
+  Nv__k, T__k, R__k. Escaped now.
+- MACHINE 2'S TREATMENT BOXES numbered 2/2a/2b/3/3a at last - QGIS
+  writes its own labels and only Pro's were changed in 1.29.0.
+- 283 tests. Every fault here came from one evening of John's.
 
 ## Done
 

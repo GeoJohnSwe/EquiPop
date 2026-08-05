@@ -71,23 +71,29 @@ class ValueStatistics(EquipopAlgorithm):
             "keepoutside", "1d \u25b8 ...rows whose type is NOT "
             "included", options=OUTSIDE_MODES, defaultValue=0))
         self.add(QgsProcessingParameterField(
-            "values", "Value fields to summarise",
+            "values", "2 \u25b8 TREATMENT VALUES - the numeric fields "
+            "to measure (income, rent, age)",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric,
             allowMultiple=True))
         self.add(QgsProcessingParameterEnum(
-            "measures", "Measures", options=MEASURES,
+            "measures", "2a \u25b8 ...measures to calculate",
+            options=MEASURES,
             allowMultiple=True, defaultValue=[0, 1, 2]))
         self.add(QgsProcessingParameterString(
-            "pcts", "Percentiles, space separated (e.g. 10 25 75 90)",
+            "pcts", "2b \u25b8 ...percentiles, space separated "
+            "(e.g. 10 25 75 90)",
             optional=True))
         self.add(QgsProcessingParameterString(
-            "k", "k - neighbourhood sizes in people, space separated",
+            "k", "3 \u25b8 k - neighbourhood sizes in people, space "
+            "separated",
             defaultValue="400", optional=True))
         self.add(QgsProcessingParameterString(
-            "r", "Radii in metres, space separated", optional=True))
+            "r", "3a \u25b8 ...or radii in metres, space separated",
+            optional=True))
         self.add(QgsProcessingParameterNumber(
-            "unit", "Cell size in metres", defaultValue=100.0,
+            "unit", "Cell size in metres - bigger cells mean fewer "
+            "origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double))
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
@@ -102,7 +108,7 @@ class ValueStatistics(EquipopAlgorithm):
         if source is None:
             raise QgsProcessingException("No input layer was given.")
 
-        vals = self.parameterAsFields(parameters, "values", context)
+        vals = self.parameterAsStrings(parameters, "values", context)
         if not vals:
             raise QgsProcessingException(
                 "Choose at least one value field to summarise - this "
@@ -121,7 +127,7 @@ class ValueStatistics(EquipopAlgorithm):
                 "Give at least one k (a number of people) or one "
                 "radius in metres.")
         unit = self.parameterAsDouble(parameters, "unit", context) or 100.0
-        pop = (self.parameterAsFields(parameters, "pop", context) or
+        pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
 
         names = predict_result_fields(
@@ -132,9 +138,9 @@ class ValueStatistics(EquipopAlgorithm):
         with stage(ch, "reading input"):
             pts = self.read_points(
                 source, feedback,
-                (self.parameterAsFields(parameters, "xfield", context)
+                (self.parameterAsStrings(parameters, "xfield", context)
                  or [None])[0],
-                (self.parameterAsFields(parameters, "yfield", context)
+                (self.parameterAsStrings(parameters, "yfield", context)
                  or [None])[0])
 
         kw = dict(unit_size=float(unit),
@@ -154,7 +160,7 @@ class ValueStatistics(EquipopAlgorithm):
         # no engine change is needed.
         refmode = (self.parameterAsEnums(parameters, "refmode",
                                          context) or [0])[0]
-        catfield = (self.parameterAsFields(parameters, "catfield",
+        catfield = (self.parameterAsStrings(parameters, "catfield",
                                            context) or [None])[0]
         if refmode == 2 and catfield:
             from equipop.categorical import categories_to_binary

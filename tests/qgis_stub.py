@@ -86,6 +86,25 @@ class QgsGeometry:
         return [[p] for p in self._parts]
 
     @staticmethod
+    def fromPolygonXY(rings):
+        """Real PyQGIS has this; the stub did not, which is why no
+        test ever built a polygon barrier - and the polygon path
+        crashed the first time John pointed it at a lake (v1.29.3).
+        A stub that is too SPARSE is safe but silently narrows what
+        can be asked."""
+        g = QgsGeometry()
+        g._parts = [list(r) for r in rings]
+        g._wkb = 3                       # polygon
+        return g
+
+    @staticmethod
+    def fromPolylineXY(points):
+        g = QgsGeometry()
+        g._parts = [list(points)]
+        g._wkb = 2                       # line
+        return g
+
+    @staticmethod
     def fromParts(parts, wkb=2):
         g = QgsGeometry()
         g._parts = [[QgsPointXY(x, y) for x, y in part]
@@ -97,6 +116,16 @@ class QgsGeometry:
 # ----------------------------------------------------------- fields
 class QVariant:
     Double, Int, String, Bool = 6, 2, 10, 1
+
+
+class _MetaTypes:
+    Double, Int, QString, Bool = 6, 2, 10, 1
+
+
+class QMetaType:
+    """v1.29.3: QGIS 3.38 moved field types from QVariant::Type to
+    QMetaType::Type and deprecated the old QgsField constructor."""
+    Type = _MetaTypes
 
 
 class QgsField:
@@ -516,7 +545,12 @@ class QgsProcessingAlgorithm:
     def parameterAsBool(self, parameters, name, context):
         return bool(parameters.get(name, False))
 
-    def parameterAsFields(self, parameters, name, context):
+    def parameterAsStrings(self, parameters, name, context):
+        """v1.29.3: the replacement for parameterAsFields, which QGIS
+        deprecated in 3.40. The old name is deliberately NOT defined
+        here - a stub is safe when it is STRICTER than the real
+        thing, so removing it means no code can quietly go back to
+        the deprecated call and still pass its tests."""
         v = parameters.get(name)
         if v in (None, ""):
             return []
@@ -583,6 +617,7 @@ def install():
     pyqt = types.ModuleType("qgis.PyQt")
     qtcore = types.ModuleType("qgis.PyQt.QtCore")
     qtcore.QVariant = QVariant
+    qtcore.QMetaType = QMetaType
     pyqt.QtCore = qtcore
     qgis.PyQt = pyqt
 
