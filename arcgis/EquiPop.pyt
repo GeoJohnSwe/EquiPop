@@ -2048,8 +2048,13 @@ class CountsShares:
             if nm in pm:
                 pm[nm].category = cat
         pm["model"].filter.type = "ValueList"
-        pm["model"].filter.list = ["no decay", "negexp", "expnormal",
-                                   "expsqrt", "lognormal", "power"]
+        # from the ENGINE, so a door can never offer a model that
+        # does not exist (v1.28 - the QGIS list had invented two)
+        try:
+            from equipop.doors.decaynames import choices
+            pm["model"].filter.list = choices()
+        except Exception:
+            pm["model"].filter.list = ["no decay", "negexp"]
         pm["model"].value = "no decay"
         pm["decayeps"].value = 1e-6
         pm["barrieragg"].filter.type = "ValueList"
@@ -2176,12 +2181,13 @@ class ValueStatistics:
     def __init__(self):
         self.label = "2. Value Statistics (numeric fields among the k nearest)"
         self.description = (
-            "Selectable statistics of any NUMERIC fields (income, "
-            "rent, age...) among each point's k nearest PERSONS. "
+            "Selectable statistics of TREATMENT fields (income, "
+            "rent, age...) among the k nearest members of the "
+            "REFERENCE population around every point. "
             "Tick the measures you want - only those are calculated. "
-            "FULL POPULATION field: if each point carries several "
-            "persons, k counts PERSONS and every statistic weights "
-            "by population (rows are expanded exactly). Output "
+            "COUNT FIELD: if each point stands for several (people, "
+            "jobs, dwellings), k counts those and every statistic "
+            "weights by them (rows are expanded exactly). Output "
             "columns like Mean_<f>_k, Med_<f>_k, P90_<f>_k, plus "
             "Nv_<f>_k = how many neighbours had a usable value (the "
             "honesty column). Input: point layer (geometry) or plain "
@@ -2191,11 +2197,12 @@ class ValueStatistics:
         ps = [_p("layer", "Input points (layer) or table",
                  ["GPFeatureLayer", "GPTableView"])]
         _coord_trio(ps)
-        ps += [_p("fullpop", "Full population field - persons per "
-                  "point (empty = one each); k is measured against "
-                  "this", "Field", required=False),
-               _p("values", "Numeric value fields (e.g. income, rent, "
-                  "age)", "Field", multiValue=True),
+        ps += [_p("pop", "Reference population: count field - how "
+                  "many each row stands for (empty = one each); k is "
+                  "measured against this", "Field", required=False),
+               _p("values", "Treatment values - the numeric fields to "
+                  "measure (e.g. income, rent, age)", "Field",
+                  multiValue=True),
                _p("measures", "Measures to calculate (none ticked = "
                   "mean, median, gini)", "GPString",
                   multiValue=True, required=False),
@@ -2234,10 +2241,10 @@ class ValueStatistics:
                         "autoproj": "Coordinates",
                         "k": "Neighbourhood", "r": "Neighbourhood",
                         "unit": "Neighbourhood",
-                        "fullpop": "Values and measures",
-                        "values": "Values and measures",
-                        "measures": "Values and measures",
-                        "pcts": "Values and measures",
+                        "pop": "Reference population - who is around",
+                        "values": "Treatment values - what you measure",
+                        "measures": "Treatment values - what you measure",
+                        "pcts": "Treatment values - what you measure",
                         "existing": "Output", "outmode": "Output",
                         "outfc": "Output", "outtable": "Output",
                         "shortnames": "Output"}.items():
@@ -2259,56 +2266,69 @@ class ValueStatistics:
         return ps
 
     def updateParameters(self, parameters):
+        # v1.29: by NAME, like machine 1 since 1.16.6. The ladder that
+        # is coming inserts boxes in the MIDDLE of this list, which
+        # would have shifted every index after it - silently, since a
+        # wrong-but-valid box reads as a successful run.
+        pm = _byname(parameters)
         _trio_update(parameters, 0, 1, 2, 3)
-        _clear_stale_fields(parameters, 0, (4, 5))
-        chosen = (parameters[6].valueAsText or "").lower()
-        parameters[7].enabled = "percentiles" in chosen
-        parameters[12].enabled = (parameters[11].valueAsText
-                                  == "New feature class")
+        _clear_stale_fields(parameters, 0, [i for i, p in
+                                            enumerate(parameters)
+                                            if p.name in
+                                            ("pop", "values")])
+        chosen = _txt(pm, "measures").lower()
+        pm["pcts"].enabled = "percentiles" in chosen
+        pm["outfc"].enabled = (_txt(pm, "outmode")
+                               == "New feature class")
         return
 
     def updateMessages(self, parameters):
-        _shared_messages(parameters, 0, 1, 2, 3, 13, 15)
-        v = [p.valueAsText or "" for p in parameters]
-        target = (v[12] if v[11].startswith("New") and v[12]
-                  else _catalog_of(parameters[0].value))
+        pm = _byname(parameters)
+        idx = {p.name: i for i, p in enumerate(parameters)}
+        _shared_messages(parameters, 0, 1, 2, 3, idx["outtable"],
+                         idx["autoproj"])
+        target = (_txt(pm, "outfc")
+                  if _txt(pm, "outmode").startswith("New")
+                  and _txt(pm, "outfc")
+                  else _catalog_of(pm["layer"].value))
         wanted = []
-        for mtxt in [m.strip("' ") for m in v[6].split(";") if m]:
+        for mtxt in [m.strip("' ") for m in
+                     _txt(pm, "measures").split(";") if m]:
             ml = mtxt.lower()
             if ml == "percentiles":
                 wanted += [f"p{q}" for q in
-                           (v[7] or "").replace(",", " ").split()]
+                           _txt(pm, "pcts").replace(",", " ").split()]
             elif ml:
                 wanted.append(_MEASURE_KEY.get(ml, ml))
-        if not (v[16] or "").lower() in ("true", "1", "yes"):
+        if not _flag(pm, "shortnames"):
             txt = _refuse_shp_overflow(target, _predict_result_fields(
-                "stats", v[8], v[9], "", [],
-                [f for f in v[5].split(";") if f],
+                "stats", _txt(pm, "k"), _txt(pm, "r"), "", [],
+                [f for f in _txt(pm, "values").split(";") if f],
                 wanted or ["mean", "median", "gini"], False, False))
             if txt:
-                parameters[11].setErrorMessage(txt + " Or tick "
-                                               "'Allow shortened "
-                                               "field names'.")
+                pm["outmode"].setErrorMessage(txt + " Or tick "
+                                              "'Allow shortened "
+                                              "field names'.")
         return
 
     def execute(self, parameters, messages):
-        v = [p.valueAsText or "" for p in parameters]
-        _run_tool("stats", parameters[0].value, messages,
-                  coord_source=v[1] or None,
-                  x_field=v[2] or None, y_field=v[3] or None,
-                  weight_field=v[4] or None,
-                  value_fields=[f for f in v[5].split(";") if f],
-                  stats_list=[m.strip("' ") for m in v[6].split(";")
+        pm = _byname(parameters)
+        _run_tool("stats", pm["layer"].value, messages,
+                  coord_source=_txt(pm, "coordsrc") or None,
+                  x_field=_txt(pm, "xfield") or None,
+                  y_field=_txt(pm, "yfield") or None,
+                  weight_field=_txt(pm, "pop") or None,
+                  value_fields=[f for f in
+                                _txt(pm, "values").split(";") if f],
+                  stats_list=[m.strip("' ") for m in
+                              _txt(pm, "measures").split(";")
                               if m.strip("' ")],
-                  pct_text=v[7],
-                  k_text=v[8], r_text=v[9],
-                  existing=v[10] or "Overwrite",
-                  out_mode=v[11] or "Append to input",
-                  out_fc=v[12] or None,
-                  out_table=v[13] or None,
-                  unit=_num({p.name: p for p in parameters}, "unit",
-                            100.0) or 100.0,
-                  auto_project=(v[15] or "").lower() in
-                  ("true", "1", "yes"),
-                  short_names=(v[16] or "").lower() in
-                  ("true", "1", "yes"))
+                  pct_text=_txt(pm, "pcts"),
+                  k_text=_txt(pm, "k"), r_text=_txt(pm, "r"),
+                  existing=_txt(pm, "existing") or "Overwrite",
+                  out_mode=_txt(pm, "outmode") or "Append to input",
+                  out_fc=_txt(pm, "outfc") or None,
+                  out_table=_txt(pm, "outtable") or None,
+                  unit=_num(pm, "unit", 100.0) or 100.0,
+                  auto_project=_flag(pm, "autoproj"),
+                  short_names=_flag(pm, "shortnames"))

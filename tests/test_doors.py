@@ -443,3 +443,34 @@ def test_an_outdated_package_is_told_apart_from_a_missing_one():
         capture_output=True, text=True, cwd=ROOT)
     assert out.returncode == 0, out.stderr[-2000:]
     assert "OK" in out.stdout
+
+
+# ------------------------------------------- v1.29: what the words owe
+def test_the_barrier_help_admits_that_friction_can_be_negative():
+    """BACKLOG 71/74. Facilitators shipped in 1.27, but the words the
+    dialogs show never mentioned them: the shared help described a
+    'crossing cost' and stopped. A user reading only the dialog would
+    never learn that a motorway is -0.9, and the engine's own refusal
+    at -1 would arrive as a surprise. Silence about a feature is this
+    project's oldest failure mode, so it is now a test."""
+    both = HLP.HELP["barriertable"] + " " + HLP.HELP["barrierrasters"]
+    assert "-1" in both, "the floor the engine refuses must be stated"
+    assert "negative" in both.lower()
+    assert "facilitator" in HLP.HELP["barriertable"].lower()
+    assert "1 + friction" in HLP.HELP["barriertable"], \
+        "the delay rule is the sentence that makes the sign make sense"
+
+
+def test_the_two_machines_name_the_population_box_the_same_way():
+    """v1.29. One box, one name, one explanation - the reason the
+    rename happened. A second entry describing the same idea under
+    another name is how Pro and QGIS drifted apart unnoticed."""
+    assert "fullpop" not in HLP.HELP
+    assert "pop" in HLP.HELP
+    txt = HLP.HELP["pop"].lower()
+    assert "person" not in txt, \
+        "John's rule: a point may stand for jobs, dwellings or " \
+        "services, so the wording stays neutral"
+    assert "weighted" in txt, \
+        "one entry now serves both machines, so it must say that " \
+        "Value Statistics weights by this field"

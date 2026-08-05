@@ -92,3 +92,41 @@ def test_the_stata_fixture_refuses_by_explaining_where_to_get_it():
     with pytest.raises(FileNotFoundError) as e:
         datasets.load("stata_test")
     assert "source archive" in str(e.value)
+
+
+def test_every_helper_the_tests_import_is_named_in_the_manifest():
+    """v1.29.0. The tests import helpers that are NOT named test*.py -
+    qgis_stub (the simulated PyQGIS) and door_parity (the shared box
+    list). setuptools ships test*.py by an old default and nothing
+    else, so from 1.20.0 to 1.28.0 every published archive failed to
+    collect its own suite with `No module named 'qgis_stub'`. The
+    archive is built by a tool we do not run here, so this guards the
+    RULE instead: whatever the tests import from their own directory
+    must be claimed by MANIFEST.in."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    manifest = open(os.path.join(here, "..", "MANIFEST.in"),
+                    encoding="utf-8").read()
+    helpers = [f[:-3] for f in os.listdir(here)
+               if f.endswith(".py") and not f.startswith("test_")]
+    assert helpers, "expected at least qgis_stub and door_parity"
+    imported = set()
+    for f in os.listdir(here):
+        if not f.startswith("test_") or not f.endswith(".py"):
+            continue
+        src = open(os.path.join(here, f), encoding="utf-8").read()
+        for h in helpers:
+            if re.search(rf"^\s*(import {h}\b|from {h} import)",
+                         src, re.M):
+                imported.add(h)
+    assert imported, "no test imports a local helper - has the layout changed?"
+    # match whole DIRECTIVE LINES: "graft tests/data" contains the
+    # substring "graft tests" and would wave this through - the first
+    # version of this test did exactly that and passed against a
+    # manifest with the line deleted.
+    lines = [l.strip() for l in manifest.split("\n")]
+    claimed = any(re.fullmatch(r"(include tests/\*\.py|graft tests)", l)
+                  for l in lines)
+    assert claimed, (
+        f"the tests import {sorted(imported)} from their own folder, "
+        "but MANIFEST.in does not carry tests/*.py - the published "
+        "archive will not be able to collect its own suite")

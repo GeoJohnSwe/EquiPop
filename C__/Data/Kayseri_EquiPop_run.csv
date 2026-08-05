@@ -1,0 +1,25 @@
+item,value
+equipop_version,1.29.0
+run_utc,2026-08-04T20:28:46+00:00
+engine,stats
+input,C:\Data\Kayseri.shp
+working_crs,SWEREF99 TM
+auto_projected,False
+cell_size_m,100.0
+k_values,40
+radii_m,
+effort_budgets_tau,
+decay_model,no decay
+decay_half_life_m,
+decay_cutoff_eps,
+measures,percentiles
+percentiles,25 75
+barrier_source,
+barrier_field,
+barrier_overlap_rule,
+rows_analysed,60
+result_fields,Nloca;N40;Dist40;Nvbe40;P25be40;P75be40
+total_seconds,0.1
+time_reading_input_seconds,0.0
+time_calculating_seconds,0.0
+time_writing_results_to_the_layer_seconds,0.0

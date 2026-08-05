@@ -31,9 +31,12 @@ HELP = {
               "(X/East/Easting/POINT_X...); no renaming is needed.",
     "yfield": "The northing column - only for tables or attribute "
               "mode.",
-    "pop": "Persons represented by each point. Leave empty when every "
-           "point is one person. k counts PERSONS, so this field "
-           "decides how far the k-search must travel.",
+    "pop": "How many each point stands for - people, jobs, dwellings, "
+           "services, anything countable. Leave empty when every point "
+           "counts as one. k counts these, so this field decides how "
+           "far the k-search must travel - and in Value Statistics "
+           "every statistic is weighted by it, so a point standing for "
+           "40 counts 40 times a point standing for one.",
     "treat": "Group counts: persons of the group at this point (use "
              "0/1 when points are individuals). Produces T_<group>_k "
              "(count) and R_<group>_k (share). These columns are "
@@ -148,12 +151,20 @@ HELP = {
         "rough terrain, a built-up core - rather than a line on a "
         "map.",
     "barrierrasters": "Friction rasters, where each cell value is "
-                      "the crossing cost. They combine with the rows "
+                      "the crossing cost - positive deters, negative "
+                      "carries, and -1 is the refused floor. They "
+                      "combine with the rows "
                       "of the barrier table by the same overlap "
                       "rule.",
     "barriertable": "One row per barrier source - a point, line or "
                     "polygon layer, or a table of cells - "
-                    "with the field holding its friction. Several "
+                    "with the field holding its friction. Friction is "
+                    "a DELAY, not a distance: entering a cell costs "
+                    "1 + friction, so 3 is a river (four rounds), 0 "
+                    "is open ground, and a NEGATIVE value down to -1 "
+                    "is a facilitator - -0.9 makes a cell a tenth of "
+                    "a round, which is how a motorway is modelled. "
+                    "-1 and below are refused. Several "
                     "sources combine per the overlap rule, so a "
                     "river, a railway and a lake can be given "
                     "together.",
@@ -226,16 +237,17 @@ HELP = {
                   "characters so they fit a shapefile. Names stay "
                   "unique - no two results ever merge - and the full "
                   "mapping is printed in the messages.",
-    "fullpop": "Persons represented by each point. k counts PERSONS, "
-               "and every statistic is weighted by this field, so a "
-               "place of 40 people counts 40 times a place of one.",
-    "values": "The numeric fields to describe - income, rent, age. "
-              "One set of result columns per field.",
+    "values": "The treatment fields - what you measure among the "
+              "neighbours: income, rent, age. One set of result "
+              "columns per field. These are AVERAGED over the "
+              "reference population, never added up, so give values "
+              "per unit: income per person, not the household total. "
+              "A column meant to be summed belongs in tool 1.",
     "measures": "Tick the statistics you want; only those are "
                 "calculated. Leaving every box unticked means the "
                 "classic trio - mean, median and Gini. "
-                "calculated. Nv_<field>_k always reports how many "
-                "neighbours actually had a value.",
+                "Nv_<field>_k always reports how many neighbours "
+                "actually had a value.",
     "pcts": "Percentiles as plain numbers, e.g. 10 25 75 90. Used "
             "only when 'percentiles' is ticked; results arrive as "
             "P10_<field>_k and so on.",
@@ -255,16 +267,16 @@ SUMMARY = {
         "point layers (geometry is read directly) or tables with "
         "coordinate columns; coordinates must be metric.",
     "ValueStatistics":
-        "Describes numeric fields - income, rent, age - among each "
-        "point's k nearest PERSONS. Tick the measures you need "
-        "(mean, median, Gini, sd, variance, se, min, max, count, "
-        "sum, range, percentiles); only those are computed. With a "
-        "full-population field every statistic is weighted by "
-        "population, so a block of forty counts forty times a single "
-        "household - including the median, the Gini and every "
-        "percentile. Nv_<field>_k reports how many neighbours had a "
-        "usable value, so thin coverage is visible rather than "
-        "hidden.",
+        "Describes TREATMENT fields - income, rent, age - among the "
+        "k nearest members of the REFERENCE population around every "
+        "point. Tick the measures you need (mean, median, Gini, sd, "
+        "variance, se, min, max, count, sum, range, percentiles); "
+        "only those are computed. With a count field every statistic "
+        "is weighted by it, so a point standing for forty counts "
+        "forty times a point standing for one - including the "
+        "median, the Gini and every percentile. Nv_<field>_k reports "
+        "how many neighbours had a usable value, so thin coverage is "
+        "visible rather than hidden.",
 }
 
 USAGE = {

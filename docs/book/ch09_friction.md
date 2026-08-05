@@ -71,6 +71,76 @@ fences. (If you prefer the opposite — listing the *passable*
 squares in a world of walls — set `default_friction` high and list
 the roads; the machinery is indifferent.)
 
+## What the number actually means
+
+A friction value is not a distance, and it is not a multiplier. It
+is a **delay, counted in rounds**.
+
+Every square costs one round to enter. Friction is what gets added
+to that one. So:
+
+| friction | the square costs | what it is |
+|---|---|---|
+| 3 | 4 rounds | a river |
+| 1 | 2 rounds | a busy road |
+| 0 | 1 round | open ground |
+| −0.5 | half a round | a fast road |
+| −0.9 | a tenth of a round | a motorway |
+| −1 | nothing at all | refused |
+
+Read the top row again, because it is the whole idea: at friction
+three, one square costs four rounds — *as if the river were four
+squares wide*. That is why crossing it twice costs eight, and why a
+river given friction fifty is not a river anyone crosses.
+
+Negative values run the same argument backwards. If friction adds
+to the cost of entering a square, a negative value subtracts from
+it, and a square becomes cheaper than open ground. That is a road:
+not something that stops you, but something that carries you. A
+value of −0.9 makes a square cost a tenth of a round, so ten
+squares of motorway cost what one square of field costs.
+
+The floor is −1, and it is a hard floor rather than a cautious one.
+At −1 a square costs nothing, and a network of free squares is not
+a neighbourhood: the nearest four hundred people could be gathered
+from anywhere at no cost at all, and the question stops meaning
+anything. EquiPop refuses −1 and below, and says so.
+
+**Barriers and facilitators are one dial, not two.** Positive
+deters, negative carries, zero is ordinary ground. A single column
+of numbers can hold a river at 4, a footbridge at 0 and a tram line
+at −0.6, and the walk will sort them out.
+
+## What happens to Dist_k when effort is on
+
+Something worth pausing over, because it surprises most people the
+first time and it is not a bug.
+
+Turn a barrier on and `Dist_k` **changes** — not because the world
+moved, but because *your neighbours did*. The neighbourhood is
+gathered in order of effort, not of metres. A café a hundred metres
+away across a river may cost more rounds than a café three hundred
+metres away along the near bank, so the second one joins your four
+hundred and the first one does not. `Dist_k` then reports the
+straight-line distance to whoever completed the count — and that is
+now somebody else.
+
+Which means `Dist_k` under effort is **not a radius**. With plain
+distance the neighbourhood is a disc and `Dist_k` is its edge. With
+a cost surface the neighbourhood is a shape moulded by the
+barriers — long down an open valley, blunt against a river — and
+`Dist_k` is simply how far away, as the crow flies, the last person
+you reached happened to be.
+
+That makes it useful in a way it is not otherwise. Run the same
+question twice, once with barriers and once without, and compare
+the two `Dist_k` columns. Where they agree, the barrier is
+irrelevant. Where the effort run reaches *further* in metres, the
+barrier has pushed your neighbourhood sideways — it has rearranged
+who is near whom. That difference is arguably the most interesting
+single number the effort engine produces, and it costs one extra
+run to obtain.
+
 ## The dials
 
 `fr` (the friction table) and `default_friction`; and since
@@ -114,3 +184,18 @@ and a *slowdown* (mild friction, routinely crossed) are different
 claims about the world; a value of 2 says people cross constantly
 at modest cost, a value of 50 says essentially never — make the
 number say what you mean.
+
+The same caution applies with the sign reversed, and rather more
+sharply. A facilitator says "people move along here more cheaply
+than across open ground", which is a claim about *behaviour*, not
+about tarmac. A motorway is a facilitator for a driver and a
+barrier for a pedestrian, and the same map of roads will therefore
+need different numbers depending on whose neighbourhood you are
+measuring. Say which, in the paper.
+
+And beware of covering the map. If every road carries a
+facilitator and roads reach everywhere, you have not modelled a
+transport network — you have made the whole world cheaper by the
+same amount, which changes almost nothing except the runtime.
+Effort measures are about *contrast*: what is dear next to what is
+cheap. A dial applied uniformly has no contrast left to measure.

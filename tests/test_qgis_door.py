@@ -277,9 +277,36 @@ def test_decay_is_explained_in_plain_numbers():
                    refmode=[1], pop="count_all", k="400", model=[1],
                    halflife=500.0)
     said = " ".join(fb.info)
-    assert "halves every 500 m" in said
-    assert "at 1000 m a quarter" in said
+    # v1.28: the curve is now printed in plain numbers, from the
+    # engine's own weight function rather than an assumed shape
+    assert "at 500 m 50%" in said
+    assert "at 1,000 m 25%" in said
     assert "ND_inf" in out.columns
+
+
+def test_every_offered_decay_model_exists_in_the_engine():
+    """John, field: the dropdown offered 'gauss' and 'linear'.
+    Neither exists - they were written from memory. A door that
+    offers a model the engine has never heard of either crashes or
+    silently substitutes another."""
+    from equipop.decay import MODELS
+    from equipop.doors.decaynames import (choices, model_from_choice,
+                                          NO_DECAY)
+    offered = choices()
+    assert offered[0] == NO_DECAY
+    for label in offered[1:]:
+        name = model_from_choice(label)
+        assert name in MODELS, f"'{label}' is not an engine model"
+    assert len(offered) == len(MODELS) + 1
+
+
+def test_the_gaussian_is_offered_under_its_real_name():
+    """John asked for a Gaussian. It exists - as expnormal - and was
+    missing from the list that invented 'gauss'."""
+    from equipop.doors.decaynames import choices
+    labels = " ".join(choices())
+    assert "expnormal" in labels and "Gaussian" in labels
+    assert "gauss (" not in labels and "linear" not in labels
 
 
 # --------------------------------- parity, BOTH directions (v1.25)
@@ -288,14 +315,15 @@ def test_decay_is_explained_in_plain_numbers():
 # section had no ladder there at all. Every QGIS name existed in Pro,
 # so the old test passed. A door can fall behind as easily as it can
 # drift ahead.
-CORE = {"layer", "pop", "treat", "k", "r", "unit", "catfield",
-        "reftable", "treattable", "restgroup", "refmode", "treatmode",
-        "treatcatfield", "keepoutside", "model", "halflife",
-        "decayeps", "xfield", "yfield"}
+# v1.29: the lists moved to tests/door_parity.py so the SAME words
+# are checked against Pro as against QGIS. Machine 2 joined them -
+# it had never been checked at all, and had been out of step since
+# 1.20.0 without a single test noticing.
+from door_parity import CORE, CORE_M2
 
 
-def _qgis_names():
-    alg = CountsAndShares()
+def _qgis_names(cls=None):
+    alg = (cls or CountsAndShares)()
     alg.initAlgorithm()
     return {p.name() for p in alg.parameterDefinitions()}
 
@@ -305,6 +333,14 @@ def test_qgis_has_every_core_box_that_pro_has():
     assert not missing, (
         f"the QGIS door is missing {sorted(missing)} - a box added to "
         "Pro was not carried across")
+
+
+def test_qgis_machine2_has_every_core_box_that_pro_has():
+    missing = CORE_M2 - _qgis_names(ValueStatistics)
+    assert not missing, (
+        f"QGIS Value Statistics is missing {sorted(missing)} - the "
+        "second machine fell behind, which is how `fullpop`/`pop` "
+        "went unnoticed for nine releases")
 
 
 def test_the_ladder_is_present_in_qgis_too():
@@ -669,3 +705,27 @@ def test_a_version_mismatch_is_mentioned_once():
         equipop_qgis.__version__ = real
     said = " ".join(fb.warnings)
     assert "9.9.9" in said and "pip install --upgrade equipop" in said
+
+
+def test_the_barrier_block_lives_under_advanced():
+    """v1.28, John: six boxes most runs never touch were the largest
+    source of clutter in a flat list."""
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    adv = {p.name() for p in alg.parameterDefinitions()
+           if p.isAdvanced()}
+    assert {"barrier", "barrierfield", "barrierraster", "dem", "tau",
+            "roundtrip", "barrieragg"} <= adv
+    everyday = {p.name() for p in alg.parameterDefinitions()
+                if not p.isAdvanced()}
+    assert {"refmode", "treatmode", "k", "model"} <= everyday
+
+
+def test_the_help_says_where_the_effort_engine_went():
+    """Pro's collapsed section still shows its name; QGIS's Advanced
+    area does not, so the help has to say it."""
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    text = alg.shortHelpString()
+    assert "Advanced parameters" in text
+    assert "barriers and terrain" in text.lower()

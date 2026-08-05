@@ -1,26 +1,176 @@
-# EquiPop Pangea — Backlog of small items to batch in later
+# EquiPop — Backlog
 
-Workflow: suggestions are appended here without altering code.
-When we decide to batch, items are implemented, validated, moved to
-the manual's version history, and struck from this list.
+**Order (John's instruction, 1.19; done at last in 1.29.0):**
+still-to-do at the TOP in priority order, done items at the
+BOTTOM. The top of this file should answer "what next?" without
+reading the rest of it. Claude proposes the order with a short
+reason each; John overrules freely and often should.
 
-| # | Added | Item | Notes |
-|---|-------|------|-------|
-| ~~1~~ | DONE v0.7 | Seeded tie-break orientation: a user-settable seed determining the within-ring visiting order in `tie_mode="sequential"`, with the seed written to the metadata log (`settings.seed`) | Ring mode unaffected (order-free by design). Makes sequential mode fully reproducible. |
-| ~~2~~ | DONE v0.7 | Metadata log file — full design agreed, see below | Implement as one batch; pairs with #1. |
-| ~~3~~ | DONE v0.7 (convert path; 6-neighbour hex friction remains) | Hexagonal grids: convert or simply import point/raster data as hexagons (X/Y/Z axial or cube coordinates) | From the original spec. Design thoughts below. |
-| ~~30~~ | DONE v1.17 | Category & friction VALUE TABLES in the Pro dialogs (John's Extract-Multi-Values pattern): a grid with *value* (dropdown built from the field's own distinct values), *group name*, *in population?* - retires the `;`/`,`/`:` syntax entirely and expresses "in a group but not in the population" (services near residents). Same grid for MULTI-SOURCE friction: source + friction field per row, so lines + lake + raster finally coexist and the overlap rule becomes reachable at all | Field-found: `shop, school` parsed as ONE group matching zero rows; also today's only way to combine barriers is a single layer |
-| ~~31~~ | DONE v1.17 | Persons-versus-places rule for category groups: with a population field set, N counts PERSONS while category flags count ROWS, so R = places / persons silently. Add an explicit control (default: weight categories by the population field) and state it in the messages and manifest | Field-found: T=4 places over N=140 persons |
-| ~~32~~ | DONE v1.17 | A group/category matching ZERO rows must be a dialog-time REFUSAL naming the field's actual values, not an info line among fourteen | Silent columns of zeros are exactly the wrongness EquiPop refuses elsewhere |
-| ~~33~~ | DONE v1.17 | Collapsible dialog sections via each parameter's `category` property (Coordinates / Neighbourhood / Groups / Barriers and terrain / Output / Advanced) + a full label pass saying what each box DOES | 29 parameters presented at once; John: "they were not fully clear to me watching the menu" |
-| 34 | open v1.16.8 | Tool help page: summary/usage sections render empty in Pro. Suspect `SyncOnce=TRUE` letting Pro regenerate over the authored text, plus missing `datatype` attributes and plain text where escaped HTML is expected. The per-parameter comments (dialogReference) DO work | Needs one field cycle to confirm |
-| ~~35~~ | DONE v1.17 | Individual / local TAU (effort budget from a field or a single value), mirroring variable-bandwidth decay. Easier than decay: the traversal already stops at a budget, so a per-origin budget is just a different stopping value. Naming: N_tau_<field> since the column can no longer carry the number | John: tau is the HARD prism boundary, half-life the soft one - both parameterisable per person is a time-geographic instrument |
-| ~~36~~ | DONE v1.17 | Variable-bandwidth decay (the 1.17 theme): half-life from a field or self-calibrated from Dist_k (urban form sets the bandwidth); bucket into quantile bins so cost is dominated by the largest bin; combine several potentials via log-odds / geometric mean of half-lives, all three behind one switch and compared on Gridby | John's ladder: 1 no decay, 2 one parameter, 3 group potentials (Hägerstrand prisms), 4 form-derived, 5 principled merger |
-| ~~37~~ | DONE v1.17 | Seed exposure + manifest entry wherever permutations happen (morans_i, sequential tie-break). Engines are otherwise deterministic - note in the manual that this holds as long as summation order does | |
-| 38 | open v1.16.8 | Continental segmentation wired into the GUI: origin tiling (bigrun, already built and tested, currently unreachable) with output folder + resume; halo-based full partitioning only if destinations stop fitting, with the halo checked against Dist_k and widened for the origins that touched it; merge on an explicit EQP_ID, never OID (ArcGIS renumbers OIDs on copy) | John's B1-10/C1-2 sketch |
-| ~~39~~ | PARTS 1-2 DONE v1.20.0 | ~~Shared core ahead of the QGIS/R/SPSS doors: one help-text source, one reporter object, one loader contract~~ - DELIVERED as `equipop.doors` (help / report / fields / loader), ArcGIS re-pointed, 154 tests green. REMAINING: QGIS Processing plugin (simulated PyQGIS like the fake arcpy), R via reticulate (file bridge as documented fallback), SPSS via its Python integration. Gridby's answer key becomes the cross-door conformance suite | The ArcGIS glue got fat because three things were reinvented per door |
-| 40 | open v1.16.8 | Gridby README: Test E must say to clear BOTH the population field and the group count fields (the key assumes one row = one person) | Documentation error found in the field |
-| 4 | open | Heights / third dimension (D-dimensions) for grids AND hexagons | No suitable test data yet — design can precede data. Thoughts below. |
+Workflow unchanged: suggestions are appended without altering
+code. When we decide to batch, items are implemented, validated,
+moved to the manual's version history, and struck here.
+
+*1.29.0 also merged five duplicate rows. "Machine 2 vocabulary"
+had been re-added four times as 56, 60, 64 and 69 (and once more
+as 75), each time as if new, because it always lost to whatever
+arrived that week - which is exactly what an unordered file
+costs. 71 and 74 were the same duplication. Items 38/42/43/45/49
+appeared twice; the weaker copy is gone.*
+
+## What next — in priority order
+
+1. **68** — measured, on the door John teaches with, and continental work waits on it
+2. **76** — the half of the machine 2 round John deferred; 1.29 was the groundwork for it
+3. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
+4. **58** — same evening: a GeoPackage barrier layer has still never been run
+5. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
+6. **44** — the suspected one-line cause of 34; they travel together
+7. **34** — Pro renders the help page empty; needs one field cycle to confirm
+8. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
+9. **45** — small, but these files ship inside every release zip
+10. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
+11. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
+12. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
+13. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
+14. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
+15. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
+16. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
+17. **55** — same: the simulator honours category and enabled, only Pro can say they read well
+18. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
+19. **57** — retire the old single-table path once John confirms no saved tool needs it
+20. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
+21. **40** — one sentence in the Gridby README
+22. **4** — heights / third dimension - design can precede data, and there is no data yet
+23. **66** — not a task: a standing caution about editing multi-line Python
+
+## Still to do — detail, in the order above
+
+- 68 | open | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
+  of calculation (John, field, 8730 points). read_points builds a
+  Python list of features and loops per attribute. Worth optimising
+  before continental work.
+
+- 76 | open v1.29.0 | THE MACHINE 2 LADDER. 1.29 gave machine 2
+  machine 1's words and made insertion safe (it now reads its boxes
+  by NAME); the ladder itself was deferred by John - "change the
+  words first, we can test the ladder later". What is missing: a
+  `refmode` question with the same three rungs, `catfield` +
+  `reftable` for rung 3, and `keepoutside` for the zero-versus-null
+  rule. Capability, not tidying - today machine 2 cannot restrict
+  its reference population at all, so "mean income of the nearest
+  400 RESIDENTS" in a layer that also holds workplaces is
+  impossible. Add the new names to tests/door_parity.py CORE_M2 in
+  the same edit, and to QGIS's alg_stats.py, or the parity check
+  fails - which is the point of it.
+
+- 67 | open | QGIS barriers are simulator-proved only. The ArcGIS
+  round is the evidence for how far that is from proved.
+
+- 58 | open | A GeoPackage barrier layer has still never been run in
+  the field. The code path is now believed sound; only Pro can say.
+
+
+- 42 | open v1.18.0 | docs/manual/ (the illustrated ArcGIS
+  walk-through) does not describe variable-bandwidth decay at all -
+  the headline feature of 1.17. Decay gets one sentence in section 2
+  and the ND_/TD_/RD_ columns in section 7, with nothing on
+  half-life from a field or self-calibration from Dist_k. WRITING
+  session item. While there: the manual's own plain-words habit
+  ("two rulers", "doubling it quarters the work", "a finding, not a
+  nuisance") is the model the queued naming pass should copy.
+
+- 44 | open v1.18.0 | `make_help_xml.py` still writes
+  `SyncOnce=TRUE`, the suspected cause of item 34 (summary/usage
+  rendering empty in Pro). Untouched this round: it needs one field
+  cycle to confirm, and this was a refactor release. Now a one-line
+  change in a single place whenever that cycle happens.
+
+- 34 | open v1.16.8 | Tool help page: summary/usage sections render empty in Pro. Suspect `SyncOnce=TRUE` letting Pro regenerate over the authored text, plus missing `datatype` attributes and plain text where escaped HTML is expected. The per-parameter comments (dialogReference) DO work | Needs one field cycle to confirm
+
+- 49 | open | The reference covers counts and stats; friction,
+  slope, fca and lisa are not in it. Now that a second door exists
+  and the mechanism is proved, this is worth doing.
+
+- 45 | open v1.18.0 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
+  the Windows-style catalog paths they pretend to use, so a test run
+  on Linux leaves four literal files named `C:\Data\...csv` in the
+  repo root (and one stray figure from the Book build). Harmless,
+  untracked, and cleaned by hand this round - but they belong in
+  pytest's tmp_path, and on Windows those paths are real. Small.
+
+### 1.18.0, second pass: the source archive
+
+- 62 | open | The shapefile-in-a-map warning fires whenever the
+  input is a .shp and the output is not a new feature class. It may
+  be too eager - a shapefile NOT in a map is fine, and the toolbox
+  cannot tell from the path alone. Watch whether it becomes noise.
+
+
+- 41 | open v1.18.0 | MANUAL.md had NO 1.17 row - the release went in
+  without its version row, validation record or design decisions,
+  against the standing convention. A reconstructed row was written
+  in 1.18.0 from the session handover and is marked as such; **John
+  should check it against what actually shipped.** The 1.17
+  validation record was deliberately NOT reconstructed: writing one
+  would mean claiming validation nobody performed.
+
+- 43 | open v1.18.0 | CITATION.cff still says `version: 1.0.0` while
+  the package is at 1.18.0. Left alone deliberately - citation
+  metadata is the author's to set, and it matters more than usual
+  ahead of the Zenodo DOI at 2.0.0.
+
+- 77 | open v1.29.0 | The vocabulary sweep. 1.29 made the shared
+  `pop` entry neutral (John: a point may stand for services, jobs,
+  houses, anything), but "persons" survives in about fifteen other
+  places - help.py entries for k/treat/tau/groupscount, both tool
+  descriptions in the .pyt, QGIS's tau label, the SUMMARY for
+  machine 1. Deliberately NOT swept in 1.29: fifteen sentences John
+  has not read is not a change to make quietly. One pass, shown
+  before it lands. Note `groups_count="persons"` in the .pyt is a
+  CODE VALUE, not prose - do not touch it.
+
+- 38 | open v1.16.8 | Continental segmentation wired into the GUI: origin tiling (bigrun, already built and tested, currently unreachable) with output folder + resume; halo-based full partitioning only if destinations stop fitting, with the halo checked against Dist_k and widened for the origins that touched it; merge on an explicit EQP_ID, never OID (ArcGIS renumbers OIDs on copy) | John's B1-10/C1-2 sketch
+
+- 59 | open | Does the QGIS door refresh GeoPackage fields properly?
+  Expected yes (OGC format, QGIS's native default). If so it is a
+  real argument for teaching on QGIS with .gpkg data - worth knowing
+  before September.
+
+
+- 61 | open | The dialog structure is simulator-proved only. Whether
+  three rungs and the greying READ well in Pro is John's call.
+
+
+- 55 | open | The dialog-structure tests assert Pro's `category` and
+  `enabled`; the simulator honours both, but only a real Pro can say
+  whether the three headings read well on screen. Worth a look in
+  the next field cycle.
+
+
+- 54 | open | Gridby has NO missing data, so the missing-data rules
+  are tested only on small fixtures. A Gridby variant with holes
+  punched in it would test the documented rule properly.
+
+
+- 57 | open | The old single-table path (cat_rows) is kept in
+  _run_tool for compatibility but is no longer reachable from the
+  dialog. Retire once John confirms no saved tools depend on it.
+
+
+- 65 | open | The OneDrive warning did not fire on John's run. Most
+  likely that run predates 1.24.0; confirm before hunting.
+
+- 40 | open v1.16.8 | Gridby README: Test E must say to clear BOTH the population field and the group count fields (the key assumes one row = one person) | Documentation error found in the field
+
+- 4 | open | Heights / third dimension (D-dimensions) for grids AND hexagons | No suitable test data yet — design can precede data. Thoughts below.
+
+
+- 66 | open | Editing multi-line Python by blind string replacement
+  damaged alg_counts.py this round; recovered from the release zip.
+  Read the real text first (view/sed), then str_replace against it.
+
+
+## Design notes and longer thoughts (kept, not a to-do list)
 
 ## Item 2 — Metadata log file, agreed design
 
@@ -54,6 +204,7 @@ as a re-run recipe.
 - **Include the output column list** with a one-line definition per
   column, so a shared CSV+meta pair is self-documenting (decided: yes).
 
+
 ## Item 3 — Hexagons, design thoughts (recorded, not decided)
 
 - **Conversion vs import:** two entry paths. (a) CONVERT: points/rasters
@@ -78,6 +229,7 @@ as a re-run recipe.
   hexagons (free size, consistent with our metric grids) vs H3
   (interoperability). Leaning: own metric hexagons as default,
   H3 import as an accepted in-data format.
+
 
 ## Item 4 — Heights / D-dimensions, design thoughts (recorded, not decided)
 
@@ -105,12 +257,6 @@ as a re-run recipe.
   slope-to-friction (synthetic DEM is easy to fabricate and validate
   by hand), defer (b) voxels until a real use case exists.
 
-| ~~5~~ | DONE v0.9 (repo built; publish + PyPI-name check remain manual steps) | GitHub sharing preparation | Strategy: repo layout (src/equipop, tests/, examples/, docs/); pyproject.toml with optional extras [geo]=geopandas,rasterio [fast]=scipy [xl]=openpyxl,pyarrow; turn the demo validations into pytest suite (Berlin regression, Sweden brute-force, wall test, decay properties, Malta totals); LICENSE decision (MIT vs EUPL - user choice); CITATION.cff pointing at the EquiPop papers; README = trimmed manual quick starts; GitHub Actions CI running pytest on push; versioning via git tags matching manual history; CONTRIBUTING with the design-decision log as ground rules; publish to PyPI when named (see naming note in spec). |
-| ~~6~~ | DONE v0.8 (evenness+exposure; delta/concentration family awaits the area-term decision) | Segregation index module (per US Census formulary + Östh/Clark/Malmberg 2015) | Aggregate indices computed FROM k-NN output across all origins i, per k: Spatial Isolation SI_k = sum(x_i * (x_ik/k)) / sum(x_i) (the 2015 paper's measure - weight each origin's k-share by its own minority count); interaction (x->y) analogue; Dissimilarity D_k = 0.5*sum|x_i/X - y_i/Y| over bespoke neighbourhoods; entropy/Theil H_k; Gini_k (segregation form, from the census formulary, distinct from the inequality Gini already implemented); Atkinson(b); correlation ratio (I-P)/(1-P); delta & concentration family needs area a_i = k-neighbourhood footprint (Dist_k-derived) - flag as derived-area caveat. Design: segregation.py taking a run_knn(_stats) output DataFrame + k list, returning one row per k per index - i.e. POST-ANALYSIS on existing output, no engine change. Validate against Table A4 style numbers (SI for k=100/6400) when a suitable dataset exists. |
-| ~~7~~ | Stata part DONE v1.1 (bridge pytest-tested; ado sfi-glue awaits first in-Stata run); QGIS part remains | Stata & QGIS availability | QGIS: ships Python - short term a processing-toolbox script (paste-in) calling equipop if installed in the QGIS python (pip install via OSGeo shell); mid term a minimal plugin wrapping InData->run->load-result-as-layer. ArcGIS Pro: arcpy python env can pip install equipop (conda-based env cloning), no plugin needed for script use. Stata: no embedded CPython officially until recent versions - Stata 16+ HAS python integration: `python:` blocks share data via sfi (Scala Function Interface) Data class; strategy = thin equipop_stata.ado + python glue: read frame via sfi.Data.get(), run equipop, write back new variables via sfi.Data.addVarDouble()+store - enabling the requested regress->knn->regress round trip entirely inside Stata. Deliverable order: (1) plain .do example with python block, (2) ado wrapper, (3) QGIS processing script, (4) QGIS plugin. |
-| ~~8~~ | DONE v0.8 | Map visualisation of output + export | matplotlib-based map_output(df, column, classing=quantiles/equal/sd/jenks, n_classes, basemap=None/simple-extent, north arrow + scale bar + legend with class bounds); jenks via jenkspy (small pip dep) with fallback to quantiles; hexagons drawn as polygons, grid as squares; export .png/.svg/.pdf via savefig plus data export of the classed column (save_output already covers gpkg for GIS styling). Colour: viridis default, diverging option for ratio-around-mean. Keep it deliberately simple - QGIS is the real GIS; this is quick-look QC. |
-| ~~9~~ | DONE v0.8 (all three alternatives) | Area-based output (policy-friendly aggregation of k-NN results) | Three alternatives, same principle - bring overlapping bespoke-neighbourhood output back to fixed geographies that policy makers grasp: **Alt 1** user-provided belonging ID (location/municipality code already on the data; label_col/CellId machinery is the natural carrier) -> aggregate any output column per ID (mean/median/pop-weighted mean, N). **Alt 2** uploaded polygons (shp/gpkg municipalities) -> point-in-polygon assignment of origin cells (geopandas sjoin), then as Alt 1. **Alt 3** coarse grid/hex scales - e.g. 100 m results aggregated to 1000/5000 m super-cells; aggregation origin anchored at min X/Y/(Z). Design: one post-analysis function `aggregate_output(df, by=..., how=...)`; document explicitly that overlap-then-aggregate is intentional (bespoke values summarised per area, not area-recomputed) so reviewers don't mistake it for a contradiction. Pairs naturally with #6 (per-area index reporting) and #8 (choropleths per area). |
-| ~~10~~ | DONE v0.9 (MANUAL_TOPICS.md) | Topic-based beginner manual | Restructure the manual by TOPIC rather than version/dataset: Installation; File formats & data management; Projections; Grids or hexagons; Selecting k-values; Determining decay; Determining friction; Statistics; Segregation measures; Area output; Metadata & reproducibility; Troubleshooting. Keep the current version-history + validation-record + design-decision log as appendices (they are the scientific audit trail). Write once the v0.8 feature set lands so topics stabilise; each topic = concept in plain language -> minimal example -> settings table -> pitfalls. |
 
 ## Data notes (remember, nothing to act on)
 - Stockholm semi-synthetic (.sav) + Kommun shapefile: coordinates are
@@ -120,6 +266,7 @@ as a re-run recipe.
   expected product of that pairing, not an error. Interpretation and
   any future join-tolerance option (e.g. nearest-polygon snap within
   X m) should keep this in mind.
+
 
 ## Item 4 expanded — three height mechanisms (opinions as requested)
 **4a. DEM slope-asymmetric friction ("inverted watershed").** Downhill/
@@ -157,6 +304,7 @@ Priority: 4a first (needs the DEM the user is sourcing), 4b/4c as one
 small batch after.
 
 
+
 ## v1.2.0 updates (this session)
 - ~~#4a DEM slope-asymmetric directional friction~~ DONE in v1.2.0
   (tobler + linear via SLOPE_MODELS; Malta-validated; "valley tax"
@@ -170,6 +318,7 @@ small batch after.
   for national-scale rasters (Malta-size reads whole array fine).
 - NEW small idea (parked): slope-model parameter sweep helper
   (lambda_up sensitivity reporting) once #12's neighbourhood menu lands.
+
 
 
 ## Session additions (post-v1.2.0, recorded without coding)
@@ -219,6 +368,7 @@ small batch after.
   neighbourhood menu from birth).
 
 
+
 ## Session additions (round 2, recorded without coding - NEXT ROUND items)
 
 - **#4a-RT (NEXT ROUND) Round-trip slope effort.** `roundtrip=True` on
@@ -265,6 +415,7 @@ small batch after.
   unbounded decayed-sum mode as substrate).
 
 
+
 ## v1.3.0 updates (this session)
 - ~~#12 Neighbourhood definition menu~~ DONE in v1.3.0, INCLUDING the
   area family (k / r / tau / unbounded decayed sum / AREA - the
@@ -283,6 +434,7 @@ small batch after.
   (unbounded decayed sum = the access_potential substrate), #11.
 
 
+
 ## v1.4.0 updates (this session)
 - ~~#4a-RT round-trip slopes~~ DONE (per-leg average; flat==one-way
   exact; known-answer + symmetry + convexity pytest).
@@ -298,6 +450,7 @@ small batch after.
   a recorded modelling menu; competition = #11.
 - Next natural: #11 kFCA (all substrates now exist) or #14
   autocorrelation; #13 cookbook grows alongside.
+
 
 
 ## v1.5.0 updates (this session)
@@ -320,6 +473,7 @@ small batch after.
 - NEW parked: FCA congestion maps + Stata bridge exposure of fca().
 
 
+
 ## v1.5.1 updates (real-data act)
 - #11 REAL-DATA ACT DONE: municipality labour market run (2SFCA/3SFCA/
   kFCA/balanced), education-gap map, congestion map; fixture +
@@ -331,6 +485,7 @@ small batch after.
 - NEW parked: per-cell effective-pressure output (J/A) as a named
   column; commuting half-life estimation from observed flows (would
   need a flows file); kFCA own-side-mass convention decision.
+
 
 
 ## v1.6.0 updates (this session)
@@ -366,6 +521,7 @@ small batch after.
   validation: tiled run == untiled run EXACTLY on a mid-size fixture.
 
 
+
 ## v1.7.0 updates (this session)
 - ~~#18a tile-and-flush (fast engine)~~ DONE: origins= on fastcounts,
   bigrun module (parquet tiles, manifest+md5, resume), golden
@@ -379,6 +535,7 @@ small batch after.
   #14 autocorrelation; user-side: tag v1.6.0 + this v1.7.0 release.
 
 
+
 ## v1.8.0 progress (Book session 1)
 - #19 underway: Gridby generator (planted truths PYTEST-ENFORCED:
   gradient recovered, river isochrone bites, hill peak exact, jobs
@@ -387,6 +544,7 @@ small batch after.
   cookbook figure scripts (02, 03), compile pipeline + first .docx
   sample this session. Next book bites: ch 13+16 (Stata Journal
   feeders), then Part II.
+
 
 
 ## v1.8.1 (CI fix round)
@@ -403,6 +561,7 @@ small batch after.
   47 green x 2 Pythons.
 
 
+
 ## v1.9.0 updates (this session)
 - ~~#14 spatial autocorrelation~~ DONE (weights from the menu, I/LISA/
   Gi* esda-cross-validated, multiscalar profile, loud smoothed-surface
@@ -413,6 +572,7 @@ small batch after.
 - Board next: #16 propensity FCA, Book chapters 13+16, or #7 QGIS.
 
 
+
 ## v1.9.1 (Book-per-release round)
 - CONVENTION ADOPTED: every release = zip + manual + backlog + BOOK
   (compiled docx, version-stamped). Locally: docs/book/build.sh. On
@@ -420,6 +580,7 @@ small batch after.
   every push (find it: Actions -> run -> Artifacts, bottom of page).
 - Chapter 11 written (4 chapters compiled of 20; ~9 pages - Part II
   will thicken the volume). Next bites: ch 13 + 16.
+
 
 
 ## v1.10.0 updates (#16 round)
@@ -435,6 +596,7 @@ small batch after.
   scenario; candidate Stata Journal exhibit.
 
 
+
 ## v1.11.0 (Voice + lisa round)
 - Book style guide EXECUTED on ch01/02/04/11/13; ch16 born in the
   register; sample-approved voice now the volume's voice.
@@ -446,12 +608,14 @@ small batch after.
   divergence experiment (awaits nothing) or RunLog audit.
 
 
+
 ## v1.12.0 updates (kFCA both-sides round)
 - ~~kFCA continuation~~ DONE (k_side incl. "both"; A_ksupply/A_kdemand
   per user naming; divergence experiment: corr 0.329 on the
   municipality - conventions measure different geographies).
 - Small parked: expose k_side in dispatcher/ado fca engine.
 - ch5-7 pack merged into repo; Book at 9 chapters.
+
 
 ## GIS & stats-software bridges (feasibility discussion, FOR LATER)
 - #7a QGIS Processing provider: HIGH feasibility, first target.
@@ -476,6 +640,7 @@ small batch after.
   guards it; every glue layer gets a stub validation.
 
 
+
 ## v1.13.0 updates (#21 ArcGIS opener)
 - ~~#21 first release~~ DONE: 3 tools (user's priorities 1+2 first-
   class, friction included as the ready door), stub-validated glue,
@@ -485,6 +650,7 @@ small batch after.
   (auto-rasterize rivers/roads to friction cells - natural next).
 - Decay now flows through the counts ROW path everywhere (Stata ado
   inherits it free via dispatch - expose halflife() option: small).
+
 
 
 ## v1.14.0 (#21b - the field-tested toolbox)
@@ -498,9 +664,13 @@ small batch after.
 - Book at 14 chapters, riding this release.
 
 
+
 ## v1.14.1 (hotfix - the counts-convention bug, found by John on the
+
 ## real register through ArcGIS; shapefile name truncation decoded in
+
 ## chat -> reinforce gdb / New-feature-class-to-gdb advice)
+
 
 ## STATA-UX SPEC (feedback from Umut - next Stata session)
 - i) NATURAL INSTALL, two stages: (a) NOW: `net install equipop,
@@ -521,6 +691,7 @@ small batch after.
   with old ones; the completion message already lists them.
 
 
+
 ## v1.15.0 (#21c delivered)
 - ~~#21c items 1-3~~ DONE per confirmed spec. Deferred honestly:
   stats-over-effort engine (machine 2 ingredients await it);
@@ -532,6 +703,7 @@ small batch after.
   bandwidth and individual tau), then the shared-core refactor and
   the QGIS door (39). Stata-UX round (Umut, on his return), #21d
   LISA/FCA tools, writing ch14+15+17.
+
 
 ## v1.18.0 (the shared core - BACKLOG 39, part 1 of 3)
 - ~~39, part 1~~ DONE. `equipop/doors/` now holds what every door was
@@ -556,51 +728,6 @@ small batch after.
   Then R (reticulate) and SPSS.
 
 ### Found while doing it (not acted on)
-- 41 | open v1.18.0 | MANUAL.md had NO 1.17 row - the release went in
-  without its version row, validation record or design decisions,
-  against the standing convention. A reconstructed row was written
-  in 1.18.0 from the session handover and is marked as such; **John
-  should check it against what actually shipped.** The 1.17
-  validation record was deliberately NOT reconstructed: writing one
-  would mean claiming validation nobody performed.
-- 42 | open v1.18.0 | docs/manual/ (the illustrated ArcGIS
-  walk-through) does not describe variable-bandwidth decay at all -
-  the headline feature of 1.17. Decay gets one sentence in section 2
-  and the ND_/TD_/RD_ columns in section 7, with nothing on
-  half-life from a field or self-calibration from Dist_k. WRITING
-  session item. While there: the manual's own plain-words habit
-  ("two rulers", "doubling it quarters the work", "a finding, not a
-  nuisance") is the model the queued naming pass should copy.
-- 43 | open v1.18.0 | CITATION.cff still says `version: 1.0.0` while
-  the package is at 1.18.0. Left alone deliberately - citation
-  metadata is the author's to set, and it matters more than usual
-  ahead of the Zenodo DOI at 2.0.0.
-- 44 | open v1.18.0 | `make_help_xml.py` still writes
-  `SyncOnce=TRUE`, the suspected cause of item 34 (summary/usage
-  rendering empty in Pro). Untouched this round: it needs one field
-  cycle to confirm, and this was a refactor release. Now a one-line
-  change in a single place whenever that cycle happens.
-- 45 | open v1.18.0 | The simulated-arcpy tests write their output to
-  the Windows-style catalog paths they pretend to use, so a test run
-  on Linux leaves four literal files named `C:\Data\...csv` in the
-  repo root (and one stray figure from the Book build). Harmless,
-  untracked, and cleaned by hand this round - but they belong in
-  pytest's tmp_path, and on Windows those paths are real. Small.
-
-### 1.18.0, second pass: the source archive
-- 46 | DONE v1.18.0 | The `.tar.gz` carried the package and the test
-  CODE but not the ArcGIS toolbox, the Stata door, the fixtures its
-  own tests read, or CITATION.cff. Verified against PyPI, not
-  inferred: unpack the published equipop-1.17.3.tar.gz and 39 of its
-  41 ArcGIS tests fail immediately on the missing EquiPop.pyt. An
-  academic package also went out without its citation file.
-  Long-standing (no MANIFEST.in had ever existed) and not caused by
-  the shared core, but 1.18.0 makes it matter more: the toolbox and
-  the package are now two halves of one thing. MANIFEST.in added;
-  the Book's figures stay out because build.sh regenerates them
-  (4.2 MB of a 4.8 MB archive). Archive now 121 files, 605 KB, and
-  the whole suite - all 154 - passes from inside the unpacked
-  archive alone.
 
 ## v1.18.1 (one-line fix, found from John's upgrade routine)
 - The toolbox told the wrong story for the LIKELY half of version
@@ -615,34 +742,6 @@ small batch after.
   to fail against the old message. 155 tests.
 
 ### Found while ruling on the conformance reference (for 1.19.0)
-- ~~47~~ | DONE v1.19.0 | **`load()` fails for anyone who installed from PyPI.**
-  All four datasets: `gridby` reaches into `../examples/` for
-  make_gridby.py, and `municipality`/`berlin`/`stata_test` reach into
-  `../tests/` and `../stata/` - none of which is in the wheel.
-  Verified in a clean venv against the 1.18.1 wheel: four failures
-  out of four. Book chapter 1 line 85 tells the reader to type
-  `g = load("gridby")` as their first act. Gridby is the TEACHING
-  town, so this is the first thing a student hits. MANIFEST.in fixed
-  the source archive; the WHEEL is a separate matter and is what
-  students actually install. Fix: move the Gridby generator into the
-  package (`equipop/gridby.py`, with examples/make_gridby.py left as
-  a shim), ship the small fixtures as package data, and declare them
-  in pyproject so they enter the wheel. Then a clean-venv test that
-  loads all four - the kind of check that only fails outside the
-  repo, which is why it has never fired.
-- ~~48~~ | DONE v1.19.0 | The cross-door conformance reference (ruling made,
-  1.18 session). Format: CSV, UTF-8, dot decimal, comma separator,
-  fixed column order - every door reads and writes it natively, and
-  a student can open it in Excel. It ships INSIDE the package
-  (`equipop/data/`) so all four doors and every student reach it the
-  same way whatever their install. Generated by the Python core -
-  already the trusted engine - from Gridby at a fixed, documented
-  parameter set. Comparison lives in `equipop.doors` so Pro, QGIS,
-  Stata and SPSS all judge themselves identically: counts and Rounds
-  EXACT (they are integers), continuous columns within a stated
-  tolerance. Blocked on 47: shipping data inside the package is the
-  same fix.
-
 
 ## v1.19.0 (the teaching data ships; the doors get an answer key)
 - ~~47~~ DONE. Gridby's generator moved into the package
@@ -661,11 +760,6 @@ small batch after.
 - NEXT: the QGIS Processing plugin (BACKLOG 39 part 2). It now has
   both halves of its foundation - the shared core to build on, and
   the reference to be judged by from its first day.
-- 49 | open | The reference covers counts and stats. Friction,
-  slope, fca and lisa are not in it. Worth extending once a second
-  door exists to prove the mechanism, rather than guessing now what
-  a door will need.
-
 
 ## v1.20.0 (the QGIS door)
 - ~~39 part 2~~ DONE. qgis/equipop_qgis/ - provider, plugin scaffold,
@@ -684,39 +778,6 @@ small batch after.
   where sys.executable cannot be the wrong interpreter).
 
 ### Open, in priority order (John's arrangement, 1.19 session)
-- 50 | PARTLY DONE v1.21.0 | QGIS gained the CATEGORY TABLE (with the
-  remainder box) and DISTANCE DECAY. Still missing: BARRIERS and
-  TERRAIN, which need the friction-building path (points/paths to
-  friction, DEM slope) ported to read QGIS layers. Same engine
-  underneath. Same shared code underneath - boxes to add,
-  not machinery to build. The remainder box (below) should land here
-  at the same time.
-- ~~51~~ | DONE v1.21.0 | THE REMAINDER BOX (agreed with John, 1.19 session):
-  one box under the category table - "Put every other value in this
-  group:" - so a few values can be named 'service' and everything
-  else falls into 'other', in the population. Today the only way is
-  to untick every 'In population?' box, which reads backwards. Build
-  the rule in the engine and the help in the shared core so BOTH
-  doors get it.
-- ~~52~~ | CLOSED v1.22.2 as NOT OURS | GeoPackage attribute table does not refresh after a
-  run (John, field, 1.19 session). The toolbox writes with
-  ExtendTable and declares NO derived output, so Pro keeps its
-  cached schema; removing and re-adding the layer forces a re-read,
-  which is the workaround John found. Likely fix: declare the
-  modified layer as a derived output parameter. UNVERIFIED - needs a
-  field cycle on Malta.gpkg AND on a file geodatabase.
-- 34/44 | open | Tool help page summary/usage renders empty in Pro;
-  SyncOnce=TRUE suspected, one line in make_help_xml.py. Needs a
-  field cycle. Students read this page.
-- 42 | open | docs/manual/ never describes variable-bandwidth decay.
-  WRITING session.
-- 43 | open | CITATION.cff still says version 1.0.0.
-- 49 | open | The reference covers counts and stats; friction,
-  slope, fca and lisa are not in it. Now that a second door exists
-  and the mechanism is proved, this is worth doing.
-- 38 | open | Continental tiling into the GUI. Paused by John.
-- 45 | open | Tests leave literal C:\Data\... files in the repo root.
-
 
 ## v1.21.0 (Malta: three GeoPackage findings + the remainder box)
 - ~~46 (Malta a)~~ category dropdown: read through the layer OBJECT,
@@ -733,12 +794,6 @@ small batch after.
   group counts -> zero; continuous values -> excluded, Nv reports.
 - QGIS: category table + remainder + decay. Fixed: the QGIS reader
   forced text columns to NaN.
-- ~~53~~ | DONE v1.22.1 | The barrier path went through the same
-  _ref(), so the catalogPath fix closes it too - though a barrier
-  from a .gpkg still has not been FIELD-tested.
-- 54 | open | Gridby has NO missing data, so the missing-data rules
-  are tested only on small fixtures. A Gridby variant with holes
-  punched in it would test the documented rule properly.
 
 ## v1.21.1 (the Groups section, made legible)
 - Placement bug from 1.21.0: restgroup/restinpop had no SECTION, so
@@ -750,10 +805,6 @@ small batch after.
   live in both, since it applies to both.
 - Labels: the remainder box asks for a group NAME with an example.
 - QGIS: same clarity by ordering and wording (no sections there).
-- 55 | open | The dialog-structure tests assert Pro's `category` and
-  `enabled`; the simulator honours both, but only a real Pro can say
-  whether the three headings read well on screen. Worth a look in
-  the next field cycle.
 
 ## v1.22.0 (two populations)
 - The dialog reorganised around REFERENCE and TREATMENT populations,
@@ -772,12 +823,6 @@ small batch after.
   reference table exists.
 - Warnings appear beside their fix AND at top level, since Pro hides
   a warning inside a collapsed section (John, field).
-- 56 | open | Machine 2 (Value Statistics) still uses the old
-  vocabulary - "Full population field", "Numeric value fields". It
-  should be reference-population language too, for the same reason.
-- 57 | open | The old single-table path (cat_rows) is kept in
-  _run_tool for compatibility but is no longer reachable from the
-  dialog. Retire once John confirms no saved tools depend on it.
 
 ## v1.22.1 (the one-line root of the Malta round)
 - _ref() now resolves through arcpy.Describe(value).catalogPath, for
@@ -790,8 +835,6 @@ small batch after.
   (latently) the barriers all used the same helper.
 - The simulator models it: the layer is refused, the catalog path is
   accepted, and a catalog path resolves back to its layer.
-- 58 | open | A GeoPackage barrier layer has still never been run in
-  the field. The code path is now believed sound; only Pro can say.
 
 ## v1.22.2 (rows outside the reference; the GeoPackage verdict)
 - keep_outside (default TRUE, John's ruling): a row outside the
@@ -806,10 +849,6 @@ small batch after.
   Pro 3.0.2 through 3.5.2, and the same files behave normally in
   QGIS. The dialog now warns at DIALOG time and points at Output =
   New feature class.
-- 59 | open | Does the QGIS door refresh GeoPackage fields properly?
-  Expected yes (OGC format, QGIS's native default). If so it is a
-  real argument for teaching on QGIS with .gpkg data - worth knowing
-  before September.
 
 ## v1.23.0 (the ladder made visible)
 - refmode / treatmode: three rungs each, simplest first, with the
@@ -827,12 +866,6 @@ small batch after.
   the reference population. Verified empirically: two locations, 10
   people at 100 and 1 person at 1000, give the weighted 181.82 and
   not the unweighted 550, with Nv reporting 11 persons not 2 rows.
-- 60 | open | MACHINE 2 still uses the old vocabulary and has no
-  ladder. Same treatment needed: a reference-population section with
-  the same three rungs, and value fields named as values (weighted
-  by the reference), not as "treatment".
-- 61 | open | The dialog structure is simulator-proved only. Whether
-  three rungs and the greying READ well in Pro is John's call.
 
 ## v1.24.0 (four write-path bugs from one evening in the field)
 - outfc/outtable declared direction="Output". Every parameter was an
@@ -849,10 +882,6 @@ small batch after.
   unsupported and the symptoms match exactly.
 - Dialog-time checks: missing output path, synced folder, shapefile
   in an open map.
-- 62 | open | The shapefile-in-a-map warning fires whenever the
-  input is a .shp and the output is not a new feature class. It may
-  be too eager - a shapefile NOT in a map is fine, and the toolbox
-  cannot tell from the path alone. Watch whether it becomes noise.
 
 ## v1.25.0 (QGIS layout; a parity gap)
 - FOUND: 1.23.0's QGIS edit half-applied - refmode never reached the
@@ -864,16 +893,6 @@ small batch after.
   ladder order, tooltips from the shared help.
 - qgisMinimumVersion 3.16 -> 3.28, with "tested on 3.42" stated.
 - [stata] full population now names the total.
-- ~~63~~ | DONE v1.26.0 | Barriers and terrain in QGIS. Deferred
-  again rather than started half-finished - it needs the friction
-  building path (points/paths to friction, DEM slope) ported to read
-  QGIS layers, which is a round of its own.
-- 64 | open | MACHINE 2 vocabulary (was 60) - not started.
-- 65 | open | The OneDrive warning did not fire on John's run. Most
-  likely that run predates 1.24.0; confirm before hunting.
-- 66 | open | Editing multi-line Python by blind string replacement
-  damaged alg_counts.py this round; recovered from the release zip.
-  Read the real text first (view/sed), then str_replace against it.
 
 ## v1.26.0 (barriers and terrain in QGIS)
 - qgis/equipop_qgis/barriers.py: vector barriers (points, lines,
@@ -887,13 +906,6 @@ small batch after.
   an entry in the shared help, rather than requiring identical
   widget names. Pro's barrier VALUE TABLE and QGIS's layer+field are
   the same idea in two hosts.
-- 67 | open | QGIS barriers are simulator-proved only. The ArcGIS
-  round is the evidence for how far that is from proved.
-- 68 | open | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
-  of calculation (John, field, 8730 points). read_points builds a
-  Python list of features and loops per attribute. Worth optimising
-  before continental work.
-- 69 | open | MACHINE 2 vocabulary - still not started (was 64).
 
 ## v1.26.1 (Malta's barrier day)
 - The barrier was reprojected against the layer's ARRIVAL CRS, not
@@ -907,16 +919,6 @@ small batch after.
 - The effort engine emitted T_/R_ with no treatment given. Fixed in
   friction.py and the merge in stata_bridge.py; the counts engine
   was already right.
-- ~~70~~ | DONE v1.27.0 | FACILITATORS (John's academic question, worth a real
-  answer). Entering a cell costs 1 + friction, so a facilitator is a
-  value between -1 and 0: -0.5 halves the cost of a cell, -0.9 makes
-  it a tenth. The engine currently refuses anything below zero,
-  which is stricter than the mathematics requires - the true floor
-  is -1, where movement becomes free. Relaxing it would let
-  motorways be modelled as genuinely faster, the natural counterpart
-  to barriers for accessibility work. Needs a decision on what
-  happens at exactly -1 and whether the shortest-path expansion
-  stays well-behaved.
 
 ## v1.27.0 (facilitators)
 - Costs may now go below zero, down to but not including -1.
@@ -929,12 +931,231 @@ small batch after.
   one cell, checked BEFORE the engine's value validation.
 - check_versions(): plugin and package versions compared, since the
   contract number only moves on structural change.
-- 71 | open | The ArcGIS door has no facilitator help text yet and
+
+## v1.28.0 (the invented decay models; the Book's friction chapter)
+- equipop/doors/decaynames.py: the decay list is BUILT from
+  equipop.decay.MODELS, with a plain-words gloss per model and a
+  parser back to the engine's name. Both doors use it. A test
+  asserts every offered label maps to a real model.
+- QGIS had offered "gauss" and "linear" - neither exists. The
+  Gaussian is expnormal and was missing from the list that invented
+  them.
+- curve_in_plain_numbers(): the curve printed from the engine's own
+  weight function, not an assumed shape.
+- BOOK ch09: "What the number actually means" (friction as a delay
+  in rounds; the table from 3 down to -1; barriers and facilitators
+  as one dial) and "What happens to Dist_k when effort is on"
+  (the neighbourhood is gathered by effort, so membership changes;
+  Dist_k is not a radius; the two-run comparison). Pitfalls gained
+  the facilitator cautions: a motorway facilitates a driver and
+  bars a pedestrian, and a dial applied uniformly has no contrast
+  left to measure.
+
+## v1.29.0 (machine 2 learns the words; the parity gap nobody had looked at)
+
+- MACHINE 2 VOCABULARY (56, and its four re-adds 60/64/69/75). Value
+  Statistics said "Full population field" and "Numeric value fields";
+  machine 1 has said REFERENCE population / TREATMENT population since
+  1.22.0. The boxes now read "Reference population: count field - how
+  many each row stands for" and "Treatment values", and the section
+  headings match machine 1's.
+- THE GAP FOUND ON THE WAY. Pro called that box `fullpop`; QGIS has
+  called it `pop` since 1.20.0. The shared help carried BOTH, with
+  different words - one box explained twice, differently, which is
+  precisely what the parity test's docstring forbids. It survived nine
+  releases because the both-ways check of 1.25.0 was written for
+  MACHINE 1 and machine 2 was only ever asked whether each box had
+  *some* help text. That passes when the doors disagree about names.
+- THE FIX THAT OUTLIVES IT: tests/door_parity.py. The shared box list
+  moved out of the QGIS test, where it could only describe QGIS, and
+  is now checked against BOTH doors and BOTH machines. Proved to fail:
+  restoring `fullpop` gives "Pro's Value Statistics is missing ['pop']".
+- BY-NAME READING (groundwork for 76). Machine 2 read its sixteen
+  boxes by POSITION. The deferred ladder inserts boxes in the middle,
+  shifting every index after it - and a shifted index does not raise,
+  it reads the neighbouring box and succeeds. All three methods now
+  address boxes by name, as machine 1 has since 1.16.6. Proved to
+  fail: one line reverted plus a spare box gives 8 result columns
+  instead of 10. The FIRST version of that guard passed against the
+  broken code, because the simulated arcpy keeps one table across
+  runs and a run that did nothing still showed the previous columns;
+  each run now gets a fresh simulator. Worth remembering as the shape
+  of a useless test.
+- FACILITATORS IN THE WORDS (71/74). Shipped in 1.27, never mentioned
+  in the help either door shows. Now stated where both read it, with
+  the delay rule that makes the sign make sense.
+- NEUTRAL VOCABULARY (John's ruling): a point may stand for people,
+  jobs, dwellings or services, so the shared `pop` entry no longer
+  says "persons". The other fifteen occurrences are item 77 and were
+  deliberately left for a pass John can see before it lands.
+- THIS FILE, at last, in the order agreed in the 1.19 session.
+- The LADDER was deferred by John and is item 76.
+- 264 tests (259 + 5). Nothing run in Pro or QGIS.
+
+## Done
+
+- ~~1~~ | DONE v0.7 | Seeded tie-break orientation: a user-settable seed determining the within-ring visiting order in `tie_mode="sequential"`, with the seed written to the metadata log (`settings.seed`) | Ring mode unaffected (order-free by design). Makes sequential mode fully reproducible.
+
+- ~~2~~ | DONE v0.7 | Metadata log file — full design agreed, see below | Implement as one batch; pairs with #1.
+
+- ~~3~~ | DONE v0.7 (convert path; 6-neighbour hex friction remains) | Hexagonal grids: convert or simply import point/raster data as hexagons (X/Y/Z axial or cube coordinates) | From the original spec. Design thoughts below.
+
+- ~~5~~ | DONE v0.9 (repo built; publish + PyPI-name check remain manual steps) | GitHub sharing preparation | Strategy: repo layout (src/equipop, tests/, examples/, docs/); pyproject.toml with optional extras [geo]=geopandas,rasterio [fast]=scipy [xl]=openpyxl,pyarrow; turn the demo validations into pytest suite (Berlin regression, Sweden brute-force, wall test, decay properties, Malta totals); LICENSE decision (MIT vs EUPL - user choice); CITATION.cff pointing at the EquiPop papers; README = trimmed manual quick starts; GitHub Actions CI running pytest on push; versioning via git tags matching manual history; CONTRIBUTING with the design-decision log as ground rules; publish to PyPI when named (see naming note in spec).
+
+- ~~6~~ | DONE v0.8 (evenness+exposure; delta/concentration family awaits the area-term decision) | Segregation index module (per US Census formulary + Östh/Clark/Malmberg 2015) | Aggregate indices computed FROM k-NN output across all origins i, per k: Spatial Isolation SI_k = sum(x_i * (x_ik/k)) / sum(x_i) (the 2015 paper's measure - weight each origin's k-share by its own minority count); interaction (x->y) analogue; Dissimilarity D_k = 0.5*sum|x_i/X - y_i/Y| over bespoke neighbourhoods; entropy/Theil H_k; Gini_k (segregation form, from the census formulary, distinct from the inequality Gini already implemented); Atkinson(b); correlation ratio (I-P)/(1-P); delta & concentration family needs area a_i = k-neighbourhood footprint (Dist_k-derived) - flag as derived-area caveat. Design: segregation.py taking a run_knn(_stats) output DataFrame + k list, returning one row per k per index - i.e. POST-ANALYSIS on existing output, no engine change. Validate against Table A4 style numbers (SI for k=100/6400) when a suitable dataset exists.
+
+- ~~7~~ | Stata part DONE v1.1 (bridge pytest-tested; ado sfi-glue awaits first in-Stata run); QGIS part remains | Stata & QGIS availability | QGIS: ships Python - short term a processing-toolbox script (paste-in) calling equipop if installed in the QGIS python (pip install via OSGeo shell); mid term a minimal plugin wrapping InData->run->load-result-as-layer. ArcGIS Pro: arcpy python env can pip install equipop (conda-based env cloning), no plugin needed for script use. Stata: no embedded CPython officially until recent versions - Stata 16+ HAS python integration: `python:` blocks share data via sfi (Scala Function Interface) Data class; strategy = thin equipop_stata.ado + python glue: read frame via sfi.Data.get(), run equipop, write back new variables via sfi.Data.addVarDouble()+store - enabling the requested regress->knn->regress round trip entirely inside Stata. Deliverable order: (1) plain .do example with python block, (2) ado wrapper, (3) QGIS processing script, (4) QGIS plugin.
+
+- ~~8~~ | DONE v0.8 | Map visualisation of output + export | matplotlib-based map_output(df, column, classing=quantiles/equal/sd/jenks, n_classes, basemap=None/simple-extent, north arrow + scale bar + legend with class bounds); jenks via jenkspy (small pip dep) with fallback to quantiles; hexagons drawn as polygons, grid as squares; export .png/.svg/.pdf via savefig plus data export of the classed column (save_output already covers gpkg for GIS styling). Colour: viridis default, diverging option for ratio-around-mean. Keep it deliberately simple - QGIS is the real GIS; this is quick-look QC.
+
+- ~~9~~ | DONE v0.8 (all three alternatives) | Area-based output (policy-friendly aggregation of k-NN results) | Three alternatives, same principle - bring overlapping bespoke-neighbourhood output back to fixed geographies that policy makers grasp: **Alt 1** user-provided belonging ID (location/municipality code already on the data; label_col/CellId machinery is the natural carrier) -> aggregate any output column per ID (mean/median/pop-weighted mean, N). **Alt 2** uploaded polygons (shp/gpkg municipalities) -> point-in-polygon assignment of origin cells (geopandas sjoin), then as Alt 1. **Alt 3** coarse grid/hex scales - e.g. 100 m results aggregated to 1000/5000 m super-cells; aggregation origin anchored at min X/Y/(Z). Design: one post-analysis function `aggregate_output(df, by=..., how=...)`; document explicitly that overlap-then-aggregate is intentional (bespoke values summarised per area, not area-recomputed) so reviewers don't mistake it for a contradiction. Pairs naturally with #6 (per-area index reporting) and #8 (choropleths per area).
+
+- ~~10~~ | DONE v0.9 (MANUAL_TOPICS.md) | Topic-based beginner manual | Restructure the manual by TOPIC rather than version/dataset: Installation; File formats & data management; Projections; Grids or hexagons; Selecting k-values; Determining decay; Determining friction; Statistics; Segregation measures; Area output; Metadata & reproducibility; Troubleshooting. Keep the current version-history + validation-record + design-decision log as appendices (they are the scientific audit trail). Write once the v0.8 feature set lands so topics stabilise; each topic = concept in plain language -> minimal example -> settings table -> pitfalls.
+
+
+- ~~30~~ | DONE v1.17 | Category & friction VALUE TABLES in the Pro dialogs (John's Extract-Multi-Values pattern): a grid with *value* (dropdown built from the field's own distinct values), *group name*, *in population?* - retires the `;`/`,`/`:` syntax entirely and expresses "in a group but not in the population" (services near residents). Same grid for MULTI-SOURCE friction: source + friction field per row, so lines + lake + raster finally coexist and the overlap rule becomes reachable at all | Field-found: `shop, school` parsed as ONE group matching zero rows; also today's only way to combine barriers is a single layer
+
+- ~~31~~ | DONE v1.17 | Persons-versus-places rule for category groups: with a population field set, N counts PERSONS while category flags count ROWS, so R = places / persons silently. Add an explicit control (default: weight categories by the population field) and state it in the messages and manifest | Field-found: T=4 places over N=140 persons
+
+- ~~32~~ | DONE v1.17 | A group/category matching ZERO rows must be a dialog-time REFUSAL naming the field's actual values, not an info line among fourteen | Silent columns of zeros are exactly the wrongness EquiPop refuses elsewhere
+
+- ~~33~~ | DONE v1.17 | Collapsible dialog sections via each parameter's `category` property (Coordinates / Neighbourhood / Groups / Barriers and terrain / Output / Advanced) + a full label pass saying what each box DOES | 29 parameters presented at once; John: "they were not fully clear to me watching the menu"
+
+- ~~35~~ | DONE v1.17 | Individual / local TAU (effort budget from a field or a single value), mirroring variable-bandwidth decay. Easier than decay: the traversal already stops at a budget, so a per-origin budget is just a different stopping value. Naming: N_tau_<field> since the column can no longer carry the number | John: tau is the HARD prism boundary, half-life the soft one - both parameterisable per person is a time-geographic instrument
+
+- ~~36~~ | DONE v1.17 | Variable-bandwidth decay (the 1.17 theme): half-life from a field or self-calibrated from Dist_k (urban form sets the bandwidth); bucket into quantile bins so cost is dominated by the largest bin; combine several potentials via log-odds / geometric mean of half-lives, all three behind one switch and compared on Gridby | John's ladder: 1 no decay, 2 one parameter, 3 group potentials (Hägerstrand prisms), 4 form-derived, 5 principled merger
+
+- ~~37~~ | DONE v1.17 | Seed exposure + manifest entry wherever permutations happen (morans_i, sequential tie-break). Engines are otherwise deterministic - note in the manual that this holds as long as summation order does |
+
+- ~~39~~ | PARTS 1-2 DONE v1.20.0 | ~~Shared core ahead of the QGIS/R/SPSS doors: one help-text source, one reporter object, one loader contract~~ - DELIVERED as `equipop.doors` (help / report / fields / loader), ArcGIS re-pointed, 154 tests green. REMAINING: QGIS Processing plugin (simulated PyQGIS like the fake arcpy), R via reticulate (file bridge as documented fallback), SPSS via its Python integration. Gridby's answer key becomes the cross-door conformance suite | The ArcGIS glue got fat because three things were reinvented per door
+
+- 46 | DONE v1.18.0 | The `.tar.gz` carried the package and the test
+  CODE but not the ArcGIS toolbox, the Stata door, the fixtures its
+  own tests read, or CITATION.cff. Verified against PyPI, not
+  inferred: unpack the published equipop-1.17.3.tar.gz and 39 of its
+  41 ArcGIS tests fail immediately on the missing EquiPop.pyt. An
+  academic package also went out without its citation file.
+  Long-standing (no MANIFEST.in had ever existed) and not caused by
+  the shared core, but 1.18.0 makes it matter more: the toolbox and
+  the package are now two halves of one thing. MANIFEST.in added;
+  the Book's figures stay out because build.sh regenerates them
+  (4.2 MB of a 4.8 MB archive). Archive now 121 files, 605 KB, and
+  the whole suite - all 154 - passes from inside the unpacked
+  archive alone.
+
+
+- ~~47~~ | DONE v1.19.0 | **`load()` fails for anyone who installed from PyPI.**
+  All four datasets: `gridby` reaches into `../examples/` for
+  make_gridby.py, and `municipality`/`berlin`/`stata_test` reach into
+  `../tests/` and `../stata/` - none of which is in the wheel.
+  Verified in a clean venv against the 1.18.1 wheel: four failures
+  out of four. Book chapter 1 line 85 tells the reader to type
+  `g = load("gridby")` as their first act. Gridby is the TEACHING
+  town, so this is the first thing a student hits. MANIFEST.in fixed
+  the source archive; the WHEEL is a separate matter and is what
+  students actually install. Fix: move the Gridby generator into the
+  package (`equipop/gridby.py`, with examples/make_gridby.py left as
+  a shim), ship the small fixtures as package data, and declare them
+  in pyproject so they enter the wheel. Then a clean-venv test that
+  loads all four - the kind of check that only fails outside the
+  repo, which is why it has never fired.
+
+- ~~48~~ | DONE v1.19.0 | The cross-door conformance reference (ruling made,
+  1.18 session). Format: CSV, UTF-8, dot decimal, comma separator,
+  fixed column order - every door reads and writes it natively, and
+  a student can open it in Excel. It ships INSIDE the package
+  (`equipop/data/`) so all four doors and every student reach it the
+  same way whatever their install. Generated by the Python core -
+  already the trusted engine - from Gridby at a fixed, documented
+  parameter set. Comparison lives in `equipop.doors` so Pro, QGIS,
+  Stata and SPSS all judge themselves identically: counts and Rounds
+  EXACT (they are integers), continuous columns within a stated
+  tolerance. Blocked on 47: shipping data inside the package is the
+  same fix.
+
+
+
+- 50 | PARTLY DONE v1.21.0 | QGIS gained the CATEGORY TABLE (with the
+  remainder box) and DISTANCE DECAY. Still missing: BARRIERS and
+  TERRAIN, which need the friction-building path (points/paths to
+  friction, DEM slope) ported to read QGIS layers. Same engine
+  underneath. Same shared code underneath - boxes to add,
+  not machinery to build. The remainder box (below) should land here
+  at the same time.
+
+- ~~51~~ | DONE v1.21.0 | THE REMAINDER BOX (agreed with John, 1.19 session):
+  one box under the category table - "Put every other value in this
+  group:" - so a few values can be named 'service' and everything
+  else falls into 'other', in the population. Today the only way is
+  to untick every 'In population?' box, which reads backwards. Build
+  the rule in the engine and the help in the shared core so BOTH
+  doors get it.
+
+- ~~52~~ | CLOSED v1.22.2 as NOT OURS | GeoPackage attribute table does not refresh after a
+  run (John, field, 1.19 session). The toolbox writes with
+  ExtendTable and declares NO derived output, so Pro keeps its
+  cached schema; removing and re-adding the layer forces a re-read,
+  which is the workaround John found. Likely fix: declare the
+  modified layer as a derived output parameter. UNVERIFIED - needs a
+  field cycle on Malta.gpkg AND on a file geodatabase.
+- 34/44 | open | Tool help page summary/usage renders empty in Pro;
+  SyncOnce=TRUE suspected, one line in make_help_xml.py. Needs a
+  field cycle. Students read this page.
+
+- ~~53~~ | DONE v1.22.1 | The barrier path went through the same
+  _ref(), so the catalogPath fix closes it too - though a barrier
+  from a .gpkg still has not been FIELD-tested.
+
+- ~~56~~ | DONE v1.29.0 | Machine 2 (Value Statistics) still uses the old
+  vocabulary - "Full population field", "Numeric value fields". It
+  should be reference-population language too, for the same reason.
+
+- ~~60~~ | DONE v1.29.0 (merged into 56) | MACHINE 2 still uses the old vocabulary and has no
+  ladder. Same treatment needed: a reference-population section with
+  the same three rungs, and value fields named as values (weighted
+  by the reference), not as "treatment".
+
+- ~~63~~ | DONE v1.26.0 | Barriers and terrain in QGIS. Deferred
+  again rather than started half-finished - it needs the friction
+  building path (points/paths to friction, DEM slope) ported to read
+  QGIS layers, which is a round of its own.
+
+- ~~64~~ | DONE v1.29.0 (merged into 56) | MACHINE 2 vocabulary (was 60) - not started.
+
+- ~~69~~ | DONE v1.29.0 (merged into 56) | MACHINE 2 vocabulary - still not started (was 64).
+
+
+- ~~70~~ | DONE v1.27.0 | FACILITATORS (John's academic question, worth a real
+  answer). Entering a cell costs 1 + friction, so a facilitator is a
+  value between -1 and 0: -0.5 halves the cost of a cell, -0.9 makes
+  it a tenth. The engine currently refuses anything below zero,
+  which is stricter than the mathematics requires - the true floor
+  is -1, where movement becomes free. Relaxing it would let
+  motorways be modelled as genuinely faster, the natural counterpart
+  to barriers for accessibility work. Needs a decision on what
+  happens at exactly -1 and whether the shortest-path expansion
+  stays well-behaved.
+
+
+- ~~71~~ | DONE v1.29.0 | The ArcGIS door has no facilitator help text yet and
   its barrier help still says costs must be positive. Same for the
   Book (ch09) - queued with the friction/delay writing session.
-- 72 | open | Dist_k under effort is NOT a radius: the neighbourhood
+
+- ~~72~~ | DONE v1.28.0 (Book ch09) | Dist_k under effort is NOT a radius: the neighbourhood
   is a shape moulded by the cost surface, and Dist_k is how far away
   the last person reached happened to be. Comparing Dist_k with and
   without a barrier measures how much the barrier REARRANGED the
   world. Worth a paragraph in the book (John's insight, and Claude
   was wrong about it first).
+
+
+- ~~73~~ | DONE v1.28.0 | The barrier/terrain block moved into
+  QGIS's Advanced area (16 everyday boxes, 11 advanced), and the
+  help panel names what is in there - Pro's collapsed section shows
+  its title, QGIS's Advanced area does not.
+
+- ~~74~~ | DONE v1.29.0 (merged into 71) | The ArcGIS help text still says friction costs must be
+  positive; it predates facilitators. Book ch10 (slopes) may need
+  the same pass.
+
+- ~~75~~ | DONE v1.29.0 (merged into 56) | MACHINE 2 vocabulary - carried forward again.

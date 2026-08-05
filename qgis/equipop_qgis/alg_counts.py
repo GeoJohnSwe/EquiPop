@@ -18,7 +18,14 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString)
 
-DECAY_MODELS = ["no decay", "negexp", "gauss", "linear"]
+def _decay_choices():
+    """From the ENGINE, never from memory (v1.28): the old list
+    offered 'gauss' and 'linear', neither of which exists."""
+    from equipop.doors.decaynames import choices
+    return choices()
+
+
+DECAY_MODELS = _decay_choices()
 
 # The same ladder as the ArcGIS door, in the same order. QGIS has no
 # collapsible sections and no dependable greying, so here the ladder
@@ -123,24 +130,35 @@ class CountsAndShares(EquipopAlgorithm):
             type=QgsProcessingParameterNumber.Double))
 
         # --- barriers and terrain: distance becomes EFFORT ---------
+        # The whole block goes into QGIS's Advanced area (v1.28,
+        # John): six boxes that most runs never touch, and the
+        # largest single source of clutter in a flat list. The help
+        # panel says where they went, because unlike Pro's collapsed
+        # section - which still shows its name - Advanced does not
+        # advertise what is inside, and a student would never
+        # discover the effort engine exists.
         self.add(QgsProcessingParameterFeatureSource(
             "barrier", "5 \u25b8 barrier layer - a river, railway or "
             "lake that costs effort to cross (optional)",
-            [QgsProcessing.TypeVectorAnyGeometry], optional=True))
+            [QgsProcessing.TypeVectorAnyGeometry], optional=True),
+            advanced=True)
         self.add(QgsProcessingParameterField(
             "barrierfield", "5a \u25b8 ...its friction field - the "
-            "crossing cost in rounds",
-            parentLayerParameterName="barrier", optional=True))
+            "crossing cost in rounds (positive deters, negative "
+            "carries: 3 is a river, -0.9 a motorway)",
+            parentLayerParameterName="barrier", optional=True),
+            advanced=True)
         self.add(QgsProcessingParameterRasterLayer(
             "barrierraster", "5b \u25b8 ...or a friction RASTER "
-            "(cost per cell; NoData or zero = free)", optional=True))
+            "(cost per cell; NoData or zero = free)", optional=True),
+            advanced=True)
         self.add(QgsProcessingParameterRasterLayer(
             "dem", "5c \u25b8 ...and/or an elevation raster, so "
-            "SLOPE costs effort", optional=True))
+            "SLOPE costs effort", optional=True), advanced=True)
         self.add(QgsProcessingParameterString(
             "tau", "5d \u25b8 effort budgets, space separated - how "
             "many rounds each person may spend (gives N_tau columns)",
-            optional=True))
+            optional=True), advanced=True)
         self.add(QgsProcessingParameterBoolean(
             "roundtrip", "5e \u25b8 charge the return journey too "
             "(there and back)", defaultValue=False), advanced=True)
@@ -186,10 +204,12 @@ class CountsAndShares(EquipopAlgorithm):
                [None])[0]
         treats = self.parameterAsFields(parameters, "treat", context)
 
-        model = DECAY_MODELS[(self.parameterAsEnums(
-            parameters, "model", context) or [0])[0]]
+        from equipop.doors.decaynames import (curve_in_plain_numbers,
+                                               model_from_choice)
+        model = model_from_choice(DECAY_MODELS[(self.parameterAsEnums(
+            parameters, "model", context) or [0])[0]])
         half = self.parameterAsDouble(parameters, "halflife", context)
-        decaying = model != "no decay" and half > 0
+        decaying = model is not None and half > 0
 
         names = predict_result_fields(
             "counts", k_text, r_text, "", treats, [], [],
@@ -211,7 +231,7 @@ class CountsAndShares(EquipopAlgorithm):
             eps = self.parameterAsDouble(parameters, "decayeps",
                                          context)
             kw["decay_eps"] = float(eps) if eps > 0 else 1e-6
-            ch.info(self._decay_in_plain_numbers(model, half))
+            ch.info(curve_in_plain_numbers(model, half))
         if k_text:
             kw["k_values"] = [int(v) for v in k_text.split()]
         if r_text:

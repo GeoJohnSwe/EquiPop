@@ -100,10 +100,28 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
 
     def shortHelpString(self):
         """QGIS keeps help in the algorithm class - there is no
-        sidecar XML as in Pro - but the WORDS are the same words."""
+        sidecar XML as in Pro - but the WORDS are the same words.
+
+        The note about Advanced is not decoration: Pro shows a
+        COLLAPSED section still labelled "Barriers and terrain", so
+        it advertises itself even when shut. QGIS's Advanced area
+        does not say what is inside, so a reader who never opens it
+        would not learn that the effort engine exists.
+        """
         from equipop.doors.help import summary_for, usage_for
         tool = self.EQP_TOOL
-        return f"<p>{summary_for(tool)}</p><p>{usage_for(tool)}</p>"
+        extra = ""
+        if any(p.isAdvanced() for p in self.parameterDefinitions()):
+            extra = (
+                "<p><b>Under Advanced parameters</b> (the arrow below "
+                "the boxes): barriers and terrain - a river, railway "
+                "or lake that costs effort to cross, a friction "
+                "raster, an elevation raster so slope costs effort, "
+                "and effort budgets. Also the cell size, which is the "
+                "speed control, and the X/Y fields for tables with no "
+                "geometry.</p>")
+        return (f"<p>{summary_for(tool)}</p><p>{usage_for(tool)}</p>"
+                + extra)
 
     def add(self, param, advanced=False):
         """Add a parameter, attach its shared explanation, and

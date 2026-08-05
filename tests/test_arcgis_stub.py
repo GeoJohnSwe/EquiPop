@@ -628,7 +628,7 @@ def test_pyt_table_guessed_xy_and_degrees_refused(tmp_path):
         pyt._run_tool("counts", "people", msg, k_text="5")
 
 
-def test_pyt_machine2_fullpop_and_selected_measures():
+def test_pyt_machine2_count_field_and_selected_measures():
     """Machine 2 v1.16: full-population field weights everything
     (k counts PERSONS); ONLY ticked measures are calculated;
     percentiles come from the plain-numbers box; gini on a negative
@@ -672,6 +672,54 @@ def test_pyt_machine2_fullpop_and_selected_measures():
         pyt._run_tool("stats", "people", msg, value_fields=["income"],
                       stats_list=["percentiles"], pct_text="",
                       k_text="30")
+
+
+def test_pyt_machine2_reads_its_boxes_by_name_not_position():
+    """v1.29. Machine 1 stopped counting its boxes off by position in
+    1.16.6, after two bugs; machine 2 still did until now. The
+    reference ladder coming to this dialog inserts boxes in the
+    MIDDLE of the list, and under position-reading every box after
+    the insertion is read from its neighbour - values from measures,
+    k from the radii - while the run SUCCEEDS. Adding a box must
+    therefore change nothing at all."""
+    rng = np.random.default_rng(29)
+    n = 120
+    t = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                      "SHAPE@X": rng.uniform(0, 900, n),
+                      "SHAPE@Y": rng.uniform(0, 900, n),
+                      "Population": rng.integers(1, 9, n).astype(float),
+                      "income": rng.lognormal(10, 0.3, n)})
+
+    def _dialog_run(insert_a_box):
+        # a FRESH fake arcpy per run: its table persists in memory, so
+        # a run that quietly does nothing would otherwise still show
+        # the previous run's columns and the comparison would pass.
+        state = _install_fake_arcpy(t)
+        pyt = _load_pyt()
+        tool = pyt.ValueStatistics()
+        ps = tool.getParameterInfo()
+        pm = {p.name: p for p in ps}
+        pm["layer"].value = "people"
+        pm["pop"].value = "Population"
+        pm["values"].value = "income"
+        pm["measures"].value = "mean"
+        pm["k"].value = "40"
+        if insert_a_box:
+            spare = pyt._p("spare", "a box added in a later release",
+                           "GPString", required=False)
+            ps.insert(ps.index(pm["values"]), spare)
+        tool.updateParameters(ps)
+        tool.updateMessages(ps)
+        assert not [1 for p in ps for kind, _ in p.messages
+                    if kind == "ERROR"]
+        tool.execute(ps, _Messages())
+        return state["table"].copy()
+
+    plain = _dialog_run(False)
+    assert "Mean_income_40" in plain, \
+        "the plain run must produce the result column"
+    shifted = _dialog_run(True)
+    pd.testing.assert_frame_equal(plain, shifted)
 
 
 def test_pyt_barrier_polygon_raster_and_overlap_rules(tmp_path):
@@ -777,6 +825,40 @@ def test_pyt_dialogs_construct_like_pro():
     m2 = {p.name: p for p in pyt.ValueStatistics().getParameterInfo()}
     assert m2["measures"].filter.list == pyt._MEASURES
     assert m2["pcts"].value == "10 25 75 90"
+    # v1.29: machine 2 speaks machine 1's vocabulary
+    assert "fullpop" not in m2
+    assert {p.category for p in
+            pyt.ValueStatistics().getParameterInfo()} >= {
+        "Coordinates", "Neighbourhood",
+        "Reference population - who is around",
+        "Treatment values - what you measure", "Output"}
+
+
+def test_pro_offers_every_box_the_two_doors_share():
+    """v1.29, the other half of the parity check. The QGIS test has
+    asked since 1.25 whether QGIS is missing a box Pro has; nobody
+    ever asked it of Pro, and nobody asked it of machine 2 at all.
+    Pro's Value Statistics called its population box `fullpop` while
+    QGIS called it `pop` - one box, two names, two help entries, from
+    1.20.0 to 1.29, silently."""
+    from door_parity import CORE, CORE_M2
+    from equipop.doors.help import HELP
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    for cls, shared, label in (
+            (pyt.CountsShares, CORE, "Counts and Shares"),
+            (pyt.ValueStatistics, CORE_M2, "Value Statistics")):
+        names = {p.name for p in cls().getParameterInfo()}
+        missing = shared - names
+        assert not missing, (
+            f"Pro's {label} is missing {sorted(missing)} - the two "
+            "doors no longer name the same box the same way")
+    # and the shared words must exist for every shared box, or the
+    # two dialogs cannot explain it identically
+    no_help = sorted((CORE | CORE_M2) - set(HELP))
+    assert not no_help, f"no shared help entry for {no_help}"
 
 
 # --------------------------------------------- v1.16.2 field-report bugs

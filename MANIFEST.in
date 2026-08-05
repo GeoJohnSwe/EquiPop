@@ -24,6 +24,18 @@ graft qgis
 # uses moved into equipop/data in 1.19.0 and ride in the wheel.)
 graft tests/data
 
+# ...and the helper modules those tests IMPORT. setuptools ships
+# files named test*.py by an old default and nothing else beside
+# them, so tests/qgis_stub.py - the simulated PyQGIS, present since
+# 1.20.0 - had never entered a single archive. Every published
+# archive from 1.20.0 to 1.28.0 therefore cannot even COLLECT its
+# own test suite: `No module named 'qgis_stub'`. Found in 1.29.0 by
+# the check the conventions demand and which had evidently not been
+# run since 1.19.0 - unpack the .tar.gz into an empty directory and
+# run the whole suite from inside it. Same class of miss as the one
+# this file was written for.
+include tests/*.py
+
 # Worked examples, and the Book's sources.
 graft examples
 graft docs
