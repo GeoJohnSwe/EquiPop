@@ -328,7 +328,12 @@ class QgsFeatureSink:
 
 # ------------------------------------------------------- parameters
 class QgsProcessingParameterDefinition:
-    FlagAdvanced = 1
+    # 2, not 1 - the value real QGIS uses (John, 3.42.1,
+    # v1.29.1). Harmless in practice, since the flag is only
+    # ever ANDed against itself, but a stub that holds a value
+    # QGIS never produces is a stub telling a small lie, and
+    # this file's whole job is to tell the truth about QGIS.
+    FlagAdvanced = 2
     FlagOptional = 2
 
 
@@ -359,9 +364,10 @@ class _Param:
     def setFlags(self, f):
         self._flags = f
 
-    def isAdvanced(self):
-        return bool(self._flags
-                    & QgsProcessingParameterDefinition.FlagAdvanced)
+    # NO isAdvanced() - real PyQGIS has no such method (v1.29.1).
+    # This stub had one, so every test passed over a call that
+    # crashes in QGIS. A stub may be STRICTER than the real thing;
+    # where it is more generous it certifies code that cannot run.
 
 
 class QgsProcessingParameterFeatureSource(_Param):

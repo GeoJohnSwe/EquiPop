@@ -1,6 +1,6 @@
 item,value
-equipop_version,1.29.0
-run_utc,2026-08-04T20:28:46+00:00
+equipop_version,1.29.1
+run_utc,2026-08-05T08:53:32+00:00
 engine,stats
 input,C:\Data\Kayseri.shp
 working_crs,SWEREF99 TM
@@ -19,7 +19,7 @@ barrier_field,
 barrier_overlap_rule,
 rows_analysed,60
 result_fields,Nloca;N40;Dist40;Nvbe40;P25be40;P75be40
-total_seconds,0.1
+total_seconds,0.0
 time_reading_input_seconds,0.0
 time_calculating_seconds,0.0
 time_writing_results_to_the_layer_seconds,0.0

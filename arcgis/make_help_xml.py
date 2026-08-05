@@ -23,7 +23,8 @@ from xml.sax.saxutils import escape
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
                                 "tests"))
 
-from equipop.doors.help import HELP, SUMMARY, USAGE, missing_help
+from equipop.doors.help import (HELP, help_for, missing_help,
+                                summary_for, usage_for)
 
 
 def build(tool_name, display, params):
@@ -34,19 +35,19 @@ def build(tool_name, display, params):
     tool = ET.SubElement(md, "tool", {"name": tool_name,
                                       "displayname": display,
                                       "toolboxalias": "equipop"})
-    ET.SubElement(tool, "summary").text = SUMMARY[tool_name]
+    ET.SubElement(tool, "summary").text = summary_for(tool_name)
     ps = ET.SubElement(tool, "parameters")
     for name, disp in params:
         p = ET.SubElement(ps, "param", {
             "sync": "true", "name": name, "displayname": disp,
             "type": "Optional", "direction": "Input"})
-        ET.SubElement(p, "dialogReference").text = HELP.get(
+        ET.SubElement(p, "dialogReference").text = help_for(
             name, disp)
-    ET.SubElement(tool, "usage").text = USAGE[tool_name]
+    ET.SubElement(tool, "usage").text = usage_for(tool_name)
     idinfo = ET.SubElement(md, "dataIdInfo")
     cit = ET.SubElement(idinfo, "idCitation")
     ET.SubElement(cit, "resTitle").text = display
-    ET.SubElement(idinfo, "idAbs").text = SUMMARY[tool_name]
+    ET.SubElement(idinfo, "idAbs").text = summary_for(tool_name)
     return md
 
 

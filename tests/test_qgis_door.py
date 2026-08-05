@@ -26,6 +26,7 @@ qgis_stub.install()
 
 from qgis.core import (QgsProcessingException,      # noqa: E402
                        QgsProcessingFeedback)
+from qgis.core import QgsProcessingParameterDefinition  # noqa: E402
 from equipop_qgis.alg_counts import CountsAndShares  # noqa: E402
 from equipop_qgis.alg_stats import ValueStatistics   # noqa: E402
 from equipop_qgis.provider import EquipopProvider    # noqa: E402
@@ -352,12 +353,23 @@ def test_the_ladder_is_present_in_qgis_too():
     assert len(pm["keepoutside"].options) == 2
 
 
+def _advanced_names(alg):
+    """Which boxes sit in QGIS's Advanced area.
+
+    v1.29.1: these tests used to ask the parameter directly, with a
+    method PyQGIS has never had - the stub invented it. Reading the
+    FLAG is the only way, and it is the same way base.py writes it.
+    """
+    return {p.name() for p in alg.parameterDefinitions()
+            if bool(p.flags()
+                    & QgsProcessingParameterDefinition.FlagAdvanced)}
+
+
 def test_the_rarely_touched_boxes_are_in_the_advanced_area():
     """QGIS has no sections; this is the one grouping it offers."""
     alg = CountsAndShares()
     alg.initAlgorithm()
-    adv = {p.name() for p in alg.parameterDefinitions()
-           if p.isAdvanced()}
+    adv = _advanced_names(alg)
     assert {"unit", "decayeps", "xfield", "yfield"} <= adv
     assert "refmode" not in adv and "k" not in adv
 
@@ -712,12 +724,11 @@ def test_the_barrier_block_lives_under_advanced():
     source of clutter in a flat list."""
     alg = CountsAndShares()
     alg.initAlgorithm()
-    adv = {p.name() for p in alg.parameterDefinitions()
-           if p.isAdvanced()}
+    adv = _advanced_names(alg)
     assert {"barrier", "barrierfield", "barrierraster", "dem", "tau",
             "roundtrip", "barrieragg"} <= adv
-    everyday = {p.name() for p in alg.parameterDefinitions()
-                if not p.isAdvanced()}
+    everyday = {p.name() for p in
+                alg.parameterDefinitions()} - adv
     assert {"refmode", "treatmode", "k", "model"} <= everyday
 
 

@@ -130,3 +130,54 @@ def test_every_helper_the_tests_import_is_named_in_the_manifest():
         f"the tests import {sorted(imported)} from their own folder, "
         "but MANIFEST.in does not carry tests/*.py - the published "
         "archive will not be able to collect its own suite")
+
+
+def test_every_version_string_in_the_repo_agrees():
+    """v1.29.1. The 1.29.0 release bumped three version strings and
+    missed a fourth - qgis/equipop_qgis/__init__.py stayed at 1.28.0.
+    Nothing broke, but check_versions() then told John his halves were
+    a release apart when they were not: the guard built to catch a
+    real mismatch cried wolf, on the very morning a real mismatch had
+    cost him an hour. A warning that fires when nothing is wrong gets
+    scrolled past.
+
+    The cause was checking the places one REMEMBERS. So this asks the
+    repository instead."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    sources = {
+        "pyproject.toml": r'^version\s*=\s*"([^"]+)"',
+        os.path.join("equipop", "__init__.py"): r'^__version__\s*=\s*"([^"]+)"',
+        os.path.join("qgis", "equipop_qgis", "__init__.py"):
+            r'^__version__\s*=\s*"([^"]+)"',
+        os.path.join("qgis", "equipop_qgis", "metadata.txt"):
+            r'^version\s*=\s*(.+)$',
+    }
+    found = {}
+    for rel, pattern in sources.items():
+        path = os.path.join(root, rel)
+        assert os.path.exists(path), f"{rel} has moved - update this test"
+        m = re.search(pattern, open(path, encoding="utf-8").read(), re.M)
+        assert m, f"no version string found in {rel}"
+        found[rel] = m.group(1).strip()
+    assert len(set(found.values())) == 1, (
+        "the version strings disagree: "
+        + "; ".join(f"{k} = {v}" for k, v in sorted(found.items())))
+
+
+def test_the_stub_audit_travels_with_the_code_it_checks():
+    """v1.29.1. tools/stub_audit.py is the only check that can catch
+    the simulator promising methods QGIS does not have - the fault
+    that let `isAdvanced()` ship. BACKLOG 80 requires it to be run in
+    a live QGIS each release, which is impossible if the archive does
+    not carry it. The first 1.29.1 build did not."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    tool = os.path.join(root, "tools", "stub_audit.py")
+    assert os.path.exists(tool), "tools/stub_audit.py has gone"
+    manifest = open(os.path.join(root, "MANIFEST.in"),
+                    encoding="utf-8").read()
+    lines = [l.strip() for l in manifest.split("\n")]
+    assert any(re.fullmatch(r"(graft tools|include tools/\*\.py)", l)
+               for l in lines), \
+        "MANIFEST.in does not carry tools/ - the audit will not ship"

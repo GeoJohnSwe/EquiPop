@@ -1,6 +1,6 @@
 item,value
-equipop_version,1.29.0
-run_utc,2026-08-04T20:28:46+00:00
+equipop_version,1.29.1
+run_utc,2026-08-05T08:53:32+00:00
 engine,counts
 input,C:\Data\Population.shp
 working_crs,SWEREF99 TM

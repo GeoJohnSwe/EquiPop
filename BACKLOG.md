@@ -19,31 +19,55 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-1. **68** — measured, on the door John teaches with, and continental work waits on it
-2. **76** — the half of the machine 2 round John deferred; 1.29 was the groundwork for it
-3. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
-4. **58** — same evening: a GeoPackage barrier layer has still never been run
-5. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
-6. **44** — the suspected one-line cause of 34; they travel together
-7. **34** — Pro renders the help page empty; needs one field cycle to confirm
-8. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
-9. **45** — small, but these files ship inside every release zip
-10. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
-11. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
-12. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
-13. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
-14. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
-15. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
-16. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
-17. **55** — same: the simulator honours category and enabled, only Pro can say they read well
-18. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
-19. **57** — retire the old single-table path once John confirms no saved tool needs it
-20. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
-21. **40** — one sentence in the Gridby README
-22. **4** — heights / third dimension - design can precede data, and there is no data yet
-23. **66** — not a task: a standing caution about editing multi-line Python
+1. **78** — the QGIS plugin dies at LOAD on a stale package, and the sentence explaining it cannot reach the user; a door that will not open outranks one that opens slowly
+2. **68** — measured, on the door John teaches with, and continental work waits on it
+3. **76** — the half of the machine 2 round John deferred; 1.29 was the groundwork for it
+4. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
+5. **58** — same evening: a GeoPackage barrier layer has still never been run
+6. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
+7. **44** — the suspected one-line cause of 34; they travel together
+8. **34** — Pro renders the help page empty; needs one field cycle to confirm
+9. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
+10. **45** — small, but these files ship inside every release zip
+11. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
+12. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
+13. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
+14. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
+15. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
+16. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
+17. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
+18. **55** — same: the simulator honours category and enabled, only Pro can say they read well
+19. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
+20. **57** — retire the old single-table path once John confirms no saved tool needs it
+21. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
+22. **40** — one sentence in the Gridby README
+23. **4** — heights / third dimension - design can precede data, and there is no data yet
+24. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
+25. **79** — icon.png has been promised since the beginning and never shipped
+26. **66** — not a task: a standing caution about editing multi-line Python
 
 ## Still to do — detail, in the order above
+
+- 78 | open v1.29.1 | THE PLUGIN DIES AT LOAD when the equipop
+  package is older than the plugin. `alg_counts.py` calls
+  `_decay_choices()` at MODULE level, so the import runs before QGIS
+  has an algorithm to attach a message to - and every guard
+  (`check_versions`, the DoorError contract, the "install equipop"
+  sentence) lives inside `processAlgorithm`, which fires on Run. The
+  sentence explaining exactly this situation is already written and
+  cannot reach the user. FIX: build the decay list on first USE, and
+  port the ArcGIS lazy-import test (which fails if the discipline is
+  broken) to the QGIS door. Cost John an hour in the field, 1.29.0.
+- 79 | open v1.29.1 | metadata.txt declares `icon=icon.png` and the
+  file has never existed - not in the repo, not in the 1.28.0 zip,
+  not in 1.29.0. QGIS shrugs, but it is a promise the plugin does
+  not keep and it would block a submission to the QGIS plugin
+  repository.
+- 80 | open v1.29.1 | Run `tools/stub_audit.py` in a live QGIS as
+  part of every release that touches the QGIS door, and record the
+  result in the MANUAL validation row. It is the only check that can
+  see the simulator flattering itself; 1.29.1 exists because nothing
+  did.
 
 - 68 | open | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
   of calculation (John, field, 8730 points). read_points builds a
@@ -991,6 +1015,48 @@ small batch after.
 - THIS FILE, at last, in the order agreed in the 1.19 session.
 - The LADDER was deferred by John and is item 76.
 - 264 tests (259 + 5). Nothing run in Pro or QGIS.
+
+## v1.29.1 (a field morning: the door would not open, and the guards were unreachable)
+
+- THE LOAD-TIME CRASH (now item 78). Plugin 1.29.0 on package 1.27.0;
+  `equipop.doors.decaynames` arrived in 1.28.0. The plugin imports it
+  at module level, so it died before QGIS could show anything - and
+  `check_versions()`, which is written to say precisely "your two
+  halves are different releases", lives inside processAlgorithm and
+  never ran. GUARD DOWNSTREAM OF ITS OWN FAILURE. The fix is queued
+  as 78, not done here: it is structural and deserves its own round.
+- `isAdvanced()` DOES NOT EXIST IN PyQGIS. base.py wrote the Advanced
+  flag correctly and read it back with an invented method. Fixed to
+  `bool(p.flags() & FlagAdvanced)`, the way add() writes it.
+- AND THE STUB HAD INVENTED IT. tests/qgis_stub.py defined
+  isAdvanced(), so 259 tests passed over a line that cannot run in
+  QGIS. Removing it fails three tests at base.py:114 - proved, not
+  assumed. The three tests now read the flag. A stub is safe only
+  where it is STRICTER than the real thing.
+- tools/stub_audit.py SHIPS. It checks every method and constant the
+  plugin relies on against a LIVE QGIS, because the simulator cannot
+  audit itself. John ran it on 3.42.1: 63 checked, no gaps. It also
+  caught FlagAdvanced = 1 in the stub where QGIS says 2 (harmless,
+  corrected). Its first version cried wolf on the stub's own private
+  attributes - fixed, and a reminder that a noisy guard trains you to
+  skim, which is how isAdvanced got through.
+- THE TOOLTIP THAT MISLED. "Put it in a file geodatabase" shown to a
+  QGIS user, beside QGIS refusing a name with no extension: John read
+  it as "you must save into a database first", which is exactly what
+  the words said. FOUR shared texts carried one door's dialect (the
+  audit found no others in 50 entries). help.py now carries TOKENS -
+  {target}, {container}, {formatnote} - filled per door, as fields.py
+  has done since 1.18.0. One text per box, still true in both.
+  make_help_xml.py read the dicts RAW and would have printed the
+  tokens into Pro's help; it renders them now.
+- THE VERSION STRING CLAUDE MISSED. 1.29.0 bumped three and left
+  qgis/equipop_qgis/__init__.py at 1.28.0, so check_versions warned
+  about a mismatch that did not exist - on the morning a real one had
+  just cost an hour. A test now reads every version string in the
+  repo and requires agreement.
+- USAGE[ValueStatistics] still said "full-population field", retired
+  in 1.29.0. Fixed, and neutralised (people, jobs, dwellings).
+- 269 tests (265 + 4). QGIS findings FIELD-CONFIRMED on 3.42.1.
 
 ## Done
 

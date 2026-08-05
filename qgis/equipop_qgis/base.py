@@ -95,8 +95,8 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
     # -- help, from the one shared source ------------------------
     @staticmethod
     def help_for(name):
-        from equipop.doors.help import help_for
-        return help_for(name)
+        from equipop.doors.help import VOCAB_QGIS, help_for
+        return help_for(name, vocab=VOCAB_QGIS)
 
     def shortHelpString(self):
         """QGIS keeps help in the algorithm class - there is no
@@ -108,10 +108,18 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         does not say what is inside, so a reader who never opens it
         would not learn that the effort engine exists.
         """
-        from equipop.doors.help import summary_for, usage_for
+        from equipop.doors.help import (VOCAB_QGIS, summary_for,
+                                        usage_for)
         tool = self.EQP_TOOL
         extra = ""
-        if any(p.isAdvanced() for p in self.parameterDefinitions()):
+        # v1.29.1: PyQGIS has no isAdvanced(). This is how the
+        # flag is WRITTEN in add() below - read it back the
+        # same way. The simulator had invented the method, so
+        # 259 tests passed over a line that cannot run in QGIS
+        # (John, field, 3.42.1).
+        from qgis.core import QgsProcessingParameterDefinition as _D
+        if any(bool(p.flags() & _D.FlagAdvanced)
+               for p in self.parameterDefinitions()):
             extra = (
                 "<p><b>Under Advanced parameters</b> (the arrow below "
                 "the boxes): barriers and terrain - a river, railway "
@@ -120,8 +128,8 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 "and effort budgets. Also the cell size, which is the "
                 "speed control, and the X/Y fields for tables with no "
                 "geometry.</p>")
-        return (f"<p>{summary_for(tool)}</p><p>{usage_for(tool)}</p>"
-                + extra)
+        return (f"<p>{summary_for(tool, VOCAB_QGIS)}</p>"
+                f"<p>{usage_for(tool, VOCAB_QGIS)}</p>" + extra)
 
     def add(self, param, advanced=False):
         """Add a parameter, attach its shared explanation, and

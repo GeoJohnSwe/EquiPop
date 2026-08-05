@@ -474,3 +474,52 @@ def test_the_two_machines_name_the_population_box_the_same_way():
     assert "weighted" in txt, \
         "one entry now serves both machines, so it must say that " \
         "Value Statistics weights by this field"
+
+
+def test_no_shared_text_reaches_a_user_with_an_unfilled_token():
+    """v1.29.1. The per-door words travel as {tokens}, so a typo or a
+    door that forgets to render would put "{container}" in front of a
+    user. Check EVERY text through BOTH doors' vocabularies.
+
+    John found the original of this in the field: the Results tooltip
+    told a QGIS user to put the output in a file geodatabase, which
+    does not exist there, and he read it - reasonably - as "you must
+    save into a database first". A token left unfilled would be the
+    same failure, louder."""
+    import re
+    token = re.compile(r"\{[a-z_]+\}")
+    for vocab in (None, HLP.VOCAB_QGIS):
+        for name in HLP.HELP:
+            got = HLP.help_for(name, vocab=vocab)
+            assert not token.search(got), \
+                f"HELP[{name!r}] still holds {token.search(got).group()}"
+        for tool in HLP.SUMMARY:
+            for fn in (HLP.summary_for, HLP.usage_for):
+                got = fn(tool, vocab)
+                assert not token.search(got), \
+                    f"{fn.__name__}({tool!r}) still holds a token"
+
+
+def test_the_doors_disagree_only_where_they_must():
+    """The point of the token mechanism is that ONE text serves both
+    doors. So the two renderings must be identical everywhere except
+    the handful of entries that genuinely name a container - if that
+    list grows, the doors are drifting apart again and someone should
+    have to justify it in this test."""
+    differ = {n for n in HLP.HELP
+              if HLP.help_for(n) != HLP.help_for(n, vocab=HLP.VOCAB_QGIS)}
+    assert differ == {"outfc"}, (
+        f"these entries now read differently per door: {sorted(differ)} "
+        "- only 'outfc' should, because only it names the container")
+
+
+def test_the_qgis_words_say_what_qgis_actually_needs():
+    """The extension advice is not decoration: a bare name in QGIS is
+    refused by Processing itself with '"./name" files are not
+    supported as outputs', which reads like a restriction rather than
+    a missing '.gpkg' (John, field, 1.29.0)."""
+    got = HLP.help_for("outfc", vocab=HLP.VOCAB_QGIS)
+    assert "GeoPackage" in got and "geodatabase" not in got
+    assert ".gpkg" in got, "the extension is the thing that was missing"
+    pro = HLP.help_for("outfc")
+    assert "file geodatabase" in pro and "GeoPackage" not in pro

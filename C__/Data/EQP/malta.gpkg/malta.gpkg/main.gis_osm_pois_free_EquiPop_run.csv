@@ -1,6 +1,6 @@
 item,value
-equipop_version,1.29.0
-run_utc,2026-08-04T20:29:20+00:00
+equipop_version,1.29.1
+run_utc,2026-08-05T08:54:03+00:00
 engine,counts
 input,C:\Data\EQP\malta.gpkg\malta.gpkg\main.gis_osm_pois_free
 working_crs,SWEREF99 TM

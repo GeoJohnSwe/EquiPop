@@ -40,6 +40,14 @@ include tests/*.py
 graft examples
 graft docs
 
+# Tools that must travel with the code they check. stub_audit.py
+# is run in a LIVE QGIS each release (BACKLOG 80) - it is the
+# only check that can see the simulator flattering itself, so an
+# archive without it ships the problem and not the detector.
+# Missed on the first build of 1.29.1 and caught by the archive
+# check, which is the second time that check has earned itself.
+graft tools
+
 # Never: build leftovers, the Book's compiled output, its node
 # packages, or its figures - build.sh regenerates every figure from
 # examples/cookbook_0*.py, and they were 4.2 MB of a 4.8 MB archive.

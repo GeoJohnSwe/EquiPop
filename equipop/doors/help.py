@@ -220,8 +220,10 @@ HELP = {
     "outmode": "Append results to the input layer, or write a new "
                "feature class (recommended for shapefiles: a file "
                "geodatabase has no 10-character field-name limit).",
-    "outfc": "Path/name of the new feature class. Put it in a file "
-             "geodatabase to keep full-length result names.",
+    "outfc": "Path and name of the new {target}. Put it in "
+             "{container} to keep full-length result names - "
+             "shapefile field names are capped at 10 "
+             "characters.{formatnote}",
     "outtable": "Where a TABLE input's results are written (.csv). "
                 "The output carries your coordinates plus the result "
                 "columns, in the original row order.",
@@ -285,33 +287,82 @@ USAGE = {
         "fields for shares. Add a barrier layer only when barriers "
         "matter - it switches the run to the effort engine and takes "
         "longer. Cell size is the speed control: doubling it "
-        "quarters the number of origins. Results are appended to the "
-        "input unless you choose a new feature class; shapefile "
-        "targets cap field names at 10 characters, so a file "
-        "geodatabase is the safer home for long names.",
+        "quarters the number of origins. Long result names need a "
+        "roomy target: shapefile field names cap at 10 characters, "
+        "so {container} is the safer home for them.",
     "ValueStatistics":
-        "Give the value fields, tick the measures, set k. Use the "
-        "full-population field whenever a point stands for more than "
-        "one person. Gini refuses negative values, and percentiles "
-        "need numbers in their box. As with machine 1, cell size "
-        "controls the runtime and a file geodatabase avoids the "
-        "shapefile name limit.",
+        "Give the treatment values, tick the measures, set k. Use the "
+        "reference population's count field whenever a point stands "
+        "for more than one - people, jobs, dwellings, services. Gini "
+        "refuses negative values, and percentiles need numbers in "
+        "their box. As with machine 1, cell size controls the "
+        "runtime and {container} avoids the shapefile name limit.",
 }
 
 
-def help_for(name: str, default: str = "") -> str:
+# ---------------------------------------------------------------
+# Words that MUST differ per door (v1.29.1)
+#
+# Almost every box means the same thing in both doors and therefore
+# takes the same sentence - that is the whole point of this file, and
+# 1.29.0 was spent proving it. A handful of words are the exception:
+# only the door knows what a roomy output container is called on its
+# own side. Pro writes a feature class into a file geodatabase; QGIS
+# writes a layer into a GeoPackage and refuses a name with no
+# extension at all.
+#
+# So the texts carry a TOKEN and the door fills it in - the same
+# mechanism fields.py has used for the refusal message since 1.18.0,
+# rather than a second dictionary of QGIS wording. One text per box
+# stays true, which is what 1.29.0 was for.
+#
+# Found by John in the field (1.29.0): the Results tooltip told a
+# QGIS user to "put it in a file geodatabase", which does not exist
+# there, and he reasonably read it as "you must save into a database
+# first".
+VOCAB = {
+    "target": "feature class",
+    "container": "a file geodatabase",
+    "formatnote": "",
+}
+VOCAB_QGIS = {
+    "target": "layer",
+    "container": "a GeoPackage (.gpkg)",
+    "formatnote": (" QGIS reads the format from the file extension, "
+                   "so end the name with .gpkg or .shp - a bare name "
+                   "is refused."),
+}
+
+
+def fill(text: str, vocab: dict | None = None) -> str:
+    """Put the door's own words into a shared sentence.
+
+    An unknown token is LEFT ALONE rather than blanked, so a typo
+    shows up as {like_this} in the dialog instead of vanishing - and
+    a test refuses to ship any text still holding one.
+    """
+    words = dict(VOCAB)
+    if vocab:
+        words.update(vocab)
+    for key, value in words.items():
+        text = text.replace("{" + key + "}", value)
+    return text
+
+
+def help_for(name: str, default: str = "",
+             vocab: dict | None = None) -> str:
     """The explanation for one parameter, or `default` if none."""
-    return HELP.get(name, default)
+    return fill(HELP.get(name, default), vocab)
 
 
-def summary_for(tool: str) -> str:
+def summary_for(tool: str, vocab: dict | None = None) -> str:
     """What this tool does, in one paragraph."""
-    return SUMMARY[tool]
+    return fill(SUMMARY[tool], vocab)
 
 
-def usage_for(tool: str) -> str:
+def usage_for(tool: str, vocab: dict | None = None) -> str:
     """How to approach it - the advice a first-time user needs."""
-    return USAGE[tool]
+    return fill(USAGE[tool], vocab)
 
 
 def missing_help(names) -> list:
