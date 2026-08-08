@@ -1,6 +1,6 @@
 item,value
-equipop_version,1.29.3
-run_utc,2026-08-05T18:54:47+00:00
+equipop_version,1.29.5
+run_utc,2026-08-08T08:56:01+00:00
 engine,counts
 input,C:\Data\gridby_points.shp
 working_crs,SWEREF99 TM

@@ -134,7 +134,12 @@ _COORD_AUTO = "Auto (geometry if present)"
 _COORD_GEOM = "Feature geometry"
 _COORD_ATTR = "Attribute fields"
 _COORD_CHOICES = [_COORD_AUTO, _COORD_GEOM, _COORD_ATTR]
-_AGG_CHOICES = ["additive (sum)", "max", "min", "mean"]
+# BACKLOG 105: duplicated from equipop/doors/rungs.py and pinned by
+# test_rungs.py; Pro learned the same lesson as BACKLOG 78 back in
+# 1.16 and likewise defers every equipop import. "additive (costs add
+# up)" replaces the old "(sum)": these are EFFORT costs. Pro adds
+# "percentiles" as a toggle for its own percentile box.
+_AGG_CHOICES = ["additive (costs add up)", "max", "min", "mean"]
 _MEASURES = ["mean", "median", "gini", "sd", "variance", "se", "min",
              "max", "count", "sum", "range", "percentiles"]
 _MEASURE_KEY = {"variance": "var"}
@@ -860,6 +865,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_list=(), pct_text="", half_life=0.0,
               decay_model="negexp", unit=100.0,
+              self_potential=1.0,
               coord_source=None, x_field=None, y_field=None,
               barrier=None, barrier_field=None, barrier_agg="",
               barrier_x=None, barrier_y=None,
@@ -1070,7 +1076,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         if txt:
             raise arcpy.ExecuteError(txt)
 
-    kw = dict(unit_size=float(unit))
+    if not float(unit) > 0:                       # BACKLOG 116
+        raise ValueError(
+            f"[equipop] cell size must be greater than 0 metres; "
+            f"got {float(unit):g}. It is the grid the "
+            "neighbourhoods are built on, so there is no "
+            "sensible zero.")
+    kw = dict(unit_size=float(unit),
+              self_potential=float(self_potential))
     kw["k_values"] = [int(round(v)) for v in _numlist(k_text)] or None
     kw["r_values"] = _numlist(r_text) or None
     if tau_text:
@@ -1484,6 +1497,9 @@ def _distinct_values(layer, field, cap: int = 200, messages=None):
     return []
 
 
+# BACKLOG 105: duplicated, pinned by test_rungs.py. Pro carries NO
+# "(fill 2a)" hints, because it greys out the boxes a rung does not
+# use and those letters name QGIS boxes that do not exist here.
 REF_MODES = ["every point counts as one",
              "a field holds the count",
              "only selected types, with a count field"]
@@ -1976,6 +1992,10 @@ class CountsShares:
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
                _p("unit", "Cell size (m)", "GPDouble", required=False),
+               _p("selfpot", "Self-potential - how far away your "
+                  "OWN cell's people are (0 = at the centre with "
+                  "you, as before 1.29.5; 1 = spread evenly over "
+                  "the cell)", "GPDouble", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2022,7 +2042,8 @@ class CountsShares:
             "coordsrc": "Coordinates", "xfield": "Coordinates",
             "yfield": "Coordinates", "autoproj": "Coordinates",
             "k": "Neighbourhood", "r": "Neighbourhood",
-            "unit": "Neighbourhood", "model": "Neighbourhood",
+            "unit": "Neighbourhood", "selfpot": "Neighbourhood",
+            "model": "Neighbourhood",
             "halflife": "Neighbourhood", "hlfield": "Neighbourhood",
             "hlfromdist": "Neighbourhood", "hlbins": "Neighbourhood",
             "decayeps": "Neighbourhood",
@@ -2081,6 +2102,7 @@ class CountsShares:
         pm["outmode"].value = "Append to input"
         pm["outtable"].direction = "Output"
         pm["unit"].value = 100.0
+        pm["selfpot"].value = 1.0
         return ps
 
     def updateParameters(self, parameters):
@@ -2161,7 +2183,7 @@ class CountsShares:
                   decay_eps=_num(pm, "decayeps", 1e-6) or 1e-6,
                   half_life_field=_txt(pm, "hlfield") or None,
                   half_life_from_dist=_num(pm, "hlfromdist") or None,
-                  decay_bins=int(_num(pm, "hlbins", 10) or 10),
+                  decay_bins=int(_num(pm, "hlbins", 10)),  # 116
                   seed=_num(pm, "seed"),
                   cat_field=_txt(pm, "catfield") or None,
                   ref_mode=_mode(pm, "refmode", REF_MODES),
@@ -2184,7 +2206,10 @@ class CountsShares:
                   out_mode=_txt(pm, "outmode", "Append to input"),
                   out_fc=_txt(pm, "outfc") or None,
                   out_table=_txt(pm, "outtable") or None,
-                  unit=_num(pm, "unit", 100.0) or 100.0,
+                  unit=_num(pm, "unit", 100.0),   # BACKLOG 116
+                  # no `or 100.0`: a zero must be refused, not
+                  # replaced. _run_tool validates it.
+                  self_potential=_num(pm, "selfpot", 1.0),
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))
 
@@ -2246,6 +2271,10 @@ class ValueStatistics:
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
                _p("unit", "Cell size (m)", "GPDouble", required=False),
+               _p("selfpot", "Self-potential - how far away your "
+                  "OWN cell's people are (0 = at the centre with "
+                  "you, as before 1.29.5; 1 = spread evenly over "
+                  "the cell)", "GPDouble", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2277,6 +2306,7 @@ class ValueStatistics:
                         "autoproj": "Coordinates",
                         "k": "Neighbourhood", "r": "Neighbourhood",
                         "unit": "Neighbourhood",
+                        "selfpot": "Neighbourhood",
                         "refmode": "Reference population - who is around",
                         "pop": "Reference population - who is around",
                         "catfield": "Reference population - who is around",
@@ -2305,6 +2335,7 @@ class ValueStatistics:
         pm2["outmode"].value = "Append to input"
         pm2["outtable"].direction = "Output"
         pm2["unit"].value = 100.0
+        pm2["selfpot"].value = 1.0
         return ps
 
     def updateParameters(self, parameters):
@@ -2376,6 +2407,9 @@ class ValueStatistics:
                   out_mode=_txt(pm, "outmode") or "Append to input",
                   out_fc=_txt(pm, "outfc") or None,
                   out_table=_txt(pm, "outtable") or None,
-                  unit=_num(pm, "unit", 100.0) or 100.0,
+                  unit=_num(pm, "unit", 100.0),   # BACKLOG 116
+                  # no `or 100.0`: a zero must be refused, not
+                  # replaced. _run_tool validates it.
+                  self_potential=_num(pm, "selfpot", 1.0),
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))

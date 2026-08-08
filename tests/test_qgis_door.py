@@ -384,8 +384,52 @@ def test_the_labels_carry_their_step_number():
     assert pm["refmode"].startswith("1 ")
     assert pm["pop"].startswith("1a ")
     assert pm["treatmode"].startswith("2 ")
-    assert pm["treattable"].startswith("2b ")
     assert pm["k"].startswith("3 ")
+
+
+def test_each_rung_names_a_box_that_exists_and_is_the_right_one():
+    """BACKLOG 104. Each rung's text now says which box to fill -
+    "(fill 2a)". That promise is only worth making if it is kept, and
+    it silently stops being kept the moment anyone reorders the
+    labels. So: read the box out of the rung's OWN words, find the
+    box wearing that letter, and check it is the box the rung
+    actually reads.
+
+    Before 1.29.5 this test would have failed on its face: rung 1 of
+    the treatment ladder reads `treat`, and `treat` was labelled 2d,
+    sitting behind three boxes that served rung 2. That ordering cost
+    John a field run.
+    """
+    import re
+    from equipop_qgis.alg_counts import REF_MODES, TREAT_MODES
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    by_letter = {}
+    for prm in alg.parameterDefinitions():
+        m = re.match(r"^(\d[a-d]) ", prm.description())
+        if m:
+            by_letter[m.group(1)] = prm.name()
+
+    reads = {                       # rung -> the box it truly reads
+        ("ref", 1): {"1a": "pop"},
+        ("ref", 2): {"1a": "pop", "1b": "catfield", "1c": "reftable"},
+        ("treat", 1): {"2a": "treat"},
+        ("treat", 2): {"2b": "treatcatfield", "2c": "treattable"},
+    }
+    for ladder, modes in (("ref", REF_MODES), ("treat", TREAT_MODES)):
+        for rung, text in enumerate(modes):
+            letters = re.findall(r"\d[a-d]", text)
+            if not letters:
+                continue
+            expected = reads[(ladder, rung)]
+            assert set(letters) == set(expected), (
+                f"{ladder} rung {rung} says 'fill {letters}' but "
+                f"actually reads {sorted(expected)}")
+            for letter in letters:
+                assert by_letter.get(letter) == expected[letter], (
+                    f"{ladder} rung {rung} points at box {letter}, "
+                    f"which is '{by_letter.get(letter)}' - but that "
+                    f"rung reads '{expected[letter]}'")
 
 
 def test_the_default_run_needs_only_a_layer_and_a_k():
@@ -1059,3 +1103,45 @@ def test_the_declared_minimum_matches_the_api_actually_used():
     assert got >= (3, 38), (
         f"declared minimum {got} is below 3.38, but the door uses "
         "QMetaType field types (3.38) and parameterAsStrings (3.32)")
+
+
+# ---------------------------------------------- BACKLOG 95, behaviour
+def _dense_cell_source(n_dense=200, n_spread=400, seed=95):
+    """200 people inside ONE 100 m cell, so k=100 is satisfied without
+    leaving it - the case where Dist_k used to be zero."""
+    rng = np.random.default_rng(seed)
+    t = pd.DataFrame({
+        "x": np.concatenate([rng.uniform(1, 99, n_dense),
+                             rng.uniform(500, 4000, n_spread)]),
+        "y": np.concatenate([rng.uniform(1, 99, n_dense),
+                             rng.uniform(500, 4000, n_spread)])})
+    return qgis_stub._Source(t, "EPSG:32633"), n_dense
+
+
+def test_self_potential_is_honoured_by_the_qgis_door():
+    """BACKLOG 95, and the lesson of 85: offering a box is not
+    honouring it. door_parity.py compares NAMES, and LADDER_CASES
+    compares COLUMNS - self-potential changes neither, it changes
+    NUMBERS. So it is checked here against the closed form, in both
+    doors separately, or it could be dropped on one side in silence.
+    """
+    src, n_dense = _dense_cell_source()
+
+    off, _ = _run(CountsAndShares, src, k="100", selfpot=0.0)
+    dense_off = off.loc[(off["x"] < 100) & (off["y"] < 100), "Dist_100"]
+    assert len(dense_off) == n_dense
+    assert (dense_off == 0.0).all(), \
+        "self-potential 0 must reproduce pre-1.29.5 numbers exactly"
+
+    on, _ = _run(CountsAndShares, src, k="100", selfpot=1.0)
+    dense_on = on.loc[(on["x"] < 100) & (on["y"] < 100), "Dist_100"]
+    expected = np.sqrt(100.0 ** 2 * 100 / (n_dense * np.pi))
+    assert np.allclose(dense_on, expected, rtol=1e-9), (
+        f"expected the equal-area radius {expected:.4f} m, got "
+        f"{dense_on.iloc[0]:.4f} m - the box is offered but not "
+        "reaching the engine")
+
+    # and the setting must not disturb origins that never needed it
+    far = ~((on["x"] < 100) & (on["y"] < 100))
+    assert np.allclose(off.loc[far, "Dist_100"],
+                       on.loc[far, "Dist_100"], rtol=1e-12)

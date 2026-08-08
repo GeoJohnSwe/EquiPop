@@ -91,17 +91,40 @@ def test_tau_flat_grid_is_chebyshev():
 
 
 def test_decay_sum_exact():
+    """Still exact - but the origin cell's own people are no longer
+    standing on the origin (v1.29.5, BACKLOG 95). They are charged the
+    mean intra-cell distance, so their weight is below 1.0."""
+    from equipop import selfpot
     cd = _cells(n=80, seed=2)
     dec = Decay(model="negexp", half_life_m=500.0)
     out = run_knn_counts(cd, decay=dec, decay_eps=1e-9)
     pts = np.c_[cd.E, cd.N]
+    d_self = selfpot.decay_distance(cd.unit_size, 1.0)
+    assert d_self > 0.0                    # the rule is actually on
     for i in [0, 7, 40]:
         d = np.hypot(pts[:, 0] - cd.E[i], pts[:, 1] - cd.N[i])
+        d[i] = d_self                      # your own cell, spread out
         w = dec.weight_vec(d)
         assert np.isclose(out.loc[i, "ND_inf"], (w * cd.n).sum(),
                           rtol=1e-9)
         assert np.isclose(out.loc[i, "TD_t_inf"],
                           (w * cd.binary_sums["t"]).sum(), rtol=1e-9)
+
+
+def test_self_potential_zero_reproduces_pre_1_29_4():
+    """Anyone with published numbers can get them back exactly by
+    setting self-potential to 0. If this drifts, old work cannot be
+    reproduced - so it is asserted, not assumed."""
+    cd = _cells(n=80, seed=2)
+    dec = Decay(model="negexp", half_life_m=500.0)
+    out = run_knn_counts(cd, decay=dec, decay_eps=1e-9,
+                         self_potential=0.0)
+    pts = np.c_[cd.E, cd.N]
+    for i in [0, 7, 40]:
+        d = np.hypot(pts[:, 0] - cd.E[i], pts[:, 1] - cd.N[i])
+        w = dec.weight_vec(d)              # origin at 0 -> weight 1.0
+        assert np.isclose(out.loc[i, "ND_inf"], (w * cd.n).sum(),
+                          rtol=1e-9)
 
 
 def test_area_stats_known_answer():

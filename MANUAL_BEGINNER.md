@@ -1,4 +1,6 @@
-# EquiPop 1.7 — The Beginner's Manual
+# EquiPop — The Beginner's Manual
+
+*Version-free by intention (BACKLOG 121): this guide teaches ideas that have not changed since 1.7, and a stale number on the first line said the opposite.*
 
 *A complete, gentle guide to using EquiPop with no prior Python
 experience beyond copy-pasting. Every section stands alone and every

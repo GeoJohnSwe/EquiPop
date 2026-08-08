@@ -107,9 +107,19 @@ print(explain(compare(your_result_table)))
 
 ## What is not here yet
 
-This first release covers the two core tools — counts and shares,
-and value statistics — over k and radius neighbourhoods. Distance
-decay, barriers and terrain, and the category grouping table exist in
-the ArcGIS toolbox and are not yet exposed in QGIS. They use the same
-shared code underneath, so they are a matter of adding the boxes
-rather than rebuilding the machinery.
+*(Corrected in 1.29.5, BACKLOG 121. This section had said that decay,
+barriers, terrain and the grouping table were absent from QGIS. Three
+of those four arrived releases ago, and the paragraph had been telling
+users to open ArcGIS for things sitting in front of them.)*
+
+**Present in QGIS:** distance decay with a fixed half-life; barriers
+as vector layers, as a GeoPackage layer, and as friction rasters;
+terrain and slope; the category grouping table on both ladders; and
+self-potential.
+
+**Genuinely still missing (BACKLOG 102):** the VARIABLE-BANDWIDTH
+controls. ArcGIS offers a half-life taken from a field, a
+self-calibrating half-life set by each point's own `Dist_k`, and a bin
+count. QGIS offers only the fixed half-life. That is the headline
+feature of 1.17 and it has never been reachable from this door. The
+shared code is underneath, so it is a matter of adding the boxes.

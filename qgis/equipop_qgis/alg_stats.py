@@ -19,10 +19,22 @@ import numpy as np
 
 from .base import EquipopAlgorithm
 
-MEASURES = ["mean", "median", "gini", "min", "max", "sd"]
+# BACKLOG 103: QGIS offered six of these while Pro offered twelve,
+# and door_parity.py could not see it because both doors have a box
+# CALLED "measures" (BACKLOG 105). The engine has computed all of
+# them since 1.16; only this list was short. Order and wording follow
+# Pro's _MEASURES so the two doors read alike.
+MEASURES = ["mean", "median", "gini", "sd", "variance", "se",
+            "min", "max", "count", "sum", "range"]
+# Pro calls it "variance"; equipop/stats.py calls it "var". One name
+# for the user, one for the engine, mapped in exactly one place.
+MEASURE_KEY = {"variance": "var"}
 
 
-from .alg_counts import OUTSIDE_MODES, REF_MODES
+from .alg_counts import OUTSIDE_MODES, REF_MODES  # noqa: F401
+# REF_MODES carries its "(fill 1a)" hints from alg_counts, so machine
+# 1 and machine 2 cannot start describing the same ladder differently
+# (BACKLOG 104/105).
 
 
 class ValueStatistics(EquipopAlgorithm):
@@ -95,6 +107,12 @@ class ValueStatistics(EquipopAlgorithm):
             "unit", "Cell size in metres - bigger cells mean fewer "
             "origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double))
+        self.add(QgsProcessingParameterNumber(
+            "selfpot", "Self-potential - how far away your OWN "
+            "cell's people are (0 = at the centre with you, as "
+            "before 1.29.5; 1 = spread evenly over the cell)",
+            defaultValue=1.0, minValue=0.0, maxValue=1.0,
+            type=QgsProcessingParameterNumber.Double), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -114,7 +132,7 @@ class ValueStatistics(EquipopAlgorithm):
                 "Choose at least one value field to summarise - this "
                 "tool describes the VALUES around each point.")
 
-        wanted = [MEASURES[i] for i in
+        wanted = [MEASURE_KEY.get(MEASURES[i], MEASURES[i]) for i in
                   self.parameterAsEnums(parameters, "measures", context)]
         pcts = self.parameterAsString(parameters, "pcts", context).split()
         wanted += [f"p{p}" for p in pcts]
@@ -126,7 +144,20 @@ class ValueStatistics(EquipopAlgorithm):
             raise QgsProcessingException(
                 "Give at least one k (a number of people) or one "
                 "radius in metres.")
-        unit = self.parameterAsDouble(parameters, "unit", context) or 100.0
+        # BACKLOG 116: this read `... or 100.0`, so a cell size of
+        # ZERO - a real thing a user can type - was silently replaced
+        # by 100 m and the run went ahead at a scale nobody chose.
+        # The same idiom nearly ate a deliberate self-potential of 0
+        # in Pro. Any parameter whose zero is MEANINGFUL, or whose
+        # zero is nonsense, must be refused rather than substituted.
+        unit = self.parameterAsDouble(parameters, "unit", context)
+        if unit is None or unit != unit:            # unset or NaN
+            unit = 100.0
+        if unit <= 0:
+            raise QgsProcessingException(
+                f"Cell size must be greater than 0 metres; got "
+                f"{unit:g}. It is the grid the neighbourhoods are "
+                "built on, so there is no sensible zero.")
         pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
 
@@ -144,6 +175,8 @@ class ValueStatistics(EquipopAlgorithm):
                  or [None])[0])
 
         kw = dict(unit_size=float(unit),
+                  self_potential=self.parameterAsDouble(
+                      parameters, "selfpot", context),
                   values={v: pts.data[v] for v in vals},
                   stats={v: wanted for v in vals})
         if k_text:
@@ -162,6 +195,34 @@ class ValueStatistics(EquipopAlgorithm):
                                          context) or [0])[0]
         catfield = (self.parameterAsStrings(parameters, "catfield",
                                            context) or [None])[0]
+
+        # BACKLOG 104, the same three-part fix as machine 1: this
+        # block used to read `refmode == 2 and catfield` and do
+        # NOTHING AT ALL when the type field was missing - the exact
+        # silence that cost John a field run in the other door.
+        from equipop.doors import rungs
+        ref_rows = [str(v).strip() for v in
+                    (self.parameterAsMatrix(parameters, "reftable",
+                                            context) or [])
+                    if str(v).strip()]
+        if refmode == 1 and not pop:
+            raise QgsProcessingException(rungs.missing(
+                "box 1a, the count field", "the reference population",
+                REF_MODES[1]))
+        if refmode == 2 and not catfield:
+            raise QgsProcessingException(rungs.missing(
+                "box 1b, the type field", "the reference population",
+                REF_MODES[2]))
+        if refmode != 2:
+            for box, filled in (("Box 1b, the type field",
+                                 bool(catfield)),
+                                ("Box 1c, the list of reference types",
+                                 bool(ref_rows))):
+                if filled:
+                    ch.info(rungs.ignored(box,
+                                          "the reference population",
+                                          REF_MODES[refmode]))
+
         if refmode == 2 and catfield:
             from equipop.categorical import categories_to_binary
             wanted = [str(v).strip() for v in

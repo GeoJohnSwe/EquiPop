@@ -1805,3 +1805,60 @@ def test_pro_gives_the_same_columns_for_every_ladder_combination(
         f"[{label}] Pro gave {sorted(stems)}, expected "
         f"{sorted(expected)} - the doors must agree on BEHAVIOUR, "
         "which is what BACKLOG 85 showed names alone cannot promise")
+
+
+# ---------------------------------------------- BACKLOG 95, behaviour
+def test_self_potential_is_honoured_by_the_pro_door():
+    """The other half of the QGIS test of the same name. Both doors
+    are pinned to the CLOSED FORM rather than to each other, so a
+    door that drops the parameter fails on its own - the failure mode
+    BACKLOG 85 taught us to test for directly.
+
+    DRIVEN THROUGH THE DIALOG, not at _run_tool. The first version of
+    this test called _run_tool and therefore skipped the very hop
+    where the danger lives: `_num(pm, "selfpot", 1.0) OR 1.0` would
+    silently restore the default when the user asks for 0, because 0
+    is falsy - and the test passed happily against that break. Unlike
+    the ladder cases (BACKLOG 87), a plain number needs no value
+    table, so the dialog route is available here and is the honest
+    one. A fresh fake arcpy per run: its table persists in memory, so
+    a run that quietly did nothing would still show the last run's
+    columns.
+    """
+    rng = np.random.default_rng(95)
+    n_dense, n_spread = 200, 400
+    t = pd.DataFrame({
+        "OBJECTID": np.arange(1, n_dense + n_spread + 1),
+        "SHAPE@X": np.concatenate([rng.uniform(1, 99, n_dense),
+                                   rng.uniform(500, 4000, n_spread)]),
+        "SHAPE@Y": np.concatenate([rng.uniform(1, 99, n_dense),
+                                   rng.uniform(500, 4000, n_spread)])})
+    dense = ((t["SHAPE@X"] < 100) & (t["SHAPE@Y"] < 100)).to_numpy()
+
+    def _dialog_run(sp):
+        state = _install_fake_arcpy(t.copy())
+        pyt = _load_pyt()
+        tool = pyt.CountsShares()
+        ps = tool.getParameterInfo()
+        pm = {p.name: p for p in ps}
+        pm["layer"].value = "people"
+        pm["k"].value = "100"
+        pm["selfpot"].value = sp
+        tool.updateParameters(ps)
+        tool.updateMessages(ps)
+        assert not [1 for p in ps for kind, _ in p.messages
+                    if kind == "ERROR"]
+        tool.execute(ps, _Messages())
+        return state["table"]["Dist_100"].to_numpy()[dense]
+
+    off = _dialog_run(0.0)
+    assert (off == 0.0).all(), (
+        "self-potential 0 must reproduce pre-1.29.5 numbers exactly - "
+        "if this reads like the equal-area radius, a falsy 0 was "
+        "swallowed on the way from the dialog to the engine")
+
+    on = _dialog_run(1.0)
+    expected = np.sqrt(100.0 ** 2 * 100 / (n_dense * np.pi))
+    assert np.allclose(on, expected, rtol=1e-9), (
+        f"expected the equal-area radius {expected:.4f} m, got "
+        f"{on[0]:.4f} m - Pro offers the box but is not passing it on")

@@ -24,7 +24,9 @@ Pro writes to a feature class or a table, QGIS to a sink.
 CORE = {"layer", "pop", "treat", "k", "r", "unit", "catfield",
         "reftable", "treattable", "restgroup", "refmode", "treatmode",
         "treatcatfield", "keepoutside", "model", "halflife",
-        "decayeps", "xfield", "yfield"}
+        "decayeps", "xfield", "yfield",
+        # v1.29.5, BACKLOG 95 - an ENGINE parameter, so both doors
+        "selfpot"}
 
 # machine 2 - Value Statistics (list added v1.29). `pop` is the
 # reference population; `values` the treatment fields measured over
@@ -35,7 +37,8 @@ CORE_M2 = {"layer", "xfield", "yfield", "pop", "values", "measures",
            # around, the same three rungs and the same words as
            # machine 1. Reference side only - the treatment here is a
            # set of numbers, so there is nothing to choose.
-           "refmode", "catfield", "reftable", "keepoutside"}
+           "refmode", "catfield", "reftable", "keepoutside",
+           "selfpot"}
 
 
 # v1.29.3, BACKLOG 86: parity of BEHAVIOUR, not just of names.

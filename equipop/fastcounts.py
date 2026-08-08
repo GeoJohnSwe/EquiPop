@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
+from . import selfpot
 from .cells import CellData
 
 
@@ -29,7 +30,9 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                    chunk: int = 4096,
                    r_values: list[float] | None = None,
                    decay=None, decay_eps: float = 1e-6,
-                   origins=None) -> pd.DataFrame:
+                   origins=None,
+                   self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
+                   report: bool = True) -> pd.DataFrame:
     """
     k-NN counts/ratios for every cell in cd, vectorised.
 
@@ -37,6 +40,11 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         for these origins; the tree and destination mass stay GLOBAL,
         so per-origin results are exactly those of a full run (the
         tile-and-flush substrate, #18).
+    self_potential : how far away your OWN cell's people are, 0 to 1
+        (v1.29.5, BACKLOG 95). 0 reproduces every release up to
+        1.29.3, where a cell that already held k people reported
+        Dist_k = 0 and k stopped being a parameter. 1 (the default)
+        uses the equal-area radius. See equipop/selfpot.py.
     m_neighbors : how many nearest CELLS are fetched per origin in the
         fast pass. Origins whose cumulative population within
         m_neighbors cells does not reach max(k) are automatically
@@ -49,6 +57,12 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     """
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
+    sp = selfpot.check(self_potential)
+    # BACKLOG 95 / 94: counted, not assumed. A run must be able to say
+    # how much of its Dist_k was estimated inside one cell, and how far
+    # N_k overshot the k that was asked for.
+    tally = {"selfpot": {k: 0 for k in k_values},
+             "over": {k: 0 for k in k_values}, "origins": 0}
     kmax = k_values[-1] if k_values else 0
     rmax = r_values[-1] if r_values else 0.0
     trunc = decay.truncation_radius(decay_eps) if decay is not None else 0.0
@@ -98,6 +112,7 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 rec[f"{v}_local"] = float(grp[v][oi])
             dd, cp = dist[r], cpop[r]
             last = 0
+            tally["origins"] += 1
             for k in k_values:
                 pos = int(np.searchsorted(cp, k))
                 if pos >= len(cp):
@@ -109,7 +124,17 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 for v in bvars:
                     rec[f"T_{v}_{k}"] = cgrp[v][r][pos]
                     rec[f"R_{v}_{k}"] = cgrp[v][r][pos] / cp[pos]
-                rec[f"Dist_{k}"] = float(dd[pos])
+                d_k = float(dd[pos])
+                if d_k <= 0.0 and cp[pos] >= k:
+                    # the whole neighbourhood IS the origin cell, so
+                    # the radius is not zero - it is unmeasured, and
+                    # k has stopped being a parameter (BACKLOG 95)
+                    d_k = selfpot.radius_for_k(cd.unit_size, k,
+                                               float(cp[pos]), sp)
+                    tally["selfpot"][k] += 1
+                if cp[pos] >= 2 * k:           # BACKLOG 94
+                    tally["over"][k] += 1
+                rec[f"Dist_{k}"] = d_k
                 last = pos
             for rv in r_values:            # radius: all cells within rv,
                 pos = int(np.searchsorted(dd, rv, side="right")) - 1
@@ -122,7 +147,15 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 last = max(last, pos)
             if decay is not None:          # unbounded decayed sum,
                 pos = int(np.searchsorted(dd, trunc, side="right"))
-                w = decay.weight_vec(dd[:pos])
+                dw = dd[:pos]
+                if len(dw) and dw[0] <= 0.0 and sp > 0.0:
+                    # your own cell's people are not standing on you.
+                    # Without this they keep weight 1.0 - the largest
+                    # weight in the calculation - on the mass we know
+                    # least about (BACKLOG 95).
+                    dw = dw.copy()
+                    dw[0] = selfpot.decay_distance(cd.unit_size, sp)
+                w = decay.weight_vec(dw)
                 pw = pop[idx[r, :pos]] * w
                 nd = float(pw.sum())
                 rec["ND_inf"] = nd
@@ -171,4 +204,30 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     if stragglers:
         print(f"[fast] {stragglers} widened searches in total "
               "(results identical, only the route differs)")
-    return pd.DataFrame([rows_by_oi[o] for o in origins])
+    if report:                 # the binned decay pass runs this
+        report_selfpot(tally, k_values, sp)   # once per BIN, which is
+    return pd.DataFrame([rows_by_oi[o] for o in origins])  # only noise
+
+
+def report_selfpot(tally: dict, k_values, sp: float) -> None:
+    """Say out loud how much of the answer came from inside one cell
+    (BACKLOG 95) and how far N_k overshot k (BACKLOG 94). Shared with
+    the slow engine so the two cannot describe themselves differently.
+    """
+    tot = tally.get("origins", 0)
+    if not tot:
+        return
+    for k in k_values:
+        nsp = tally["selfpot"].get(k, 0)
+        if nsp:
+            how = (f"Dist_{k} ESTIMATED inside the cell "
+                   f"(self-potential {sp:g})" if sp > 0 else
+                   f"Dist_{k} reported as 0 - self-potential is OFF, "
+                   f"so k is not distinguishing these origins")
+            print(f"[selfpot] k={k}: the whole neighbourhood was the "
+                  f"origin cell for {nsp:,} of {tot:,} origins - {how}")
+        nov = tally["over"].get(k, 0)
+        if nov:
+            print(f"[selfpot] k={k}: N_{k} is at least twice the k you "
+                  f"asked for in {nov:,} of {tot:,} origins - cells are "
+                  f"counted whole, so N_k >= k always")

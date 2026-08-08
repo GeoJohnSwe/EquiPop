@@ -18,35 +18,345 @@ costs. 71 and 74 were the same duplication. Items 38/42/43/45/49
 appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
+1. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
+2. **117** — one validated run specification, used by the package and every door
+3. **120** — move reference and treatment construction into shared package code
 
-1. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's destination, and machine 3 waits behind it
-2. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
-3. **58** — same evening: a GeoPackage barrier layer has still never been run
-4. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
-5. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
-6. **44** — the suspected one-line cause of 34; they travel together
-7. **34** — Pro renders the help page empty; needs one field cycle to confirm
-8. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
-9. **45** — small, but these files ship inside every release zip
-10. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
-11. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
-12. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
-13. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
-14. **38** — continental segmentation - PAUSED by John; revisit when a continental run is imminent
-15. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
-16. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
-17. **55** — same: the simulator honours category and enabled, only Pro can say they read well
-18. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
-19. **57** — retire the old single-table path once John confirms no saved tool needs it
-20. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
-21. **40** — one sentence in the Gridby README
-22. **4** — heights / third dimension - design can precede data, and there is no data yet
-23. **82** — machines 3 and 4 ship as a separate package; needs machine DISCOVERY in both doors first
-24. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
-25. **79** — icon.png has been promised since the beginning and never shipped
-26. **66** — not a task: a standing caution about editing multi-line Python
+4. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's destination, and machine 3 waits behind it. UNPAUSED by John, 1.29.3+
+5. **118** — weighted statistics without person expansion. BLOCKER for the continental machine
+6. **119** — resume must validate its parameters and fingerprint its input
+7. **93** — the WORKING FRAME (choose by extent, offer WGS84 with great-circle). It decides what 38's numbers MEAN, so it is settled before 38 is coded
+8. **92** — the continental DATA path: name the files instead of fetching the zip, cache populated cells once
+9. **124** — fetch caches by filename only; WorldPop filenames repeat across countries
+10. **125** — QGIS runs cannot be cancelled; needed before continental GUI work
+11. **97** — a decayed denominator is not a count; machine 3's standard errors need the effective sample size. RULED IN by John 1.29.5
+12. **106** — decay for machine 2; engine work, and the same job as 97
+13. **98** — mortality by differencing: keep the raw negatives, report the count. Clamping inflates mortality up to 11.8x. RULED by John 1.29.5
+14. **82** — machines must be DISCOVERED, not hard-coded; 38 is itself a machine and machine 3 waits behind it, so the doors stop counting to two
+15. **99** — interpolate the last cell of EVERY neighbourhood, not just the origin's own; removes the seam 95 left behind. Ruled in, deferred from 1.29.5 because it moves every row
+16. **90** — the decay-truncation box steps by 1 in QGIS: a stray click turns 0,000001 into 1,000001 and the run succeeds. A silent wrong answer, and a cheap fix
+17. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
+18. **58** — same evening: a GeoPackage barrier layer has still never been run
+19. **88** — and polygon barriers have never been run in PRO; same subject, same evening
+20. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
+21. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
+22. **44** — the suspected one-line cause of 34; they travel together
+23. **34** — Pro renders the help page empty; needs one field cycle to confirm
+24. **87** — the simulated arcpy is WRONG rather than sparse, and makes a real Pro dialog route untestable
+25. **101** — the suite writes run manifests into the working directory; on Windows that is a real C:\Data\
+26. **91** — RULED already: short decay labels in both doors; travels with the next release that touches the doors
+27. **89** — the output-table rule refuses a run that has already said where its output goes
+28. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
+29. **45** — small, but these files ship inside every release zip
+30. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
+31. **100** — MedDist_k as its own column, computed exactly from the rings rather than as r/sqrt(2). Never folded into Dist_k
+32. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
+33. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
+34. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
+35. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
+36. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
+37. **55** — same: the simulator honours category and enabled, only Pro can say they read well
+38. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
+39. **57** — retire the old single-table path once John confirms no saved tool needs it
+40. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
+41. **40** — one sentence in the Gridby README
+42. **4** — heights / third dimension - design can precede data, and there is no data yet
+43. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
+44. **66** — not a task: a standing caution about editing multi-line Python
 
+45. **107** — MANIFEST.in omits the demo scripts, so they have never shipped in an sdist
+46. **123** — run metadata records absolute paths and machine details
+47. **126** — a text category is lost whenever any value in the column parses as a number
+48. **127** — Value Statistics skips the version warning and shadows `wanted`
 ## Still to do — detail, in the order above
+
+- ~~95~~ | DONE v1.29.5 | SELF-POTENTIAL, shipped. equipop/selfpot.py holds the rule once so the two engines cannot drift; both apply it; both doors offer `selfpot` and BOTH ARE CHECKED ON VALUES, not names. Default 1.0, John's ruling. Guards broken on purpose six ways before being trusted - including the Pro one, whose FIRST version passed against a deliberate break because it drove _run_tool and skipped the dialog hop where `or 1.0` eats a falsy 0. Rewritten through execute(). s=0 reproduces pre-1.29.5 numbers exactly, asserted not assumed.
+
+- ~~96~~ | DONE v1.29.5 | Fixed by 95 and made loud. The substitution now prints a WARNING with the count and percentage, and the reported bandwidth range is the range BEFORE substitution - it used to be after, which hid it completely. Field check: 6,000 rows with a dense block, s=0 -> 'WARNING: 3,000 of 6,000 rows (50.0%) ... given the MEDIAN bandwidth (632 m)'; s=1 -> no warning, and the dense block becomes its own bin at a 10 m half-life instead of hiding in a 632 m bin.
+
+- 101 | open v1.29.5 | THE TEST SUITE WRITES FILES INTO THE WORKING
+  DIRECTORY. Found by Claude while staging 1.29.5: a clean clone had
+  five stray CSVs after a run, named things like
+  "C:\Data\Kayseri_EquiPop_run.csv" - one filename, backslashes and
+  all. They are RUN MANIFESTS. test_arcgis_stub.py reproduces John's
+  Kayseri field failure with a literal catalog path r"C:\Data\
+  Kayseri.shp", the manifest writer puts a sidecar beside the output
+  it derives, and on Linux the whole Windows path collapses into one
+  odd name in the CWD. Harmless there. ON WINDOWS IT WOULD WRITE
+  INTO A REAL C:\Data\ FOLDER - John's own machine, outside any
+  tmp_path, every time he runs the suite. Not a shipped-code fault
+  and deliberately not fixed in 1.29.5 (a three-item release stays a
+  three-item release), but tests should write to tmp_path only.
+  WORSE THAN FIRST LOGGED: seven of these files are COMMITTED to
+  main - C__/Data/ (5 files, committed in 1.29.3),
+  Instance=C_/Data/ (1 file, 1.22 - that name is a database
+  CONNECTION STRING, so a test pointed at a GeoPackage made a
+  directory out of it) and segregation_profile_HighEdu.csv
+  (1.5.1). They have been in the public repository for a year.
+  Removing them is `git rm -r --cached` on those paths, John's
+  to run. Confirmed still reproducing: a freshly unpacked 1.29.5
+  zip grew the same five files again after one test run.
+
+- ~~104~~ | DONE v1.29.5 | All three parts shipped, ruled by John. Rungs name their boxes; box 2 reordered so the rung-1 box is FIRST (parameter names untouched, so saved models survive); and the notices exist in BOTH machines - machine 2 had the same silence, reading `refmode == 2 and catfield` and doing nothing at all when the field was missing. Wording shared in equipop/doors/rungs.py. Guarded by a test that reads the box letter out of the rung's OWN text and checks it points at the box that rung really reads - so the promise cannot lapse when someone reorders labels. Five deliberate breakages, all caught.
+
+- ~~103~~ | DONE v1.29.5 | QGIS machine 2 now offers all eleven, in Pro's order and wording, with variance mapped to the engine's `var` in exactly one place. Guarded by a test that compares the two doors' MENU CONTENTS - a first instalment of 105 - and by one that checks every offered measure is one the engine can actually compute.
+
+- 102 | open v1.29.5 | QGIS HAS NO BANDWIDTH BOXES AT ALL. Pro
+  offers hlfield, hlfromdist and hlbins; QGIS offers only a fixed
+  half-life in metres. So the SELF-CALIBRATING BANDWIDTH - the
+  headline feature of 1.17 - has never been reachable from the door
+  John teaches with, and BACKLOG 96 could only ever be seen through
+  Pro or Python. Noticed by John, 1.29.5, reading the test manual.
+  The three boxes are ANALYTICAL, not output plumbing, so by
+  door_parity.py's own stated rule they belong in CORE - and they
+  are not there, which is why nothing has ever objected. Travels
+  with 42, which says the manual has never described the feature
+  either.
+
+- ~~105~~ | DONE v1.29.5 | Pinned rather than shared, and the reason is worth keeping. The obvious fix - import the wording from equipop/doors/rungs.py - WAS TRIED AND REVERTED: it broke BACKLOG 78, because QGIS imports a plugin at STARTUP and a module-level `import equipop` kills the whole plugin when the package is missing or old, before there is any algorithm to attach an explanatory message to. Pro learned the same in 1.16. So NEITHER DOOR MAY REACH INTO THE PACKAGE to find out what its own dropdowns say, and the duplication is permanent. rungs.py now holds the canonical wording and test_rungs.py reads all three copies and fails on drift - proved by drifting each in turn. Two real divergences were found and closed on the way: Pro said "additive (sum)" where QGIS said "additive (costs add up)" (QGIS's wording won - these are EFFORT costs), and the measures menus differed, which was 103.
+
+- 106 | open v1.29.5 | NO DECAY IN MACHINE 2, and it is ENGINE work,
+  not a door gap: run_knn_stats takes no decay at all while
+  run_knn_counts does. Raised by John, 1.29.5, asking whether it
+  would be easy. It is not. A decayed count is a weighted sum, but
+  a decayed MEDIAN, PERCENTILE or GINI needs weighted versions of
+  those statistics - different mathematics, not plumbing - and the
+  weighted sd and se need an honest denominator, which is the
+  EFFECTIVE SAMPLE SIZE of 97. So 106 and 97 are one job.
+
+- 107 | open v1.29.5 | MANIFEST.in OMITS THE DEMO SCRIPTS.
+  demo_berlin.py, demo_malta_worldpop.py and demo_stats_sweden.py
+  sit at the repository root; MANIFEST.in grafts examples/ and
+  docs/ but never mentions them, so they have been missing from
+  every published sdist. Found by Claude while building the 1.29.5
+  full zip. Same shape as the two omissions already recorded in
+  that file's own comments.
+
+- ~~108~~ | DONE v1.29.5 | Both keepoutside routes now use count * mask. Reproduced before and after: two included rows carrying 10 and 1 people gave N_5 = [11, 11] and [2, 2]; both routes now give [11, 11]. The guard did NOT exist - breaking the fix on purpose changed nothing - so two were written: one pinning the numbers, one asserting the invariant that what happens to rows OUTSIDE the reference population cannot change the numbers for rows inside it.
+
+- ~~109~~ | DONE v1.29.5 | `val > 0` became `val != 0`, and the unreachable check became _check_cost_range(), the same function vectors use. Facilitators survive; -1 and below is still refused. Guarded both ways, with no rasterio needed - raster_to_friction takes an array.
+
+- ~~110~~ | DONE v1.29.5 | Threaded into _count_from_grid, which friction AND slope share, so both engines answered at once; then through run_knn_friction, run_knn_slope and both bridge branches. Note what 115 did to this: once Dist_k is the ring's MAXIMUM extent, an effort origin only reports zero when everyone counted stands on the same spot - which is what register data looks like, so the fixture uses duplicate coordinates.
+
+- ~~111~~ | DONE v1.29.5 | The counter moved from _walk() to _store(), the single acceptance point, with a scratch dict merged only when a record is accepted. 514 origins now report as 514. Like 108, no guard existed; one was written that forces a fallback and parses the printed number.
+
+- ~~112~~ | DONE v1.29.5 | One construction. Guarded by counting the grid's own announcement, which is the cheapest honest check.
+
+- ~~113~~ | DONE v1.29.5 | selfpot() added to both commands with range validation, passed through to knn_to_rows and dispatch. The decimal-radius bug fixed in the same edit: `rl` was computed and then ignored, so `replace` silently dropped nothing for r=1.5. Live Stata is outside pytest, so the guards read the .ado text: the option exists, it is passed on, and it reaches the engine.
+
+- ~~114~~ | DONE v1.29.5 | Two guards. One walks the ENGINE LIST and fails when any engine cannot be told about self-potential - a new engine arriving without an answer fails here. The other runs the effort engine and checks the number moves, because a signature test cannot see accepting-and-ignoring.
+
+- ~~115~~ | DONE v1.29.5 | Dist_k is the MAXIMUM straight-line extent of the accepted effort ring, John's ruling. Guarded by shuffling the input rows and requiring the same answer.
+
+- ~~116~~ | DONE v1.29.5 | The narrow sweep. `parameterAsDouble(...) or 100.0` in BOTH QGIS machines meant a cell size of ZERO was silently replaced by 100 m and the run went ahead at a scale nobody chose; Pro had the same on unit and hlbins. All refuse now, in the doors and again in _run_tool. Guarded twice: once on behaviour, once by banning the idiom textually on the parameters where zero is meaningful or nonsense.
+
+- 117 | open v1.29.5 | A SHARED VALIDATED RUN SPECIFICATION. Counts
+  may be negative, which breaks the monotonic cumulative sum the
+  counts engine searchsorts against. Group counts above population
+  only warn. k, radii, cell size and decay truncation have no
+  consistent positive/finite check. Decay accepts a negative
+  half-life or zero gamma until the arithmetic fails or weights grow
+  with distance. Segregation does not refuse global shares of
+  exactly 0 or 1. One validated spec, used by the package and every
+  door, refusing rather than substituting.
+
+- 118 | open v1.29.5 | WEIGHTED VALUE STATISTICS EXPAND ROWS INTO
+  PERSONS. stata_bridge.py rounds each weight and repeats the row
+  that many times before computing statistics. A row standing for a
+  million people becomes a million rows. BLOCKER FOR 38, not merely
+  a risk: WorldPop counts are FRACTIONAL, so rounding is a second
+  silent error (a cell holding 0.4 people becomes 0), and a 1 km
+  African run would try to materialise on the order of a billion
+  rows before the engine starts. Needs exact weighted median,
+  percentile, Gini, mean, variance and valid-count on values plus
+  weights.
+
+- 119 | open v1.29.5 | RESUME CAN MIX RESULTS FROM DIFFERENT RUNS.
+  bigrun.py loads any manifest.json and skips every named tile that
+  already exists, without comparing the current k, radii, decay,
+  cell size, tile size, dtype or INPUT against the manifest it
+  already wrote. Reusing an output directory after changing anything
+  mixes stale and new tiles while appearing to resume. Cheaper than
+  it looks: the manifest already records the parameters; it needs a
+  comparison, a refusal, and an input fingerprint. Same item: the
+  "exactly the untiled result" claim should say that results are
+  STORED as float32 - the computation is exact, the storage is not.
+
+- 120 | open v1.29.5 | POPULATION AND TREATMENT CONSTRUCTION IS
+  DUPLICATED IN BOTH GIS DOORS, against the project's own rule that
+  doors move data and the package calculates. 108 exists precisely
+  because of it: one door was fixed and the other was not. Compare
+  alg_counts.py with the equivalent block in EquiPop.pyt.
+
+- ~~121~~ | DONE v1.29.5 | README_QGIS.md's "What is not here yet" had been telling users that decay, barriers, terrain and grouping were absent from QGIS; three of the four arrived releases ago, so it was sending people to ArcGIS for things sitting in front of them. Rewritten to say what IS present and to name the one real gap (102, variable bandwidth). MANUAL.md no longer calls itself 0.3.1 while carrying history to 1.29.5; MANUAL_BEGINNER.md and FUNCTION_MATRIX.md are now version-free by intention rather than stale; and equipop/__init__.py no longer says "no friction, no decay yet".
+
+- 122 | ~~RULED OUT~~ v1.29.5 | A DISCLOSURE-CONTROL PROFILE for
+  register data (minimum k, suppression of N_local and thin
+  results). Raised by the external review; RULED OUT by John,
+  1.29.5: "access to restricted or sensitive data means having
+  agreed to ethical protocols already - so no need for extra
+  caution". Recorded rather than deleted, because it is a good
+  question that will be asked again.
+
+- 123 | open v1.29.5 | RUN METADATA RECORDS ABSOLUTE PATHS AND
+  MACHINE DETAILS. RunLog and the ArcGIS manifests store input
+  paths, barrier catalog paths and OS information, so sharing a
+  manifest may disclose usernames, institutional folder structure,
+  project names and dataset locations. Distinct from 122: this is
+  about what leaves the machine in a file meant to aid
+  reproducibility.
+
+- 124 | open v1.29.5 | fetch() CACHES BY FILENAME ONLY, not URL or
+  checksum, so two different URLs sharing a basename silently reuse
+  the wrong file - a real hazard for the continental data path,
+  where WorldPop filenames repeat across countries and years. Same
+  item: ZIP reading and fetching extract whole archives into
+  persistent directories with no file-count or size limit.
+
+- 125 | open v1.29.5 | QGIS RUNS CANNOT BE CANCELLED. There is no
+  call to feedback.isCanceled() anywhere in the door, and progress
+  only moves while the output is being written. A continental run in
+  a dialog that cannot be stopped is not usable; this belongs before
+  38's GUI work.
+
+- 126 | open v1.29.5 | A TEXT CATEGORY IS LOST WHENEVER ANY VALUE IN
+  THE COLUMN PARSES AS A NUMBER. _convert() in base.py keeps strings
+  only if EVERY value fails numeric conversion, so a column holding
+  "1" and "cafe" becomes numeric-plus-NaN and the category is gone.
+
+- 127 | open v1.29.5 | QGIS VALUE STATISTICS does not call the
+  package/plugin version-mismatch warning that Counts and Shares
+  does, and shadows the variable `wanted` between the selected
+  measures and the selected reference categories, so its "Measures:"
+  log line can describe the wrong thing. The calculation is safe -
+  the stats dict is built before the shadowing - but it is fragile.
+
+- 99 | open v1.29.5 | INTERPOLATE THE LAST CELL OF EVERY
+  NEIGHBOURHOOD, not only the origin's own. RULED IN by John during
+  the 1.29.5 design rounds ("2. Sure") and then DEFERRED by Claude,
+  with John's agreement, out of 1.29.5. The reason: 95 changes only
+  the rows where a single cell satisfies k, while this changes EVERY
+  row, so it deserves its own release and its own field test rather
+  than riding along with three fixes. Without it Dist_k still has a
+  seam - roughly 0.56c to 1.0c - where the neighbourhood stops
+  fitting in one cell. Same arithmetic as 95: the k-th person falls
+  partway into the last cell, so take that fraction of its area.
+
+- 100 | open v1.29.5 | MedDist_k AS ITS OWN COLUMN. Also ruled in
+  during design and deferred with 99. The MEDIAN distance to a
+  neighbour is an accessibility measure the literature largely
+  lacks, and it must NOT be folded into Dist_k, which is an outer
+  radius - one column meaning two things is the silence this project
+  keeps catching. Note the engine can do better than r/sqrt(2): it
+  knows the population of every ring it visited, so the true median
+  can be computed exactly, with no evenness assumption at all.
+  r/sqrt(2) is only what you get when density is flat.
+
+- 97 | open v1.29.5 | RULED IN by John, 1.29.5. A DECAYED
+  DENOMINATOR IS NOT A COUNT. If machine 3 uses decay to handle
+  sparse cohorts (John's 4c), the person-years behind a rate become
+  a WEIGHTED sum, and the standard error must use the EFFECTIVE
+  sample size n_eff = (sum w)^2 / sum(w^2), not sum(w). Reporting SE
+  from the weighted sum understates the uncertainty, silently, and
+  worst where the cohort is thinnest - which is the case the decay
+  was introduced to rescue. The engine already computes
+  ND_inf = sum(n*w); adding sum(n*w^2) is one line and makes an
+  honest SE possible. Ties to the E&W 5000 person-year threshold:
+  with decay the threshold must be read against n_eff.
+
+- 98 | open v1.29.5 | MORTALITY BY YEAR DIFFERENCING: NEVER CLAMP
+  THE NEGATIVES. RULED by John 1.29.5 after Claude simulated the
+  alternative. Two WorldPop years are separately modelled surfaces,
+  so their difference carries model revision as well as mortality
+  and a large share of cells imply NEGATIVE deaths. John asked
+  whether clamping to zero would be easier; it is not, it is wrong:
+    model error   % cells negative   raw mean   clamped   bias
+             2%             36.1%       2.00      3.39    1.7x
+             5%             44.2%       2.06      6.71    3.4x
+            10%             47.0%       2.00     12.25    6.1x
+            20%             48.7%       2.07     23.52   11.8x
+  (true deaths 2.00/cell, 200 000 cells.) The RAW difference is
+  unbiased at every noise level - the negatives are the other half
+  of a symmetric spread and are what makes the mean correct.
+  Clamping deletes that half and inflates mortality 1.7x to 11.8x,
+  worst where the data is weakest. The negative FRACTION is also the
+  best available diagnostic of how much of the surface is model
+  noise. So: keep the raw value, report the count and the fraction,
+  never clamp and never null. Same family as 1.27.0's facilitators,
+  where truncating below zero silently ignored the input.
+
+
+- ~~94~~ | DONE v1.29.5 | Reported rather than left in the data: both engines now say how often N_k reached at least twice the k asked for, through one shared function so they cannot describe themselves differently. The COLUMN was not added - that is a schema change across both doors and did not belong in a three-item release.
+
+
+- 92 | open v1.29.3 | THE CONTINENTAL DATA PATH. Designed with John
+  in the 1.29.3 session; it lived only in the handover until 1.29.5,
+  which is why it arrives late. Grounded on the real WorldPop Kenya
+  page (hub.worldpop.org id=81758): 63 GeoTIFFs, ~66 MB each,
+  3.78 GB zipped; 20 age bands (0, 1-4, 5-9 ... 90+) x three genders,
+  3 arc-second, WGS84, counts per grid square.
+  - A THIRD OF EVERY DOWNLOAD IS REDUNDANT: t_XX = f_XX + m_XX.
+  - NEVER FETCH THE ZIP. The .tif URLs follow a strict pattern, so a
+    tool that knows its cohorts can name its own files: ASFR needs
+    f_15..f_45, SEVEN files, 464 MB rather than 3.78 GB.
+  - SCALE DECIDES THE ARCHITECTURE. Africa at 1 km is ~30 million
+    cells per layer, ~1 GB for 40 layers of populated cells - it fits
+    in memory and needs no tiling of the destinations. At 100 m it is
+    ~3.0 BILLION per layer, ~73 GB, and must stream. Same code path;
+    BUILD AND TEST AT 1 km.
+  - CACHE THE EXTRACTION ONCE to populated cells only, in Parquet.
+    Same insight as 68: reading was the cost.
+  - Note against the existing code: equipop/raster.py already reads
+    WorldPop-shaped rasters and already keeps only populated pixels,
+    and bigrun.py already flushes to Parquet with a manifest. The
+    missing pieces are the cohort-aware file naming, the cache, and
+    a door.
+
+- 93 | open v1.29.3 | THE WORKING FRAME - John's ruling: CHOOSE BY
+  EXTENT, NOT BY FORMAT, AND OFFER WGS84. Designed with John in the
+  1.29.3 session and likewise recorded late.
+  Degrees and metres are not in conflict: a great-circle distance
+  gives TRUE METRES from degree coordinates, so k, radii, tau and
+  Dist_k all keep their meaning and stay comparable with a projected
+  run. Measured cost: a sphere against the ellipsoid is out by
+  0.1-0.4% (12 m at 11 km near the equator) - say the number rather
+  than calling it negligible.
+  - Extent under one UTM zone (6 deg of longitude) auto-projects
+    exactly as today. MALTA IS UNCHANGED.
+  - 6 to 20 deg projects with a WARNING carrying the measured scale
+    error.
+  - Beyond that, WGS84 with great-circle, said plainly.
+  - John's worry, and it is the right one: a Malta-sized WGS84
+    dataset where the user thinks in metres must keep working
+    without them thinking about any of this.
+  - THE CELL BOX STAYS IN METRES (no new unit for students), but
+    with raster input it SNAPS to a whole multiple of the source
+    grid, because any other value resamples the raster - the very
+    destruction we are avoiding. A 3 arc-second cell is 92.8 m TALL
+    everywhere and 92.8 / 89.6 / 84.1 / 76.0 m wide at 0 / 15 / 25 /
+    35 degrees; across Africa the width varies by a factor of 1.25,
+    far less than any single projection would impose.
+  - TOOL HELP IS PART OF THE JOB, NOT A FOOTNOTE (John): both doors
+    must state the scales at play - "you asked for 100 m; using 1 x
+    the source grid, cells are 92.8 m tall and 92.8-76.0 m wide
+    across your extent; no resampling".
+  - AND IT WOULD FAIL SILENTLY: the fast pass sizes its neighbour-
+    cell window from an assumed UNIFORM cell size. With degree cells
+    that varies with latitude, so the window must be sized for the
+    WIDEST cells in the extent, or the search stops short and
+    returns a k-neighbourhood that is not one.
+  - Note against the existing code: equipop/projection.py already
+    decides by extent, but its answer beyond two UTM zones is an
+    equal-distance compromise CRS or an A/B tiled run - NOT WGS84
+    with great-circle. This ruling supersedes that branch and the
+    module must be told.
+
+- 90 | open v1.29.3 | THE DECAY-TRUNCATION SPIN BOX STEPS BY 1 IN
+  QGIS, so a stray scroll or click moves 0.000001 to 1.000001 and
+  nothing objects: the run succeeds and the number is nonsense.
+  The classic silent wrong answer. Set the step and the decimal
+  places to match the quantity, and say something above a plausible
+  ceiling. (John's locale renders it 0,000001.)
 
 - 87 | open v1.29.3 | THE SIMULATED ARCPY RESOLVES ANY STRING IN A
   VALUE TABLE TO A LAYER PATH, so 'bar' arrives as 'memory/bar' and a
@@ -62,6 +372,16 @@ appeared twice; the weaker copy is gone.*
   QGIS-side function - but nobody has pointed the ArcGIS toolbox at
   a lake either, and the two doors build their geometry payloads
   separately. One field run answers it.
+
+- 91 | open v1.29.3 | RULED by John: SHORT DECAY LABELS IN BOTH
+  DOORS, with the explanation moved out of the dropdown text and
+  into HELP["model"] where the shared help already lives. One text,
+  two doors. Travels with the next release that touches the doors.
+
+- 89 | open v1.29.3 | THE OUTPUT-TABLE RULE IS OVER-STRICT. It asks
+  "is the input a table?" and never "has the user already said where
+  the output goes?", so a run that has named its own output is
+  refused anyway. Found by John in the field, 1.29.3.
 
 - ~~85~~ | DONE v1.29.3 | THE TREATMENT LADDER IS IGNORED UNLESS THE
   REFERENCE LADDER IS ON RUNG 3 - QGIS door only. alg_counts.py line
@@ -174,16 +494,17 @@ appeared twice; the weaker copy is gone.*
   cannot reach the user. FIX: build the decay list on first USE, and
   port the ArcGIS lazy-import test (which fails if the discipline is
   broken) to the QGIS door. Cost John an hour in the field, 1.29.0.
-- 79 | open v1.29.1 | metadata.txt declares `icon=icon.png` and the
-  file has never existed - not in the repo, not in the 1.28.0 zip,
-  not in 1.29.0. QGIS shrugs, but it is a promise the plugin does
-  not keep and it would block a submission to the QGIS plugin
-  repository.
+- ~~79~~ | DONE v1.29.5 | icon.png shipped at 128x128 RGBA: the origin, its k nearest inside the radius, and the ones beyond it faded. Checked at 24 px, where QGIS is smallest. The lasting part is the test: metadata.txt may no longer name any file the plugin does not carry.
+
 - 80 | open v1.29.1 | Run `tools/stub_audit.py` in a live QGIS as
   part of every release that touches the QGIS door, and record the
   result in the MANUAL validation row. It is the only check that can
   see the simulator flattering itself; 1.29.1 exists because nothing
-  did.
+  did. NOT CLOSEABLE BY CLAUDE, ever: it needs real PyQGIS, so it is
+  John's on every release, permanently. 1.29.5 did what could be
+  done from here - the tool now EXPLAINS itself and exits 2 instead
+  of raising ModuleNotFoundError at whoever runs it in the wrong
+  place, and the message names this item and where to run it.
 
 - ~~68~~ | DONE v1.29.2 | Reading a GeoPackage in QGIS took 5.5 s against 0.3 s
   of calculation (John, field, 8730 points). read_points builds a
@@ -270,6 +591,42 @@ appeared twice; the weaker copy is gone.*
   CODE VALUE, not prose - do not touch it.
 
 - 38 | open v1.16.8 | Continental segmentation wired into the GUI: origin tiling (bigrun, already built and tested, currently unreachable) with output folder + resume; halo-based full partitioning only if destinations stop fitting, with the halo checked against Dist_k and widened for the origins that touched it; merge on an explicit EQP_ID, never OID (ArcGIS renumbers OIDs on copy) | John's B1-10/C1-2 sketch
+  DIALOG DESIGN AGREED WITH JOHN, 1.29.5, in two rounds - and
+  EXPLICITLY NOT LOCKED ("let us develop them in the rounds to
+  come"). Three tools, not one, because a run of hours must survive
+  the door being closed:
+  (1) PREPARE - measure (population composition / ASFR / life
+      expectancy & mortality / dependency ratios / infant mortality)
+      drives everything below; source is a raster folder, the named
+      rasters fetched, OR A POINTS LAYER (CSV, shapefile,
+      GeoPackage, database table - John, round two: rasters are
+      common in this world but so is everything else); area; years
+      with three-year pooling as default; SPLIT BY GROUP - sex,
+      ethnicity or any other, NOT "split by sex" (John, round two;
+      note that on the raster path the only group WorldPop carries
+      is sex, so there the box reads the file naming, while on the
+      points path it picks a field); mortality-by-differencing
+      switch; cache folder; advanced cell size, snapped.
+      Prints before acting: which cohorts the measure needs and so
+      which files; the frame decision of 93 with its measured error;
+      the scale report; and the negative-death count of 98.
+  (2) RUN - cache folder; k VALUES as a list (already in the engine,
+      John's "several k per cohort, they tell different spatial
+      stories"); optional PER-COHORT k override table (the new box);
+      bandwidth none / fixed / from a field / SELF-CALIBRATING from
+      Dist_k (John's "decay on the k" - it is the 1.17 feature, see
+      96); decay model; SELF-POTENTIAL (95); output folder; resume;
+      advanced tile size and radii.
+  (3) COLLECT - run folder; columns, which the measure knows
+      (ASFR_15_19, Events_15_19, SE_15_19, Dist_k_15_19,
+      MedDist_k_15_19); output format; verify checksums. Prints the
+      plausibility summary including 98's negatives and where a
+      decayed n_eff falls under the E&W 5000 person-year threshold.
+  Note that bigrun.py ALREADY provides (2)'s substrate - origin
+  tiling with a global tree, so results are exactly the untiled
+  ones, plus parquet flush, manifest, md5 and resume. At 1 km the
+  destinations fit in memory and there is NO halo problem at all;
+  halos arrive only at 100 m.
 
 - 59 | open | Does the QGIS door refresh GeoPackage fields properly?
   Expected yes (OGC format, QGIS's native default). If so it is a

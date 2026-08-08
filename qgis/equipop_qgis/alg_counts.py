@@ -46,12 +46,24 @@ def _decay_choices():
 # The same ladder as the ArcGIS door, in the same order. QGIS has no
 # collapsible sections and no dependable greying, so here the ladder
 # shows through ORDER and WORDING instead.
+# BACKLOG 105. This wording is DUPLICATED - the canonical copy lives
+# in equipop/doors/rungs.py - and it cannot be imported from there,
+# because of BACKLOG 78: QGIS imports a plugin at STARTUP, so a
+# module-level `import equipop` kills the whole plugin when the
+# package is missing or old, before there is any algorithm to attach
+# an explanatory message to. A guard downstream of its own failure is
+# not a guard.
+# So the duplication stays and is PINNED INSTEAD: test_rungs.py reads
+# both copies and fails on any drift. Change rungs.py, not this.
+# BACKLOG 104: each rung NAMES the box it reads, because QGIS cannot
+# grey the others out. Those hints are this door's ONE addition.
 REF_MODES = ["every point counts as one",
-             "a field holds the count",
-             "only selected types, with a count field"]
+             "a field holds the count (fill 1a)",
+             "only selected types, with a count field "
+             "(fill 1a, 1b and 1c)"]
 TREAT_MODES = ["not measuring one - distances and counts only",
-               "one column per group, counts inside",
-               "types from a type field, grouped"]
+               "one column per group, counts inside (fill 2a)",
+               "types from a type field, grouped (fill 2b and 2c)"]
 OUTSIDE_MODES = ["give them results, counting as zero",
                  "leave their results Null"]
 AGG_MODES = ["additive (costs add up)", "max", "min", "mean"]
@@ -111,23 +123,28 @@ class CountsAndShares(EquipopAlgorithm):
             "defined? (no count field: k belongs to the reference "
             "population, so the treatment is counted in the same "
             "units)", options=TREAT_MODES, defaultValue=0))
+        # BACKLOG 104: 2a used to be the type field, which serves
+        # RUNG 2, while the rung-1 box sat last as 2d. Pick rung 1 and
+        # the box you needed was behind three that did not apply.
+        # The PARAMETER NAMES are unchanged, so saved models and
+        # scripts keep working - only the labels moved.
         self.add(QgsProcessingParameterField(
-            "treatcatfield", "2a \u25b8 ...type field for the groups "
-            "(usually the same column - choose it here too)",
-            parentLayerParameterName="layer", optional=True))
-        self.add(QgsProcessingParameterMatrix(
-            "treattable", "2b \u25b8 ...groups: one row per type - "
-            "the type, and the group name it joins",
-            headers=["Type", "Group name"], optional=True))
-        self.add(QgsProcessingParameterString(
-            "restgroup", "2c \u25b8 ...name a group for every OTHER "
-            "type (optional; for example: other)", optional=True))
-        self.add(QgsProcessingParameterField(
-            "treat", "2d \u25b8 ...group count fields - one column "
+            "treat", "2a \u25b8 ...group count fields - one column "
             "per group, holding TOTALS, never averages",
             parentLayerParameterName="layer",
             type=QgsProcessingParameterField.Numeric,
             allowMultiple=True, optional=True))
+        self.add(QgsProcessingParameterField(
+            "treatcatfield", "2b \u25b8 ...type field for the groups "
+            "(usually the same column - choose it here too)",
+            parentLayerParameterName="layer", optional=True))
+        self.add(QgsProcessingParameterMatrix(
+            "treattable", "2c \u25b8 ...groups: one row per type - "
+            "the type, and the group name it joins",
+            headers=["Type", "Group name"], optional=True))
+        self.add(QgsProcessingParameterString(
+            "restgroup", "2d \u25b8 ...name a group for every OTHER "
+            "type (optional; for example: other)", optional=True))
 
         self.add(QgsProcessingParameterString(
             "k", "3 \u25b8 k - neighbourhood sizes in people, space "
@@ -193,6 +210,12 @@ class CountsAndShares(EquipopAlgorithm):
             "unit", "Cell size in metres - bigger cells mean fewer "
             "origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double), advanced=True)
+        self.add(QgsProcessingParameterNumber(
+            "selfpot", "Self-potential - how far away your OWN "
+            "cell's people are (0 = at the centre with you, as "
+            "before 1.29.5; 1 = spread evenly over the cell)",
+            defaultValue=1.0, minValue=0.0, maxValue=1.0,
+            type=QgsProcessingParameterNumber.Double), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -215,7 +238,20 @@ class CountsAndShares(EquipopAlgorithm):
                 "Give at least one k (a number of people) or one "
                 "radius in metres - otherwise there is no "
                 "neighbourhood to measure.")
-        unit = self.parameterAsDouble(parameters, "unit", context) or 100.0
+        # BACKLOG 116: this read `... or 100.0`, so a cell size of
+        # ZERO - a real thing a user can type - was silently replaced
+        # by 100 m and the run went ahead at a scale nobody chose.
+        # The same idiom nearly ate a deliberate self-potential of 0
+        # in Pro. Any parameter whose zero is MEANINGFUL, or whose
+        # zero is nonsense, must be refused rather than substituted.
+        unit = self.parameterAsDouble(parameters, "unit", context)
+        if unit is None or unit != unit:            # unset or NaN
+            unit = 100.0
+        if unit <= 0:
+            raise QgsProcessingException(
+                f"Cell size must be greater than 0 metres; got "
+                f"{unit:g}. It is the grid the neighbourhoods are "
+                "built on, so there is no sensible zero.")
         pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
         treats = self.parameterAsStrings(parameters, "treat", context)
@@ -241,7 +277,9 @@ class CountsAndShares(EquipopAlgorithm):
                 (self.parameterAsStrings(parameters, "yfield", context)
                  or [None])[0])
 
-        kw = dict(unit_size=float(unit), treat_are_counts=True)
+        kw = dict(unit_size=float(unit), treat_are_counts=True,
+                  self_potential=self.parameterAsDouble(
+                      parameters, "selfpot", context))
         if decaying:
             kw["decay_model"] = model
             kw["half_life_m"] = float(half)
@@ -280,13 +318,66 @@ class CountsAndShares(EquipopAlgorithm):
                     (self.parameterAsMatrix(parameters, "reftable",
                                             context) or [])
                     if str(v).strip()]
+
+        # ------------------------------------------------ BACKLOG 104
+        # A ladder whose rungs read different boxes, in a dialog that
+        # cannot grey the others out, must SAY when a box is being
+        # ignored and REFUSE when the box a rung needs is empty. Only
+        # the reftable case below was ever written; John lost a field
+        # run to the treatment half in 1.29.5.
+        from equipop.doors import rungs
+        rest_txt = self.parameterAsString(parameters, "restgroup",
+                                          context).strip()
+        tcat = (self.parameterAsStrings(parameters, "treatcatfield",
+                                        context) or [None])[0]
+        tmat = [str(v).strip() for v in
+                (self.parameterAsMatrix(parameters, "treattable",
+                                        context) or []) if str(v).strip()]
+
+        if refmode == 1 and not pop:
+            raise QgsProcessingException(rungs.missing(
+                "box 1a, the count field", "the reference population",
+                REF_MODES[1]))
+        if refmode == 2 and not catfield:
+            raise QgsProcessingException(rungs.missing(
+                "box 1b, the type field", "the reference population",
+                REF_MODES[2]))
+        if catfield and refmode != 2:
+            ch.info(rungs.ignored("Box 1b, the type field",
+                                  "the reference population",
+                                  REF_MODES[refmode]))
         if pop_vals and refmode != 2:
-            ch.info("A list of reference types was given, but the "
-                    "reference population is not on the 'only "
-                    "selected types' rung - the list is IGNORED. "
-                    "QGIS cannot grey a box out the way Pro does, so "
-                    "this notice is the only warning you get.")
+            ch.info(rungs.ignored("Box 1c, the list of reference types",
+                                  "the reference population",
+                                  REF_MODES[refmode]))
             pop_vals = []
+
+        if treatmode == 1 and not treats:
+            raise QgsProcessingException(rungs.missing(
+                "box 2a, the group count fields",
+                "the treatment population", TREAT_MODES[1]))
+        if treatmode == 2 and not (tcat or catfield):
+            raise QgsProcessingException(rungs.missing(
+                "box 2b, the type field for the groups (or box 1b, "
+                "which it falls back to)",
+                "the treatment population", TREAT_MODES[2]))
+        if treatmode != 2:
+            for box, filled in (("Box 2b, the type field for the groups",
+                                 bool(tcat)),
+                                ("Box 2c, the group table", bool(tmat)),
+                                ("Box 2d, the name for every other type",
+                                 bool(rest_txt))):
+                if filled:
+                    ch.info(rungs.ignored(box,
+                                          "the treatment population",
+                                          TREAT_MODES[treatmode]))
+        if treats and treatmode == 0:
+            # honoured anyway, and saying so beats silently dropping
+            # the columns that saved models already depend on
+            ch.info(rungs.working_anyway(
+                "Box 2a, the group count fields",
+                "the treatment population", TREAT_MODES[0],
+                TREAT_MODES[1]))
 
         restricting = refmode == 2 and bool(catfield)
         grouping = treatmode == 2
@@ -335,13 +426,15 @@ class CountsAndShares(EquipopAlgorithm):
             if cat_treats:
                 kw.setdefault("treat", {}).update(cat_treats)
             outside = int((~pop_mask).sum()) if restricting else 0
+            # one definition of "how many people is this row", used by
+            # BOTH keepoutside routes (BACKLOG 108)
+            base = (pts.data[pop].astype(float) if pop
+                    else np.ones(pts.n))
             if (self.parameterAsEnums(parameters, "keepoutside",
                                       context) or [0])[0] == 0:
                 # John's rule: outside the reference population means
                 # zero people - nobody's neighbour - but the row
                 # still gets its own results.
-                base = (pts.data[pop].astype(float) if pop
-                        else np.ones(pts.n))
                 kw["weight"] = np.nan_to_num(base) * pop_mask
                 if outside:
                     ch.info(f"{outside} row(s) are outside the "
@@ -349,7 +442,15 @@ class CountsAndShares(EquipopAlgorithm):
                             "zero people, but still get their own "
                             "results.")
             else:
-                kw["weight"] = pop_mask.astype(float)
+                # BACKLOG 108. This used to be `pop_mask.astype(float)`
+                # - the MASK, not the count - so every included row
+                # counted as ONE and the population field was thrown
+                # away, silently. Two included rows carrying 10 and 1
+                # people gave N_5 = 2 here and 11 on the branch above.
+                # Entered in 1.21, published from 1.21 to 1.29.3.
+                # alg_stats.py had it right all along, which is what
+                # BACKLOG 120 is about: the logic is duplicated.
+                kw["weight"] = np.nan_to_num(base) * pop_mask
                 keep = pop_mask.astype(bool)
                 pts.data["x"] = np.where(keep, pts.data["x"], np.nan)
                 pts.data["y"] = np.where(keep, pts.data["y"], np.nan)

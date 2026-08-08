@@ -42,7 +42,27 @@ SURFACE = [
     ('_Source', 'QgsProcessingFeatureSource', ['featureCount', 'fields', 'getFeatures', 'sourceCrs', 'wkbType'], {}),
 ]
 
-import qgis.core as C
+import sys
+
+try:
+    import qgis.core as C
+except ModuleNotFoundError:                       # BACKLOG 80
+    # This tool exists to catch the simulator flattering itself, so it
+    # is worthless anywhere the REAL PyQGIS is absent - and it used to
+    # say so with a bare traceback, which reads like a broken tool
+    # rather than a tool used in the wrong place.
+    sys.stderr.write(
+        "\n  stub_audit needs the REAL PyQGIS, and there is none here.\n"
+        "  That is the whole point of it: it compares the simulator in\n"
+        "  tests/qgis_stub.py against what QGIS actually offers, so\n"
+        "  running it outside QGIS would only compare the simulator\n"
+        "  with itself.\n\n"
+        "  Run it from the OSGeo4W Shell, in the repository folder:\n"
+        "      python tools/stub_audit.py\n\n"
+        "  BACKLOG 80 asks for this on every release that touches the\n"
+        "  QGIS door, with the result recorded in the MANUAL\n"
+        "  validation row. 1.29.1 exists because nothing did.\n\n")
+    raise SystemExit(2)
 
 print("=" * 68)
 print("Auditing the simulator against QGIS",

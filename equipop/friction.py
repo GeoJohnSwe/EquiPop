@@ -30,6 +30,8 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
+from . import selfpot
+
 
 def load_friction_table(
     path: str,
@@ -232,7 +234,8 @@ class FrictionGrid:
 
 
 def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
-                     tau_values=None):
+                     tau_values=None,
+                     self_potential=selfpot.DEFAULT_SELF_POTENTIAL):
     """Shared origin loop: count cells in included-round order from a
     prepared grid (FrictionGrid or SlopeGrid). Tie convention: equal
     rounds form one atomic ring, as everywhere in EquiPop.
@@ -240,6 +243,9 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
     origins : optional array of ROW indices into pop - compute results
     only for these origins (destination mass stays complete). Serves
     origin-subset workflows (validation subsamples, kFCA, backlog #11)."""
+    # BACKLOG 110: shared by friction AND slope, so threading it
+    # here answers both engines at once.
+    sp = selfpot.check(self_potential)
     k_values = sorted(k_values or [])
     tau_values = sorted(tau_values or [])
     if not (k_values or tau_values):
@@ -295,9 +301,19 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                     ring.append(order[j]); j += 1
                 for ci in ring:
                     sum_all += ca[ci]; sum_grp += cg[ci]
-                # distance to the LAST cell of the ring (any tie member)
-                dist_m = float(np.hypot(grid.pop_x[ring[-1]] - grid.pop_x[oi],
-                                        grid.pop_y[ring[-1]] - grid.pop_y[oi]))
+                # BACKLOG 115, ruled by John: the MAXIMUM straight-line
+                # extent of the accepted ring - the smallest circle
+                # containing everyone counted, which is what "the
+                # radius required to reach k" means. This used to read
+                # ring[-1], and the comment said so: "any tie member".
+                # Cells in one effort ring sit at different distances,
+                # so the reported radius was INPUT ORDER. Reordering
+                # identical cells moved one origin's Dist_2 from
+                # 141.421 to 100.0.
+                dist_m = max(
+                    float(np.hypot(grid.pop_x[ci] - grid.pop_x[oi],
+                                   grid.pop_y[ci] - grid.pop_y[oi]))
+                    for ci in ring)
                 rounds_now = float(r0)
                 while pending and sum_all >= pending[0]:
                     k = pending.pop(0)
@@ -305,7 +321,17 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                     if _has_group:
                         rec[f"T_{k}"] = sum_grp
                         rec[f"R_{k}"] = sum_grp / sum_all
-                    rec[f"Dist_{k}"] = dist_m
+                    # BACKLOG 110: the effort engines never received
+                    # self-potential in 1.29.5, so a dense origin
+                    # reported Dist_k = 0 exactly as before the fix.
+                    # There is no decay here, so only the radius half
+                    # applies, and it is the same rule as the radial
+                    # engines - one module, one formula.
+                    d_k = dist_m
+                    if d_k <= 0.0 and sum_all >= k:
+                        d_k = selfpot.radius_for_k(
+                            grid.unit_size, k, float(sum_all), sp)
+                    rec[f"Dist_{k}"] = d_k
                     rec[f"Rounds_{k}"] = rounds_now
             for tv in pending_tau:  # isochrone swallows all reachable
                 rec_tau(tv)
@@ -347,6 +373,7 @@ def run_knn_friction(
     chunk: int = 250,
     origins=None,
     tau_values: list[float] | None = None,
+    self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
 ) -> pd.DataFrame:
     """
     Friction-aware k-NN for aggregated cell data.
@@ -365,17 +392,15 @@ def run_knn_friction(
     Dist_k remains the straight-line Cartesian distance to the cell
     where k was reached, as in the original EquiPop output.
     """
-    if fr is not None:
-        coverage_warning(pop, fr)
-    grid = FrictionGrid(pop, fr, unit_size, default_friction,
-                        count_all_col, count_group_col)
-
+    # BACKLOG 112: this block appeared TWICE, verbatim. FrictionGrid
+    # is the most expensive object in the project and every effort
+    # run was paying for it twice.
     if fr is not None:
         coverage_warning(pop, fr)
     grid = FrictionGrid(pop, fr, unit_size, default_friction,
                         count_all_col, count_group_col)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
-                            tau_values)
+                            tau_values, self_potential)
 
 
 # ===================================================================
@@ -747,11 +772,17 @@ def raster_to_friction(arr, x_min: float, y_max: float,
                 continue
             row = int((y_max - my) / cell_h)
             val = a[row, col]
-            if np.isfinite(val) and val > 0:
+            # BACKLOG 109: this used to be `val > 0`, which dropped
+            # every FACILITATOR (1.27) before it could be seen, and
+            # made the negative check below unreachable. Zero is
+            # skipped because zero friction is open ground - that is
+            # a size optimisation, not a rule.
+            if np.isfinite(val) and val != 0:
                 xs.append(mx); ys.append(my); fs.append(float(val))
-    if fs and min(fs) < 0:
-        raise ValueError("[friction] negative friction values in the "
-                         "raster - costs must be >= 0")
+    if fs:
+        # the same rule vectors get: above -1 is a facilitator,
+        # -1 and below would make movement free and is refused
+        _check_cost_range(fs, "raster")
     out = pd.DataFrame({"x": xs, "y": ys, "friction": fs})
     print(f"[friction] raster {nrow}x{ncol} px -> {len(out)} friction "
           f"cells at {u:g} m (midpoint sampling; NoData/zero free)")

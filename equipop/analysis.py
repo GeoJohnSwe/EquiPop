@@ -235,6 +235,7 @@ def run_knn(
 # ======================================================================
 #  run_knn_stats - k-NN with per-variable statistics (tiers 1-3)
 # ======================================================================
+from . import selfpot
 from .cells import CellData
 from .stats import (BINARY_STATS, VALUE_STATS, PREFIX,
                     value_stat, stat_prefix, is_percentile)
@@ -247,9 +248,14 @@ def run_knn_stats(
     max_radius_units: int | None = None,
     r_values: list[float] | None = None,
     m_neighbors: int | None = None,
+    self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis with user-selected statistics per variable.
+
+    self_potential : how far away your OWN cell's people are, 0 to 1
+    (v1.29.5, BACKLOG 95). Must match run_knn_counts exactly - the two
+    engines are bound by regression test. See equipop/selfpot.py.
 
     The user switches statistics on per FUNCTION (applied to all k),
     exactly as requested:
@@ -303,6 +309,10 @@ def run_knn_stats(
                                  f"Available: {list(VALUE_STATS)} "
                                  "plus percentiles like p10/p97.5")
 
+    sp = selfpot.check(self_potential)
+    tally = {"selfpot": {}, "over": {}, "origins": 0}
+    scratch = {"selfpot": {}, "over": {}}      # BACKLOG 111
+
     m = len(cd)
     print(f"[stats] {m} cells, k = {k_values}" +
           (f", r = {r_values} m" if r_values else ""))
@@ -336,6 +346,13 @@ def run_knn_stats(
         d_last = float(nd[-1]) if len(nd) else 0.0
         touched_last = False
 
+        # BACKLOG 111: this counter used to live here, inside _walk,
+        # which runs AGAIN for every origin whose search has to
+        # widen - 514 real origins were reported as 1,511. The single
+        # acceptance point is _store, so the counting happens there
+        # and _walk only fills this scratch.
+        scratch["selfpot"] = {}
+        scratch["over"] = {}
         rec: dict = {"EastWest": round(float(e0), 2),
                      "NorthSouth": round(float(n0), 2),
                      "N_local": float(cd.n[oi])}
@@ -356,7 +373,17 @@ def run_knn_stats(
             suffix = f"{k}" if suffix is None else suffix
             rec[f"N_{suffix}"] = sum_n
             if with_dist:
-                rec[f"Dist_{suffix}"] = dist_m
+                d_k = dist_m
+                if d_k <= 0.0 and sum_n >= k:
+                    # whole neighbourhood inside the origin cell
+                    # (BACKLOG 95) - same rule as the fast engine
+                    d_k = selfpot.radius_for_k(cd.unit_size, k,
+                                               float(sum_n), sp)
+                    scratch["selfpot"][k] = \
+                        scratch["selfpot"].get(k, 0) + 1
+                if sum_n >= 2 * k:                      # BACKLOG 94
+                    scratch["over"][k] = scratch["over"].get(k, 0) + 1
+                rec[f"Dist_{suffix}"] = d_k
             for v in bin_vars:
                 for s in stats[v]:
                     rec[f"{PREFIX[s]}_{v}_{suffix}"] = BINARY_STATS[s](sum_n, bin_t[v])
@@ -420,6 +447,10 @@ def run_knn_stats(
 
     def _store(i, rec):
         nonlocal fell_back
+        tally["origins"] += 1                  # BACKLOG 111: once,
+        for key in ("selfpot", "over"):        # and only on ACCEPTANCE
+            for kk, vv in scratch[key].items():
+                tally[key][kk] = tally[key].get(kk, 0) + vv
         if not cols_out and not fell_back:
             for kk, vv in rec.items():
                 order_out.append(kk)
@@ -489,6 +520,8 @@ def run_knn_stats(
         print(f"[stats] fast pass with m = {mm} neighbour cells"
               + (f"; {fallbacks} widened searches"
                  if fallbacks else ""))
+    from .fastcounts import report_selfpot
+    report_selfpot(tally, k_values, sp)
     if cols_out and not fell_back:
         return pd.DataFrame({k: cols_out[k] for k in order_out})
     return pd.DataFrame(results)

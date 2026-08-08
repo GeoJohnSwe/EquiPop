@@ -181,3 +181,27 @@ def test_the_stub_audit_travels_with_the_code_it_checks():
     assert any(re.fullmatch(r"(graft tools|include tools/\*\.py)", l)
                for l in lines), \
         "MANIFEST.in does not carry tools/ - the audit will not ship"
+
+
+def test_metadata_declares_no_file_it_does_not_ship():
+    """BACKLOG 79: metadata.txt declared `icon=icon.png` from the very
+    first release and the file never existed - not in the repo, not in
+    the 1.28.0 zip, not in 1.29.0. QGIS shrugs at a missing icon, so
+    nothing ever complained, and it would have blocked a submission to
+    the plugin repository. Shipped in 1.29.5. This test is the part
+    that matters: the promise cannot quietly lapse again, and it now
+    covers every file metadata.txt names, not just this one.
+    """
+    plugin = os.path.join(ROOT, "qgis", "equipop_qgis")
+    meta = os.path.join(plugin, "metadata.txt")
+    missing = []
+    for line in open(meta, encoding="utf-8"):
+        key, _, value = line.partition("=")
+        value = value.strip()
+        if (key.strip() in {"icon", "about_icon"} or
+                value.lower().endswith((".png", ".svg", ".ico"))):
+            if value and not os.path.exists(os.path.join(plugin, value)):
+                missing.append(f"{key.strip()}={value}")
+    assert not missing, (
+        f"metadata.txt promises files the plugin does not ship: "
+        f"{missing}")

@@ -17,12 +17,13 @@ import numpy as np
 import pandas as pd
 
 from .cells import build_cells
+from . import selfpot
 from .fastcounts import run_knn_counts
 
 
 def _binned_decay_counts(cd, cells, k_values, r_values, decay,
                          half_life, n_bins, decay_eps, m_neighbors,
-                         n_rows, valid):
+                         n_rows, valid, self_potential=1.0):
     """VARIABLE-BANDWIDTH decay (v1.17): each row carries its own
     half-life - an estimated median travel distance, a group
     potential, or the row's own Dist_k (urban form setting the
@@ -78,7 +79,9 @@ def _binned_decay_counts(cd, cells, k_values, r_values, decay,
         part = run_knn_counts(cd, k_values, decay_eps=decay_eps,
                               m_neighbors=m_neighbors,
                               r_values=r_values, decay=dec_b,
-                              origins=np.asarray(origins, int))
+                              origins=np.asarray(origins, int),
+                              self_potential=self_potential,
+                              report=False)
         part = part.set_index(["EastWest", "NorthSouth"])
         frames.append((sel, part))
     # Rows of a bin read THAT bin's pass. A cell holding people of
@@ -101,7 +104,8 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 decay_eps: float = 1e-6,
                 r_values=None, decay=None,
                 treat_are_counts: bool = False,
-                decay_half_life=None, decay_bins: int = 10) -> dict:
+                decay_half_life=None, decay_bins: int = 10,
+                self_potential: float = 1.0) -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
 
@@ -183,12 +187,14 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     if decay is not None and decay_half_life is not None:
         bin_frames, bin_of_row, base = _binned_decay_counts(
             cd, cells, k_values, r_values, decay, decay_half_life,
-            decay_bins, decay_eps, m_neighbors, n_rows, valid)
+            decay_bins, decay_eps, m_neighbors, n_rows, valid,
+            self_potential=self_potential)
         res = base.reset_index()
     else:
         res = run_knn_counts(cd, k_values, decay_eps=decay_eps,
                              m_neighbors=m_neighbors,
-                             r_values=r_values, decay=decay)
+                             r_values=r_values, decay=decay,
+                             self_potential=self_potential)
 
     # map cell results back to every individual row
     res = res.set_index(["EastWest", "NorthSouth"])
@@ -308,6 +314,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              decay_eps: float = 1e-6,
              half_life_field=None, half_life_from_dist=None,
              decay_bins: int = 10,
+             self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
              **extra) -> dict:
     """
     One entry point, five engines, row-aligned results:
@@ -346,6 +353,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             k0 = int(half_life_from_dist)
             first = knn_to_rows(x, y, [k0], weight=weight,
                                 unit_size=unit_size,
+                                self_potential=self_potential,
                                 treat_are_counts=extra.get(
                                     "treat_are_counts", False))
             hl = first[f"Dist_{k0}"]
@@ -354,14 +362,36 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                 raise ValueError(
                     f"[decay] self-calibration needs Dist_{k0}, but no "
                     "row got a usable radius")
-            hl = np.where(good, hl, np.nanmedian(hl[good]))
+            # BACKLOG 96. Rows with no usable Dist_k borrow the median
+            # bandwidth of everyone else. That is a reasonable last
+            # resort and a TERRIBLE silence: before 1.29.5 a dense
+            # cell reported Dist_k = 0, so the whole urban core - the
+            # very place this feature exists to serve - was handed a
+            # median kernel and nothing said so. The range printed
+            # below used to be the range AFTER substitution, which
+            # hid it completely. Now both numbers are shown.
+            n_sub = int((~good).sum())
+            lo, hi = float(np.nanmin(hl[good])), float(np.nanmax(hl[good]))
+            med = float(np.nanmedian(hl[good]))
+            hl = np.where(good, hl, med)
             print(f"[decay] self-calibrated bandwidth from Dist_{k0}: "
-                  f"{np.nanmin(hl):,.0f}-{np.nanmax(hl):,.0f} m "
-                  f"(median {np.nanmedian(hl):,.0f} m)")
+                  f"{lo:,.0f}-{hi:,.0f} m (median {med:,.0f} m) "
+                  f"over {int(good.sum()):,} rows")
+            if n_sub:
+                print(f"[decay] WARNING: {n_sub:,} of {len(hl):,} rows "
+                      f"({100.0 * n_sub / len(hl):.1f}%) had no usable "
+                      f"Dist_{k0} and were given the MEDIAN bandwidth "
+                      f"({med:,.0f} m) instead of their own. Their "
+                      "bandwidth is not self-calibrated."
+                      + (" Self-potential is off (0), which forces this "
+                         "for every row whose own cell already holds "
+                         f"{k0} - see BACKLOG 95."
+                         if selfpot.check(self_potential) <= 0 else ""))
         return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
                            unit_size=unit_size, r_values=r_values,
                            decay=dec, decay_eps=decay_eps,
                            decay_half_life=hl, decay_bins=decay_bins,
+                           self_potential=self_potential,
                            treat_are_counts=extra.get(
                                "treat_are_counts", False))
 
@@ -418,6 +448,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                          unit_size=unit_size)
         cd = _add_empty_origin_cells(cd, E, N, list(values))
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
+                           self_potential=self_potential,
                            stats=stats or {v: ["mean", "median", "gini"]
                                            for v in values})
         from .stats import stat_prefix
@@ -467,7 +498,9 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                    .groupby(["x", "y"], as_index=False).sum())
             if engine == "slope":
                 from .slope import run_knn_slope
-                res = run_knn_slope(pop, k_values or [], altitude=dem,
+                res = run_knn_slope(pop, k_values or [],
+                                    self_potential=self_potential,
+                                    altitude=dem,
                                     model=model, fr=fr,
                                     unit_size=unit_size,
                                     tau_values=tau_values,
@@ -475,6 +508,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             else:
                 from .friction import run_knn_friction
                 res = run_knn_friction(pop, k_values or [], fr=fr,
+                                       self_potential=self_potential,
                                        unit_size=unit_size,
                                        tau_values=tau_values)
             if gname is not None:

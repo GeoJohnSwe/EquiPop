@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
+from . import selfpot
 from .friction import FrictionGrid, coverage_warning, _count_from_grid
 
 
@@ -229,6 +230,7 @@ def run_knn_slope(
     origins=None,
     tau_values: list[float] | None = None,
     roundtrip: bool = False,
+    self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
     **model_params,
 ) -> pd.DataFrame:
     """
@@ -252,4 +254,4 @@ def run_knn_slope(
                      altitude=altitude, model=model,
                      roundtrip=roundtrip, **model_params)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
-                            tau_values)
+                            tau_values, self_potential)

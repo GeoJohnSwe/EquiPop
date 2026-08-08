@@ -26,7 +26,15 @@ program define equipop_run
          DEMANDvar(varname numeric) SUPPLY(string) ///
          SUPPLYCOL(string) SUPPLYX(string) SUPPLYY(string) ///
          HALFlife(real 0) REACH(string) METHOD(string) ///
-         KFCA(real 0) RFCA(real 0) WPERM(real 199) REPLACE]
+         KFCA(real 0) RFCA(real 0) WPERM(real 199) ///
+         SELFpot(real 1) REPLACE]
+
+    * BACKLOG 113: see equipop_knn.ado. selfpot(0) reproduces
+    * pre-1.29.5 numbers exactly, in every engine.
+    if `selfpot' < 0 | `selfpot' > 1 {
+        display as error "selfpot() must lie between 0 and 1"
+        exit 198
+    }
 
     if "`model'" == ""     local model "tobler"
     if "`reach'" == ""     local reach "decay"
@@ -42,7 +50,7 @@ program define equipop_run
         "`weight'", "`dem'", "`model'", `rt', "`friction'",         ///
         "`demandvar'", "`supply'", "`supplycol'", "`supplyx'",      ///
         "`supplyy'", `halflife', "`reach'", "`method'", `kfca',     ///
-        `rfca', `rep', `wperm')
+        `rfca', `rep', `selfpot', `wperm')
 end
 
 python:
@@ -58,8 +66,9 @@ def _col(v):
 def _equipop_run(engine, xv, yv, treatv, valuesv, statss, ks, rs,
                  taus, unit, wv, dem, model, rt, fricf, demv, supf,
                  supcol, supx, supy, hl, reach, method, kfca, rfca,
-                 rep, wperm=199):
-    kw = dict(unit_size=float(unit))
+                 rep, selfpot=1.0, wperm=199):
+    kw = dict(unit_size=float(unit),
+              self_potential=float(selfpot))
     kw["k_values"] = [int(t) for t in ks.split()] or None
     kw["r_values"] = [float(t) for t in rs.split()] or None
     kw["tau_values"] = [float(t) for t in taus.split()] or None
