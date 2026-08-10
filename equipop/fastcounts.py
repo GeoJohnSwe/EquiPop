@@ -32,7 +32,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                    decay=None, decay_eps: float = 1e-6,
                    origins=None,
                    self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
-                   report: bool = True) -> pd.DataFrame:
+                   report: bool = True,
+                   report_label: str = "") -> pd.DataFrame:
     """
     k-NN counts/ratios for every cell in cd, vectorised.
 
@@ -205,11 +206,13 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         print(f"[fast] {stragglers} widened searches in total "
               "(results identical, only the route differs)")
     if report:                 # the binned decay pass runs this
-        report_selfpot(tally, k_values, sp)   # once per BIN, which is
+        report_selfpot(tally, k_values, sp,   # once per BIN, which is
+                       report_label)
     return pd.DataFrame([rows_by_oi[o] for o in origins])  # only noise
 
 
-def report_selfpot(tally: dict, k_values, sp: float) -> None:
+def report_selfpot(tally: dict, k_values, sp: float,
+                   label: str = "") -> None:
     """Say out loud how much of the answer came from inside one cell
     (BACKLOG 95) and how far N_k overshot k (BACKLOG 94). Shared with
     the slow engine so the two cannot describe themselves differently.
@@ -224,10 +227,16 @@ def report_selfpot(tally: dict, k_values, sp: float) -> None:
                    f"(self-potential {sp:g})" if sp > 0 else
                    f"Dist_{k} reported as 0 - self-potential is OFF, "
                    f"so k is not distinguishing these origins")
-            print(f"[selfpot] k={k}: the whole neighbourhood was the "
-                  f"origin cell for {nsp:,} of {tot:,} origins - {how}")
+            print(f"[selfpot]{label} k={k}: the whole neighbourhood "
+                  f"was the origin cell for {nsp:,} of {tot:,} origins "
+                  f"- {how}")
         nov = tally["over"].get(k, 0)
         if nov:
-            print(f"[selfpot] k={k}: N_{k} is at least twice the k you "
-                  f"asked for in {nov:,} of {tot:,} origins - cells are "
+            # BACKLOG 142: this said "the k YOU asked for" even when
+            # the pass was EquiPop's own - John ran k=400 with
+            # self-calibration on Dist_500 and was told about a k he
+            # had never typed.
+            asked = "the k asked for" if label else "the k you asked for"
+            print(f"[selfpot]{label} k={k}: N_{k} is at least twice "
+                  f"{asked} in {nov:,} of {tot:,} origins - cells are "
                   f"counted whole, so N_k >= k always")

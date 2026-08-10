@@ -67,6 +67,12 @@ TREAT_MODES = ["not measuring one - distances and counts only",
 OUTSIDE_MODES = ["give them results, counting as zero",
                  "leave their results Null"]
 AGG_MODES = ["additive (costs add up)", "max", "min", "mean"]
+SELFPOT_MODES = [
+    "0 - no distance at all; Dist_k can come out as zero",
+    "0.71 - the median: half of what your cell holds is nearer than this",
+    "1 - the radius at which k of it is reached (recommended)",
+]
+SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]
 
 import numpy as np
 
@@ -210,12 +216,14 @@ class CountsAndShares(EquipopAlgorithm):
             "unit", "Cell size in metres - bigger cells mean fewer "
             "origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double), advanced=True)
-        self.add(QgsProcessingParameterNumber(
-            "selfpot", "Self-potential - how far away your OWN "
-            "cell's people are (0 = at the centre with you, as "
-            "before 1.29.5; 1 = spread evenly over the cell)",
-            defaultValue=1.0, minValue=0.0, maxValue=1.0,
-            type=QgsProcessingParameterNumber.Double), advanced=True)
+        # BACKLOG 141: a three-way choice, not a free number. The
+        # wording is duplicated from equipop/doors/rungs.py and
+        # pinned by test_rungs.py - see the note above on 105/78 for
+        # why it cannot be imported.
+        self.add(QgsProcessingParameterEnum(
+            "selfpot", "Self-potential - the distance to what is "
+            "LOCAL, inside your own cell", options=SELFPOT_MODES,
+            defaultValue=2), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -278,8 +286,9 @@ class CountsAndShares(EquipopAlgorithm):
                  or [None])[0])
 
         kw = dict(unit_size=float(unit), treat_are_counts=True,
-                  self_potential=self.parameterAsDouble(
-                      parameters, "selfpot", context))
+                  self_potential=SELFPOT_VALUES[
+                      (self.parameterAsEnums(parameters, "selfpot",
+                                             context) or [2])[0]])
         if decaying:
             kw["decay_model"] = model
             kw["half_life_m"] = float(half)
@@ -351,6 +360,20 @@ class CountsAndShares(EquipopAlgorithm):
                                   "the reference population",
                                   REF_MODES[refmode]))
             pop_vals = []
+
+        # BACKLOG 144: refuse names that differ only in case
+        # BEFORE computing - GIS field names ignore case, so they
+        # cannot both become columns and the write dies eight
+        # seconds in.
+        from equipop.doors.fields import refuse_case_clashes
+        try:
+            refuse_case_clashes(
+                [r for r in tmat[1::2] if r] + ([rest_txt] if rest_txt
+                                                else []),
+                "Two group names")
+            refuse_case_clashes(treats, "Two group count fields")
+        except ValueError as e:
+            raise QgsProcessingException(str(e))
 
         if treatmode == 1 and not treats:
             raise QgsProcessingException(rungs.missing(

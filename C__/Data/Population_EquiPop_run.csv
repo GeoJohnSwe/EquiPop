@@ -1,6 +1,6 @@
 item,value
-equipop_version,1.29.5
-run_utc,2026-08-08T08:55:59+00:00
+equipop_version,1.29.6
+run_utc,2026-08-10T04:37:08+00:00
 engine,counts
 input,C:\Data\Population.shp
 working_crs,SWEREF99 TM
@@ -17,6 +17,7 @@ percentiles,
 barrier_source,
 barrier_field,
 barrier_overlap_rule,
+source_analysed,
 rows_analysed,90
 result_fields,N_344;Dist_344
 total_seconds,0.0

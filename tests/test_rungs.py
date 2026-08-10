@@ -196,6 +196,34 @@ def test_menu_wording_is_pinned_not_shared():
     assert _joined("qgis/equipop_qgis/alg_counts.py",
                    "AGG_MODES") == rungs.AGGREGATION
 
+    # BACKLOG 141: the self-potential choices are a third copy, and
+    # the values behind them a fourth. Both doors must match the
+    # canonical list exactly - no "(fill 2a)" hints are allowed here,
+    # because this ladder names no boxes.
+    for path in ("qgis/equipop_qgis/alg_counts.py", "arcgis/EquiPop.pyt"):
+        assert _joined(path, "SELFPOT_MODES") == rungs.SELF_POTENTIAL, \
+            f"{path}: the self-potential wording drifted"
+    for path in ("qgis/equipop_qgis/alg_counts.py", "arcgis/EquiPop.pyt"):
+        src = open(os.path.join(ROOT, path), encoding="utf-8").read()
+        assert "SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]" in src, \
+            f"{path}: the values behind the choices drifted"
+
+
+def test_the_middle_choice_really_is_the_median():
+    """BACKLOG 141. The label promises "half of what your cell holds
+    is nearer than this". That is only true at 1/sqrt(2), because the
+    equal-area radius scales with the square root of the share - so
+    half the AREA is at r/sqrt(2), not at r/2. If anyone ever
+    'tidies' 0.7071 to 0.5, this fails."""
+    from equipop.doors import rungs
+    import math
+    none_, median, full = rungs.SELF_POTENTIAL_VALUES
+    assert none_ == 0.0 and full == 1.0
+    assert median == pytest.approx(1 / math.sqrt(2), rel=1e-12)
+    assert median ** 2 == pytest.approx(0.5, rel=1e-12)   # half the area
+    assert rungs.SELF_POTENTIAL_VALUES[
+        rungs.SELF_POTENTIAL_DEFAULT] == 1.0
+
 
 def test_qgis_machine_2_offers_every_statistic_pro_does():
     """BACKLOG 103, the menu that started this. Pro adds
@@ -321,3 +349,76 @@ def test_the_or_default_idiom_is_gone_from_the_doors():
     assert not found, (
         "the `or default` idiom is back on a parameter whose zero "
         f"matters: {found}")
+
+
+# ------------------------------------------- 143, the field pickers
+def test_every_pro_field_box_is_wired_to_the_layer():
+    """BACKLOG 143. Pro turns a Field parameter into a picker only if
+    it is told which layer to read from. That list used to be written
+    out by hand - ("pop", "treat", "catfield") - and treatcatfield was
+    missing, so Pro left it as FREE TEXT while its twin was a picker.
+
+    Not cosmetic: John changed layers and 'fclass', a field of the
+    PREVIOUS layer, survived into the run, because a free-text box is
+    not revalidated when its layer changes and a real picker is.
+
+    The fix DERIVES the list from the declared Field parameters, so a
+    new box cannot be forgotten. This test reads the source rather
+    than importing the toolbox, which needs arcpy.
+    """
+    src = open(os.path.join(ROOT, "arcgis/EquiPop.pyt"),
+               encoding="utf-8").read()
+    # split on each _p( declaration and ask whether its own block
+    # names the Field datatype - a bounded regex trips over the
+    # brackets inside the label text
+    declared = set()
+    for chunk in src.split('_p("')[1:]:
+        name = chunk.split('"', 1)[0]
+        block = chunk.split('_p(')[0]
+        if '"Field"' in block:
+            declared.add(name)
+    assert {"pop", "treat", "catfield", "treatcatfield"} <= declared, (
+        f"expected these to be Field parameters; found {sorted(declared)}")
+    hand_written = re.search(
+        r'for nm in \((?:\s*"[a-z_0-9]+",?)+\)\s*:\s*\n\s*pm2?\[nm\]'
+        r'\.parameterDependencies', src)
+    assert hand_written is None, (
+        "the layer dependency is being assigned from a hand-written "
+        "list again - it must be DERIVED from the declared Field "
+        "parameters, or the next box added will be forgotten")
+    assert src.count('if getattr(prm, "datatype", "") == "Field":') == 2, \
+        "both machines must derive their field dependencies"
+
+
+# ------------------------------------------------- 144, case clashes
+def test_group_names_differing_only_in_case_are_refused():
+    """BACKLOG 144. John's Pro run had groups "Bar" and "bar". They
+    became T_Bar_400 and T_bar_400, shortened to TBa400 and Tba400 -
+    one name to a .dbf - and the run died in the WRITE, after eight
+    seconds of computing, with "cannot add field: 'Tba400'".
+
+    Shortening was never the cause: the full names collide too. So the
+    refusal belongs where the names are CHOSEN.
+    """
+    t = pd.DataFrame({"x": [0., 10., 20., 30.], "y": [0.] * 4,
+                      "Type": ["bar", "Bar", "cafe", "shop"]})
+    src = qgis_stub._Source(t, "EPSG:32633")
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    p = {"layer": src, "unit": 100.0, "outfc": "memory:out", "k": "2",
+         "treatmode": [2], "treatcatfield": ["Type"],
+         "treattable": ["bar", "Bar", "Bar", "bar"]}
+    with pytest.raises(QgsProcessingException, match="upper/lower case"):
+        alg.processAlgorithm(p, None, QgsProcessingFeedback())
+
+
+def test_the_shortener_no_longer_promises_more_than_it_delivers():
+    """The other half: shorten_names() compared `cand in used`
+    case-SENSITIVELY, so it certified "collision-free" for names that
+    were not. It cannot now."""
+    from equipop.doors.fields import shorten_names
+    got = shorten_names(["N_400", "T_Bar_400", "T_bar_400",
+                         "R_Bar_400", "R_bar_400"], 10)
+    low = [v.lower() for v in got.values()]
+    assert len(set(low)) == len(low), (
+        f"shortened names still collide case-insensitively: {got}")

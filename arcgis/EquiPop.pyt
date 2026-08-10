@@ -620,6 +620,30 @@ def _shorten_names(names, cap: int = 10):
     return shorten_names(names, cap)
 
 
+
+def _shapefile_cannot_hold_nulls(target, keepoutside_text):
+    """BACKLOG 147. dBASE has no null for a numeric field, so the
+    "leave their results Null" rung cannot be written to a shapefile
+    at all - ExtendTable answers "The field is not nullable. [N100]".
+
+    John met it after the run: the rung worked, the engine produced
+    its NaNs ("192 rows with missing coordinates -> missing results"),
+    and then the write refused them - and the failure message blamed
+    OneDrive. It is a FORMAT LIMIT and it is knowable in the dialog.
+
+    Returns a sentence, or None.
+    """
+    if not target or not str(target).lower().endswith(".shp"):
+        return None
+    if "null" not in str(keepoutside_text or "").lower():
+        return None
+    return ("A shapefile cannot store nulls - dBASE has no empty "
+            "value for a number - so 'leave their results Null' "
+            "cannot be written there. Either choose 'give them "
+            "results, counting as zero', or set Output = 'New "
+            "feature class' and point it at a file geodatabase, "
+            "where nulls work.")
+
 def _refuse_shp_overflow(target, names, messages=None):
     """dBASE (shapefile) field names cap at 10 characters - refuse
     with the fix instead of failing after minutes of compute."""
@@ -780,20 +804,42 @@ def _write_failure(exc, what, target):
         if ".shp" in path.lower():
             why += (" (Shapefiles are the strictest here; a file "
                     "geodatabase is not affected by being in a map.)")
+    elif "not nullable" in low:
+        # BACKLOG 147: dBASE has no empty value for a number
+        why = ("A shapefile cannot store nulls, so the 'leave their "
+               "results Null' rung cannot be written there. Choose "
+               "'give them results, counting as zero' instead, or "
+               "write to a file geodatabase, where nulls work.")
+    elif "cannot add field" in low or "already exist" in low:
+        # BACKLOG 144/135: a FIELD refusal, not a busy target
+        why = ("ArcGIS refused one of the result fields by name. The "
+               "usual causes are two names that differ only in "
+               "upper/lower case (GIS field names ignore case), a "
+               "field of that name already present, or the format's "
+               "own limits. This is not a lock, so waiting will not "
+               "help.")
     elif "not supported" in low:
         why = ("This format does not support the operation at all.")
     else:
         why = "The target refused the change."
-    if _in_sync_folder(path):
-        why += (" NOTE: this path is inside a cloud-synced folder. "
-                "Esri does not support working there - the sync "
-                "client alters files that are meant to stay locked. "
-                "Move the data to an ordinary local folder.")
+    # BACKLOG 145: the sync-folder note used to be appended to EVERY
+    # failure, asserting a cause with certainty. It fired on three of
+    # John's failures in one evening and was the cause of NONE of
+    # them - the causes were a held file, a case collision, and a
+    # shapefile's inability to hold nulls. A note that names a
+    # probable cause must not name it as the cause, and it has no
+    # business appearing when the reason is already known.
+    if _in_sync_folder(path) and ("lock" in low or "000852" in low
+                                  or "schema" in low):
+        why += (" This path is also inside a cloud-synced folder "
+                "(OneDrive, Dropbox), which Esri does not support and "
+                "which can cause exactly this - but it is only one of "
+                "the possibilities above.")
     return arcpy.ExecuteError(
         f"Could not {what} on {path}. {why} You can also choose "
         f"Output = 'New feature class' and point it at a file "
         f"geodatabase, which writes somewhere fresh and needs no "
-        f"lock on the input. Nothing was changed. "
+        f"lock on the input. "
         f"(ArcGIS said: {text.strip()})")
 
 
@@ -805,6 +851,66 @@ def _in_sync_folder(path):
                                   "sharepoint", "icloud", "box sync"))
 
 
+
+def _field_names(target):
+    """The names a target carries right now, lower-cased. Used to
+    tell what a failed write left behind (BACKLOG 145)."""
+    try:
+        return {f.name.lower() for f in arcpy.ListFields(target)}
+    except Exception:
+        return set()
+
+
+def _is_field_refusal(exc) -> bool:
+    """Is this ArcGIS refusing a FIELD, rather than a busy target?
+
+    BACKLOG 135. A field refusal cannot be cured by waiting, so it
+    must not go down the retry path. John met three in one evening
+    and all three were retried pointlessly:
+        TypeError:    cannot add field: 'N246'      (held file)
+        TypeError:    cannot add field: 'Tba400'    (case collision)
+        RuntimeError: The field is not nullable. [N100]
+    ExecuteError 000852 is Esri's generic "cannot add field", which
+    covers a locked file too - so it stays out of this list and keeps
+    its retries.
+    """
+    t = str(exc).lower()
+    return ("cannot add field" in t and "000852" not in t) or \
+           "not nullable" in t or "already exist" in t or \
+           "field 'n" in t and "exist" in t
+
+
+def _undo_partial(target, before, messages):
+    """Remove fields a failed write left behind (BACKLOG 145).
+
+    ExtendTable is not atomic. John's run added N400, Dist400 and
+    TBa400, hit a clash on the fourth, and EquiPop then told him
+    "Nothing was changed" - the single most damaging sentence it can
+    get wrong, because someone who believes it will not go looking.
+    Either the claim is true or it is not made.
+    """
+    after = _field_names(target)
+    added = sorted(after - before)
+    if not added:
+        return []
+    try:
+        arcpy.management.DeleteField(target, added)
+        left = sorted(_field_names(target) - before)
+    except Exception:
+        left = added
+    if left:
+        messages.addWarningMessage(
+            "The write failed part way and left these fields behind, "
+            "which could not be removed: " + ", ".join(left) +
+            ". They hold no results - delete them before running "
+            "again.")
+    else:
+        messages.addMessage(
+            "The write failed part way; the " + str(len(added)) +
+            " field(s) it had already added have been removed, so "
+            "the target is as it was.")
+    return left
+
 def _add_columns(layer, oid, sub, fresh, messages):
     """Add result columns to a layer, whichever way the target allows.
 
@@ -814,15 +920,26 @@ def _add_columns(layer, oid, sub, fresh, messages):
     """
     target = _ref(layer)
     first = None
+    before = _field_names(target)
     try:
         arcpy.da.ExtendTable(target, oid, sub, str(oid))
         return "bulk"
     except Exception as exc:
         first = exc
+        # BACKLOG 135. This used to read `if "not supported" not in
+        # str(exc)` and treat EVERYTHING else as a transient lock,
+        # retrying twice. Three of John's 1.29.6 field failures came
+        # through here and NONE was a lock: a held file, group names
+        # colliding on case, and nulls in a shapefile. Retrying a
+        # FIELD-LEVEL refusal cannot help, and it ran against a
+        # half-written table each time.
+        if _is_field_refusal(exc):
+            _undo_partial(target, before, messages)   # BACKLOG 145
+            raise _write_failure(first, "add the result fields",
+                                 target)
         if "not supported" not in str(exc).lower():
-            # not a format limit - a lock or a refusal. Retry, the
-            # way the update path has since 1.17: locks are often
-            # transient.
+            # a genuine lock or a busy target: transient, so retry -
+            # the way the update path has since 1.17.
             for attempt in range(2):
                 time.sleep(1.5)
                 messages.addWarningMessage(
@@ -833,6 +950,7 @@ def _add_columns(layer, oid, sub, fresh, messages):
                     return "bulk"
                 except Exception as exc2:
                     first = exc2
+            _undo_partial(target, before, messages)   # BACKLOG 145
             raise _write_failure(first, "add the result fields",
                                  target)
     messages.addMessage(
@@ -971,6 +1089,18 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             tknown = sorted({str(v).strip() for v in tcol
                              if str(v).strip()})
             groups = _groups_from_table(treat_rows, tknown, messages)
+            # BACKLOG 144: names differing only in case cannot both
+            # become columns - GIS field names ignore case. Refuse
+            # here, not eight seconds later in the write, where John
+            # met it as "cannot add field: 'Tba400'".
+            from equipop.doors.fields import refuse_case_clashes
+            try:
+                refuse_case_clashes(
+                    list(groups.values()) + ([rest_group] if rest_group
+                                             else []),
+                    "Two group names")
+            except ValueError as e:
+                raise arcpy.ExecuteError(str(e))
             pop_mask, _ = categories_to_binary(
                 col, {},
                 pop_values=(pop_vals or None) if cat_field else None)
@@ -1369,7 +1499,19 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
 def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
                    stats_list, pct_text, half_life, decay_model,
                    decay_eps, barrier, barrier_field, barrier_agg,
-                   auto_project, n_rows, out_fields, stages, total):
+                   auto_project, n_rows, out_fields, stages, total,
+                   population=None, source=None):
+    """BACKLOG 148: `population` carries the settings that DEFINE the
+    numbers - the reference and treatment rungs, the count field, the
+    types, the keepoutside rung and self-potential. Until 1.29.6 the
+    manifest recorded k, cell size, decay and barriers and NONE of
+    those, so two runs could carry identical manifests and different
+    answers. Claude tried to use two of John's to settle which of his
+    runs had differed, and could not.
+    `source` is the data ANALYSED. The `input` row records the
+    catalog path of the target, which for a New-feature-class run is
+    the COPY EquiPop just wrote - John's read "...gdb\\testingNo6",
+    which is the output. The source was absent from the record."""
     import datetime
     try:
         import equipop
@@ -1398,6 +1540,11 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
         ("barrier_field", barrier_field or ""),
         ("barrier_overlap_rule", _agg_key(barrier_agg)
          if barrier is not None else ""),
+        # BACKLOG 148 - the settings that define the POPULATION, and
+        # therefore the numbers. A manifest without them cannot
+        # reproduce the run it describes.
+        *[(k, v) for k, v in (population or {}).items()],
+        ("source_analysed", source or ""),          # BACKLOG 148
         ("rows_analysed", n_rows),
         ("result_fields", ";".join(out_fields)),
         ("total_seconds", round(float(total), 1)),
@@ -1508,6 +1655,14 @@ TREAT_MODES = ["not measuring one - distances and counts only",
                "types from a type field, grouped"]
 OUTSIDE_MODES = ["give them results, counting as zero",
                  "leave their results Null"]
+# BACKLOG 141: a three-way choice, not a free number. Duplicated
+# from equipop/doors/rungs.py and pinned by test_rungs.py.
+SELFPOT_MODES = [
+    "0 - no distance at all; Dist_k can come out as zero",
+    "0.71 - the median: half of what your cell holds is nearer than this",
+    "1 - the radius at which k of it is reached (recommended)",
+]
+SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]
 
 
 def _mode(pm, name, modes):
@@ -1626,7 +1781,24 @@ def _grey_the_unused_group_route(pm):
     """
     ref = _mode(pm, "refmode", REF_MODES)
     tre = _mode(pm, "treatmode", TREAT_MODES)
-    on = {
+    for name, enabled in _boxes_for_rungs(ref, tre).items():
+        p = pm.get(name)
+        if p is not None:
+            p.enabled = enabled
+
+
+def _boxes_for_rungs(ref, tre):
+    """Which boxes each rung actually reads (BACKLOG 138 / 146).
+
+    This map used to live inside _grey_the_unused_group_route and be
+    used for one thing: greying boxes out. But GREYING DOES NOT CLEAR
+    THEM and _run_tool reads them anyway, so a value left from an
+    earlier rung reaches the engine while the user cannot even see
+    the box. John, 1.29.6: "we should make sure that we close the
+    door to previous settings if they are not selected."
+    Lifted out so the run can consult the same map the dialog does.
+    """
+    return {
         "pop": ref in (1, 2),
         "catfield": ref == 2,
         "reftable": ref == 2,
@@ -1636,11 +1808,69 @@ def _grey_the_unused_group_route(pm):
         "restgroup": tre == 2,
         "treat": tre == 1,
     }
-    for name, enabled in on.items():
-        p = pm.get(name)
-        if p is not None:
-            p.enabled = enabled
 
+
+def _rung_boxes_needed(ref, tre):
+    """The boxes a rung cannot work without (BACKLOG 138).
+
+    QGIS refuses these; Pro ran on regardless, so John chose a
+    treatment rung, received N_ and Dist_ with no T_ and no R_, and
+    was told nothing. Same dialog state, two answers.
+    """
+    need = {}
+    if ref == 1:
+        need["pop"] = "1a, the count field"
+    if ref == 2:
+        need["catfield"] = "the type field"
+    if tre == 1:
+        need["treat"] = "the group count fields"
+    return need
+
+
+
+def _guard_rungs(pm, messages, machine="counts"):
+    """Refuse a rung whose box is empty; ignore-and-announce a box the
+    rung does not read (BACKLOG 138 and 146).
+
+    Both faults were found by John in the 1.29.5 Pro field test.
+    Choosing "one column per group, counts inside" with the group
+    count fields empty ran to completion and returned N_ and Dist_
+    with no T_ and no R_ - the same dialog state QGIS refuses. And a
+    box greyed out by a rung change keeps its value and is still read,
+    so 'fclass' from a previous layer reached the engine.
+
+    Ignoring is deliberately preferred to CLEARING: someone may be
+    about to switch the rung back, and silently emptying their work
+    would be a second fault. What matters is that nothing unseen
+    reaches the engine unannounced.
+    """
+    ref = _mode(pm, "refmode", REF_MODES)
+    tre = _mode(pm, "treatmode", TREAT_MODES) if machine == "counts" else 0
+    from equipop.doors import rungs as _r
+
+    for name, what in _rung_boxes_needed(ref, tre).items():
+        if name in pm and not _txt(pm, name):
+            ladder = ("the reference population" if name in
+                      ("pop", "catfield") else "the treatment population")
+            rung = REF_MODES[ref] if ladder.startswith("the ref") \
+                else TREAT_MODES[tre]
+            raise arcpy.ExecuteError(_r.missing(what, ladder, rung))
+
+    ignored = []
+    for name, used in _boxes_for_rungs(ref, tre).items():
+        if used or name not in pm:
+            continue
+        if machine != "counts" and name.startswith("treat"):
+            continue
+        if _txt(pm, name):
+            ignored.append(name)
+    if ignored:
+        messages.addWarningMessage(
+            "These boxes hold values that the rungs you chose do NOT "
+            "read, so they are IGNORED: " + ", ".join(sorted(ignored)) +
+            ". They are left as you typed them in case you switch "
+            "back - but nothing in them reaches the results.")
+    return ignored
 
 def _byname(parameters):
     """Parameters by NAME, not position. Inserting one parameter used
@@ -1954,10 +2184,15 @@ class CountsShares:
                   "keeps its own bandwidth (estimated median "
                   "distance, group potential...)", "Field",
                   required=False),
-               _p("hlfromdist", "OR: self-calibrating - use each "
-                  "point's own Dist_k as its half-life (enter the k "
-                  "to calibrate on; urban form sets the bandwidth)",
-                  "GPLong", required=False),
+               # BACKLOG 140: the instruction used to sit fifteen
+               # words in, after an opening clause that reads like a
+               # description of a field - and the box directly above
+               # IS a field box. John misread it twice, and he wrote
+               # the software. Say what to type, first.
+               _p("hlfromdist", "OR: self-calibrating - ENTER A k, "
+                  "and each point's own Dist_k becomes its half-life "
+                  "(a number, not a field; urban form sets the "
+                  "bandwidth)", "GPLong", required=False),
                _p("hlbins", "Bandwidth bins (variable half-life "
                   "only; more bins = finer, slower)", "GPLong",
                   required=False),
@@ -1992,10 +2227,9 @@ class CountsShares:
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
                _p("unit", "Cell size (m)", "GPDouble", required=False),
-               _p("selfpot", "Self-potential - how far away your "
-                  "OWN cell's people are (0 = at the centre with "
-                  "you, as before 1.29.5; 1 = spread evenly over "
-                  "the cell)", "GPDouble", required=False),
+               _p("selfpot", "Self-potential - the distance to "
+                  "what is LOCAL, inside your own cell",
+                  "GPString", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2008,8 +2242,17 @@ class CountsShares:
                   "permutations are used; recorded in the manifest)",
                   "GPLong", required=False)]
         pm = _byname(ps)
-        for nm in ("pop", "treat", "catfield"):
-            pm[nm].parameterDependencies = ["layer"]
+        # BACKLOG 143. This list used to be written out by hand -
+        # ("pop", "treat", "catfield") - and treatcatfield was simply
+        # missing, so Pro was never told which layer to read its
+        # fields from and left it as FREE TEXT. That is not cosmetic:
+        # John changed layers and 'fclass', a field of the PREVIOUS
+        # layer, survived into the run, because a free-text box is not
+        # revalidated when its layer changes and a real picker is.
+        # DERIVED, not listed, so a new Field box cannot be forgotten.
+        for prm in ps:
+            if getattr(prm, "datatype", "") == "Field":
+                prm.parameterDependencies = ["layer"]
         for nm, modes in (("refmode", REF_MODES),
                           ("treatmode", TREAT_MODES),
                           ("keepoutside", OUTSIDE_MODES)):
@@ -2102,7 +2345,9 @@ class CountsShares:
         pm["outmode"].value = "Append to input"
         pm["outtable"].direction = "Output"
         pm["unit"].value = 100.0
-        pm["selfpot"].value = 1.0
+        pm["selfpot"].filter.type = "ValueList"
+        pm["selfpot"].filter.list = SELFPOT_MODES
+        pm["selfpot"].value = SELFPOT_MODES[2]
         return ps
 
     def updateParameters(self, parameters):
@@ -2151,6 +2396,10 @@ class CountsShares:
                   if _txt(pm, "outmode").startswith("New")
                   and _txt(pm, "outfc")
                   else _catalog_of(pm["layer"].value))
+        nulls = _shapefile_cannot_hold_nulls(
+            target, _txt(pm, "keepoutside"))          # BACKLOG 147
+        if nulls:
+            pm["keepoutside"].setErrorMessage(nulls)
         if not _flag(pm, "shortnames"):
             txt = _refuse_shp_overflow(target, _predict_result_fields(
                 "counts", _txt(pm, "k"), _txt(pm, "r"), _txt(pm, "tau"),
@@ -2167,6 +2416,7 @@ class CountsShares:
 
     def execute(self, parameters, messages):
         pm = _byname(parameters)
+        _guard_rungs(pm, messages, "counts")     # BACKLOG 138 / 146
         model = _txt(pm, "model", "no decay")
         decaying = model not in ("", "no decay")
         _run_tool("counts", pm["layer"].value, messages,
@@ -2209,7 +2459,8 @@ class CountsShares:
                   unit=_num(pm, "unit", 100.0),   # BACKLOG 116
                   # no `or 100.0`: a zero must be refused, not
                   # replaced. _run_tool validates it.
-                  self_potential=_num(pm, "selfpot", 1.0),
+                  self_potential=SELFPOT_VALUES[
+                      _mode(pm, "selfpot", SELFPOT_MODES)],
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))
 
@@ -2271,10 +2522,9 @@ class ValueStatistics:
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
                _p("unit", "Cell size (m)", "GPDouble", required=False),
-               _p("selfpot", "Self-potential - how far away your "
-                  "OWN cell's people are (0 = at the centre with "
-                  "you, as before 1.29.5; 1 = spread evenly over "
-                  "the cell)", "GPDouble", required=False),
+               _p("selfpot", "Self-potential - the distance to "
+                  "what is LOCAL, inside your own cell",
+                  "GPString", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2288,8 +2538,17 @@ class ValueStatistics:
         # the ladder above inserts four of them - which would have
         # moved the measures list onto the percentiles box, silently.
         pm2 = _byname(ps)
-        for nm in ("pop", "values", "catfield"):
-            pm2[nm].parameterDependencies = ["layer"]
+        # BACKLOG 143. This list used to be written out by hand -
+        # ("pop", "treat", "catfield") - and treatcatfield was simply
+        # missing, so Pro was never told which layer to read its
+        # fields from and left it as FREE TEXT. That is not cosmetic:
+        # John changed layers and 'fclass', a field of the PREVIOUS
+        # layer, survived into the run, because a free-text box is not
+        # revalidated when its layer changes and a real picker is.
+        # DERIVED, not listed, so a new Field box cannot be forgotten.
+        for prm in ps:
+            if getattr(prm, "datatype", "") == "Field":
+                prm.parameterDependencies = ["layer"]
         pm2["measures"].filter.type = "ValueList"
         pm2["measures"].filter.list = _MEASURES
         pm2["measures"].value = "mean;median;gini"
@@ -2335,7 +2594,9 @@ class ValueStatistics:
         pm2["outmode"].value = "Append to input"
         pm2["outtable"].direction = "Output"
         pm2["unit"].value = 100.0
-        pm2["selfpot"].value = 1.0
+        pm2["selfpot"].filter.type = "ValueList"
+        pm2["selfpot"].filter.list = SELFPOT_MODES
+        pm2["selfpot"].value = SELFPOT_MODES[2]
         return ps
 
     def updateParameters(self, parameters):
@@ -2386,6 +2647,7 @@ class ValueStatistics:
 
     def execute(self, parameters, messages):
         pm = _byname(parameters)
+        _guard_rungs(pm, messages, "stats")      # BACKLOG 138 / 146
         _run_tool("stats", pm["layer"].value, messages,
                   coord_source=_txt(pm, "coordsrc") or None,
                   x_field=_txt(pm, "xfield") or None,
@@ -2410,6 +2672,7 @@ class ValueStatistics:
                   unit=_num(pm, "unit", 100.0),   # BACKLOG 116
                   # no `or 100.0`: a zero must be refused, not
                   # replaced. _run_tool validates it.
-                  self_potential=_num(pm, "selfpot", 1.0),
+                  self_potential=SELFPOT_VALUES[
+                      _mode(pm, "selfpot", SELFPOT_MODES)],
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))

@@ -1,4 +1,4 @@
-# Testing 1.29.5 before you publish it
+# Testing 1.29.6 before you publish it
 
 Install, run, look. Nothing here needs code.
 
@@ -16,7 +16,7 @@ Open the **OSGeo4W Shell** (Start menu, under QGIS):
 
 ```
 cd /d C:\path\to\the\files
-python -m pip install --force-reinstall --no-deps equipop-1.29.5-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps equipop-1.29.6-py3-none-any.whl
 ```
 
 **`--no-deps` matters.** Without it, `--force-reinstall` also reinstalls
@@ -32,7 +32,7 @@ If pip complains about permissions, reopen the shell as Administrator.
 ### 2. The plugin
 
 QGIS → **Plugins → Manage and Install Plugins → Install from ZIP** →
-`equipop_qgis-1.29.5.zip` → Install. **Restart QGIS.**
+`equipop_qgis-1.29.6.zip` → Install. **Restart QGIS.**
 
 ### 3. Confirm both halves moved
 
@@ -42,7 +42,7 @@ QGIS Python Console:
 import equipop; print("package:", equipop.__version__); import equipop_qgis; print("plugin:", equipop_qgis.__version__)
 ```
 
-Both must read **1.29.5**. If only one moved, stop and say so.
+Both must read **1.29.6**. If only one moved, stop and say so.
 
 If the package still reads 1.29.3, pip installed into a different
 Python than QGIS uses. This prints the right one:
@@ -115,14 +115,21 @@ that size — it is easy to redraw.
 This is the one that cannot be seen from QGIS, because QGIS has no such
 box (BACKLOG 102).
 
-**Counts and Shares** in Pro, under **Neighbourhood**:
+**Counts and Shares** in Pro. **The cell size matters and this manual
+originally omitted it** - the substitution can only fire where a single
+cell already holds k, so at 100 m with k=100 it can never happen and
+the test proves nothing. Use the settings that already produced five
+of nine origins inside one cell:
 
-- **k** = `100`
+- **Cell size** = `1000`
+- **k** = `400`
 - **distance decay** = negative exponential
-- **"OR: self-calibrating - use each point's own Dist_k as its half-life"** = `100`
+- **"OR: self-calibrating..."** = `400` — this box takes a NUMBER (the
+  k to calibrate on), not a field name. The field dropdown is the box
+  above it.
 - **Self-potential** = `0`
 
-Read the messages. Expect a `[decay] WARNING:` naming a count and a
+Read the MESSAGES, not the attribute table - the warning is the whole test and it never reaches the fields. Expect a `[decay] WARNING:` naming a count and a
 percentage of rows given the median bandwidth. Then run again with
 **Self-potential = 1** — the warning should shrink sharply or vanish,
 and the bandwidth range should start much lower.
@@ -181,3 +188,55 @@ traceback. Record the result in the MANUAL validation row.
 
 All of the output as it comes, please, rather than the part that looks
 relevant. The useful line is often the one before.
+
+
+---
+
+## What is new in 1.29.6, and what to try
+
+Nothing here changes a number. Every item is a guard, a message or a
+refusal, and all of them came from your own Pro evening.
+
+### The write path, three ways
+
+**A held shapefile.** Open the same shapefile in QGIS, then run
+Counts and Shares against it in Pro. Expect a refusal that names the
+real cause and does NOT retry twice first, and does not blame OneDrive
+unless the reason is genuinely a lock.
+
+**Two groups differing only in case.** Put `Bar` and `bar` in the group
+table. Expect a refusal IN THE DIALOG, before any computing, saying
+that GIS field names ignore case.
+
+**Nulls on a shapefile.** Reference restricted, `1d = leave their
+results Null`, shapefile target. Expect a refusal up front naming the
+two ways out, rather than five seconds of work and a nullability error.
+
+In all three, check the message does not say "Nothing was changed"
+unless nothing was.
+
+### Pro's dialog
+
+- An **empty box on a chosen rung** should now be refused, as QGIS
+  does, instead of returning fewer fields in silence.
+- **Type field for the groups** should be a PICKER now, not free text -
+  and changing the layer should no longer leave a field name from the
+  previous one behind.
+- Boxes belonging to a rung you are not on should say they are being
+  IGNORED rather than quietly reaching the engine.
+
+### Self-potential is now a three-way choice
+
+Not a number. Three named options, the equal-area radius as default.
+Tell me if the wording reads badly - it is yours.
+
+### The manifest
+
+Open any `_EquiPop_run.csv` and check it now records the reference and
+treatment rungs, the count field, the types, the keepoutside rung and
+self-potential - and that `input` names the DATA, not the copy.
+
+### And Test 6, still outstanding
+
+Two runs into two FRESH feature classes in a geodatabase, identical
+except box 1d. The `N_100` values on the included rows must match.

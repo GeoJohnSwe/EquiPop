@@ -1127,13 +1127,15 @@ def test_self_potential_is_honoured_by_the_qgis_door():
     """
     src, n_dense = _dense_cell_source()
 
-    off, _ = _run(CountsAndShares, src, k="100", selfpot=0.0)
+    # BACKLOG 141: a three-way ENUM now, not a free number.
+    # Index 0 = none, 2 = the equal-area radius (the default).
+    off, _ = _run(CountsAndShares, src, k="100", selfpot=[0])
     dense_off = off.loc[(off["x"] < 100) & (off["y"] < 100), "Dist_100"]
     assert len(dense_off) == n_dense
     assert (dense_off == 0.0).all(), \
         "self-potential 0 must reproduce pre-1.29.5 numbers exactly"
 
-    on, _ = _run(CountsAndShares, src, k="100", selfpot=1.0)
+    on, _ = _run(CountsAndShares, src, k="100", selfpot=[2])
     dense_on = on.loc[(on["x"] < 100) & (on["y"] < 100), "Dist_100"]
     expected = np.sqrt(100.0 ** 2 * 100 / (n_dense * np.pi))
     assert np.allclose(dense_on, expected, rtol=1e-9), (

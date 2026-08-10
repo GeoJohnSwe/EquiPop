@@ -16,7 +16,7 @@ commands. The doors move data and explain parameters; this package
 calculates.
 
 (This docstring said "no friction, no decay yet - those come in Phase
-2" until 1.29.5 - BACKLOG 121.)
+2" until 1.29.6 - BACKLOG 121.)
 """
 
 from .transform import project_to_metric, snap_to_grid
@@ -41,7 +41,7 @@ except ImportError:                       # matplotlib is an optional extra
         raise ImportError("map_output needs matplotlib: "
                           "pip install equipop[viz]")
 
-__version__ = "1.29.5"
+__version__ = "1.29.6"
 __all__ = ["project_to_metric", "snap_to_grid", "run_knn", "Decay", "run_knn_stats", "build_cells", "CellData", "run_knn_friction", "load_friction_table", "suggest_projection", "assign_zones", "read_table", "save_output", "fetch", "build_hex_cells", "RunLog", "load_meta", "list_layers", "run_knn_counts", "seg_profile", "aggregate_output", "map_output"]
 
 from .slope import run_knn_slope, dem_to_cell_altitude, SLOPE_MODELS, slope_penalty

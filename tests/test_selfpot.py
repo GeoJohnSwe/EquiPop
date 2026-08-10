@@ -389,3 +389,30 @@ def test_the_friction_grid_is_built_once(capsys):
     run_knn_friction(pop, [5], unit_size=UNIT)
     built = capsys.readouterr().out.count("grid domain")
     assert built == 1, f"the friction grid was built {built} times"
+
+
+# --- 15 ------------------------------------------------------------
+def test_the_calibration_pass_does_not_claim_you_asked_for_its_k(capsys):
+    """BACKLOG 142. Running k=400 with self-calibration on Dist_500
+    told John "N_500 is at least twice the k YOU ASKED FOR" - naming a
+    k he had never typed. The lines are truthful about EquiPop's own
+    internal pass and misleading about the run, and the phrase is what
+    makes them wrong."""
+    rng = np.random.default_rng(142)
+    x = np.concatenate([rng.uniform(0, 900, 900),
+                        rng.uniform(0, 4000, 300)])
+    y = np.concatenate([rng.uniform(0, 900, 900),
+                        rng.uniform(0, 4000, 300)])
+    dispatch("counts", x, y, unit_size=1000.0, k_values=[100],
+             half_life_from_dist=200, self_potential=1.0,
+             extra={"decay_model": "negexp"})
+    out = capsys.readouterr().out
+    cal = [l for l in out.splitlines() if "k=200" in l]
+    assert cal, "the calibration pass reported nothing"
+    for line in cal:
+        assert "calibration pass" in line, line
+        assert "you asked for" not in line, line
+    # the user's own k is still reported in their own voice
+    mine = [l for l in out.splitlines()
+            if "[selfpot]" in l and "calibration" not in l]
+    assert all("calibration" not in l for l in mine)

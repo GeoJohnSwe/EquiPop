@@ -78,6 +78,16 @@ def shorten_names(names, cap: int = 10):
     so P25_income_400 and P75_income_400 can never collapse into one
     field. Returns {original: short}.
     """
+    # BACKLOG 144: `used` is compared in LOWER CASE, because GIS field
+    # names are case-insensitive - shapefile and file geodatabase
+    # alike. Until 1.29.6 this checked `cand in used` case-sensitively
+    # and cheerfully certified "collision-free" for T_Bar_400 ->
+    # TBa400 and T_bar_400 -> Tba400, which are one name to a .dbf.
+    # John's Pro run died on it: "cannot add field: 'Tba400'".
+    # Note that shortening was never the cause - the FULL names
+    # t_bar_400 and t_bar_400 already collide - so the doors must
+    # refuse such group names outright (also 144). This only stops
+    # the shortener from making a promise it cannot keep.
     out, used = {}, set()
     for n in names:
         parts = n.split("_")
@@ -86,11 +96,11 @@ def shorten_names(names, cap: int = 10):
         mid = "".join(p[:2] for p in parts[1:-1])[:cap]
         base = (head + mid + tail)[:cap] or "F"
         cand, i = base, 0
-        while cand in used:
+        while cand.lower() in used:
             i += 1
             suf = str(i)
             cand = (base[:cap - len(suf)] + suf)
-        used.add(cand)
+        used.add(cand.lower())
         out[n] = cand
     return out
 
@@ -114,3 +124,37 @@ def refuse_short_target(target, names, cap: int = 10,
             f"{', '.join(bad[:5])}{'...' if len(bad) > 5 else ''}. "
             f"Write to a NEW feature class in {container} "
             "(unlimited names) or, for tables, a .csv output.")
+
+
+def refuse_case_clashes(names, what: str) -> None:
+    """Refuse names that differ only in case (BACKLOG 144).
+
+    GIS field names are CASE-INSENSITIVE - shapefile and file
+    geodatabase alike - so two groups called "Bar" and "bar" cannot
+    both become columns. John hit this in the field: the run computed
+    for eight seconds, produced T_Bar_400 and T_bar_400, and died in
+    the write with "cannot add field: 'Tba400'".
+
+    Shortening was never the cause; the full names collide too. So
+    this must be refused where the names are CHOSEN - in the dialog,
+    before any computing - and that is what this is for.
+
+    Raises ValueError naming the offenders; silent otherwise.
+    """
+    seen: dict[str, str] = {}
+    clash: list[tuple[str, str]] = []
+    for n in names:
+        key = str(n).strip().lower()
+        if not key:
+            continue
+        if key in seen and seen[key] != str(n).strip():
+            clash.append((seen[key], str(n).strip()))
+        else:
+            seen.setdefault(key, str(n).strip())
+    if clash:
+        pairs = "; ".join(f"'{a}' and '{b}'" for a, b in clash)
+        raise ValueError(
+            f"{what} differ only in upper/lower case: {pairs}. GIS "
+            "field names ignore case, so these cannot both become "
+            "columns - a shapefile and a geodatabase would each "
+            "refuse the second one. Rename one of them.")

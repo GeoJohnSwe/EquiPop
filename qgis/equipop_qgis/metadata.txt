@@ -2,7 +2,7 @@
 name=EquiPop
 qgisMinimumVersion=3.38
 description=Bespoke k-nearest neighbourhoods for segregation and accessibility analysis
-version=1.29.5
+version=1.29.6
 author=John Osth, Uppsala University
 email=john.osth@kultgeog.uu.se
 about=Developed and tested on QGIS 3.42; 3.38 is the declared minimum - that is where QgsField moved to QMetaType and where the deprecated parameterAsFields could be dropped. EquiPop measures who and what is around every point using a neighbourhood of the k nearest people rather than an administrative boundary - so results do not depend on where somebody drew the lines. Requires the equipop Python package in QGIS's own Python: python -m pip install equipop
@@ -11,6 +11,9 @@ repository=https://github.com/GeoJohnSwe/EquiPop
 homepage=https://github.com/GeoJohnSwe/EquiPop
 category=Vector
 icon=icon.png
+# BACKLOG 131: the plugin repository needs this declared, and a
+# LICENSE file inside the plugin folder - neither was present.
+hasProcessingProvider=yes
 experimental=True
 deprecated=False
 license=MIT

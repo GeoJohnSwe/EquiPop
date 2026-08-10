@@ -18,56 +18,65 @@ costs. 71 and 74 were the same duplication. Items 38/42/43/45/49
 appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
-1. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
-2. **117** — one validated run specification, used by the package and every door
-3. **120** — move reference and treatment construction into shared package code
+1. **139** — a diagonal move costs the same as a straight one; RULED sqrt(2), clean break. Prerequisite for 99 under friction
+2. **99** — THE OVERSHOOT. Take a proportional share of the ring that crosses k. Raised by John: the original EquiPop existed to counter this. Tenfold error in R_k at a boundary at k=11
+3. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
+4. **128** — `equipop doctor`: one read-only diagnostic, every door. The dependency story is the adoption risk
+5. **129** — version the output SEMANTICS, not just the structure. 1.29.5 changed what Dist_k MEANS and said nothing
+6. **117** — one validated run specification, used by the package and every door
+7. **120** — move reference and treatment construction into shared package code
+8. **133** — a fourth door (R, SPSS). GATED BEHIND 120: every door is another copy of the logic that produced 108
 
-4. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's destination, and machine 3 waits behind it. UNPAUSED by John, 1.29.3+
-5. **118** — weighted statistics without person expansion. BLOCKER for the continental machine
-6. **119** — resume must validate its parameters and fingerprint its input
-7. **93** — the WORKING FRAME (choose by extent, offer WGS84 with great-circle). It decides what 38's numbers MEAN, so it is settled before 38 is coded
-8. **92** — the continental DATA path: name the files instead of fetching the zip, cache populated cells once
-9. **124** — fetch caches by filename only; WorldPop filenames repeat across countries
-10. **125** — QGIS runs cannot be cancelled; needed before continental GUI work
-11. **97** — a decayed denominator is not a count; machine 3's standard errors need the effective sample size. RULED IN by John 1.29.5
-12. **106** — decay for machine 2; engine work, and the same job as 97
-13. **98** — mortality by differencing: keep the raw negatives, report the count. Clamping inflates mortality up to 11.8x. RULED by John 1.29.5
-14. **82** — machines must be DISCOVERED, not hard-coded; 38 is itself a machine and machine 3 waits behind it, so the doors stop counting to two
-15. **99** — interpolate the last cell of EVERY neighbourhood, not just the origin's own; removes the seam 95 left behind. Ruled in, deferred from 1.29.5 because it moves every row
-16. **90** — the decay-truncation box steps by 1 in QGIS: a stray click turns 0,000001 into 1,000001 and the run succeeds. A silent wrong answer, and a cheap fix
-17. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
-18. **58** — same evening: a GeoPackage barrier layer has still never been run
-19. **88** — and polygon barriers have never been run in PRO; same subject, same evening
-20. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
-21. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
-22. **44** — the suspected one-line cause of 34; they travel together
-23. **34** — Pro renders the help page empty; needs one field cycle to confirm
-24. **87** — the simulated arcpy is WRONG rather than sparse, and makes a real Pro dialog route untestable
-25. **101** — the suite writes run manifests into the working directory; on Windows that is a real C:\Data\
-26. **91** — RULED already: short decay labels in both doors; travels with the next release that touches the doors
-27. **89** — the output-table rule refuses a run that has already said where its output goes
-28. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
-29. **45** — small, but these files ship inside every release zip
-30. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
-31. **100** — MedDist_k as its own column, computed exactly from the rings rather than as r/sqrt(2). Never folded into Dist_k
-32. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
-33. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
-34. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
-35. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
-36. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
-37. **55** — same: the simulator honours category and enabled, only Pro can say they read well
-38. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
-39. **57** — retire the old single-table path once John confirms no saved tool needs it
-40. **65** — the OneDrive warning did not fire; confirm the run predates 1.24.0 before hunting
-41. **40** — one sentence in the Gridby README
-42. **4** — heights / third dimension - design can precede data, and there is no data yet
-43. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
-44. **66** — not a task: a standing caution about editing multi-line Python
+9. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's destination, and machine 3 waits behind it. UNPAUSED by John, 1.29.3+
+10. **118** — weighted statistics without person expansion. BLOCKER for the continental machine
+11. **119** — resume must validate its parameters and fingerprint its input
+12. **93** — the WORKING FRAME (choose by extent, offer WGS84 with great-circle). It decides what 38's numbers MEAN, so it is settled before 38 is coded
+13. **149** — suggest_projection splits a 2-degree extent because it straddles a zone boundary; one zone costs 0.17%
+14. **92** — the continental DATA path: name the files instead of fetching the zip, cache populated cells once
+15. **137** — WorldPop is per COUNTRY and 92 assumes one; concatenate the extracted cells, never mosaic the rasters
+16. **124** — fetch caches by filename only; WorldPop filenames repeat across countries
+17. **125** — QGIS runs cannot be cancelled; needed before continental GUI work
+18. **97** — a decayed denominator is not a count; machine 3's standard errors need the effective sample size. RULED IN by John 1.29.5
+19. **106** — decay for machine 2; engine work, and the same job as 97
+20. **98** — mortality by differencing: keep the raw negatives, report the count. Clamping inflates mortality up to 11.8x. RULED by John 1.29.5
+21. **82** — machines must be DISCOVERED, not hard-coded; 38 is itself a machine and machine 3 waits behind it, so the doors stop counting to two
+22. **90** — the decay-truncation box steps by 1 in QGIS: a stray click turns 0,000001 into 1,000001 and the run succeeds. A silent wrong answer, and a cheap fix
+23. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
+24. **58** — same evening: a GeoPackage barrier layer has still never been run
+25. **88** — and polygon barriers have never been run in PRO; same subject, same evening
+26. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
+27. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
+28. **44** — the suspected one-line cause of 34; they travel together
+29. **34** — Pro renders the help page empty; needs one field cycle to confirm
+30. **87** — the simulated arcpy is WRONG rather than sparse, and makes a real Pro dialog route untestable
+31. **101** — the suite writes run manifests into the working directory; on Windows that is a real C:\Data\
+32. **91** — RULED already: short decay labels in both doors; travels with the next release that touches the doors
+33. **89** — the output-table rule refuses a run that has already said where its output goes
+34. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
+35. **45** — small, but these files ship inside every release zip
+36. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
+37. **100** — MedDist_k as its own column, computed exactly from the rings rather than as r/sqrt(2). Never folded into Dist_k
+38. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
+39. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
+40. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
+41. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
+42. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
+43. **55** — same: the simulator honours category and enabled, only Pro can say they read well
+44. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
+45. **57** — retire the old single-table path once John confirms no saved tool needs it
+46. **40** — one sentence in the Gridby README
+47. **4** — heights / third dimension - design can precede data, and there is no data yet
+48. **3** — hexagons: the principled fix for 139, and hex.py already exists; the 6-neighbour friction graph is the missing piece
+49. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
+50. **66** — not a task: a standing caution about editing multi-line Python
 
-45. **107** — MANIFEST.in omits the demo scripts, so they have never shipped in an sdist
-46. **123** — run metadata records absolute paths and machine details
-47. **126** — a text category is lost whenever any value in the column parses as a number
-48. **127** — Value Statistics skips the version warning and shadows `wanted`
+51. **107** — MANIFEST.in omits the demo scripts, so they have never shipped in an sdist
+52. **123** — run metadata records absolute paths and machine details
+53. **126** — a text category is lost whenever any value in the column parses as a number
+54. **127** — Value Statistics skips the version warning and shadows `wanted`
+55. **130** — Stata is not SSC-ready: no .sthlp, contradictory version headers, treat() wrongly mandatory
+56. **134** — a golden dataset with expected results, one per host
+57. **132** — a public ArcGIS Online item; the .pyt is already the right artifact
 ## Still to do — detail, in the order above
 
 - ~~95~~ | DONE v1.29.5 | SELF-POTENTIAL, shipped. equipop/selfpot.py holds the rule once so the two engines cannot drift; both apply it; both doors offer `selfpot` and BOTH ARE CHECKED ON VALUES, not names. Default 1.0, John's ruling. Guards broken on purpose six ways before being trusted - including the Pro one, whose FIRST version passed against a deliberate break because it drove _run_tool and skipped the dialog hop where `or 1.0` eats a falsy 0. Rewritten through execute(). s=0 reproduces pre-1.29.5 numbers exactly, asserted not assumed.
@@ -187,6 +196,10 @@ appeared twice; the weaker copy is gone.*
   doors move data and the package calculates. 108 exists precisely
   because of it: one door was fixed and the other was not. Compare
   alg_counts.py with the equivalent block in EquiPop.pyt.
+  RAISED IN PRIORITY by the distribution review (133): four doors
+  are planned, possibly five with R. Every one of them is another
+  copy of this logic and another place for the next 108 to hide, so
+  this is now a PREREQUISITE for any new door, not a tidy-up.
 
 - ~~121~~ | DONE v1.29.5 | README_QGIS.md's "What is not here yet" had been telling users that decay, barriers, terrain and grouping were absent from QGIS; three of the four arrived releases ago, so it was sending people to ArcGIS for things sitting in front of them. Rewritten to say what IS present and to name the one real gap (102, variable bandwidth). MANUAL.md no longer calls itself 0.3.1 while carrying history to 1.29.5; MANUAL_BEGINNER.md and FUNCTION_MATRIX.md are now version-free by intention rather than stale; and equipop/__init__.py no longer says "no friction, no decay yet".
 
@@ -231,16 +244,306 @@ appeared twice; the weaker copy is gone.*
   log line can describe the wrong thing. The calculation is safe -
   the stats dict is built before the shadowing - but it is fragile.
 
-- 99 | open v1.29.5 | INTERPOLATE THE LAST CELL OF EVERY
-  NEIGHBOURHOOD, not only the origin's own. RULED IN by John during
-  the 1.29.5 design rounds ("2. Sure") and then DEFERRED by Claude,
-  with John's agreement, out of 1.29.5. The reason: 95 changes only
-  the rows where a single cell satisfies k, while this changes EVERY
-  row, so it deserves its own release and its own field test rather
-  than riding along with three fixes. Without it Dist_k still has a
-  seam - roughly 0.56c to 1.0c - where the neighbourhood stops
-  fitting in one cell. Same arithmetic as 95: the k-th person falls
-  partway into the last cell, so take that fraction of its area.
+- 128 | open v1.29.5 | `equipop doctor` - ONE DIAGNOSTIC, EVERY DOOR.
+  Proposed by the distribution review and worth taking: the release
+  risk is not the mathematics, it is getting a compatible Python
+  environment inside four host applications, each of which owns a
+  different one. A read-only report naming the host, the exact Python
+  executable, the equipop version, which dependencies are missing and
+  the precise command to fix it - copyable, and safe to paste into a
+  support thread. The QGIS door has check_versions(), which compares
+  two version strings and nothing else; there is no shared diagnostic
+  and no way for a user to answer "what have I actually got".
+  It also fits what this project already believes: stub_audit.py was
+  taught to EXPLAIN rather than raise in 1.29.5 for the same reason.
+  RECOMMENDATION, not a platform requirement.
+
+- 129 | open v1.29.5 | VERSION THE OUTPUT SEMANTICS, NOT JUST THE
+  STRUCTURE. The distribution review asks for an OUTPUT_SCHEMA_VERSION
+  in every adapter. Sharper than it sounds, and 1.29.5 is the proof:
+  check_versions() compares a CONTRACT NUMBER that its own docstring
+  says "only changes when something STRUCTURAL does" - but 1.29.5
+  changed what Dist_k MEANS (BACKLOG 95, 115) without changing any
+  structure at all. Same columns, same types, different numbers, no
+  message. A user with a saved model or a Processing script gets
+  different answers and nothing anywhere tells them. That is exactly
+  the silence this project exists to hunt, in the one place we have
+  not looked. Needs a SEMANTICS version that changes when a number's
+  meaning changes, and a door that says so when the model it is
+  running predates it.
+
+- 130 | open v1.29.5 | STATA IS NOT SSC-READY. Confirmed against the
+  tree, not taken on trust:
+  - NO .sthlp FILES AT ALL. stata/ has two .ado files, Markdown
+    guides and examples. Native help is a first-class deliverable for
+    SSC, and Markdown is not it.
+  - THE VERSION STORY CONTRADICTS ITSELF: equipop_knn.ado line 1 says
+    "v1.0", equipop_run.ado line 1 says "EquiPop 1.6", the package is
+    1.29.5. Neither users nor `adoupdate` can tell what they have.
+  - equipop_knn REQUIRES treat(): the syntax line has
+    TREAT(varlist numeric) OUTSIDE the optional brackets, so a
+    distance-only k run - N_k and Dist_k, no groups - cannot be asked
+    for through that command at all. It is the simplest thing EquiPop
+    does and the focused command refuses it.
+  Also needs a .pkg/stata.toc harness tested with `net install` into
+  an empty environment, and a licensed Stata run: README_STATA.md
+  still says the sfi glue awaits its first real Stata execution.
+
+- ~~131~~ | DONE v1.29.6 | LICENSE copied into the plugin folder and hasProcessingProvider=yes declared. Guarded: the plugin must carry what the repository requires.
+
+- 132 | open v1.29.5 | ARCGIS PUBLIC DISTRIBUTION. The .pyt is
+  already the right artifact - native, batchable, ModelBuilder-usable
+  - and the review is explicit that a .NET add-in would add a
+  language, an SDK lifecycle and a signing surface without improving
+  anything analytical. What is missing is a public ITEM: a versioned
+  Geoprocessing Sample ZIP with relative paths, the .pyt, the help
+  sidecars, LICENSE, README, a golden dataset and its expected
+  results, tested after extraction into a fresh project.
+
+- 133 | open v1.29.5 | A FOURTH DOOR - AND R, WHICH THE REVIEW DOES
+  NOT MENTION. John raised it: "R is not mentioned but in of course."
+  Claude's assessment: R via reticulate is STRUCTURALLY THE SAME AS
+  THE STATA DOOR and easier - native data frames, and none of the
+  variable-name sanitising that produced the decimal-radius bug in
+  113. SPSS is feasible as an extension command (.spe/.spxt) but
+  carries a harder dependency story: SPSS 31 embeds Python 3.13,
+  older supported releases embed older ones, and every compiled
+  dependency needs a wheel for each combination.
+  THE GATE IS NOT THE HOST, IT IS 120. Every door duplicates the
+  reference and treatment construction, and BACKLOG 108 - a silent
+  scientific corruption that survived eight published releases -
+  existed precisely because that logic is written twice and only one
+  copy was fixed. A fourth door is a fourth place for the next 108 to
+  hide. 120 first.
+  One thing in our favour: the BACKLOG 78 constraint that stopped 105
+  sharing its wording is a QGIS/Pro problem - those hosts import
+  adapters at STARTUP. R and SPSS load on demand, so a new door
+  probably CAN import shared code, which is an argument for building
+  120's shared module in a way both old and new doors can use.
+
+- 134 | open v1.29.5 | A GOLDEN DATASET AND EXPECTED RESULTS, ONE PER
+  HOST. Proposed by the distribution review and the cheapest item in
+  it: one tiny redistributable example with known answers, shipped
+  with every door. It becomes the smoke test, the documentation
+  example and the first thing to ask for in a support thread. Gridby
+  already exists and needs no file, so most of the work is choosing
+  the numbers and writing them down.
+
+- ~~135~~ | DONE v1.29.6 | A field-level refusal is no longer retried as a lock - the retry was making things worse, running twice against a half-written table. Where the target cannot take the write, the message names the real cause, and Output = New feature class remains the way through. Guarded by test_a_field_refusal_is_not_retried_as_a_lock.
+
+- ~~136~~ | DONE v1.29.6 | The shared dispatch no longer announces itself as "[stata]" in every door. The MODULE keeps its name until 120 moves that file anyway.
+
+- 137 | open v1.29.5 | WORLDPOP IS PER COUNTRY, AND 92 ASSUMES ONE.
+  Raised by John, 1.29.5: "there may not be a pure Africa tif, but
+  there may be country files... allow for a mosaic function to merge
+  all selected into a continental one - or simply point to folders
+  where the needed data is stored." He is right, and it is a HOLE IN
+  92, which Claude helped write: 92 is grounded on the Kenya page and
+  never addresses the multi-country case, which is the actual shape
+  of the data. Africa for ASFR is roughly 54 countries x 7 cohort
+  files, not 7.
+  DO NOT MOSAIC. rasters_to_points() reads a raster and immediately
+  discards it, keeping a table of populated cells. A mosaic builds a
+  BIGGER RASTER which we would then throw away - Africa at 100 m is
+  ~3 billion cells, mostly empty, so mosaic-then-extract needs
+  terabytes of intermediate GeoTIFF to reach the same table that
+  extract-then-concatenate reaches directly. Same answer, no middle
+  step. raster.py already understands glob alternatives, so a cohort
+  rule like *_f_15_2020.tif over a folder tree is nearly free.
+  AND CONCATENATING THE DATA IS NOT MERELY CHEAPER, IT IS THE ONLY
+  CORRECT ROUTE. Neighbourhoods cross borders: a woman near the
+  Kenya-Tanzania line needs her k nearest in Tanzania. Running per
+  country and merging the RESULTS would be wrong everywhere near a
+  border, and Africa is mostly border. bigrun.py already answers
+  this - a global tree with origin tiling - provided every country's
+  cells sit in one table.
+  THE HARD PART IS THE PART MOSAIC OPERATORS EXIST FOR. Country
+  rasters are clipped to national boundaries, and where two clips
+  disagree you can get a cell claimed twice, which a straight concat
+  would double-count. FIRST / MEAN / SUM / BLEND exist for exactly
+  that choice and none of them is obviously right for population
+  COUNTS. Needs real data in front of us; do not decide in advance.
+  VERIFIED, 1.29.5, on real WorldPop files John supplied - Burundi
+  and Rwanda, f_15, 2020, 100 m (R2025A):
+  - THEY SHARE ONE LATTICE EXACTLY. Same CRS (EPSG:4326), same
+    3-arc-second pixel, and the origins differ by 168 and -1515
+    WHOLE pixels. No resampling is needed to combine them and
+    raster.py's grid check will pass across countries.
+  - THEY DO NOT OVERLAP AT ALL. The bounding boxes overlap by
+    1.85 x 0.53 degrees, but of 1,406,525 cells in that window, the
+    number carrying data in BOTH files is ZERO. Each clip stops at
+    its own national boundary. SO NO BORDER RULE IS NEEDED - a
+    straight concatenation cannot double-count, and the FIRST /
+    MEAN / SUM / BLEND question does not arise.
+  - The nodata strip between them (median ~13 cells) is the
+    Akanyaru and Kagera rivers and their lakes, which nobody lives
+    on. Irrelevant here because only POPULATED cells are kept.
+  - CONCATENATION IS NECESSARY, MEASURED: at 1 km with k=1000,
+    1,330 of 46,317 origins (2.9%) draw their neighbourhood from
+    BOTH countries, covering 25,359 women 15-19 (1.9%). Rwandan
+    shares 5% to 59% at radii of 3-5 km. Run the countries
+    separately and those 25,000 women get half a neighbourhood
+    with nothing to say so.
+  - Scale of the real thing: 11.0 million raster cells -> 3.9
+    million POPULATED cells (35%) -> 46,317 origins at 1 km.
+    1,341,945 women 15-19 (BDI 624,390, RWA 717,555), both about
+    5% of national population.
+  WHAT THIS FIXTURE DOES NOT TEST: cell width varies only 0.29%
+  across these two countries (both within 4.5 deg of the equator)
+  against a factor of 1.25 across Africa. The latitude-varying
+  search window of 93 needs a NORTH-SOUTH pair - Sudan and South
+  Africa, or Morocco and Tanzania - and is still unexercised.
+  A 1 km fixture (46,317 cells, 639 KB) has been cut from this and
+  is worth keeping as the continental machine's first regression.
+  EFFORT, honestly: folder walk, pattern rule and concatenation
+  about a day; the duplicate-cell question is design-then-look, so a
+  few days in total. Part of 92, not a new project.
+  Also makes 124 acute: fetching hundreds of files with a cache
+  keyed only on basename is a collision waiting to happen.
+
+- ~~141~~ | DONE v1.29.6 | A three-way choice in every door - none / median (0.71) / equal-area radius (default) - with John's wording. Safe to change NOW because 1.29.5 was never published, so no saved model holds selfpot as a number; after a release a stored 1.0 would have been reread as choice index 1, the median, silently. The ENGINE keeps a float, so Python and Stata retain the full range. Wording and values pinned across all three copies, plus a test that the middle choice really is the median - 1/sqrt(2), because the equal-area radius scales with the square root of the share, so half the AREA sits at r/sqrt(2) and not at r/2.
+
+- ~~146~~ | DONE v1.29.6 | Both halves. The layer half falls out of 143. The rung half behaves as recommended: boxes the current rung does not read are IGNORED and SAID SO, rather than silently cleared - clearing would destroy work someone may be about to switch back to.
+
+- ~~144~~ | DONE v1.29.6 | Refused in the dialog, before the compute, and shorten_names() now compares case-insensitively so its "collision-free" promise is true. The full names collided too, so shortening was never the cause.
+
+- 149 | open v1.29.5 | suggest_projection() DECIDES BY ZONE
+  MEMBERSHIP, NOT BY EXTENT SPAN, and splits runs that need no
+  splitting. Found on John's Burundi + Rwanda files, 1.29.5. That
+  extent is 2.02 DEGREES of longitude - a third of a UTM zone - but
+  it straddles the 30E boundary, so the advice reads:
+      "Data spans UTM zones 35 (59%) and 36 (41%). Recommend two
+       tiled runs, each in its own zone, with an overlap buffer."
+  MEASURED COST OF IGNORING THAT ADVICE: over 20,000 random point
+  pairs across the whole two-country extent, a single UTM 35S gives
+  a distance error with median +0.09% and a SPREAD OF 0.17% (range
+  +0.02% to +0.18%). That is smaller than the sphere-vs-ellipsoid
+  error of 0.1-0.4% that John already agreed to print for the
+  great-circle route of 93.
+  AND THE SPLIT WOULD FALL AT 30E, which runs through the middle of
+  both countries - cutting exactly the cross-border neighbourhoods
+  that 137 measured (1,330 origins, 25,359 women). The recommended
+  workflow would introduce the very error concatenation exists to
+  avoid, for an extent a third of a zone wide.
+  This is 93's rule stated from the other side: decide by the SPAN
+  of the extent, not by which zones it happens to touch. Under 6
+  degrees is one zone whatever the boundaries do.
+
+- ~~148~~ | DONE v1.29.6 | _manifest_rows() now carries the settings that DEFINE the numbers - the reference and treatment rungs, the count field, the types, the keepoutside rung, self-potential - and records the true SOURCE rather than the copy it wrote.
+
+- ~~147~~ | DONE v1.29.6 | Refused in the dialog with the two ways out named, rather than after the run with a message blaming OneDrive. dBASE has no null for a number; this was never going to work and the user can be told in advance.
+
+- ~~145~~ | DONE v1.29.6 | "Nothing was changed" is no longer claimed when it is not true, and the cloud-sync note appears only when the reason is genuinely a lock - it fired on three of John's failures in one evening and was the cause of none of them.
+
+- ~~143~~ | DONE v1.29.6 | Every Field parameter now gets parameterDependencies, DERIVED from the declared datatype rather than listed by name - so a new field box cannot be forgotten, which is how this one was. Fixes 146's layer half as a side effect: a real picker is revalidated when its layer changes, a free-text box is not.
+
+- ~~142~~ | DONE v1.29.6 | The internal calibration pass no longer reports its own k as "the k you asked for".
+
+- ~~140~~ | DONE v1.29.6 | The label leads with what it wants: "OR: self-calibrating - ENTER A k, and each point's own Dist_k becomes its half-life (a number, not a field...)". The instruction was fifteen words in and misled the author of the software twice in two days.
+
+- 139 | open v1.29.5 | A DIAGONAL MOVE COSTS THE SAME AS A STRAIGHT
+  ONE, so on open ground the effort engine measures CHEBYSHEV
+  distance, not Euclidean. FrictionGrid builds 8-neighbour moves with
+  `data.append(1 + friction[dst])` - no sqrt(2). Consequences,
+  measured on a 25x25 open grid with NO barriers at all:
+      k     N_k radial   N_k effort   Dist_k radial   Dist_k effort
+      5            5.2          8.6          106.74          142.33
+     11           12.8         22.7          204.11          283.75
+     50           54.4         71.2          449.24          599.17
+  The distance ratio is 1.39, which is sqrt(2) as predicted. So
+  ADDING AN EMPTY BARRIER LAYER CHANGES EVERY NUMBER. John, 1.29.5:
+  "that is OK" - the model is defensible - but he also ruled the cost
+  SHOULD BE SQRT(2), as a CLEAN BREAK with a loud MANUAL row rather
+  than a setting, because "a step is a step" was never a considered
+  choice.
+  It also makes iso-effort contours SQUARES, so rings run 8, 16, 24,
+  32 cells against 4-8 for equal distance - measured, largest effort
+  ring 112 cells against 16. That is why the overshoot of 99 is
+  roughly seven times worse under friction than under distance, and
+  why 99 must cover the effort engines from the start.
+  Changes every effort result ever produced.
+
+- ~~138~~ | DONE v1.29.6 | Pro refuses an empty rung box exactly as QGIS does, and the verification now compares against what was ASKED FOR rather than what came back - so a dropped treatment can no longer pass a check that only ever saw the output. Guarded.
+
+- 99 | open v1.29.5 | THE OVERSHOOT: TAKE A PROPORTIONAL SHARE OF
+  THE RING THAT CROSSES k. Logged far too narrowly the first time -
+  as a seam in Dist_k - and RAISED by John, 1.29.5, who is the
+  authority here: "the original EquiPop was developed to counter the
+  overshoot effects so this is not a wish. We have to manage this."
+  THE HARM, MEASURED. John's example: a 3x3 of cells holding 10 each,
+  ask for k=11, receive 50. Claude tested it on a planted SHARP
+  BOUNDARY - all of one group west, none east, which is what
+  segregation looks like - at k=11, in the cell on the edge:
+      whole ring (now)     R_k = 0.20
+      proportional share   R_k = 0.02
+  A TENFOLD DIFFERENCE IN A SEGREGATION MEASURE, in the exact cell
+  where segregation is being measured. The origin's own cell is pure
+  one group; the ring rule drags in all four rooks, one of them
+  across the boundary, so 10 of 50 come from the other side. At k=25
+  they converge (0.20 vs 0.15). So the damage is concentrated at
+  SMALL k and AT BOUNDARIES, which is precisely where the value is.
+  On a smooth linear gradient the effect nearly vanishes - a
+  symmetric ring averages out - which is why it has hidden so long.
+  THE RULE, and it is deterministic:
+      f   = (k - cumulative_before) / ring_total
+      N_k = k exactly
+      T_k = T_before + f * T_ring        R_k = T_k / k
+  No cell is chosen over another; every tied cell contributes the
+  same fraction. This ALSO answers John's seed question of the same
+  session, and in the better direction: it removes the arbitrariness
+  without needing randomness.
+  AND Dist_k FALLS OUT OF ONE FORMULA THAT ALREADY EXISTS:
+      r = sqrt(d_prev^2 + f * (d_ring^2 - d_prev^2))
+  With d_prev = 0 and the ring being the origin's own cell, that is
+  BIT-IDENTICAL to the shipped self-potential formula (verified). So
+  95, this, and 100 are one rule with three uses, and half of it is
+  already in equipop/selfpot.py.
+  SCOPE, honestly:
+  - fastcounts needs the ring's START index as well as its end,
+    about ten lines; analysis and the effort engines already walk
+    ring by ring and are easier.
+  - RADIUS RUNS ARE UNTOUCHED - no k, so no boundary ring. Same for
+    decay (ND_inf) and tau budgets. A large part of the surface
+    disappears.
+  - MACHINE 2 CANNOT HAVE THIS UNTIL 118. A quarter of a cell inside
+    a median, a Gini or a percentile needs weighted statistics with
+    FRACTIONAL weights, which is the person-expansion blocker. So
+    counts get it first and statistics lag unless 118 travels with
+    it.
+  - Every downstream measure consumes N_k/T_k/R_k, so segregation,
+    FCA, access and autocorrelation all move; the conformance answer
+    key changes; every published number changes. Needs the selfpot
+    treatment: a setting, a default, and an exact way back.
+  - It produces FRACTIONAL PEOPLE. T_k of 0.25 is an estimate, not a
+    person. Defensible for counts and ratios; say so in the help.
+  RULED by John, 1.29.5 - THREE OPTIONS, one box, Advanced, in every
+  door:
+    1. "radial overshoot"              - the whole ring, today
+    2. "proportional radial overshoot" - each cell's share, N_k = k
+                                         exactly. DEFAULT.
+    3. "sampled radial overshoot (seeded)" - cells taken one at a
+       time in seeded order until k is reached. Integer people,
+       overshoot bounded by ONE CELL rather than a whole ring,
+       reproducible from the seed. John ruled it is for the POINT
+       ESTIMATE, not for a spread.
+  Note what 2 and 3 are to each other: 2 is the EXPECTED VALUE of 3
+  over every possible draw. So 3 as a point estimate is 2 with noise.
+  Say that in the help rather than let someone discover it.
+  THE SEED MUST BE PER-ORIGIN. One shuffle order applied everywhere
+  would favour the same direction at every origin - a spatial
+  artefact worse than the thing it fixes.
+  APPLIES TO EFFORT RUNS FROM THE START (John: "do both") - it is the
+  same code path, and the overshoot is WORSE there: see 139.
+  CONTINENTAL DEFAULT IS 2, WITH THE REASON PRINTED, and 3 is not
+  forbidden. The reason is not speed: WorldPop counts are FRACTIONAL
+  MODELLED ESTIMATES, so option 3 has no whole people to preserve and
+  buys only noise. Forbidding it outright would make the continental
+  machine answer differently from the local one for convenience,
+  which is the "two doors disagree" family that has bitten this
+  project three times in one week.
+  COST: 1 and 2 are two lines apart and stay array arithmetic; 3
+  needs a per-origin shuffle and RNG and cannot be reduced to it.
+  STILL UNRULED: whether machine 2 waits for 118.
 
 - 100 | open v1.29.5 | MedDist_k AS ITS OWN COLUMN. Also ruled in
   during design and deferred with 99. The MEDIAN distance to a
@@ -654,10 +957,43 @@ appeared twice; the weaker copy is gone.*
   dialog. Retire once John confirms no saved tools depend on it.
 
 
-- 65 | open | The OneDrive warning did not fire on John's run. Most
-  likely that run predates 1.24.0; confirm before hunting.
+- ~~65~~ | ANSWERED v1.29.5 | Not a defect and nothing to hunt. The
+  sync-folder warning is raised in updateMessages() as a PARAMETER
+  warning, so it appears beside the output box in the dialog and
+  NEVER in the messages pane - which is the only place John was
+  looking, both times. Confirmed against a 1.29.5 Pro run of his
+  whose output sat in "OneDrive - OsloMet" with no such line in the
+  log. Worth remembering when reading any field report: a Pro
+  parameter warning and a Pro run message are two different surfaces.
 
 - 40 | open v1.16.8 | Gridby README: Test E must say to clear BOTH the population field and the group count fields (the key assumes one row = one person) | Documentation error found in the field
+
+- 3 | open v1.29.5 | HEXAGONS ARE THE PRINCIPLED FIX FOR 139, not a
+  patch. Raised by John, 1.29.5: "a hexagonal growth is in principle
+  easier since rook/queen patterns are replaced with equal
+  distances." Half right, and the half that is wrong matters:
+  MEASURED tie groups, nearest first -
+      HEX   : 6 at 1.000, 6 at 1.732, 6 at 2.000, 12 at 2.646
+      SQUARE: 4 at 1.000, 4 at 1.414, 4 at 2.000,  8 at 2.236
+  The smallest step out is SIX cells on hex against FOUR on square,
+  so for the overshoot at small k hexagons are slightly WORSE, and
+  ring 2 is not uniform either. The "all equal distances" intuition
+  holds only for the immediate neighbours.
+  WHERE THEY WIN IS 139. All six neighbours are genuinely
+  equidistant, so "one round = one step" is a CORRECT model of
+  movement and the sqrt(2) correction is unnecessary - the problem
+  does not exist rather than being patched.
+  equipop/hex.py ALREADY EXISTS and yields a standard CellData, so
+  the radial engine works on hexagons today. Its own docstring names
+  the gap: "The 6-neighbour graph for hexagonal FRICTION growth is a
+  separate, future addition." That is the piece worth building.
+  BUT HEXAGONS ARE WRONG FOR RASTER INPUT. WorldPop arrives on a
+  square 3-arc-second grid; binning it to hexagons means resampling,
+  which is exactly what 93's snapping rule exists to prevent. Hex
+  suits point data and the effort engine, not the continental path.
+  Minor bonus: the self-potential formula is AREA-based, so
+  sqrt(A*k/(n*pi)) is unchanged, and a hexagon is rounder than a
+  square so the equal-area circle fits more comfortably inside it.
 
 - 4 | open | Heights / third dimension (D-dimensions) for grids AND hexagons | No suitable test data yet — design can precede data. Thoughts below.
 

@@ -205,3 +205,21 @@ def test_metadata_declares_no_file_it_does_not_ship():
     assert not missing, (
         f"metadata.txt promises files the plugin does not ship: "
         f"{missing}")
+
+
+def test_the_plugin_carries_what_the_repository_requires():
+    """BACKLOG 131. Two things the QGIS plugin repository checks that
+    EquiPop did not ship: a LICENSE file INSIDE the plugin folder (the
+    repo does not look at the one in the project root), and
+    hasProcessingProvider=yes, without which neither the repository
+    nor QGIS describes the plugin correctly. Both absent since the
+    first release; neither noticed, because a locally installed
+    plugin works fine without them.
+    """
+    plugin = os.path.join(ROOT, "qgis", "equipop_qgis")
+    assert os.path.exists(os.path.join(plugin, "LICENSE")), \
+        "the plugin folder has no LICENSE - the repository requires one"
+    meta = open(os.path.join(plugin, "metadata.txt"),
+                encoding="utf-8").read()
+    assert "hasProcessingProvider=yes" in meta, \
+        "metadata.txt does not declare hasProcessingProvider"

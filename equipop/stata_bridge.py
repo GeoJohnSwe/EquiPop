@@ -11,6 +11,17 @@ ROW-ALIGNED to the input observations (one value per individual, the
 spec's "disaggregated outfile"), so the ado can store them straight
 into the dataset in memory and the user can `regress` immediately.
 Rows with missing coordinates receive missing values.
+
+BACKLOG 136: this module is the SHARED dispatch that every door
+funnels through - QGIS, ArcGIS Pro, Stata and the Python API - so its
+messages are read by all of them. It used to prefix them "[stata]",
+which John found in an ArcGIS Pro log: "[stata] returning 4 new
+variables". A Pro user reading their own log had no idea why Stata was
+involved, and it quietly contradicted the one architectural claim the
+project makes about itself. The prefix is now "[equipop]". The MODULE
+NAME is the same problem in slower motion and is left for 120, when
+this file is being moved anyway - anyone writing the R or SPSS door of
+133 will still open stata_bridge.py to find dispatch().
 """
 
 import numpy as np
@@ -105,7 +116,8 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 r_values=None, decay=None,
                 treat_are_counts: bool = False,
                 decay_half_life=None, decay_bins: int = 10,
-                self_potential: float = 1.0) -> dict:
+                self_potential: float = 1.0,
+                report_label: str = "") -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
 
@@ -194,7 +206,8 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
         res = run_knn_counts(cd, k_values, decay_eps=decay_eps,
                              m_neighbors=m_neighbors,
                              r_values=r_values, decay=decay,
-                             self_potential=self_potential)
+                             self_potential=self_potential,
+                             report_label=report_label)
 
     # map cell results back to every individual row
     res = res.set_index(["EastWest", "NorthSouth"])
@@ -230,9 +243,9 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
         out[c] = col
     n_miss = n_rows - len(vidx)
     if n_miss:
-        print(f"[stata] {n_miss} rows with missing coordinates -> "
+        print(f"[equipop] {n_miss} rows with missing coordinates -> "
               f"missing results")
-    print(f"[stata] returning {len(out)} new variables for "
+    print(f"[equipop] returning {len(out)} new variables for "
           f"{n_rows} observations")
     return out
 
@@ -354,6 +367,9 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             first = knn_to_rows(x, y, [k0], weight=weight,
                                 unit_size=unit_size,
                                 self_potential=self_potential,
+                                # BACKLOG 142: EquiPop's own pass,
+                                # not the user's run
+                                report_label=" calibration pass,",
                                 treat_are_counts=extra.get(
                                     "treat_are_counts", False))
             hl = first[f"Dist_{k0}"]
@@ -433,11 +449,11 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         if weight is not None:
             n_persons = int(pop["_rep"].sum())
             outside = int(valid.sum() - members.sum())
-            print(f"[stata] full population: {len(pop)} of {len(df)} "
+            print(f"[equipop] full population: {len(pop)} of {len(df)} "
                   f"rows carry a usable count -> {n_persons} persons "
                   f"(k counts PERSONS)")
             if outside:
-                print(f"[stata] {outside} row(s) have no count (empty "
+                print(f"[equipop] {outside} row(s) have no count (empty "
                       "or zero): they count as ZERO and are nobody's "
                       "neighbour, but they still get their own "
                       "results - what is around THEM.")
@@ -574,7 +590,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         cells = (dv.assign(E=E, N=N).groupby(["E", "N"], as_index=False)
                  .agg(v=("v", "mean"), n=("v", "size")))
         if (cells["n"] > 1).any():
-            print(f"[stata] {int((cells.n > 1).sum())} cells hold "
+            print(f"[equipop] {int((cells.n > 1).sum())} cells hold "
                   "several rows - LISA runs on CELL MEANS (loudly)")
         W = build_weights(cells["E"], cells["N"], mode="knn",
                           k=int(extra.get("w_k", 8)))

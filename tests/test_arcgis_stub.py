@@ -1267,7 +1267,11 @@ def test_pyt_reports_package_voice_and_stage_times():
     # the package's own voice now reaches the pane (engine notes,
     # neighbour-search size, row count handed back)
     assert "[fast]" in log and "neighbour cells" in log
-    assert "[stata]" in log
+    assert "[equipop]" in log
+    # BACKLOG 136: it said "[stata]" until 1.29.6, in EVERY door,
+    # because the shared dispatch lives in stata_bridge.py. A Pro user
+    # reading their own log had no idea why Stata was involved.
+    assert "[stata]" not in log
     for stage in ("[time] reading input", "[time] calculating",
                   "[time] writing results to the layer",
                   "[time] TOTAL"):
@@ -1843,7 +1847,7 @@ def test_self_potential_is_honoured_by_the_pro_door():
         pm = {p.name: p for p in ps}
         pm["layer"].value = "people"
         pm["k"].value = "100"
-        pm["selfpot"].value = sp
+        pm["selfpot"].value = sp        # a LABEL now (BACKLOG 141)
         tool.updateParameters(ps)
         tool.updateMessages(ps)
         assert not [1 for p in ps for kind, _ in p.messages
@@ -1851,14 +1855,138 @@ def test_self_potential_is_honoured_by_the_pro_door():
         tool.execute(ps, _Messages())
         return state["table"]["Dist_100"].to_numpy()[dense]
 
-    off = _dialog_run(0.0)
+    from equipop.doors.rungs import SELF_POTENTIAL as SP
+    off = _dialog_run(SP[0])
     assert (off == 0.0).all(), (
         "self-potential 0 must reproduce pre-1.29.5 numbers exactly - "
         "if this reads like the equal-area radius, a falsy 0 was "
         "swallowed on the way from the dialog to the engine")
 
-    on = _dialog_run(1.0)
+    on = _dialog_run(SP[2])
     expected = np.sqrt(100.0 ** 2 * 100 / (n_dense * np.pi))
     assert np.allclose(on, expected, rtol=1e-9), (
         f"expected the equal-area radius {expected:.4f} m, got "
         f"{on[0]:.4f} m - Pro offers the box but is not passing it on")
+
+
+# ------------------------------------------ 135 / 145 / 147, writing
+def test_a_field_refusal_is_not_retried_as_a_lock():
+    """BACKLOG 135. `if "not supported" not in str(exc)` sent EVERY
+    other failure down a two-attempt retry meant for transient locks.
+    Three of John's 1.29.6 field failures came through there and none
+    was a lock: a held file, group names colliding on case, and nulls
+    in a shapefile. Waiting cannot cure a refused FIELD, and each
+    retry ran against a half-written table."""
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    for msg in ("TypeError: cannot add field: 'Tba400'",
+                "RuntimeError: The field is not nullable. [N100]",
+                "ERROR 999999: field 'N400' already exist"):
+        assert pyt._is_field_refusal(Exception(msg)), msg
+    # a genuine lock keeps its retries - 000852 is Esri's generic
+    # "cannot add field" and covers a locked file
+    for msg in ("ERROR 000852: Cannot add field EQPTST1 to gridby",
+                "The table is locked by another application",
+                "operation is not supported on this format"):
+        assert not pyt._is_field_refusal(Exception(msg)), msg
+
+
+def test_the_failure_message_no_longer_asserts_a_cause_it_cannot_know():
+    """BACKLOG 145. The cloud-sync note was appended to EVERY failure
+    and fired on three of John's in one evening, having caused none of
+    them. And "Nothing was changed" was false - the write had already
+    added three fields."""
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    sync = r"C:\Users\j\OneDrive - X\p\out.shp"
+    known = pyt._write_failure(
+        Exception("TypeError: cannot add field: 'Tba400'"),
+        "add the result fields", sync)
+    # the PATH contains "OneDrive", legitimately - it is the NOTE
+    # that must not appear when the reason is already known
+    assert "cloud-synced folder" not in str(known)
+    assert "upper/lower case" in str(known)
+    assert "not a lock" in str(known)
+
+    lock = pyt._write_failure(
+        Exception("ERROR 000852: Cannot add field"),
+        "add the result fields", sync)
+    assert "cloud-synced" in str(lock)
+    assert "only one of the possibilities" in str(lock)
+
+    for m in (known, lock):
+        assert "Nothing was changed" not in str(m), (
+            "the message must not claim this - ExtendTable is not "
+            "atomic and _undo_partial reports what is true")
+
+
+def test_a_shapefile_is_told_it_cannot_hold_nulls_before_the_run():
+    """BACKLOG 147. dBASE has no empty value for a number, so that
+    rung cannot be written to a shapefile - John found out after the
+    engine had done its work and the message blamed OneDrive."""
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    assert pyt._shapefile_cannot_hold_nulls(
+        r"C:\d\x.shp", "leave their results Null")
+    assert not pyt._shapefile_cannot_hold_nulls(
+        r"C:\d\x.shp", "give them results, counting as zero")
+    assert not pyt._shapefile_cannot_hold_nulls(
+        r"C:\d\x.gdb\y", "leave their results Null")
+
+
+# ----------------------------------------------- 138 / 146, the rungs
+def _dialog(tool_name="CountsShares", **values):
+    t = pd.DataFrame({"OBJECTID": [1, 2, 3, 4],
+                      "SHAPE@X": [0., 10., 20., 30.],
+                      "SHAPE@Y": [0., 0., 0., 0.],
+                      "Pop": [4., 1., 7., 9.],
+                      "LowInc": [1., 0., 3., 2.],
+                      "Type": ["a", "a", "b", "b"]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    tool = getattr(pyt, tool_name)()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "people"
+    for k, v in values.items():
+        pm[k].value = v
+    return pyt, tool, ps
+
+
+def test_pro_now_refuses_an_empty_rung_box_as_qgis_does():
+    """BACKLOG 138. John chose "one column per group, counts inside"
+    with the group count fields empty; Pro ran to completion and gave
+    N_ and Dist_ with no T_, no R_ and no message. QGIS had refused
+    the same dialog state since 1.29.5 - the release whose whole point
+    was that the doors must not differ."""
+    pyt, tool, ps = _dialog(k="2", treatmode="one column per group, "
+                            "counts inside")
+    with pytest.raises(Exception) as e:
+        tool.execute(ps, _Messages())
+    assert "group count fields" in str(e.value)
+
+    pyt, tool, ps = _dialog(k="2", refmode="a field holds the count")
+    with pytest.raises(Exception) as e:
+        tool.execute(ps, _Messages())
+    assert "count field" in str(e.value)
+
+
+def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
+    """BACKLOG 146. Pro greys such boxes out, but greying does not
+    CLEAR them and _run_tool read them anyway - so 'fclass', a field
+    of a previous layer, reached the engine while John could not see
+    the box holding it.
+
+    Ignoring is preferred to clearing: someone may switch the rung
+    back, and emptying their work silently would be a second fault.
+    """
+    msg = _Messages()
+    pyt, tool, ps = _dialog(k="2", treatcatfield="Type")
+    pm = {p.name: p for p in ps}
+    ignored = pyt._guard_rungs(pm, msg, "counts")
+    assert "treatcatfield" in ignored
+    said = "\n".join(msg.log)
+    assert "IGNORED" in said and "treatcatfield" in said

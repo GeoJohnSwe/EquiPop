@@ -68,6 +68,22 @@ for the next review is in `REVIEWER_BRIEF.md`.
 **Seventeen items closed in 1.29.5**: 79, 94, 95, 96, 103, 104, 105,
 108-116, 121.
 
+**A SECOND external document arrived**, on distribution and publishing
+routes (SSC, the QGIS plugin repository, ArcGIS Online, the SPSS
+Extension Hub). Its platform research is the part we could not have
+done ourselves. Its repository findings were checked: most hold, one
+was already fixed (the icon, 79) and one was WRONG (`license=MIT` has
+been in metadata.txt since before 1.29.3). Logged as items 128-134.
+
+**Its premise needs qualifying, and this matters for planning.** It
+opens by saying EquiPop already keeps computation in the package and
+the doors thin. That is the INTENT. We now know the doors compute -
+BACKLOG 120 - and that BACKLOG 108, a silent corruption that survived
+eight published releases, existed precisely because the reference and
+treatment logic is written twice and only one copy was fixed. **A
+fourth door is a fourth place for the next 108 to hide, so 120 is now
+a prerequisite for any new door rather than a tidy-up.**
+
 The single most important finding: **the QGIS door discarded the
 population field whenever outside rows were Nulled**, from 1.21 until
 now, published the whole time. Two rows carrying 10 and 1 people
@@ -98,6 +114,75 @@ Four runs on his own data, 682 points, k=400:
 
 `N_`, `T_` and `R_` byte-identical across selfpot 0 and 1: the setting
 moves the radius and nothing else, as designed.
+
+### Where the work goes next, in words
+
+**The next release makes the doors safe and changes NO numbers.**
+Everything the 1.29.5 Pro field test found belongs in one release,
+because it is all guards, messages and refusals - low risk, and worth
+doing while the findings are fresh.
+- THE WRITE PATH. Three different write failures in one evening (a
+  held file, group names colliding on case, nulls in a shapefile) all
+  ended identically: two pointless retries, a message blaming OneDrive
+  with certainty, and "Nothing was changed" when three fields had
+  already been written. Stop retrying refusals that are not locks;
+  make the reassurance true or drop it; stop naming a cause with
+  certainty; refuse impossible combinations BEFORE computing; and
+  where a target cannot take the write, copy to a new feature class
+  and say so (John's ruling).
+- PRO'S DIALOG does not guard the user the way QGIS now does: an empty
+  box on a chosen rung runs silently, one type-field box is free text
+  while its twin is a picker, settings survive layer and rung changes,
+  and the "verified present" check confirms what was COMPUTED rather
+  than what was ASKED FOR.
+- LABELS AND MESSAGES: case-colliding group names, the bandwidth boxes
+  that bury what they want, the self-potential report naming the
+  calibration k, and every door announcing itself as "[stata]".
+- THE MANIFEST, which omits the population definition, the keepoutside
+  rung and self-potential, and names the copy as its input.
+
+**The release after that changes numbers, and the three parts travel
+together** because they touch the same code: the sqrt(2) diagonal cost
+(clean break, John's ruling); the overshoot as a three-way choice with
+proportional as default, radial and effort alike; and self-potential as
+a named choice rather than a free number. All three need the treatment
+self-potential got - a setting, a default, an exact way back, a loud
+MANUAL row.
+
+**Then the continental machine.** Two things BLOCK it rather than
+accompany it: weighted statistics that do not expand rows into people,
+and a resumable run that validates its own parameters. Plus the
+multi-country data path - concatenate the extracted cells, never mosaic
+the rasters.
+
+**THE CONTINENTAL DATA QUESTION IS NOW SETTLED**, on real WorldPop
+files John supplied (Burundi + Rwanda, f_15, 2020, 100 m). Everything
+item 137 left open has been checked rather than assumed:
+- the two country rasters share ONE lattice exactly - same CRS, same
+  3-arc-second pixel, origins differing by whole pixels. No
+  resampling needed.
+- they DO NOT OVERLAP: of 1.4 million cells in the shared bounding
+  box, ZERO carry data in both files. So no border rule is needed
+  and a straight concatenation cannot double-count.
+- concatenation is NECESSARY, not merely cheaper: at 1 km with
+  k=1000, 1,330 of 46,317 origins draw from both countries, covering
+  25,359 women 15-19. Run the countries apart and those women get
+  half a neighbourhood in silence.
+- and it exposed a NEW defect (149): suggest_projection() recommends
+  splitting this 2-degree extent because it straddles a zone
+  boundary, when a single UTM zone costs 0.17% - less than the
+  sphere-vs-ellipsoid error already accepted. The split would fall
+  through the middle of both countries.
+NOT yet tested: the latitude-varying cell width of 93. These two
+countries sit within 4.5 degrees of the equator so width varies by
+0.29%, against a factor of 1.25 across Africa. That needs a
+NORTH-SOUTH pair.
+A 1 km fixture (46,317 cells, 639 KB) was cut from this and is worth
+keeping as the continental machine's first regression test.
+
+**Unfinished from the field test:** Test 6 alone - the population field
+surviving both keepoutside routes, run into two FRESH feature classes
+in a geodatabase. Everything else passed or is logged.
 
 ### Still John's to do
 

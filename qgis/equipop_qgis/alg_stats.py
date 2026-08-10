@@ -31,7 +31,8 @@ MEASURES = ["mean", "median", "gini", "sd", "variance", "se",
 MEASURE_KEY = {"variance": "var"}
 
 
-from .alg_counts import OUTSIDE_MODES, REF_MODES  # noqa: F401
+from .alg_counts import (OUTSIDE_MODES, REF_MODES,  # noqa: F401
+                         SELFPOT_MODES, SELFPOT_VALUES)
 # REF_MODES carries its "(fill 1a)" hints from alg_counts, so machine
 # 1 and machine 2 cannot start describing the same ladder differently
 # (BACKLOG 104/105).
@@ -107,12 +108,14 @@ class ValueStatistics(EquipopAlgorithm):
             "unit", "Cell size in metres - bigger cells mean fewer "
             "origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double))
-        self.add(QgsProcessingParameterNumber(
-            "selfpot", "Self-potential - how far away your OWN "
-            "cell's people are (0 = at the centre with you, as "
-            "before 1.29.5; 1 = spread evenly over the cell)",
-            defaultValue=1.0, minValue=0.0, maxValue=1.0,
-            type=QgsProcessingParameterNumber.Double), advanced=True)
+        # BACKLOG 141: a three-way choice, not a free number. The
+        # wording is duplicated from equipop/doors/rungs.py and
+        # pinned by test_rungs.py - see the note above on 105/78 for
+        # why it cannot be imported.
+        self.add(QgsProcessingParameterEnum(
+            "selfpot", "Self-potential - the distance to what is "
+            "LOCAL, inside your own cell", options=SELFPOT_MODES,
+            defaultValue=2), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -175,8 +178,9 @@ class ValueStatistics(EquipopAlgorithm):
                  or [None])[0])
 
         kw = dict(unit_size=float(unit),
-                  self_potential=self.parameterAsDouble(
-                      parameters, "selfpot", context),
+                  self_potential=SELFPOT_VALUES[
+                      (self.parameterAsEnums(parameters, "selfpot",
+                                             context) or [2])[0]],
                   values={v: pts.data[v] for v in vals},
                   stats={v: wanted for v in vals})
         if k_text:

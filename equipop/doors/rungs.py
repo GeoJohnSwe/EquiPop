@@ -102,3 +102,24 @@ def with_hints(modes: list[str], hints: dict[int, str]) -> list[str]:
     """
     return [f"{m} ({hints[i]})" if i in hints else m
             for i, m in enumerate(modes)]
+
+
+# BACKLOG 141. Self-potential was a free-text number from 0 to 1.
+# John: "we don't need a textbox where erronous values could be
+# entered". A three-way choice removes the decision without discarding
+# 0.71, the MEDIAN, which was his own suggestion in the design round.
+#
+# Safe to change now and not later: 1.29.5 was never published, so no
+# saved model anywhere holds selfpot as a number. After a release, a
+# stored 1.0 would silently be reread as choice index 1 - the median -
+# which is the class of failure this project exists to end.
+#
+# The ENGINE parameter stays a float, so the Python and Stata routes
+# keep the full range and selfpot.check() still guards them.
+SELF_POTENTIAL = [
+    "0 - no distance at all; Dist_k can come out as zero",
+    "0.71 - the median: half of what your cell holds is nearer than this",
+    "1 - the radius at which k of it is reached (recommended)",
+]
+SELF_POTENTIAL_VALUES = [0.0, 2 ** -0.5, 1.0]
+SELF_POTENTIAL_DEFAULT = 2          # the equal-area radius
