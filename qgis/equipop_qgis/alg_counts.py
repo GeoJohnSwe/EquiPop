@@ -213,8 +213,8 @@ class CountsAndShares(EquipopAlgorithm):
             "(truncation)", defaultValue=1e-6, optional=True,
             type=QgsProcessingParameterNumber.Double), advanced=True)
         self.add(QgsProcessingParameterNumber(
-            "unit", "Cell size in metres - bigger cells mean fewer "
-            "origins and faster runs", defaultValue=100.0,
+            "unit", "Cell size in map units, whole numbers only - "
+            "bigger cells mean fewer origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double), advanced=True)
         # BACKLOG 141: a three-way choice, not a free number. The
         # wording is duplicated from equipop/doors/rungs.py and
@@ -255,11 +255,17 @@ class CountsAndShares(EquipopAlgorithm):
         unit = self.parameterAsDouble(parameters, "unit", context)
         if unit is None or unit != unit:            # unset or NaN
             unit = 100.0
-        if unit <= 0:
+        # BACKLOG 155 + 160: a WHOLE number of MAP UNITS, refused
+        # rather than rounded - six modules round differently, so 2.5
+        # gives cells of uneven width. And "map units", not "metres":
+        # nothing here knows the CRS is metric (160).
+        if unit <= 0 or abs(unit - round(unit)) > 1e-9:
             raise QgsProcessingException(
-                f"Cell size must be greater than 0 metres; got "
-                f"{unit:g}. It is the grid the neighbourhoods are "
-                "built on, so there is no sensible zero.")
+                f"Cell size must be a WHOLE number of map units "
+                f"greater than 0; got {unit:g}. Fractional sizes are "
+                "rounded differently by different parts of EquiPop, "
+                "so they are refused rather than silently changed.")
+        unit = float(round(unit))
         pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
         treats = self.parameterAsStrings(parameters, "treat", context)

@@ -422,3 +422,88 @@ def test_the_shortener_no_longer_promises_more_than_it_delivers():
     low = [v.lower() for v in got.values()]
     assert len(set(low)) == len(low), (
         f"shortened names still collide case-insensitively: {got}")
+
+
+# ---------------------------------------------- 151, the decay label
+def test_a_picked_decay_model_reaches_the_engine_as_its_own_name():
+    """BACKLOG 151. Pro filled its decay dropdown from
+    decaynames.choices() - labels like "negexp (steady decline - the
+    classic; ...)" - and handed the whole label to Decay(), which
+    knows only "negexp". John's Pro run:
+
+        ValueError: Unknown decay model 'negexp (steady decline - the
+        classic; each extra kilometre costs the same proportion)'
+
+    QGIS has routed this through model_from_choice() since 1.28; Pro
+    never did. It only fired when someone PICKED a model, because
+    leaving the box alone falls through to the "negexp" default -
+    which is why every earlier decay run survived.
+
+    Read from the source rather than a live Pro: the point is that the
+    label never reaches the engine unmapped.
+    """
+    from equipop.doors.decaynames import choices, model_from_choice
+    from equipop.decay import MODELS
+
+    for label in choices():
+        got = model_from_choice(label)
+        assert got is None or got in MODELS, (
+            f"the dropdown offers {label!r}, which maps to {got!r} - "
+            "not a model the engine has")
+
+    src = open(os.path.join(ROOT, "arcgis/EquiPop.pyt"),
+               encoding="utf-8").read()
+    assert 'model = _decay_model(pm)' in src, \
+        "Pro reads the decay box without mapping the label to a key"
+    assert 'model = _txt(pm, "model", "no decay")' not in src, \
+        "Pro is back to passing the dropdown LABEL to the engine"
+
+
+# ------------------------------------------- 155 + 160, units
+@pytest.mark.parametrize("alg,extra", [
+    (CountsAndShares, {}),
+    (ValueStatistics, {"values": ["Income"], "measures": [0]}),
+])
+def test_a_fractional_cell_size_is_refused_not_rounded(alg, extra):
+    """BACKLOG 155, RULED by John. Ask for 2.5 and the centres came out
+    at 1, 3, 6 - spacings of 2 and 3, because build_cells casts to int
+    while analysis, friction, slope, access and fca each take
+    int(unit_size) separately. Six modules would have to agree
+    forever, so a fractional size is refused rather than rounded."""
+    with pytest.raises(QgsProcessingException, match="WHOLE number"):
+        _run(alg, unit=2.5, **extra)
+    with pytest.raises(QgsProcessingException, match="WHOLE number"):
+        _run(alg, unit=0.0, **extra)
+    _run(alg, unit=100.0, **extra)              # whole is fine
+
+
+def test_nothing_claims_metres_without_asking_the_crs():
+    """BACKLOG 160, raised by John: "I hope we are not forcing the
+    cells to a metric only specificity."
+
+    He was right and it was worse than a naming preference. The only
+    CRS check is `type == "Geographic"`; NOTHING ever read the
+    projected CRS's linear unit. So a US State Plane layer in survey
+    feet passed every test and was told its cell size and its Dist_k
+    were metres - wrong by 3.28. The engine is unit-agnostic and
+    always was; only the labels claimed otherwise.
+    """
+    import re as _re
+    for path in ("qgis/equipop_qgis/alg_counts.py",
+                 "qgis/equipop_qgis/alg_stats.py",
+                 "qgis/equipop_qgis/base.py",
+                 "arcgis/EquiPop.pyt"):
+        src = open(os.path.join(ROOT, path), encoding="utf-8").read()
+        # strip comments, which discuss the old wording on purpose
+        body = "\n".join(l for l in src.split("\n")
+                         if not l.lstrip().startswith("#"))
+        for claim in ("Cell size in metres",
+                      "all distances are metres",
+                      "Dist_k is in METRES",
+                      "greater than 0 metres"):
+            assert claim not in body, f"{path} still asserts: {claim}"
+
+    from equipop.doors.rungs import unit_name
+    assert unit_name("Meter") == "metres"
+    assert unit_name("Foot_US") == "US survey feet"
+    assert unit_name(None) == "map units"

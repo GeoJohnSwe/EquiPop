@@ -34,6 +34,7 @@ from scipy.spatial import cKDTree
 import pandas as pd
 from itertools import groupby
 
+from . import selfpot
 from .decay import Decay
 
 
@@ -88,6 +89,7 @@ def run_knn(
     decay: Decay | None = None,
     naming: str = "short",
     seed: int | None = None,
+    self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis for every populated cell.
@@ -106,6 +108,17 @@ def run_knn(
     decay : a Decay object, e.g. Decay(half_life_m=8000), or None.
     naming : "short" (N_50, T_50, R_50, ...) or
              "legacy" (IntervalSumCountAll_50, ...).
+    self_potential : how far away what is LOCAL - what the origin's own
+            cell already holds - is treated as being, 0 to 1 (BACKLOG
+            95, and 153). RULED by John, 1.29.7: this engine gets the
+            SAME rule as run_knn_counts and run_knn_stats, so "two
+            engines, one mathematics" is true again. Until then this
+            function put its own cell at distance zero and reported
+            Dist_k = 0 wherever one cell already held k - while the
+            newer engines reported the equal-area radius for the same
+            data. The manuals teach with THIS function, so a reader
+            following them got one number and the QGIS door gave
+            another.
     seed : only used with tie_mode="sequential": shuffles the (otherwise
            arbitrary) within-ring visiting order reproducibly. Record it
            in the run's metadata log. None keeps the construction order.
@@ -117,6 +130,7 @@ def run_knn(
     MaxDistance. Per-k columns as per the chosen naming scheme.
     """
     k_values = sorted(k_values)
+    sp = selfpot.check(self_potential)          # BACKLOG 153
     nm = NAMES[naming]
 
     def col(kind: str, k: int) -> str:
@@ -159,7 +173,13 @@ def run_knn(
 
         # running totals - raw and (optionally) decay-weighted
         sum_all, sum_grp, dist_m = local_all, local_grp, 0.0
-        d_all, d_grp = local_all, local_grp   # weight(0) = 1
+        # BACKLOG 153: the origin's own people are not standing on the
+        # origin. Charge them the mean intra-cell distance, exactly as
+        # run_knn_counts does, or they keep weight 1.0 - the largest
+        # weight in the calculation - on the mass we know least about.
+        _w0 = (decay.weight(selfpot.decay_distance(unit_size, sp))
+               if decay and sp > 0 else 1.0)
+        d_all, d_grp = local_all * _w0, local_grp * _w0
         pending = list(k_values)
 
         def record(k: int):
@@ -167,7 +187,13 @@ def run_knn(
             rec[col("N", k)] = sum_all
             rec[col("T", k)] = sum_grp
             rec[col("R", k)] = sum_grp / sum_all if sum_all else np.nan
-            rec[col("Dist", k)] = dist_m
+            d_k = dist_m
+            if d_k <= 0.0 and sum_all >= k:
+                # the whole neighbourhood IS the origin cell, so the
+                # radius is not zero - it is unmeasured (BACKLOG 153)
+                d_k = selfpot.radius_for_k(unit_size, k,
+                                           float(sum_all), sp)
+            rec[col("Dist", k)] = d_k
             if decay:
                 rec[col("ND", k)] = d_all
                 rec[col("TD", k)] = d_grp
@@ -235,9 +261,9 @@ def run_knn(
 # ======================================================================
 #  run_knn_stats - k-NN with per-variable statistics (tiers 1-3)
 # ======================================================================
-from . import selfpot
 from .cells import CellData
 from .stats import (BINARY_STATS, VALUE_STATS, PREFIX,
+                    check_gini_input,
                     value_stat, stat_prefix, is_percentile)
 
 
@@ -310,6 +336,19 @@ def run_knn_stats(
                                  "plus percentiles like p10/p97.5")
 
     sp = selfpot.check(self_potential)
+    # BACKLOG 154, John's ruling: refuse a Gini over negative values,
+    # everywhere. ArcGIS Pro has refused it for years; the core and
+    # the QGIS path did not, and QGIS has Gini in its DEFAULT list -
+    # so the same data was refused through one door and accepted
+    # through another. Checked HERE because every door and the Python
+    # API reach statistics through this function, and because the
+    # per-neighbourhood inner loop is no place to raise.
+    for _v, _asked in (stats or {}).items():
+        if "gini" in _asked and _v in cd.value_arrays:
+            _flat = [a for a in cd.value_arrays[_v] if a is not None
+                     and len(a)]
+            if _flat:
+                check_gini_input(np.concatenate(_flat), f"'{_v}'")
     tally = {"selfpot": {}, "over": {}, "origins": 0}
     scratch = {"selfpot": {}, "over": {}}      # BACKLOG 111
 

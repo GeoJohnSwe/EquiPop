@@ -223,3 +223,33 @@ def test_the_plugin_carries_what_the_repository_requires():
                 encoding="utf-8").read()
     assert "hasProcessingProvider=yes" in meta, \
         "metadata.txt does not declare hasProcessingProvider"
+
+
+def test_the_release_zip_builder_refuses_unextractable_names():
+    """BACKLOG 156. The 1.29.6 release ZIP could not be opened on
+    Windows: five members were named
+    "EquiPop-1.29.6/C:\\Data\\...\\gridby_points_EquiPop_run.csv",
+    because the suite writes run manifests into the working directory
+    (BACKLOG 101) and the zip was built from the whole tree.
+
+    The clean-up HAD been run - before the tests, which recreated the
+    files. So the fix is not to remember the right order; it is to
+    make the builder refuse. This checks that it does.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_mkzip", os.path.join(ROOT, "tools", "make_release_zip.py"))
+    mk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mk)
+
+    good = ["equipop/cells.py", "docs/book/ch1.md", "README.md"]
+    mk.check(good)                       # must not raise
+
+    for bad in ("C:\\Data\\x_EquiPop_run.csv",
+                "equipop\\cells.py",
+                "/etc/passwd",
+                "../outside.txt",
+                "docs/a:b.md"):
+        with pytest.raises(SystemExit) as e:
+            mk.check(good + [bad])
+        assert "REFUSING" in str(e.value), bad

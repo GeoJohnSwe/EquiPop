@@ -77,6 +77,9 @@ appeared twice; the weaker copy is gone.*
 55. **130** — Stata is not SSC-ready: no .sthlp, contradictory version headers, treat() wrongly mandatory
 56. **134** — a golden dataset with expected results, one per host
 57. **132** — a public ArcGIS Online item; the .pyt is already the right artifact
+58. **150** — the plugin icon ships but does not display; deferred by John as very minor
+59. **158** — hex self-potential uses a square-cell area, overstating the radius by 7.5%
+60. **159** — RunLog is not the progressive record the manual promises
 ## Still to do — detail, in the order above
 
 - ~~95~~ | DONE v1.29.5 | SELF-POTENTIAL, shipped. equipop/selfpot.py holds the rule once so the two engines cannot drift; both apply it; both doors offer `selfpot` and BOTH ARE CHECKED ON VALUES, not names. Default 1.0, John's ruling. Guards broken on purpose six ways before being trusted - including the Pro one, whose FIRST version passed against a deliberate break because it drove _run_tool and skipped the dialog hop where `or 1.0` eats a falsy 0. Rewritten through execute(). s=0 reproduces pre-1.29.5 numbers exactly, asserted not assumed.
@@ -243,6 +246,74 @@ appeared twice; the weaker copy is gone.*
   measures and the selected reference categories, so its "Measures:"
   log line can describe the wrong thing. The calculation is safe -
   the stats dict is built before the shadowing - but it is fragile.
+
+- ~~151~~ | DONE v1.29.6 | PRO PASSED THE DECAY DROPDOWN'S LABEL TO
+  THE ENGINE. John, Pro field test of 1.29.6:
+      ValueError: Unknown decay model 'negexp (steady decline - the
+      classic; each extra kilometre costs the same proportion)'.
+      Available: ['negexp', 'expnormal', 'expsqrt', 'lognormal',
+      'power'].
+  decaynames.model_from_choice() exists for exactly this and QGIS has
+  used it since 1.28. Pro filled its dropdown from the same shared
+  choices() and then handed the whole label to Decay().
+  WHY IT SURVIVED SO LONG: it fires only when someone PICKS a model.
+  Leaving the box alone falls through to the "negexp" default, so
+  every earlier decay run - including John's self-calibrating
+  bandwidth tests two days ago - worked. NOT a 1.29.6 regression;
+  it has been there since Pro gained the dropdown.
+  Fixed via a shared _decay_model() helper with a BACKLOG 78 safe
+  fallback, so a missing core still cannot kill the toolbox at
+  import. Guarded two ways: every label the dropdown offers must map
+  to a model the ENGINE has, and Pro must not read the box raw.
+  The shape is 105 and 143 again: a shared module exists, one door
+  uses it, the other does not, and nothing compares them.
+
+- ~~152~~ | DONE v1.29.7 | The prefix is built from a normalised number and a trailing ".0" removed as a whole, never character by character. p1->P1, p10.0->P10, p50.0->P50, p100.0->P100, p97.5->P97_5. Guarded: the same percentile however written gets ONE name, and different percentiles never share one.
+
+- ~~153~~ | DONE v1.29.8 | RULED by John: teach the original engine the same rule, "so that 'two engines, one mathematics' is true again. The people using older versions are like me, and would understand our reasoning." run_knn now takes self_potential with the same default and applies BOTH halves - the equal-area radius when the whole neighbourhood is the origin cell, and the mean intra-cell distance in the decay weighting. Verified on the reviewer's own fixture: one 100 m cell holding 1,000, k=100, both engines now give 17.841241 m where run_knn gave 0. self_potential=0 still reproduces the old numbers exactly. AND 114 IS WIDENED: it now walks every PUBLIC entry point rather than the engine list, which is how run_knn escaped it. The find recorded here stands and belongs to 99: tie_mode="sequential" with a seed is the SAMPLED overshoot John asked for, already implemented in this engine since the beginning. Read it before designing option 3.
+
+- ~~154~~ | DONE v1.29.8 | Pro's rule promoted into the core, in run_knn_stats - the one place every door and the Python API reach statistics through, and not the per-neighbourhood inner loop. The same data still runs for mean and median; only the Gini is refused, naming the variable. check_gini_input() carries the reasoning, including the measurement that killed the shift-by-minimum idea.
+
+- ~~160~~ | DONE v1.29.8 | Both doors read the working CRS's linear unit and say it. QGIS maps QgsUnitTypes; Pro reads linearUnitName. The run message and the closing Dist_k note both carry the real unit, the box labels say 'map units', and NO WARNING is raised - John, 1.29.7: 'no need to warn - the users will understand.' Guarded by a test that no source file asserts metres without asking.
+
+- ~~155~~ | DONE v1.29.8 | A fractional cell size is REFUSED, not rounded, in both QGIS machines and in Pro's runner. The rule is whole MAP UNITS, per John's correction in 160.
+
+- ~~156~~ | DONE v1.29.7 | tools/make_release_zip.py builds the archive from an allow-listed walk and REFUSES any member name carrying a drive letter, a backslash, an absolute path, a traversal component or a Windows-illegal character. A manual clean in the right order was not a fix - it had been run, before the test suite, which recreated the files. Guarded five ways.
+
+- ~~157~~ | DONE v1.29.8 | The layer is chosen from the ARCHIVE'S OWN LISTING rather than by globbing the extraction folder, so a stale extraction of a replaced archive can no longer win. An archive holding more than one GIS layer is now REFUSED rather than guessed at - EquiPop says how many it found and asks the user to name one.
+
+- 158 | open v1.29.6 | HEX SELF-POTENTIAL USES A SQUARE-CELL AREA.
+  External review: hex cells pass hex_size into the same unit_size
+  field, and selfpot.radius_for_k() computes area as unit_size^2. A
+  hexagon 100 m flat-to-flat has an area of about 8,660 m^2, not
+  10,000 - so the radius is overstated by about 7.5% (17.84 m where
+  16.60 m is right). The formula is AREA-based and correct; it is
+  simply being handed the wrong area. Carry cell AREA and geometry
+  in CellData rather than a side length, and define the hex mean
+  intra-cell distance for the decay half too (0.3826c is the square).
+  Ties to 3.
+
+- 159 | open v1.29.6 | RunLog IS NOT THE PROGRESSIVE RECORD THE
+  MANUAL DESCRIBES. External review: with the default constructor no
+  file exists before finalize(), so a crashed run leaves nothing; and
+  if a different output path arrives at finalize() the logger writes
+  a new file and leaves the first marked "running" forever. Fix one
+  immutable path at the start, write immediately, update atomically -
+  or document that progressive persistence is unavailable. Ties to
+  148: a record that is not written until success is not provenance.
+
+- 150 | open v1.29.6 | THE PLUGIN ICON STILL DOES NOT APPEAR, though
+  it ships and metadata.txt declares it. John, 1.29.6 field test:
+  "no, no icon, but it doesn't matter - leave it as it is now (we can
+  pick up that problem later - it is very, very minor thing)."
+  DEFERRED BY JOHN, logged so it is not silently dropped. 79 shipped
+  the file and the guard that metadata may not promise what the
+  plugin does not carry - both still hold. What is unexplained is the
+  DISPLAY. Likely candidates, none checked: the QGIS Plugin Manager
+  may only render icons for repository-listed plugins and not for
+  ones installed from ZIP; or it caches. Cheap to settle once 131's
+  repository submission happens, because that is the only place the
+  icon was ever needed.
 
 - 128 | open v1.29.5 | `equipop doctor` - ONE DIAGNOSTIC, EVERY DOOR.
   Proposed by the distribution review and worth taking: the release

@@ -93,18 +93,39 @@ def read_table(path: str, sheet: str | int = 0, **kw) -> pd.DataFrame:
 
     if ext == ".zip":
         # zipped GIS archive (e.g. Geofabrik *-free_gpkg.zip): extract
-        # next to the zip and read the contained gpkg/shp
+        # next to the zip and read the contained gpkg/shp.
+        #
+        # BACKLOG 157. This used to extract into <stem>/ and then GLOB
+        # THAT DIRECTORY, so whatever was already there could win -
+        # an older extraction of a replaced archive, or anything the
+        # user had put beside it. Replacing an archive while keeping
+        # its name is an ordinary workflow, and the run then succeeded
+        # on the wrong data with nothing to say so.
+        # Now the choice is made from the ARCHIVE'S OWN LISTING, and
+        # an ambiguous archive is refused rather than guessed at.
         import zipfile
         outdir = p.parent / p.stem
         outdir.mkdir(exist_ok=True)
         with zipfile.ZipFile(p) as z:
+            names = [n for n in z.namelist() if not n.endswith("/")]
             z.extractall(outdir)
-        inner = (sorted(outdir.rglob("*.gpkg"))
-                 or sorted(outdir.rglob("*.shp")))
-        if not inner:
-            raise ValueError(f"No gpkg/shp found inside {p.name}")
-        print(f"[io] {p.name} -> {inner[0].name}")
-        return read_table(str(inner[0]), **kw)
+        wanted = ([n for n in sorted(names) if n.lower().endswith(".gpkg")]
+                  or [n for n in sorted(names) if n.lower().endswith(".shp")])
+        if not wanted:
+            raise ValueError(
+                f"No gpkg/shp found inside {p.name} - it contains "
+                f"{len(names)} file(s), none of them a GIS layer.")
+        if len(wanted) > 1:
+            listed = ", ".join(Path(w).name for w in wanted[:6])
+            raise ValueError(
+                f"{p.name} contains {len(wanted)} GIS layers "
+                f"({listed}{', ...' if len(wanted) > 6 else ''}). "
+                "EquiPop will not guess which one you meant - unzip it "
+                "and name the layer you want.")
+        inner = outdir / wanted[0]
+        print(f"[io] {p.name} -> {inner.name} (named by the archive, "
+              "not found by searching the folder)")
+        return read_table(str(inner), **kw)
 
     if ext in (".shp", ".gpkg", ".dbf", ".geojson", ".pbf"):
         try:

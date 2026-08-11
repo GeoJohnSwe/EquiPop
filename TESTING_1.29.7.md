@@ -1,4 +1,4 @@
-# Testing 1.29.6 before you publish it
+# Testing 1.29.7 before you publish it
 
 Install, run, look. Nothing here needs code.
 
@@ -16,7 +16,7 @@ Open the **OSGeo4W Shell** (Start menu, under QGIS):
 
 ```
 cd /d C:\path\to\the\files
-python -m pip install --force-reinstall --no-deps equipop-1.29.6-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps equipop-1.29.7-py3-none-any.whl
 ```
 
 **`--no-deps` matters.** Without it, `--force-reinstall` also reinstalls
@@ -32,7 +32,7 @@ If pip complains about permissions, reopen the shell as Administrator.
 ### 2. The plugin
 
 QGIS → **Plugins → Manage and Install Plugins → Install from ZIP** →
-`equipop_qgis-1.29.6.zip` → Install. **Restart QGIS.**
+`equipop_qgis-1.29.7.zip` → Install. **Restart QGIS.**
 
 ### 3. Confirm both halves moved
 
@@ -42,7 +42,7 @@ QGIS Python Console:
 import equipop; print("package:", equipop.__version__); import equipop_qgis; print("plugin:", equipop_qgis.__version__)
 ```
 
-Both must read **1.29.6**. If only one moved, stop and say so.
+Both must read **1.29.7**. If only one moved, stop and say so.
 
 If the package still reads 1.29.3, pip installed into a different
 Python than QGIS uses. This prints the right one:
@@ -192,7 +192,7 @@ relevant. The useful line is often the one before.
 
 ---
 
-## What is new in 1.29.6, and what to try
+## What is new in 1.29.7, and what to try
 
 Nothing here changes a number. Every item is a guard, a message or a
 refusal, and all of them came from your own Pro evening.

@@ -211,6 +211,22 @@ def _epsg_from_advice(desc):
     return None
 
 
+def _crs_unit_name(linear_unit):
+    """The working CRS's linear unit, readably (BACKLOG 160).
+
+    Duplicated from equipop/doors/rungs.py and pinned by test_rungs.py
+    - BACKLOG 78 forbids a module-level equipop import here.
+    """
+    u = str(linear_unit or "").strip().lower()
+    if not u:
+        return "map units"
+    if u.startswith("met") or u in {"m", "metre", "meter"}:
+        return "metres"
+    if "foot" in u or "feet" in u or u in {"ft", "ftus", "us_ft"}:
+        return "US survey feet" if ("us" in u or "survey" in u) else "feet"
+    return str(linear_unit)
+
+
 def _check_metric(desc, what, auto_project=False):
     """Degrees are refused LOUDLY - EquiPop distances are metres -
     unless the user ticked auto-projection, in which case a LAYER is
@@ -360,11 +376,17 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
             getattr(desc, "spatialReference", None), "factoryCode", 0)
         _read_input.last_crs_text = (
             f"{sr_name}" + (f" (EPSG:{sr_code})" if sr_code else ""))
+        # BACKLOG 160: say the unit the CRS actually uses. Nothing here
+        # ever read it, so a survey-feet projection was told its
+        # distances were metres - wrong by 3.28.
+        _read_input.last_unit = _crs_unit_name(
+            getattr(getattr(desc, "spatialReference", None),
+                    "linearUnitName", None))
         messages.addMessage(
             f"Coordinates read from feature geometry "
             f"({len(data['x'])} points). Working CRS: "
-            f"{_read_input.last_crs_text} - all distances are metres "
-            "in this projection.")
+            f"{_read_input.last_crs_text} - all distances are "
+            f"{_read_input.last_unit} in this projection.")
         return PointInput("point", data, oid,
                           crs_text=_read_input.last_crs_text,
                           note="feature geometry")
@@ -1206,12 +1228,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         if txt:
             raise arcpy.ExecuteError(txt)
 
-    if not float(unit) > 0:                       # BACKLOG 116
-        raise ValueError(
-            f"[equipop] cell size must be greater than 0 metres; "
-            f"got {float(unit):g}. It is the grid the "
-            "neighbourhoods are built on, so there is no "
-            "sensible zero.")
+    _u = getattr(_read_input, "last_unit", "map units")   # 160
+    if not float(unit) > 0 or abs(float(unit) - round(float(unit))) > 1e-9:
+        raise ValueError(                          # BACKLOG 155 + 160
+            f"[equipop] cell size must be a WHOLE number of {_u} "
+            f"greater than 0; got {float(unit):g}. Fractional sizes "
+            "are rounded differently by different parts of EquiPop, "
+            "so they are refused rather than silently changed.")
+    unit = float(round(float(unit)))
     kw = dict(unit_size=float(unit),
               self_potential=float(self_potential))
     kw["k_values"] = [int(round(v)) for v in _numlist(k_text)] or None
@@ -1490,10 +1514,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "[time] TOTAL: " + _hms(time.time() - t_all)
             + f" - most of it in '{slow[0]}' ({_hms(slow[1])}).")
     if any(c.startswith("Dist_") for c in res):
-        messages.addMessage("Note: Dist_k is in METRES - it is the "
-                            "radius each point needed to gather its k "
-                            "people (k fixes population, the radius "
-                            "floats). Not an error - a finding.")
+        _u = getattr(_read_input, "last_unit", "map units")
+        messages.addMessage(f"Note: Dist_k is in {_u.upper()} - it is "
+                            "the radius each point needed to gather "
+                            "its k people (k fixes population, the "
+                            "radius floats). Not an error - a finding.")
 
 
 def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
@@ -1872,6 +1897,29 @@ def _guard_rungs(pm, messages, machine="counts"):
             "back - but nothing in them reaches the results.")
     return ignored
 
+def _decay_model(pm):
+    """The ENGINE's model name out of the dropdown label.
+
+    BACKLOG 151. Pro filled this dropdown from decaynames.choices() -
+    labels like "negexp (steady decline - the classic; each extra
+    kilometre costs the same proportion)" - and then handed the whole
+    label to Decay(), which knows only "negexp". QGIS has routed it
+    through model_from_choice() since 1.28; Pro never did.
+
+    It only ever fired when someone PICKED a model, because leaving
+    the box alone falls through to the "negexp" default. So it
+    survived every run that used decay without choosing a curve.
+    """
+    try:
+        from equipop.doors.decaynames import model_from_choice
+    except Exception:                       # BACKLOG 78: no core, no crash
+        raw = _txt(pm, "model", "").strip()
+        first = raw.split(" (")[0].strip()
+        return None if not first or first.lower().startswith("no decay") \
+            else first
+    return model_from_choice(_txt(pm, "model", ""))
+
+
 def _byname(parameters):
     """Parameters by NAME, not position. Inserting one parameter used
     to shift every index after it (v1.16.6 - it has caused two bugs
@@ -2226,7 +2274,8 @@ class CountsShares:
                   direction="Output"),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
-               _p("unit", "Cell size (m)", "GPDouble", required=False),
+               _p("unit", "Cell size in map units (whole numbers only)",
+                  "GPDouble", required=False),
                _p("selfpot", "Self-potential - the distance to "
                   "what is LOCAL, inside your own cell",
                   "GPString", required=False),
@@ -2375,7 +2424,7 @@ class CountsShares:
                                             if p.name in
                                             ("pop", "treat",
                                              "catfield")])
-        decaying = _txt(pm, "model", "no decay") not in ("", "no decay")
+        decaying = _decay_model(pm) is not None      # BACKLOG 151
         pm["halflife"].enabled = decaying
         pm["decayeps"].enabled = decaying
         bar_on = bool(_vt_rows(pm["barriertable"])
@@ -2417,8 +2466,8 @@ class CountsShares:
     def execute(self, parameters, messages):
         pm = _byname(parameters)
         _guard_rungs(pm, messages, "counts")     # BACKLOG 138 / 146
-        model = _txt(pm, "model", "no decay")
-        decaying = model not in ("", "no decay")
+        model = _decay_model(pm)            # BACKLOG 151
+        decaying = model is not None
         _run_tool("counts", pm["layer"].value, messages,
                   coord_source=_txt(pm, "coordsrc") or None,
                   x_field=_txt(pm, "xfield") or None,
@@ -2521,7 +2570,8 @@ class ValueStatistics:
                   direction="Output"),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
-               _p("unit", "Cell size (m)", "GPDouble", required=False),
+               _p("unit", "Cell size in map units (whole numbers only)",
+                  "GPDouble", required=False),
                _p("selfpot", "Self-potential - the distance to "
                   "what is LOCAL, inside your own cell",
                   "GPString", required=False),

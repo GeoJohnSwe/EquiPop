@@ -28,6 +28,28 @@ from qgis.PyQt.QtCore import QMetaType
 
 import numpy as np
 
+
+# BACKLOG 160. Nothing in EquiPop ever read the working CRS's linear
+# unit - the only check is "is it geographic" - so a projection in
+# survey feet passed every test and was then told its distances were
+# metres, wrong by 3.28. The engine is unit-agnostic and always was;
+# only the LABELS claimed otherwise.
+# Duplicated from equipop/doors/rungs.py and pinned by test_rungs.py:
+# BACKLOG 78 forbids a module-level equipop import in this door.
+_QGIS_DISTANCE_UNITS = {
+    0: "metres", 1: "kilometres", 2: "feet", 3: "nautical miles",
+    4: "yards", 5: "miles", 6: "degrees", 8: "centimetres",
+    9: "millimetres",
+}
+
+
+def _crs_unit_name(crs):
+    """The working CRS's linear unit, readably."""
+    try:
+        return _QGIS_DISTANCE_UNITS.get(int(crs.mapUnits()), "map units")
+    except Exception:
+        return "map units"
+
 CONTRACT = 1
 
 
@@ -287,9 +309,12 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 data[n] = cols[n]
 
         if has_geom:
+            # BACKLOG 160: name the unit the CRS actually uses
+            self.last_unit = _crs_unit_name(self.working_crs)
             ch.info(f"Coordinates read from feature geometry "
                     f"({len(feats)} points). Working CRS: {crs_text} - "
-                    "all distances are metres in this projection.")
+                    f"all distances are {self.last_unit} in this "
+                    "projection.")
         self._features = feats
         return PointInput("point" if has_geom else "table", data,
                           id_field=None, crs_text=crs_text, note=note)

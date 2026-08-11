@@ -123,3 +123,67 @@ SELF_POTENTIAL = [
 ]
 SELF_POTENTIAL_VALUES = [0.0, 2 ** -0.5, 1.0]
 SELF_POTENTIAL_DEFAULT = 2          # the equal-area radius
+
+
+# ===================================================================
+# BACKLOG 155 + 160. Cell size is a WHOLE NUMBER OF MAP UNITS.
+#
+# 155: fractional sizes were accepted and then rounded differently by
+# each module - ask for 2.5 and the centres came out 1, 3, 6, spacings
+# of 2 and 3. build_cells casts centres to int; analysis, friction,
+# slope, access and fca each take int(unit_size) separately. Six
+# modules would have to agree forever. John ruled: whole values.
+#
+# 160: but NOT whole METRES, which is what every label said. John:
+# "I hope we are not forcing the cells to a metric only specificity -
+# for me it could be any kind of metrics (as long as we don't do
+# decimals)." He is right, and it was worse than a naming preference:
+# nothing anywhere ever read the projected CRS's LINEAR UNIT. The only
+# check is `type == "Geographic"`, so a US State Plane layer in survey
+# feet passes every test and is then told its cell size and its Dist_k
+# are in metres - wrong by 3.28.
+#
+# The engine is linear-unit agnostic and always was. Only the LABELS
+# claimed otherwise. So: say the unit the working CRS actually uses,
+# and never warn about it - John, 1.29.7: "no need to warn - the users
+# will understand."
+# ===================================================================
+
+def unit_name(crs_unit: str | None) -> str:
+    """A readable name for the working CRS's linear unit."""
+    u = str(crs_unit or "").strip().lower()
+    if not u:
+        return "map units"
+    if u.startswith("met") or u in {"m", "metre", "meter"}:
+        return "metres"
+    if "foot" in u or "feet" in u or u in {"ft", "ftus", "us_ft"}:
+        return "US survey feet" if "us" in u or "survey" in u else "feet"
+    return str(crs_unit)
+
+
+def cell_size_label(crs_unit: str | None = None) -> str:
+    """The cell-size box label, naming the real unit."""
+    return (f"Cell size in {unit_name(crs_unit)} - bigger cells mean "
+            "fewer origins and faster runs (whole numbers only)")
+
+
+def check_cell_size(value, crs_unit: str | None = None) -> float:
+    """Whole map units, greater than zero. Refuses rather than
+    rounding, because six modules round differently (155)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"cell size must be a number, got {value!r}")
+    if not v > 0:
+        raise ValueError(
+            f"Cell size must be greater than 0 {unit_name(crs_unit)}; "
+            f"got {v:g}. It is the grid the neighbourhoods are built "
+            "on, so there is no sensible zero.")
+    if abs(v - round(v)) > 1e-9:
+        raise ValueError(
+            f"Cell size must be a WHOLE number of "
+            f"{unit_name(crs_unit)}; got {v:g}. Fractional sizes are "
+            "rounded differently by different parts of EquiPop - "
+            f"{v:g} would give cells of uneven width - so they are "
+            "refused rather than silently changed.")
+    return float(round(v))

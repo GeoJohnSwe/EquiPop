@@ -54,8 +54,19 @@ geography. **Say what a thing does before saying what it is.**
 
 ## 2. State at the end of this session
 
-**1.29.5 is BUILT AND FULLY TESTED HERE. NOT field-tested in Pro, NOT
-published.** 326 passed, 7 skipped (279 when this run of work began).
+**1.29.7 IS BUILT AND FULLY TESTED HERE. NOT field-tested, NOT
+published.** 338 passed, 6 skipped (279 when this run of work began).
+
+**1.29.6 closes THIRTEEN items, all from John's ArcGIS Pro field
+evening, and changes NO NUMBERS** - every one is a guard, a message or
+a refusal: 131, 135, 136, 138, 140, 141, 142, 143, 144, 145, 146, 147,
+148. See the MANUAL version row for the detail.
+
+**Neither 1.29.4 nor 1.29.5 was ever published.** 1.29.6 is the first
+release intended to reach PyPI since 1.29.3. That matters for one
+decision already taken: self-potential became a three-way CHOICE
+rather than a free number (141), which was safe only because no saved
+model anywhere holds the old numeric parameter.
 
 **It now also carries GATE A of an external review.** John had another
 model review the 1.29.4 build. Claude checked eighteen of its claims

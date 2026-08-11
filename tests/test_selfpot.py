@@ -215,8 +215,9 @@ def test_every_engine_accepts_self_potential():
     from equipop.friction import run_knn_friction
     from equipop.slope import run_knn_slope
 
+    from equipop.analysis import run_knn        # BACKLOG 153
     engines = [run_knn_counts, run_knn_stats, run_knn_friction,
-               run_knn_slope]
+               run_knn_slope, run_knn]
     missing = [f.__name__ for f in engines
                if "self_potential" not in inspect.signature(f).parameters]
     assert not missing, (
@@ -416,3 +417,177 @@ def test_the_calibration_pass_does_not_claim_you_asked_for_its_k(capsys):
     mine = [l for l in out.splitlines()
             if "[selfpot]" in l and "calibration" not in l]
     assert all("calibration" not in l for l in mine)
+
+
+# --- 15 ------------------------------------------------------------
+def test_distinct_percentiles_get_distinct_column_names():
+    """BACKLOG 152, found by an external review of 1.29.6.
+
+    stat_prefix() ended with .rstrip("_0"), and rstrip strips any run
+    of those CHARACTERS rather than one exact suffix. So p1, p10.0 and
+    p100.0 all became "P1" and p50.0 became "P5": three different
+    percentiles sharing one column, the last silently overwriting the
+    rest. The run completed and the labels lied.
+
+    It bit precisely the round percentiles people ask for most, while
+    p97.5 and p99.9 were unaffected - which is why nothing noticed.
+    """
+    from equipop.stats import stat_prefix
+    asked = ["p1", "p10", "p10.0", "p50.0", "p97.5", "p99.9",
+             "p100.0", "p25", "p0.5", "p5", "p50"]
+    by_value = {}
+    for a in asked:
+        by_value.setdefault(float(a[1:]), set()).add(stat_prefix(a))
+
+    # the same percentile, however written, gets ONE name
+    for v, names in by_value.items():
+        assert len(names) == 1, f"p{v} produced several names: {names}"
+
+    # and different percentiles never share one
+    flat = [next(iter(n)) for n in by_value.values()]
+    assert len(set(flat)) == len(flat), (
+        "two different percentiles map to the same column - the later "
+        f"one overwrites the earlier: {sorted(flat)}")
+
+    assert stat_prefix("p10.0") == "P10"
+    assert stat_prefix("p100.0") == "P100"
+    assert stat_prefix("p50.0") == "P50"
+    assert stat_prefix("p97.5") == "P97_5"
+
+
+# --- 16 ------------------------------------------------------------
+def test_two_engines_one_mathematics():
+    """BACKLOG 153, found by an external review of 1.29.6 and RULED by
+    John: the original run_knn gets the SAME rule as the newer
+    engines, so the MANUAL's claim is true again.
+
+    Before this, one 100 m cell holding 1,000 with k=100 gave
+    Dist_100 = 0 from run_knn and 17.841241 m from run_knn_counts -
+    and the manuals teach with run_knn, so a reader following them got
+    one number while the QGIS door gave another.
+
+    John: "the people using older versions are like me, and would
+    understand our reasoning."
+    """
+    from equipop.analysis import run_knn
+    cells = pd.DataFrame({"E_grid": [50], "N_grid": [50],
+                          "FullPop": [1000.0], "Treatment": [300.0],
+                          "id": [1]})
+    legacy = run_knn(cells, [100], unit_size=UNIT)
+
+    rng = np.random.default_rng(2)
+    df = pd.DataFrame({"E": rng.uniform(0, UNIT, 1000),
+                       "N": rng.uniform(0, UNIT, 1000)})
+    cd = build_cells(df, "E", "N", unit_size=UNIT)
+    fast = run_knn_counts(cd, k_values=[100])
+
+    assert float(legacy["Dist_100"].iloc[0]) == pytest.approx(
+        float(fast["Dist_100"].iloc[0]), rel=1e-12), \
+        "run_knn and run_knn_counts disagree on the same single cell"
+    assert float(legacy["Dist_100"].iloc[0]) == pytest.approx(
+        np.sqrt(UNIT ** 2 * 100 / (1000 * np.pi)), rel=1e-12)
+
+    # and the way back to the old numbers still exists
+    off = run_knn(cells, [100], unit_size=UNIT, self_potential=0.0)
+    assert float(off["Dist_100"].iloc[0]) == 0.0
+
+
+def test_the_legacy_engine_also_charges_its_own_cell_under_decay():
+    """The other half: without it the origin's own people keep weight
+    1.0 - the largest in the calculation - on the mass we know least
+    about."""
+    from equipop.analysis import run_knn
+    from equipop.decay import Decay
+    cells = pd.DataFrame({"E_grid": [50], "N_grid": [50],
+                          "FullPop": [1000.0], "Treatment": [300.0],
+                          "id": [1]})
+    dec = Decay(model="negexp", half_life_m=300.0)
+    off = run_knn(cells, [100], unit_size=UNIT, decay=dec,
+                  self_potential=0.0)
+    on = run_knn(cells, [100], unit_size=UNIT, decay=dec)
+    assert float(on["ND_100"].iloc[0]) < float(off["ND_100"].iloc[0])
+    expect = 1000.0 * dec.weight(selfpot.decay_distance(UNIT, 1.0))
+    assert float(on["ND_100"].iloc[0]) == pytest.approx(expect, rel=1e-9)
+
+
+# --- 17 ------------------------------------------------------------
+def test_gini_refuses_negative_values_in_every_door():
+    """BACKLOG 154, RULED by John. gini_sorted([-5, 10]) = 1.5, which
+    reads as a conventional Gini and is not one - the rank formula is
+    bounded in [0,1] only for non-negative data.
+
+    ArcGIS Pro has refused this for years. The core and the QGIS path
+    did not, and QGIS has Gini in its DEFAULT statistics list, so the
+    same data was refused through one door and silently accepted
+    through another. The check now lives in run_knn_stats, which
+    every door and the Python API reach statistics through.
+
+    Not repaired by shifting: the Gini is not translation-invariant,
+    so one shift compresses low-mean neighbourhoods hardest, and on
+    two areas with true Ginis 0.400 and 0.131 a single debt of -80
+    anywhere reverses the ranking.
+    """
+    from equipop.analysis import run_knn_stats
+    from equipop.stats import check_gini_input
+
+    rng = np.random.default_rng(5)
+    df = pd.DataFrame({"E": rng.uniform(0, 900, 400),
+                       "N": rng.uniform(0, 900, 400),
+                       "income": rng.normal(30000, 9000, 400)})
+    df.loc[:5, "income"] = -4000.0
+    cd = build_cells(df, "E", "N", value_vars=["income"], unit_size=UNIT)
+
+    # the same data is fine for everything else
+    run_knn_stats(cd, [50], stats={"income": ["mean", "median"]})
+
+    with pytest.raises(ValueError, match="not defined for negative"):
+        run_knn_stats(cd, [50], stats={"income": ["mean", "gini"]})
+
+    # and non-negative data is untouched
+    df2 = df.copy()
+    df2["income"] = df2["income"].abs()
+    cd2 = build_cells(df2, "E", "N", value_vars=["income"], unit_size=UNIT)
+    run_knn_stats(cd2, [50], stats={"income": ["gini"]})
+
+    check_gini_input([0.0, 1.0, 2.0])            # must not raise
+    with pytest.raises(ValueError):
+        check_gini_input([-0.0001, 1.0])
+
+
+# --- 18 ------------------------------------------------------------
+def test_a_replaced_archive_is_not_read_from_a_stale_extraction(tmp_path):
+    """BACKLOG 157, from an external review of 1.29.6.
+
+    read_table() extracted a .zip into <stem>/ and then GLOBBED THAT
+    DIRECTORY, taking the first match. So an older extraction of a
+    replaced archive won, and the run succeeded on the wrong data with
+    nothing to say so. Replacing an archive while keeping its name is
+    an ordinary workflow.
+
+    The choice now comes from the ARCHIVE'S OWN LISTING.
+    """
+    import zipfile
+    from equipop.io import read_table
+
+    zpath = tmp_path / "sample.zip"
+    stale = tmp_path / "sample"
+    stale.mkdir()
+    (stale / "a.gpkg").write_bytes(b"stale - must not be chosen")
+    with zipfile.ZipFile(zpath, "w") as z:
+        z.writestr("z.gpkg", "the real one")
+
+    try:
+        read_table(str(zpath))
+    except Exception as e:
+        msg = str(e)
+        assert "a.gpkg" not in msg, (
+            "the stale extraction was chosen over the archive's own "
+            f"contents: {msg}")
+
+    # and an ambiguous archive is refused rather than guessed at
+    zpath2 = tmp_path / "two.zip"
+    with zipfile.ZipFile(zpath2, "w") as z:
+        z.writestr("one.gpkg", "x")
+        z.writestr("two.gpkg", "y")
+    with pytest.raises(ValueError, match="will not guess"):
+        read_table(str(zpath2))
