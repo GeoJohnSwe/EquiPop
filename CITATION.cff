@@ -3,9 +3,16 @@ message: "If you use EquiPop in your research, please cite the software report b
 title: "EquiPop (Python)"
 type: software
 authors:
+  # ONE author entry, three affiliations in one string (John's
+  # ruling). CFF allows only one `affiliation` per author, so the
+  # alternative was three entries - which renders as three authors in
+  # some tools. Other addresses: john_eric_david.gardmark_osth@keg.lu.se
+  # (Lund), john.osth@ibf.uu.se (Uppsala).
   - family-names: "Östh"
     given-names: "John"
     orcid: "https://orcid.org/0000-0002-4536-9229"
+    affiliation: "OsloMet - Oslo Metropolitan University, Oslo, Norway; Lund University, Lund, Sweden; Uppsala University, Uppsala, Sweden"
+    email: "johnosth@oslomet.no"
 license: MIT
 repository-code: "https://github.com/GeoJohnSwe/EquiPop"
 version: 1.0.0
@@ -17,6 +24,9 @@ preferred-citation:
       given-names: "John"
   year: 2014
   institution:
+    # the affiliation AT THE TIME OF THE 2014 REPORT - a citation
+    # records where a work was written and is not updated when an
+    # author moves.
     name: "Uppsala University, Department of Social and Economic Geography"
   location:
     name: "Uppsala, Sweden"

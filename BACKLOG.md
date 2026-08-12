@@ -77,9 +77,8 @@ appeared twice; the weaker copy is gone.*
 55. **130** — Stata is not SSC-ready: no .sthlp, contradictory version headers, treat() wrongly mandatory
 56. **134** — a golden dataset with expected results, one per host
 57. **132** — a public ArcGIS Online item; the .pyt is already the right artifact
-58. **150** — the plugin icon ships but does not display; deferred by John as very minor
-59. **158** — hex self-potential uses a square-cell area, overstating the radius by 7.5%
-60. **159** — RunLog is not the progressive record the manual promises
+58. **158** — hex self-potential uses a square-cell area, overstating the radius by 7.5%
+59. **159** — RunLog is not the progressive record the manual promises
 ## Still to do — detail, in the order above
 
 - ~~95~~ | DONE v1.29.5 | SELF-POTENTIAL, shipped. equipop/selfpot.py holds the rule once so the two engines cannot drift; both apply it; both doors offer `selfpot` and BOTH ARE CHECKED ON VALUES, not names. Default 1.0, John's ruling. Guards broken on purpose six ways before being trusted - including the Pro one, whose FIRST version passed against a deliberate break because it drove _run_tool and skipped the dialog hop where `or 1.0` eats a falsy 0. Rewritten through execute(). s=0 reproduces pre-1.29.5 numbers exactly, asserted not assumed.
@@ -302,18 +301,7 @@ appeared twice; the weaker copy is gone.*
   or document that progressive persistence is unavailable. Ties to
   148: a record that is not written until success is not provenance.
 
-- 150 | open v1.29.6 | THE PLUGIN ICON STILL DOES NOT APPEAR, though
-  it ships and metadata.txt declares it. John, 1.29.6 field test:
-  "no, no icon, but it doesn't matter - leave it as it is now (we can
-  pick up that problem later - it is very, very minor thing)."
-  DEFERRED BY JOHN, logged so it is not silently dropped. 79 shipped
-  the file and the guard that metadata may not promise what the
-  plugin does not carry - both still hold. What is unexplained is the
-  DISPLAY. Likely candidates, none checked: the QGIS Plugin Manager
-  may only render icons for repository-listed plugins and not for
-  ones installed from ZIP; or it caches. Cheap to settle once 131's
-  repository submission happens, because that is the only place the
-  icon was ever needed.
+- ~~150~~ | DONE v1.29.8 | Two things, both from John. First, CLAUDE'S ERROR: John was sent to look in the PROCESSING TOOLBOX, where QGIS uses its own generic gear icon for every provider - a plugin's icon.png appears in the PLUGIN MANAGER list and on the repository page, and nowhere else. His "just the traditional looks of the tool" was CORRECT, and so was his install route. The icon was there all along; he found it once he looked in the right place. Second, an ~E~ was drafted at John's suggestion - a condensed capital E in the old EquiPop Flow red with a tilde either side, after the C# release's e-with-waves - AND THEN WITHDRAWN BY JOHN: "there is a risk that the version I proposed may look a bit like a German swastika." He is right - two dark angular forms flanking a hard geometric centre is a bad silhouette to leave on a plugin list, and Claude did not see it. The ring-of-neighbours icon of 79 stands, and has the better claim anyway: it depicts what EquiPop MEASURES rather than spelling its name. Recorded so nobody proposes the ~E~ again.
 
 - 128 | open v1.29.5 | `equipop doctor` - ONE DIAGNOSTIC, EVERY DOOR.
   Proposed by the distribution review and worth taking: the release
@@ -875,7 +863,13 @@ appeared twice; the weaker copy is gone.*
   result in the MANUAL validation row. It is the only check that can
   see the simulator flattering itself; 1.29.1 exists because nothing
   did. NOT CLOSEABLE BY CLAUDE, ever: it needs real PyQGIS, so it is
-  John's on every release, permanently. 1.29.5 did what could be
+  John's on every release, permanently.
+  RUN AND PASSED FOR 1.29.8 (John, QGIS 3.42.1-Münster): 63 methods
+  and constants checked, no classes skipped, NO GAPS - "the
+  simulator is not flattering itself". Recorded in the MANUAL
+  validation row, which is what this item asks for. It reopens for
+  the next release that touches the QGIS door.
+  1.29.5 did what could be
   done from here - the tool now EXPLAINS itself and exits 2 instead
   of raising ModuleNotFoundError at whoever runs it in the wrong
   place, and the message names this item and where to run it.

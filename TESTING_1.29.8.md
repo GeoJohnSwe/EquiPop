@@ -1,4 +1,4 @@
-# Testing 1.29.7 before you publish it
+# Testing 1.29.8 before you publish it
 
 Install, run, look. Nothing here needs code.
 
@@ -16,7 +16,7 @@ Open the **OSGeo4W Shell** (Start menu, under QGIS):
 
 ```
 cd /d C:\path\to\the\files
-python -m pip install --force-reinstall --no-deps equipop-1.29.7-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps equipop-1.29.8-py3-none-any.whl
 ```
 
 **`--no-deps` matters.** Without it, `--force-reinstall` also reinstalls
@@ -32,7 +32,7 @@ If pip complains about permissions, reopen the shell as Administrator.
 ### 2. The plugin
 
 QGIS → **Plugins → Manage and Install Plugins → Install from ZIP** →
-`equipop_qgis-1.29.7.zip` → Install. **Restart QGIS.**
+`equipop_qgis-1.29.8.zip` → Install. **Restart QGIS.**
 
 ### 3. Confirm both halves moved
 
@@ -42,7 +42,7 @@ QGIS Python Console:
 import equipop; print("package:", equipop.__version__); import equipop_qgis; print("plugin:", equipop_qgis.__version__)
 ```
 
-Both must read **1.29.7**. If only one moved, stop and say so.
+Both must read **1.29.8**. If only one moved, stop and say so.
 
 If the package still reads 1.29.3, pip installed into a different
 Python than QGIS uses. This prints the right one:
@@ -192,7 +192,7 @@ relevant. The useful line is often the one before.
 
 ---
 
-## What is new in 1.29.7, and what to try
+## What is new in 1.29.8, and what to try
 
 Nothing here changes a number. Every item is a guard, a message or a
 refusal, and all of them came from your own Pro evening.
@@ -240,3 +240,33 @@ self-potential - and that `input` names the DATA, not the copy.
 
 Two runs into two FRESH feature classes in a geodatabase, identical
 except box 1d. The `N_100` values on the included rows must match.
+
+
+---
+
+## New in 1.29.8 — five rulings, and these DO change numbers
+
+Unlike 1.29.6 and 1.29.7, three of these move results. All are opt-out.
+
+**Self-potential now reaches the original engine.** If you use
+`equipop.run_knn` from Python — which is what the manuals teach with —
+a dense cell that reported `Dist_k = 0` will now report the equal-area
+radius, matching what QGIS and Pro already gave you. `self_potential=0`
+returns the old numbers exactly.
+
+**Gini refuses negative values**, in every door and in Python, as
+ArcGIS Pro already did. If you have income data with debts, the Gini
+stops and names the variable; mean, median and the rest still run.
+
+**Cell size must be a whole number**, and is refused rather than
+rounded. Try typing `2.5` — it should refuse and explain why.
+
+**And the unit labels no longer say \metres\ without asking.** If you
+have any layer in a non-metric projection — US State Plane in survey
+feet is the common case — run it and check the message. It should now
+name the real unit, in the run message and in the closing `Dist_k`
+note. If you have no such data, nothing changes: a metric CRS still
+reads \metres\.
+
+**Zip reading** now names the layer from the archive itself rather than
+searching the folder beside it, and refuses an archive holding several.

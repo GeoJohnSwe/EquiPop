@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "equipop"
-version = "1.29.8"
+version = "1.29.9"
 description = "k-nearest neighbour contexts/neighbourhoods on gridded and hexagonal data: bespoke neighbourhoods, friction growth, distance decay, statistics and segregation measures"
 readme = "README.md"
 license = {text = "MIT"}
-authors = [{name = "John Östh"}]
+authors = [{name = "John Östh", email = "johnosth@oslomet.no"}]
+maintainers = [{name = "John Östh", email = "johnosth@oslomet.no"}]
 requires-python = ">=3.10"
 dependencies = ["pandas>=2.0", "numpy>=1.24", "scipy>=1.10", "pyproj>=3.4"]
 

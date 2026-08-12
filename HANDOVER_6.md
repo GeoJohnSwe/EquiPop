@@ -54,13 +54,20 @@ geography. **Say what a thing does before saying what it is.**
 
 ## 2. State at the end of this session
 
-**1.29.7 IS BUILT AND FULLY TESTED HERE. NOT field-tested, NOT
+**1.29.8 IS BUILT AND FULLY TESTED HERE. NOT field-tested, NOT
 published.** 338 passed, 6 skipped (279 when this run of work began).
 
 **1.29.6 closes THIRTEEN items, all from John's ArcGIS Pro field
 evening, and changes NO NUMBERS** - every one is a guard, a message or
 a refusal: 131, 135, 136, 138, 140, 141, 142, 143, 144, 145, 146, 147,
 148. See the MANUAL version row for the detail.
+
+**1.29.8 is the first release since 1.29.3 that CHANGES NUMBERS**, and
+all three changes are opt-out: run_knn gained self-potential (153),
+Gini refuses negatives (154), and cell size must be a whole number of
+MAP UNITS - not metres, because nothing ever read the CRS's linear
+unit and a survey-feet projection was labelled wrong by 3.28 (155,
+160). Reading a .zip no longer globs the folder beside it (157).
 
 **Neither 1.29.4 nor 1.29.5 was ever published.** 1.29.6 is the first
 release intended to reach PyPI since 1.29.3. That matters for one
