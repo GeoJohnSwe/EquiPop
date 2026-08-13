@@ -259,6 +259,22 @@ def _install_fake_arcpy(table: pd.DataFrame):
         dst_oid = state.get("oid_names", {}).get(str(out), "OBJECTID")
         if src_oid != dst_oid and src_oid in t.columns:
             t = t.rename(columns={src_oid: dst_oid})
+        # BACKLOG 164. A real copy also RENUMBERS. The destination
+        # assigns its own identifiers from scratch, in row order - a
+        # geodatabase from 1, a shapefile from 0 - so the copy's ids
+        # are NOT the input's ids. This stub renamed the column and
+        # kept the values, which made the copy look like a relabelled
+        # original and hid a live misalignment: John's field run wrote
+        # every result one row early and left the last row Null.
+        #
+        # A stub is safe only where it is STRICTER than the real
+        # thing (1.29.1's isAdvanced, 1.29.3's polygon barriers). Here
+        # it was more generous, and it certified the door for four
+        # releases.
+        if dst_oid in t.columns:
+            start = state.get("oid_starts", {}).get(str(out), 1)
+            t[dst_oid] = np.arange(start, start + len(t),
+                                   dtype=np.int64)
         state.setdefault("copies", {})[out] = t
         state["active_copy"] = out          # results now target the copy
 
@@ -466,6 +482,99 @@ def test_pyt_rerun_overwrite_and_category_and_newoutput(tmp_path):
     assert "N_30" not in base_cols or True
     assert "N_30" in state["copies"]["out_fc1"].columns
     assert "N_30" not in set(t.columns)              # input pristine
+
+
+# ------------------------------------------- v1.30.1 BACKLOG 164
+@pytest.mark.parametrize("oid_name,ids,out_start,label", [
+    ("FID", np.arange(0, 12), 1, "shapefile 0-based -> geodatabase 1..n"),
+    ("OBJECTID", np.arange(1, 13), 1, "geodatabase -> geodatabase"),
+    ("OBJECTID", np.arange(1, 13), 0, "geodatabase -> shapefile 0..n-1"),
+    ("OBJECTID", np.array([1, 2, 5, 6, 9, 10, 13, 14, 17, 18, 21, 22]),
+     1, "geodatabase WITH GAPS -> fresh contiguous"),
+])
+def test_a_new_feature_class_matches_rows_not_borrowed_identifiers(
+        oid_name, ids, out_start, label):
+    """BACKLOG 164, John's field run of 1.30: the last row of a
+    682-point layer came back <Null>.
+
+    A copy carries the ROWS across but not the IDENTIFIERS - the
+    destination assigns its own, in row order, a geodatabase from 1
+    and a shapefile from 0. EquiPop carried the INPUT's values over
+    and joined the results on them, so a shapefile numbered FID
+    0..681 copied to a geodatabase numbered OBJECTID 1..682 wrote
+    every result ONE ROW EARLY and left the last row empty.
+
+    Only the Null was visible. The run was in `proportional`, so
+    N_25 read 25 and N_50 read 50 in every row - the shift could not
+    be seen in the count columns at all, and Dist_k is not something
+    an eye can check. Live since v1.20.
+
+    The invariant, which needs no arithmetic to state: THE COPY MUST
+    RECEIVE WHAT THE IN-PLACE RUN RECEIVES, row for row. Broken on
+    purpose by restoring `data[new_oid] = data[oid]` - all four cases
+    fail, the gapped one worst.
+    """
+    def _build():
+        n = len(ids)
+        return pd.DataFrame({
+            oid_name: np.asarray(ids, dtype=np.int64),
+            "PlaceID": np.arange(1, n + 1, dtype=np.int64),
+            "SHAPE@X": np.linspace(10.0, 1600.0, n),
+            "SHAPE@Y": np.full(n, 50.0),
+            "Pop": np.full(n, 5.0)})
+
+    # the in-place route matches on the target's REAL identifiers and
+    # is the reference the copy has to reproduce
+    state = _install_fake_arcpy(_build())
+    state.setdefault("oid_names", {})["lyr"] = oid_name
+    pyt = _load_pyt()
+    pyt._run_tool("counts", "lyr", _Messages(), k_text="10",
+                  unit=100.0, weight_field="Pop")
+    truth = state["table"].sort_values(oid_name)
+
+    state = _install_fake_arcpy(_build())
+    state.setdefault("oid_names", {})["lyr"] = oid_name
+    state.setdefault("oid_starts", {})["out"] = out_start
+    pyt = _load_pyt()
+    pyt._run_tool("counts", "lyr", _Messages(), k_text="10",
+                  unit=100.0, weight_field="Pop",
+                  out_mode="New feature class", out_fc="out")
+    copy = state["copies"]["out"]
+    key = "OBJECTID" if "OBJECTID" in copy.columns else oid_name
+    copy = copy.sort_values(key)
+
+    assert not copy["Dist_10"].isna().any(), (
+        f"{label}: {int(copy['Dist_10'].isna().sum())} row(s) received "
+        "no result - the last row is the one John saw")
+    # PlaceID travels with the row, so it proves WHICH row got WHAT
+    assert list(copy["PlaceID"]) == list(truth["PlaceID"])
+    for col in ("N_10", "Dist_10"):
+        assert np.allclose(copy[col].to_numpy(float),
+                           truth[col].to_numpy(float)), (
+            f"{label}: the copy's {col} is not what the same rows got "
+            "in place - results are shifted")
+
+
+def test_the_copy_refuses_rather_than_guess_if_the_row_count_moved():
+    """If the copy does not have the input's rows, matching by
+    position is not safe and EquiPop must not try."""
+    t = pd.DataFrame({"FID": np.arange(0, 6, dtype=np.int64),
+                      "SHAPE@X": np.linspace(10.0, 500.0, 6),
+                      "SHAPE@Y": np.full(6, 50.0),
+                      "Pop": np.full(6, 5.0)})
+    state = _install_fake_arcpy(t)
+    state.setdefault("oid_names", {})["lyr"] = "FID"
+    pyt = _load_pyt()
+    real_copy = pyt.arcpy.management.CopyFeatures
+
+    def _lossy(layer, out):
+        real_copy(layer, out)
+        state["copies"][out] = state["copies"][out].iloc[:-1]
+    pyt.arcpy.management.CopyFeatures = _lossy
+    with pytest.raises(Exception, match="will not guess"):
+        pyt._run_tool("counts", "lyr", _Messages(), k_text="10",
+                      unit=100.0, weight_field="Pop",
+                      out_mode="New feature class", out_fc="out")
 
 
 def test_pyt_preaggregated_counts_convention():

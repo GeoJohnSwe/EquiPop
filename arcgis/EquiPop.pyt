@@ -1057,20 +1057,44 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                             "there, input untouched.")
         layer = out_fc
         new_oid = arcpy.Describe(layer).OIDFieldName
-        # A copy carries the rows but not the identifier's NAME: a
-        # GeoPackage calls it 'fid', a file geodatabase 'OBJECTID'.
-        # The values were read under the OLD name (field, Malta,
-        # v1.20: KeyError 'OBJECTID'), so carry them across.
+        # BACKLOG 164. A copy carries the rows across but NOT the
+        # identifiers: the destination assigns its own, from scratch,
+        # in row order - a geodatabase from 1, a shapefile from 0.
+        # So the copy's ids are not the input's ids, and until 1.30.1
+        # this carried the INPUT's values over and joined the results
+        # on them.
+        #
+        # John's field run, 682 points: the input was a shapefile
+        # numbered FID 0..681, the copy a geodatabase numbered
+        # OBJECTID 1..682. Every result landed ONE ROW EARLY and the
+        # last row received nothing. Only the Null was visible, and
+        # only because he looked - the run was in `proportional`, so
+        # N_25 read 25 and N_50 read 50 in every row and the shift
+        # could not be seen in them at all. Live since v1.20.
+        #
+        # The old message said results were "matched on row order,
+        # which the copy preserves". They were matched on VALUES.
+        # That sentence was the reassurance that stopped anyone
+        # looking, so the fix makes it true rather than deleting it:
+        # the copy's own ids are read back IN ROW ORDER and used.
+        # This also repairs the case that never printed a message at
+        # all - a geodatabase input whose OBJECTIDs have GAPS from
+        # deleted rows, copied to a fresh contiguous 1..n.
+        fresh = arcpy.da.TableToNumPyArray(layer, [new_oid])[new_oid]
+        if len(fresh) != len(data["x"]):
+            raise arcpy.ExecuteError(
+                f"The copy at {out_fc} has {len(fresh):,} rows where "
+                f"the input had {len(data['x']):,}. Results are "
+                "matched to rows by position, so EquiPop will not "
+                "guess which row is which. Nothing was written.")
+        data[new_oid] = np.asarray(fresh, np.int64)
         if new_oid != oid:
             messages.addMessage(
                 f"The copy names its row identifier '{new_oid}' where "
-                f"the input called it '{oid}' - results are matched on "
-                "row order, which the copy preserves.")
-            if oid in data:
-                data[new_oid] = data[oid]
-            else:
-                data[new_oid] = np.arange(1, len(data["x"]) + 1,
-                                          dtype=np.int64)
+                f"the input called it '{oid}', and RENUMBERS it "
+                f"({fresh[0]}..{fresh[-1]} where the input ran "
+                f"{np.min(data[oid])}..{np.max(data[oid])}). Results "
+                "are matched on row order, which the copy preserves.")
         oid = new_oid
 
     x, y = data["x"], data["y"]

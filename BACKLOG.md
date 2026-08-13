@@ -20,6 +20,7 @@ appeared twice; the weaker copy is gone.*
 ## What next — in priority order
 1. ~~**139**~~ — DONE, unreleased. A diagonal move now costs sqrt(2); iso-effort contours are round, not square
 2. ~~**99**~~ — DONE v1.30. THE OVERSHOOT, closed at both doors; ~~**162**~~ and ~~**163**~~ travelled with it
+2b. ~~**164**~~ — DONE v1.30.1. John's field test: a new feature class received every result ONE ROW EARLY, silently, since v1.20
 3. **161** — Pro will not offer a barrier raster from the map. John field-found it: he had to drag and drop. Small, and it makes the barrier box behave the way the DEM box and all of QGIS already do
 4. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
 4. **128** — `equipop doctor`: one read-only diagnostic, every door. The dependency story is the adoption risk
@@ -307,6 +308,43 @@ appeared twice; the weaker copy is gone.*
   count and type fields, the keepoutside rung, self-potential, the
   overshoot mode, the seed and the source analysed - and a test
   reads them back, broken three ways on purpose.
+
+- ~~164~~ | DONE v1.30.1 | A NEW FEATURE CLASS RECEIVED EVERY
+  RESULT ONE ROW EARLY. John's field test of 1.30, 682 points: the
+  last row came back <Null>. It is not an off-by-one in a range - it
+  is a JOIN ON THE WRONG KEY, and the missing row was the only
+  visible part of it.
+  A copy carries the ROWS across but NOT the identifiers. The
+  destination assigns its own, from scratch, in row order - a
+  geodatabase from 1, a shapefile from 0. `_run_tool` carried the
+  INPUT's values over (`data[new_oid] = data[oid]`) and joined the
+  results on them. John's input was numbered FID 0..681 and the copy
+  OBJECTID 1..682, so every result landed one row early and the last
+  row had nothing left to receive.
+  WHY NOBODY SAW IT, INCLUDING JOHN, WHO WAS LOOKING: the run was in
+  `proportional`, which makes N_k exactly k - so N_25 read 25 and
+  N_50 read 50 in EVERY row and the shift was invisible in the count
+  columns. Dist_k was shifted and no eye can check a distance. Live
+  since v1.20.
+  A WORSE CASE HAD NO MESSAGE AT ALL: a geodatabase input whose
+  OBJECTIDs have GAPS from deleted rows, copied to a fresh contiguous
+  1..n. Same name, so the rename branch never ran and nothing was
+  printed; measured on a 12-row layer with gaps, SIX rows received
+  nothing and the rest were scrambled.
+  AND THE MESSAGE WAS THE REASSURANCE THAT HID IT. It said results
+  were "matched on row order, which the copy preserves". They were
+  matched on VALUES. The fix makes the sentence true rather than
+  deleting it: the copy's own identifiers are read back IN ROW ORDER
+  and used, and a row-count change is REFUSED rather than guessed at.
+  THE SIMULATOR WAS WHY THIS COULD NOT BE REPRODUCED. Its
+  CopyFeatures renamed the identifier and KEPT THE VALUES, so a copy
+  looked like a relabelled original. Three clean reproduction
+  attempts came back green before the stub was fixed. A stub is safe
+  only where it is STRICTER than the real thing - 1.29.1's
+  isAdvanced, 1.29.3's polygon barriers, and now this. It is the
+  THIRD time the simulator has certified a door that could not run,
+  and the second time it hid a silent wrong answer rather than a
+  crash.
 
 - 161 | open v1.30 | PRO WILL NOT OFFER A BARRIER RASTER FROM THE
   MAP. John, field, 1.29.9: the raster was already loaded in the
