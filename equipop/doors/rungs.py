@@ -126,6 +126,65 @@ SELF_POTENTIAL_DEFAULT = 2          # the equal-area radius
 
 
 # ===================================================================
+# BACKLOG 99. THE OVERSHOOT - the ring that crosses k.
+#
+# The reasoning, the measurements and the three modes live in
+# equipop/overshoot.py; this is only what the DIALOGS say, kept here
+# for the same reason every other menu is (105/78): neither door may
+# import the package to find out what its own dropdowns read, so the
+# duplication is pinned by test_rungs.py instead of removed.
+#
+# The labels name the mode FIRST, in the engine's own word, because
+# that word is what the run message, the manifest and the manual all
+# use. A user who reads "proportional share" in a message must be
+# able to find it in the box without translating.
+#
+# TWO DEFAULTS, and the difference is not an oversight.
+# Machine 1 defaults to `proportional` - John's ruling, 1.30, and the
+# whole point of the item. Machine 2 defaults to `whole`, because a
+# quarter of a cell has no median, no percentile and no Gini: the
+# core REFUSES proportional there until weighted statistics land
+# (BACKLOG 118). Machine 2 still OFFERS all three, so the choice is
+# visible and starts working by itself when 118 lands, and so that
+# picking it gets the core's refusal - which names 118 - rather than
+# an absence that explains nothing.
+# ===================================================================
+
+OVERSHOOT = [
+    "whole ring - every cell at that distance, so N_k overshoots k "
+    "(EquiPop before 1.30)",
+    "proportional share - each cell gives the same fraction, so N_k "
+    "is exactly k (recommended)",
+    "sampled, seeded - whole cells one at a time until k is reached "
+    "(the original 2014 method)",
+]
+#: The engine's own words, in the same order. These are what reach
+#: run_knn / run_knn_counts / run_knn_stats as `overshoot_mode`.
+OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
+OVERSHOOT_DEFAULT = 1               # proportional - machine 1
+OVERSHOOT_DEFAULT_M2 = 0            # whole - machine 2, until 118
+
+
+def overshoot_note(mode: str) -> str:
+    """The one line machine 2 prints when its mode differs from the
+    mode machine 1 would have used on the same data.
+
+    Without it a student runs both machines over one dataset and gets
+    two different N_400 with nothing said - which is the "two doors
+    disagree" family of defect, arriving through the back door as
+    "two machines disagree". It fires only when the modes really do
+    differ, so choosing `whole` in both machines is silent.
+    """
+    return (f"[overshoot] this run used '{mode}'. Value statistics "
+            "need WHOLE cells - a fraction of a cell has no median, "
+            "percentile or Gini (BACKLOG 118) - while Counts and "
+            f"Shares defaults to "
+            f"'{OVERSHOOT_VALUES[OVERSHOOT_DEFAULT]}'. So N_k and "
+            "Dist_k from the two tools will differ on the same data "
+            "until you set both boxes the same way.")
+
+
+# ===================================================================
 # BACKLOG 155 + 160. Cell size is a WHOLE NUMBER OF MAP UNITS.
 #
 # 155: fractional sizes were accepted and then rounded differently by

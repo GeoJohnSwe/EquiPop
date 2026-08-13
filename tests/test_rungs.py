@@ -208,6 +208,70 @@ def test_menu_wording_is_pinned_not_shared():
         assert "SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]" in src, \
             f"{path}: the values behind the choices drifted"
 
+    # BACKLOG 99: a fifth and sixth copy - the overshoot labels and
+    # the engine words behind them. The words matter more here than
+    # anywhere else in this test: they are what the run message, the
+    # manifest and the MANUAL all print, so a door whose label says
+    # something the engine has never heard of would produce a run
+    # nobody could look up.
+    for path in ("qgis/equipop_qgis/alg_counts.py", "arcgis/EquiPop.pyt"):
+        assert _joined(path, "OVERSHOOT_MODES") == rungs.OVERSHOOT, \
+            f"{path}: the overshoot wording drifted"
+        assert _joined(path, "OVERSHOOT_VALUES") == \
+            rungs.OVERSHOOT_VALUES, \
+            f"{path}: the engine words behind the overshoot menu drifted"
+
+
+def test_every_overshoot_choice_is_one_the_engine_accepts():
+    """The labels are the door's, the words behind them are the
+    engine's. If a door ever offers a fourth mode, or spells one
+    differently, this fails here rather than in a user's run."""
+    from equipop import overshoot
+    from equipop.doors import rungs
+    assert list(rungs.OVERSHOOT_VALUES) == list(overshoot.MODES)
+    for m in rungs.OVERSHOOT_VALUES:
+        assert overshoot.resolve(m) == m
+    assert len(rungs.OVERSHOOT) == len(rungs.OVERSHOOT_VALUES)
+
+
+def test_the_two_machines_default_to_what_they_can_actually_do():
+    """Machine 1 must default to the ENGINE's default, or the box
+    would report a second opinion on what the run will do. Machine 2
+    must NOT default to proportional, because the core refuses a
+    fraction of a cell wherever a median is asked for - which is
+    every machine-2 run."""
+    from equipop import overshoot
+    from equipop.doors import rungs
+    assert rungs.OVERSHOOT_VALUES[rungs.OVERSHOOT_DEFAULT] == \
+        overshoot.DEFAULT
+    assert rungs.OVERSHOOT_VALUES[rungs.OVERSHOOT_DEFAULT_M2] != \
+        overshoot.PROPORTIONAL
+
+
+def test_the_doors_default_boxes_match_the_canonical_defaults():
+    """The dialogs' own defaults, read out of the two doors rather
+    than assumed. Pro sets a VALUE from the list; QGIS sets an INDEX
+    into it."""
+    from equipop.doors import rungs
+    pro = open(os.path.join(ROOT, "arcgis/EquiPop.pyt"),
+               encoding="utf-8").read()
+    assert f'pm["overshoot"].value = OVERSHOOT_MODES' \
+        f'[{rungs.OVERSHOOT_DEFAULT}]' in pro, \
+        "Pro machine 1 no longer defaults to the engine's own default"
+    assert f'pm2["overshoot"].value = OVERSHOOT_MODES' \
+        f'[{rungs.OVERSHOOT_DEFAULT_M2}]' in pro, \
+        "Pro machine 2 no longer defaults to a mode it can compute"
+    q1 = open(os.path.join(ROOT, "qgis/equipop_qgis/alg_counts.py"),
+              encoding="utf-8").read()
+    q2 = open(os.path.join(ROOT, "qgis/equipop_qgis/alg_stats.py"),
+              encoding="utf-8").read()
+    assert f'options=OVERSHOOT_MODES, defaultValue=' \
+        f'{rungs.OVERSHOOT_DEFAULT}' in q1.replace("\n", " ").replace(
+            "            ", "")
+    assert f'options=OVERSHOOT_MODES, defaultValue=' \
+        f'{rungs.OVERSHOOT_DEFAULT_M2}' in q2.replace(
+            "\n", " ").replace("            ", "")
+
 
 def test_the_middle_choice_really_is_the_median():
     """BACKLOG 141. The label promises "half of what your cell holds
@@ -284,10 +348,17 @@ def test_the_population_field_survives_both_keepoutside_routes(keepoutside):
     alg.processAlgorithm(p, None, QgsProcessingFeedback())
     out = p["_sinks"]["outfc"].to_frame()
     got = out.loc[out["Type"] == "in", "N_5"].tolist()
-    assert got == [11.0, 11.0], (
-        f"included rows carry 10 and 1 people, so N_5 must be 11 - "
-        f"got {got}. If this reads [2, 2] the population field has "
-        "been replaced by a Boolean mask.")
+    # BACKLOG 99: this used to expect 11 - the whole ring of 10 + 1
+    # for a k of 5. Under the 1.30 default a share of that ring is
+    # taken, so asking for 5 people returns exactly 5. What the test
+    # exists to prove is unchanged and still discriminates: a Boolean
+    # mask would make each row count as ONE person, so k=5 would have
+    # to reach across cells and N_5 would read 2.
+    assert got == [5.0, 5.0], (
+        f"the population field carries 10 and 1 people, so a k of 5 "
+        f"is met inside the first cell and N_5 must be 5 - got {got}. "
+        "If this reads [2, 2] the population field has been replaced "
+        "by a Boolean mask.")
 
 
 def test_the_two_keepoutside_routes_agree_on_the_included_rows():

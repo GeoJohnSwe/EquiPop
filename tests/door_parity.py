@@ -26,7 +26,15 @@ CORE = {"layer", "pop", "treat", "k", "r", "unit", "catfield",
         "treatcatfield", "keepoutside", "model", "halflife",
         "decayeps", "xfield", "yfield",
         # v1.29.5, BACKLOG 95 - an ENGINE parameter, so both doors
-        "selfpot"}
+        "selfpot",
+        # v1.30, BACKLOG 99. The overshoot mode moves every
+        # k-based number, so it is as analytical as a box gets.
+        # `seed` joins it: it used to matter only to
+        # permutations - which is why QGIS never offered one -
+        # but under the `sampled` mode it DECIDES THE ANSWER,
+        # and a box that decides the answer belongs in CORE by
+        # this file's own stated rule.
+        "overshoot", "seed"}
 
 # machine 2 - Value Statistics (list added v1.29). `pop` is the
 # reference population; `values` the treatment fields measured over
@@ -38,7 +46,14 @@ CORE_M2 = {"layer", "xfield", "yfield", "pop", "values", "measures",
            # machine 1. Reference side only - the treatment here is a
            # set of numbers, so there is nothing to choose.
            "refmode", "catfield", "reftable", "keepoutside",
-           "selfpot"}
+           "selfpot",
+           # v1.30, BACKLOG 99. Machine 2 defaults to a
+           # DIFFERENT mode from machine 1 - `whole`, because a
+           # fraction of a cell has no median - but it must
+           # still OFFER the box, or the two doors cannot be
+           # held to the same answer key. Pro had never had a
+           # seed box here at all.
+           "overshoot", "seed"}
 
 
 # v1.29.3, BACKLOG 86: parity of BEHAVIOUR, not just of names.

@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from . import selfpot
+from . import overshoot, selfpot
 from .cells import CellData
 
 
@@ -33,7 +33,9 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                    origins=None,
                    self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
                    report: bool = True,
-                   report_label: str = "") -> pd.DataFrame:
+                   report_label: str = "",
+                   overshoot_mode: str | None = None,
+                   seed: int | None = None) -> pd.DataFrame:
     """
     k-NN counts/ratios for every cell in cd, vectorised.
 
@@ -59,6 +61,12 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
     sp = selfpot.check(self_potential)
+    # BACKLOG 99: what happens to the ring that crosses k.
+    osm = overshoot.resolve(overshoot_mode)
+    seed_given = seed is not None
+    os_seed = int(seed) if seed_given else overshoot.draw_seed()
+    if osm == overshoot.SAMPLED and report:
+        print(overshoot.seed_message(os_seed, seed_given))
     # BACKLOG 95 / 94: counted, not assumed. A run must be able to say
     # how much of its Dist_k was estimated inside one cell, and how far
     # N_k overshot the k that was asked for.
@@ -69,6 +77,16 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     trunc = decay.truncation_radius(decay_eps) if decay is not None else 0.0
     if not (k_values or r_values or decay):
         raise ValueError("give k_values, r_values and/or decay")
+    bad = [k for k in k_values if k <= 0]
+    if bad:
+        raise ValueError(
+            f"[k] k must be a POSITIVE number of people; got {bad}. "
+            "k=0 asks for nobody, and every mode then answers "
+            "differently about a neighbourhood that does not exist - "
+            "the whole-ring rule returns the origin cell, a "
+            "proportional share returns zero people and an undefined "
+            "R. Found by John's hand check, 1.30. Nothing was "
+            "computed.")
     n_cells = len(cd)
     if m_neighbors is None:            # auto-tuned (v1.16.3/.6)
         from .cells import auto_m_neighbors
@@ -116,24 +134,62 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
             tally["origins"] += 1
             for k in k_values:
                 pos = int(np.searchsorted(cp, k))
-                if pos >= len(cp):
+                partial = pos >= len(cp)
+                if partial:
                     pos = len(cp) - 1          # unreached: partial
+                    lo = hi = pos
                 else:                          # ring-atomic extension
-                    while pos + 1 < len(dd) and dd[pos + 1] - dd[pos] < 1e-6:
-                        pos += 1
-                rec[f"N_{k}"] = cp[pos]
+                    lo, hi = overshoot.ring_bounds(dd, pos)
+                    pos = hi
+                if partial or osm == overshoot.WHOLE:
+                    n_k = cp[pos]
+                    grp_k = {v: cgrp[v][r][pos] for v in bvars}
+                    d_k = float(dd[pos])
+                else:
+                    # BACKLOG 99: take only part of the crossing ring.
+                    # `lo` is what the atomic-tie rule never needed and
+                    # a share cannot do without.
+                    before = float(cp[lo - 1]) if lo > 0 else 0.0
+                    cells_i = idx[r, lo:hi + 1]
+                    rpop = pop[cells_i]
+                    ids = overshoot.cell_identity(
+                        np.round(cd.E[cells_i] / cd.unit_size),
+                        np.round(cd.N[cells_i] / cd.unit_size))
+                    w, taken = overshoot.ring_weights(
+                        osm, k, before, rpop, ids,
+                        seed=os_seed,
+                        origin_id=int(overshoot.cell_identity(
+                            round(cd.E[oi] / cd.unit_size),
+                            round(cd.N[oi] / cd.unit_size))))
+                    n_k = before + taken
+                    grp_k = {}
+                    for v in bvars:
+                        t_before = (float(cgrp[v][r][lo - 1])
+                                    if lo > 0 else 0.0)
+                        grp_k[v] = t_before + float(
+                            (grp[v][cells_i] * w).sum())
+                    ring_all = float(rpop.sum())
+                    f = taken / ring_all if ring_all > 0 else 1.0
+                    d_prev = float(dd[lo - 1]) if lo > 0 else 0.0
+                    d_k = float(overshoot.radius(d_prev, float(dd[hi]), f))
+                rec[f"N_{k}"] = n_k
                 for v in bvars:
-                    rec[f"T_{v}_{k}"] = cgrp[v][r][pos]
-                    rec[f"R_{v}_{k}"] = cgrp[v][r][pos] / cp[pos]
-                d_k = float(dd[pos])
-                if d_k <= 0.0 and cp[pos] >= k:
+                    rec[f"T_{v}_{k}"] = grp_k[v]
+                    rec[f"R_{v}_{k}"] = (grp_k[v] / n_k if n_k > 0
+                                         else np.nan)
+                if d_k <= 0.0 and n_k >= k:
                     # the whole neighbourhood IS the origin cell, so
                     # the radius is not zero - it is unmeasured, and
-                    # k has stopped being a parameter (BACKLOG 95)
+                    # k has stopped being a parameter (BACKLOG 95).
+                    # The equal-area radius needs the people actually
+                    # STANDING in the cell, not the share reported:
+                    # under `proportional` n_k is k exactly, and
+                    # passing it turned the radius into a constant.
+                    # Invisible under `whole`, where the two are equal.
                     d_k = selfpot.radius_for_k(cd.unit_size, k,
                                                float(cp[pos]), sp)
                     tally["selfpot"][k] += 1
-                if cp[pos] >= 2 * k:           # BACKLOG 94
+                if n_k >= 2 * k:               # BACKLOG 94
                     tally["over"][k] += 1
                 rec[f"Dist_{k}"] = d_k
                 last = pos

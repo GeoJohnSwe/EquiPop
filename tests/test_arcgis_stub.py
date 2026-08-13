@@ -1471,6 +1471,55 @@ def test_pyt_writes_a_run_manifest(tmp_path):
     assert "total_seconds" in man
 
 
+def test_the_manifest_records_what_actually_decided_the_numbers(
+        tmp_path):
+    """BACKLOG 148, finished; BACKLOG 99, recorded.
+
+    148 added `population` to _manifest_rows in 1.29.6 and NEITHER
+    CALL SITE EVER PASSED IT, so the settings that define the numbers
+    were still absent - a parameter with no argument, invisible
+    because the manifest test above asks only for engine, k, cell
+    size and version. Found in 1.30 while adding the overshoot mode,
+    which would have gone the same way.
+
+    The rule this test states: a manifest must name every setting
+    that CHANGES THE ANSWER, or it describes a run it cannot
+    reproduce. Broken on purpose by dropping each argument in turn.
+    """
+    rng = np.random.default_rng(148)
+    n = 200
+    tab = pd.DataFrame({"Easting": rng.uniform(0, 900, n),
+                        "Northing": rng.uniform(0, 900, n),
+                        "Pop": rng.integers(1, 9, n).astype(float),
+                        "Grp": rng.integers(0, 4, n).astype(float)})
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(t)
+    state["aux_tables"] = {"tbl": tab}
+    pyt = _load_pyt()
+    out = tmp_path / "res.csv"
+    pyt._run_tool("counts", "tbl", _Messages(), k_text="20",
+                  out_table=str(out), unit=250.0,
+                  weight_field="Pop", treat_fields=["Grp"],
+                  ref_mode=1, treat_mode=1, keep_outside=False,
+                  self_potential=0.0, overshoot="sampled", seed=1848)
+    man = pd.read_csv(tmp_path / "res_EquiPop_run.csv").set_index(
+        "item")["value"].to_dict()
+
+    # BACKLOG 99: the mode moves every k-based number, and the seed
+    # decides which cells `sampled` took
+    assert man["overshoot"] == "sampled"
+    assert str(man["overshoot_seed"]) == "1848"
+    # BACKLOG 148: the settings that define the population
+    assert float(man["self_potential"]) == 0.0
+    assert man["reference_count_field"] == "Pop"
+    assert man["treatment_count_fields"] == "Grp"
+    assert pyt.REF_MODES[1][:12] in man["reference_rung"]
+    assert pyt.TREAT_MODES[1][:12] in man["treatment_rung"]
+    assert pyt.OUTSIDE_MODES[1][:12] in man["rows_outside_reference"]
+    assert man["source_analysed"]
+
+
 def test_friction_guard_refuses_mixed_units_and_clips_the_far_away():
     """The lake that became one cell: degrees against metres must be
     refused with both extents shown - while a legitimately distant

@@ -73,6 +73,18 @@ SELFPOT_MODES = [
     "1 - the radius at which k of it is reached (recommended)",
 ]
 SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]
+# BACKLOG 99. Duplicated from equipop/doors/rungs.py and pinned by
+# test_rungs.py, for the reason given above - a door may not import
+# the package to learn what its own dropdowns say.
+OVERSHOOT_MODES = [
+    "whole ring - every cell at that distance, so N_k overshoots k "
+    "(EquiPop before 1.30)",
+    "proportional share - each cell gives the same fraction, so N_k "
+    "is exactly k (recommended)",
+    "sampled, seeded - whole cells one at a time until k is reached "
+    "(the original 2014 method)",
+]
+OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 
 import numpy as np
 
@@ -224,6 +236,22 @@ class CountsAndShares(EquipopAlgorithm):
             "selfpot", "Self-potential - the distance to what is "
             "LOCAL, inside your own cell", options=SELFPOT_MODES,
             defaultValue=2), advanced=True)
+        # BACKLOG 99. Defaults to PROPORTIONAL, which is the engine's
+        # default from 1.30 - so a door that says nothing and a door
+        # that says 'proportional' agree, and the box reports the
+        # truth rather than a second opinion.
+        self.add(QgsProcessingParameterEnum(
+            "overshoot", "The ring that crosses k", 
+            options=OVERSHOOT_MODES, defaultValue=1), advanced=True)
+        # BACKLOG 99. The seed used to matter only to permutations,
+        # so QGIS never offered it; under 'sampled' it DECIDES THE
+        # ANSWER, which makes it an analytical box by door_parity's
+        # own rule. Empty means one is drawn and printed.
+        self.add(QgsProcessingParameterNumber(
+            "seed", "Seed - only used by 'sampled' and by "
+            "permutations; empty draws one and prints it",
+            optional=True,
+            type=QgsProcessingParameterNumber.Integer), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -291,7 +319,16 @@ class CountsAndShares(EquipopAlgorithm):
                 (self.parameterAsStrings(parameters, "yfield", context)
                  or [None])[0])
 
+        # BACKLOG 99. The mode is passed EXPLICITLY, never left to
+        # the engine's default: a door that says nothing cannot be
+        # conformance-checked against a named mode, which is the
+        # whole reason both doors failed the answer key in 1.30.
+        overshoot_mode = OVERSHOOT_VALUES[
+            (self.parameterAsEnums(parameters, "overshoot",
+                                   context) or [1])[0]]
+        seed = self.optional_int(parameters, "seed")
         kw = dict(unit_size=float(unit), treat_are_counts=True,
+                  overshoot_mode=overshoot_mode, seed=seed,
                   self_potential=SELFPOT_VALUES[
                       (self.parameterAsEnums(parameters, "selfpot",
                                              context) or [2])[0]])

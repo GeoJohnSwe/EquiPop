@@ -27,11 +27,18 @@ qgis_stub.install()
 from qgis.core import (QgsProcessingException,      # noqa: E402
                        QgsProcessingFeedback)
 from qgis.core import QgsProcessingParameterDefinition  # noqa: E402
-from equipop_qgis.alg_counts import CountsAndShares  # noqa: E402
+from equipop_qgis.alg_counts import (CountsAndShares,  # noqa: E402
+                                     OVERSHOOT_VALUES)
 from equipop_qgis.alg_stats import ValueStatistics   # noqa: E402
 from equipop_qgis.provider import EquipopProvider    # noqa: E402
 from equipop.doors.reference import (SPEC, compare,  # noqa: E402
                                      explain)
+
+#: Which entry of the door's own dropdown carries the mode the answer
+#: key was generated under. Looked up rather than written as a number:
+#: a reordered menu would otherwise silently run a different mode and
+#: the test would report a conformance failure instead of a menu edit.
+_OVERSHOOT_IDX = OVERSHOOT_VALUES.index(SPEC["overshoot"])
 
 
 def _run(alg_cls, source, **params):
@@ -96,15 +103,26 @@ def test_the_help_page_is_built_from_the_shared_summary():
 @pytest.fixture(scope="module")
 def door_output():
     """Both tools run over Gridby exactly as the reference spec
-    describes, and merged the way a user would end up with them."""
+    describes, and merged the way a user would end up with them.
+
+    BACKLOG 99. The overshoot mode is NAMED here, from the spec,
+    rather than left to whatever each machine defaults to. That is
+    the whole shape of the item: the answer key is pinned to one
+    mode, so a door can only be judged against it once the door can
+    say which mode it ran. Before the box existed this test failed on
+    2287 of 2360 rows and there was no way to make it pass without
+    either moving the key or hiding the change.
+    """
     counts, _ = _run(CountsAndShares, qgis_stub.gridby_source(),
                      refmode=[1], pop=SPEC["weight"],
                      treatmode=[1], treat=["count_group"],
-                     k="400", r="800", unit=SPEC["unit_size"])
+                     k="400", r="800", unit=SPEC["unit_size"],
+                     overshoot=[_OVERSHOOT_IDX])
     stats, _ = _run(ValueStatistics, qgis_stub.gridby_source(),
                     pop=SPEC["weight"], values=["count_group"],
                     measures=[0, 1, 2], k="400", r="",
-                    unit=SPEC["unit_size"])
+                    unit=SPEC["unit_size"],
+                    overshoot=[_OVERSHOOT_IDX])
     dup = [c for c in stats.columns
            if c in counts.columns and c not in ("x", "y")]
     return counts.merge(stats.drop(columns=dup), on=["x", "y"])

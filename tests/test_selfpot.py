@@ -166,7 +166,11 @@ def test_self_calibration_says_when_it_substitutes(capsys):
 def test_overshoot_is_reported(capsys):
     """BACKLOG 94: ask for the nearest 100 and be told about 3,002."""
     cd = _dense_plus_sparse()
-    res = run_knn_counts(cd, k_values=[100], self_potential=1.0)
+    # BACKLOG 99: the overshoot TALLY only exists when rings are
+    # taken whole. Under proportional N_k lands on k and there is
+    # nothing to report - which is the point of the new default.
+    res = run_knn_counts(cd, k_values=[100], self_potential=1.0,
+                         overshoot_mode="whole")
     assert _origin(res).N_100 > 100 * 2
     assert "N_100 is at least twice the k you asked for" \
         in capsys.readouterr().out

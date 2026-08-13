@@ -52,7 +52,10 @@ def test_hand_computed_knn():
                   n=np.array([10, 10, 10]),
                   binary_sums={"g": np.array([0.0, 10.0, 5.0])},
                   value_arrays={}, unit_size=100)
-    r = run_knn_stats(cd, [15, 25], stats={"g": ["ratio"]})
+    # BACKLOG 99: this checks a HAND-COMPUTED whole-ring answer, so
+    # it names the rule it assumes rather than inheriting a default.
+    r = run_knn_stats(cd, [15, 25], stats={"g": ["ratio"]},
+                      overshoot_mode="whole")
     row = r[r.EastWest == 50].iloc[0]
     assert row["N_15"] == 20 and row["Dist_15"] == 200.0
     assert row["N_25"] == 30 and row["Dist_25"] == 1000.0
@@ -66,7 +69,11 @@ def test_ring_atomic_ties():
                   n=np.array([1, 5, 5, 5, 5]),
                   binary_sums={"g": np.zeros(5)},
                   value_arrays={}, unit_size=100)
-    r = run_knn_stats(cd, [2], stats={"g": ["ratio"]})
+    # BACKLOG 99: THE ATOMIC RING tie rule - equidistant cells are
+    # taken together - which only has meaning when a ring is taken
+    # whole. Named, not inherited.
+    r = run_knn_stats(cd, [2], stats={"g": ["ratio"]},
+                      overshoot_mode="whole")
     # from origin, all four neighbours sit at exactly 100 m: k=2 must
     # report the whole ring (N = 1 + 20), not a partial count
     assert r[r.EastWest == 50].iloc[0]["N_2"] == 21
@@ -104,7 +111,10 @@ def test_decay_leq_raw():
     df = pd.DataFrame({"E_grid": [50, 150, 250], "N_grid": [50, 50, 50],
                        "pop": [5, 5, 5], "grp": [1, 2, 3]})
     cells = df.rename(columns={"pop": "FullPop", "grp": "Treatment"})
+    # BACKLOG 99: named rather than inherited - the decay bound is
+    # asserted against whole-ring counts.
     r = run_knn(cells, [10, 15], count_all_col="FullPop",
+                overshoot_mode="whole",
                 count_group_col="Treatment", unit_size=100,
                 max_radius_units=10, id_col=None,
                 decay=Decay(half_life_m=100))

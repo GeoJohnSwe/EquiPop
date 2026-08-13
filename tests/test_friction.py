@@ -32,3 +32,54 @@ def test_features_to_friction_reproduces_gridby_river():
     out2 = features_to_friction(gdf2, unit_size=100.0)
     hit = out2[(out2.x == 3050) & (out2.y == 550)]
     assert np.isclose(hit.friction.iloc[0], 10.0)   # 6 + 4
+
+
+def test_friction_scales_with_step_length():
+    """BACKLOG 139: friction is a delay per unit TRAVELLED.
+
+    Entering a friction-1 cell DIAGONALLY must cost sqrt(2)*(1+1),
+    not sqrt(2)+1. The two rules are algebraically identical on open
+    ground (friction 0) and on every orthogonal move (step 1), so
+    ONLY a diagonal move into a friction cell tells them apart.
+
+    This test exists because it did not. A mutant that scaled the
+    step but added friction unscaled passed the entire suite - 353
+    tests - because nothing crossed a barrier on the diagonal. A
+    guard that has never fired is a hypothesis.
+    """
+    import pandas as pd
+    from equipop.friction import FrictionGrid
+
+    U = 100.0
+    xs = [0, 0, 0, U, U, U, 2 * U, 2 * U, 2 * U]
+    ys = [0, U, 2 * U, 0, U, 2 * U, 0, U, 2 * U]
+    pop = pd.DataFrame({"x": xs, "y": ys,
+                        "count_all": 1.0, "count_group": 0.0})
+    fr = pd.DataFrame({"x": [U], "y": [U], "friction": [1.0]})
+
+    g = FrictionGrid(pop, fr, unit_size=U)
+    u = int(U)
+    origin = int(((0 - g.x0) // u) * g.ny + ((0 - g.y0) // u))
+    r = g.rounds_from(np.array([origin]))[0]
+
+    root2 = 2.0 ** 0.5
+    idx = {(int(x / U), int(y / U)): i
+           for i, (x, y) in enumerate(zip(xs, ys))}
+
+    # THE discriminating cell: reached by one diagonal step into
+    # friction 1.  correct sqrt(2)*(1+1) = 2.8284;  wrong sqrt(2)+1
+    assert np.isclose(r[idx[(1, 1)]], root2 * 2.0, rtol=1e-12)
+    assert not np.isclose(r[idx[(1, 1)]], root2 + 1.0, rtol=1e-6)
+
+    # orthogonal steps over open ground are unchanged at exactly 1
+    assert np.isclose(r[idx[(0, 1)]], 1.0, rtol=1e-12)
+    assert np.isclose(r[idx[(1, 0)]], 1.0, rtol=1e-12)
+    assert np.isclose(r[idx[(0, 2)]], 2.0, rtol=1e-12)
+
+    # a diagonal over OPEN ground costs sqrt(2), so (1,2) is reached
+    # from (0,1) for 1 + sqrt(2) - cheaper than going round
+    assert np.isclose(r[idx[(1, 2)]], 1.0 + root2, rtol=1e-12)
+    assert np.isclose(r[idx[(2, 1)]], 1.0 + root2, rtol=1e-12)
+
+    # and the far corner routes AROUND the friction cell, not through
+    assert np.isclose(r[idx[(2, 2)]], 2.0 + root2, rtol=1e-12)

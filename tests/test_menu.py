@@ -72,8 +72,24 @@ def test_radius_stats_engine_matches_fast():
     assert np.isclose(st.loc[0, "Mean_v_r400"], vals.mean())
 
 
-def test_tau_flat_grid_is_chebyshev():
-    """Flat friction: tau rounds reach the Chebyshev ball exactly."""
+def test_tau_flat_grid_is_octile_disc():
+    """Flat friction: a tau budget reaches the OCTILE disc.
+
+    BACKLOG 139. This test used to be called
+    test_tau_flat_grid_is_chebyshev and asserted 9 and 25 - the square
+    3x3 and 5x5 balls - because every move cost 1 whatever its length.
+    That was the defect, pinned here as if it were the specification.
+
+    A diagonal step covers sqrt(2) cell widths and now costs sqrt(2),
+    so a budget of 1 round buys the four rooks and NOT the corners.
+    The reachable set is the disc, not the square.
+
+    The honest limit: an 8-neighbour graph cannot travel in a straight
+    line, only in 45 and 90 degree steps, so its shortest path is
+    OCTILE - max + (sqrt(2)-1)*min - which overstates true Euclidean
+    distance by up to 8.2%, at 22.5 degrees off an axis, and by zero
+    along an axis or a perfect diagonal.
+    """
     nx = 11
     E, N = np.meshgrid(np.arange(nx) * U + U / 2,
                        np.arange(nx) * U + U / 2, indexing="ij")
@@ -84,10 +100,22 @@ def test_tau_flat_grid_is_chebyshev():
                                                    "NorthSouth"])
     centre = (int(5 * U + U / 2), int(5 * U + U / 2))
     corner = (int(U / 2), int(U / 2))
-    assert out.loc[centre, "N_tau1"] == 9      # 3x3 ball
-    assert out.loc[centre, "N_tau2"] == 25     # 5x5 ball
-    assert out.loc[corner, "N_tau1"] == 4      # clipped 2x2
-    assert out.loc[corner, "N_tau2"] == 9      # clipped 3x3
+    # centre: the octile disc - origin + 4 rooks at 1.0; then + 4
+    # diagonals at sqrt(2) + 4 rooks at 2.0
+    assert out.loc[centre, "N_tau1"] == 5
+    assert out.loc[centre, "N_tau2"] == 13
+    # corner: the same disc clipped to a quadrant
+    assert out.loc[corner, "N_tau1"] == 3
+    assert out.loc[corner, "N_tau2"] == 6
+
+    # and the rule itself, independently of the numbers above: every
+    # cell inside the budget is one the octile metric admits.
+    root2 = 2.0 ** 0.5
+    for tau in (1, 2):
+        want = sum(1 for dx in range(-5, 6) for dy in range(-5, 6)
+                   if max(abs(dx), abs(dy))
+                   + (root2 - 1) * min(abs(dx), abs(dy)) <= tau + 1e-9)
+        assert out.loc[centre, f"N_tau{tau}"] == want
 
 
 def test_decay_sum_exact():

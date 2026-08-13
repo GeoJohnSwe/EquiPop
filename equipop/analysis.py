@@ -34,7 +34,7 @@ from scipy.spatial import cKDTree
 import pandas as pd
 from itertools import groupby
 
-from . import selfpot
+from . import overshoot, selfpot
 from .decay import Decay
 
 
@@ -90,6 +90,7 @@ def run_knn(
     naming: str = "short",
     seed: int | None = None,
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
+    overshoot_mode: str | None = None,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis for every populated cell.
@@ -130,6 +131,18 @@ def run_knn(
     MaxDistance. Per-k columns as per the chosen naming scheme.
     """
     k_values = sorted(k_values)
+    bad = [k for k in k_values if k <= 0]
+    if bad:
+        raise ValueError(
+            f"[k] k must be a POSITIVE number of people; got {bad}. "
+            "k=0 asks for nobody, and every mode then answers "
+            "differently about a neighbourhood that does not exist. "
+            "Found by John's hand check, 1.30. Nothing was computed.")
+    osm = overshoot.resolve(overshoot_mode)
+    _seed_given = seed is not None
+    os_seed = int(seed) if _seed_given else overshoot.draw_seed()
+    if osm == overshoot.SAMPLED:
+        print(overshoot.seed_message(os_seed, _seed_given))
     sp = selfpot.check(self_potential)          # BACKLOG 153
     nm = NAMES[naming]
 
@@ -162,6 +175,8 @@ def run_knn(
         e0 = int(getattr(row, "E_grid"))
         n0 = int(getattr(row, "N_grid"))
         local_all, local_grp = lookup[(e0, n0)]
+        origin_ident = int(overshoot.cell_identity(
+            round(e0 / step), round(n0 / step)))
 
         rec: dict = {
             "Id": getattr(row, id_col) if id_col else None,
@@ -182,15 +197,24 @@ def run_knn(
         d_all, d_grp = local_all * _w0, local_grp * _w0
         pending = list(k_values)
 
-        def record(k: int):
-            """Write all per-k output columns at the current state."""
-            rec[col("N", k)] = sum_all
-            rec[col("T", k)] = sum_grp
-            rec[col("R", k)] = sum_grp / sum_all if sum_all else np.nan
-            d_k = dist_m
-            if d_k <= 0.0 and sum_all >= k:
+        def record(k: int, n=None, t=None, d=None):
+            """Write all per-k output columns at the current state.
+
+            BACKLOG 99: n, t and d override the running totals so a
+            PARTIAL ring can be recorded without the running totals
+            having taken the whole of it. Left as None the behaviour
+            is exactly as before."""
+            n = sum_all if n is None else n
+            t = sum_grp if t is None else t
+            rec[col("N", k)] = n
+            rec[col("T", k)] = t
+            rec[col("R", k)] = t / n if n else np.nan
+            d_k = dist_m if d is None else d
+            if d_k <= 0.0 and n >= k:
                 # the whole neighbourhood IS the origin cell, so the
                 # radius is not zero - it is unmeasured (BACKLOG 153)
+                # the share reported is `n`; the equal-area radius
+                # needs the people actually STANDING in the cell
                 d_k = selfpot.radius_for_k(unit_size, k,
                                            float(sum_all), sp)
             rec[col("Dist", k)] = d_k
@@ -199,7 +223,21 @@ def run_knn(
                 rec[col("TD", k)] = d_grp
                 rec[col("RD", k)] = d_grp / d_all if d_all else np.nan
 
-        # thresholds already satisfied inside the origin cell
+        # thresholds already satisfied inside the origin cell.
+        # BACKLOG 99: the origin cell is a RING TOO - a ring of one -
+        # and a k smaller than its own population takes a share of it,
+        # exactly as the fast engine does by treating it as ring 1.
+        # Handling it as a whole cell here was the two engines'
+        # remaining disagreement under `proportional`.
+        if osm != overshoot.WHOLE:
+            _oid = np.array([origin_ident], dtype=np.uint64)
+            _opop = np.array([local_all], dtype=float)
+            while pending and local_all >= pending[0]:
+                k = pending.pop(0)
+                wt, taken = overshoot.ring_weights(
+                    osm, k, 0.0, _opop, _oid,
+                    seed=os_seed, origin_id=origin_ident)
+                record(k, n=taken, t=local_grp * float(wt[0]), d=0.0)
         while pending and sum_all >= pending[0]:
             record(pending.pop(0))
 
@@ -224,13 +262,38 @@ def run_knn(
                         record(pending.pop(0))
             else:  # "ring" - atomic per equidistant ring
                 ring_all = ring_grp = 0.0
+                r_pop, r_grp, r_ids = [], [], []
                 for dx, dy in offsets:
-                    cell = lookup.get((e0 + dx * step, n0 + dy * step))
+                    ex, ny = e0 + dx * step, n0 + dy * step
+                    cell = lookup.get((ex, ny))
                     if cell:
                         ring_all += cell[0]
                         ring_grp += cell[1]
+                        r_pop.append(cell[0])
+                        r_grp.append(cell[1])
+                        r_ids.append(overshoot.cell_identity(
+                            round(ex / step), round(ny / step)))
                 if ring_all == 0:
                     continue
+                # BACKLOG 99: any k this ring CROSSES takes only a
+                # share of it. Recorded BEFORE the running totals
+                # swallow the whole ring - under `whole` the share is
+                # 1.0 and the two are identical.
+                if osm != overshoot.WHOLE:
+                    r_pop_a = np.asarray(r_pop, dtype=float)
+                    r_grp_a = np.asarray(r_grp, dtype=float)
+                    r_ids_a = np.asarray(r_ids, dtype=np.uint64)
+                    while pending and sum_all + ring_all >= pending[0]:
+                        k = pending.pop(0)
+                        wt, taken = overshoot.ring_weights(
+                            osm, k, sum_all, r_pop_a, r_ids_a,
+                            seed=os_seed, origin_id=int(origin_ident))
+                        f = taken / ring_all if ring_all else 1.0
+                        record(k,
+                               n=sum_all + taken,
+                               t=sum_grp + float((r_grp_a * wt).sum()),
+                               d=float(overshoot.radius(dist_m,
+                                                        ring_dist_m, f)))
                 sum_all += ring_all
                 sum_grp += ring_grp
                 d_all += ring_all * w
@@ -274,6 +337,8 @@ def run_knn_stats(
     max_radius_units: int | None = None,
     r_values: list[float] | None = None,
     m_neighbors: int | None = None,
+    overshoot_mode: str | None = None,
+    seed: int | None = None,
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
 ) -> pd.DataFrame:
     """
@@ -316,6 +381,21 @@ def run_knn_stats(
     r_values = sorted(r_values or [])
     if not (k_values or r_values):
         raise ValueError("give k_values and/or r_values")
+    osm = overshoot.resolve(overshoot_mode)
+    _seed_given = seed is not None
+    os_seed = int(seed) if _seed_given else overshoot.draw_seed()
+    if osm == overshoot.SAMPLED:
+        print(overshoot.seed_message(os_seed, _seed_given))
+    bad = [k for k in k_values if k <= 0]
+    if bad:
+        raise ValueError(
+            f"[k] k must be a POSITIVE number of people; got {bad}. "
+            "k=0 asks for nobody, and every mode then answers "
+            "differently about a neighbourhood that does not exist - "
+            "the whole-ring rule returns the origin cell, a "
+            "proportional share returns zero people and an undefined "
+            "R. Found by John's hand check, 1.30. Nothing was "
+            "computed.")
 
     bin_vars = [v for v in stats if v in cd.binary_sums]
     val_vars = [v for v in stats if v in cd.value_arrays]
@@ -323,6 +403,10 @@ def run_knn_stats(
     if unknown:
         raise ValueError(f"Variables {unknown} were not declared in "
                          f"build_cells(binary_vars=..., value_vars=...).")
+    # BACKLOG 99/118: a quarter of a boundary cell has no median.
+    osm = overshoot.fallback_for_value_statistics(
+        osm, [f"{s} of {v}" for v in val_vars for s in stats[v]],
+        chosen=overshoot_mode is not None)
     for v in bin_vars:
         for s in stats[v]:
             if s not in BINARY_STATS:
@@ -392,6 +476,8 @@ def run_knn_stats(
         # and _walk only fills this scratch.
         scratch["selfpot"] = {}
         scratch["over"] = {}
+        _oid = int(overshoot.cell_identity(round(float(e0) / cd.unit_size),
+                                           round(float(n0) / cd.unit_size)))
         rec: dict = {"EastWest": round(float(e0), 2),
                      "NorthSouth": round(float(n0), 2),
                      "N_local": float(cd.n[oi])}
@@ -408,24 +494,32 @@ def run_knn_stats(
         pending = list(k_values)
         pending_r = list(r_values)
 
-        def record(k, suffix=None, with_dist=True):
+        def record(k, suffix=None, with_dist=True, partial=None):
+            """BACKLOG 99: `partial` carries a SHARE of the crossing
+            ring - what to report instead of the running totals, which
+            have not swallowed that ring yet. None = as before."""
             suffix = f"{k}" if suffix is None else suffix
-            rec[f"N_{suffix}"] = sum_n
+            n_use = sum_n if partial is None else partial["n"]
+            t_use = bin_t if partial is None else partial["t"]
+            rec[f"N_{suffix}"] = n_use
             if with_dist:
-                d_k = dist_m
-                if d_k <= 0.0 and sum_n >= k:
+                d_k = dist_m if partial is None else partial["d"]
+                if d_k <= 0.0 and n_use >= k:
                     # whole neighbourhood inside the origin cell
                     # (BACKLOG 95) - same rule as the fast engine
-                    d_k = selfpot.radius_for_k(cd.unit_size, k,
-                                               float(sum_n), sp)
+                    # the equal-area radius needs the people STANDING
+                    # in the cell, not the share reported
+                    _pop = (float(sum_n) if partial is None
+                            else float(partial["cellpop"]))
+                    d_k = selfpot.radius_for_k(cd.unit_size, k, _pop, sp)
                     scratch["selfpot"][k] = \
                         scratch["selfpot"].get(k, 0) + 1
-                if sum_n >= 2 * k:                      # BACKLOG 94
+                if n_use >= 2 * k:                      # BACKLOG 94
                     scratch["over"][k] = scratch["over"].get(k, 0) + 1
                 rec[f"Dist_{suffix}"] = d_k
             for v in bin_vars:
                 for s in stats[v]:
-                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = BINARY_STATS[s](sum_n, bin_t[v])
+                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = BINARY_STATS[s](n_use, t_use[v])
             for v in val_vars:
                 x = (np.concatenate(val_chunks[v])
                      if val_chunks[v] else np.empty(0))
@@ -452,6 +546,32 @@ def run_knn_stats(
                 j += 1
             if not exhaustive and abs(d - d_last) < 1e-6:
                 touched_last = True     # ring may be cut by the m limit
+            # BACKLOG 99: this engine walks its own neighbour list and
+            # needs the same rule as the other four, or machine 2
+            # answers differently from machine 1 on the same data.
+            ring_n = float(sum(float(cd.n[ci]) for ci in ring))
+            if osm != overshoot.WHOLE and ring_n > 0:
+                r_pop = np.array([float(cd.n[ci]) for ci in ring])
+                r_ids = overshoot.cell_identity(
+                    np.round(np.array([cd.E[ci] for ci in ring])
+                             / cd.unit_size),
+                    np.round(np.array([cd.N[ci] for ci in ring])
+                             / cd.unit_size))
+                while pending and sum_n + ring_n >= pending[0]:
+                    k = pending.pop(0)
+                    wt, taken = overshoot.ring_weights(
+                        osm, k, sum_n, r_pop, r_ids,
+                        seed=os_seed, origin_id=_oid)
+                    f = taken / ring_n if ring_n else 1.0
+                    _partial = {
+                        "n": sum_n + taken,
+                        "t": {v: bin_t[v] + float(sum(
+                            cd.binary_sums[v][ci] * w
+                            for ci, w in zip(ring, wt)))
+                            for v in bin_vars},
+                        "d": float(overshoot.radius(dist_m, float(d), f)),
+                        "cellpop": sum_n + ring_n}
+                    record(k, partial=_partial)
             for ci in ring:
                 sum_n += float(cd.n[ci])
                 for v in bin_vars:

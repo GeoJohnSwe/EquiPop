@@ -114,3 +114,47 @@ def test_dem_zonal_mean(tmp_path):
     alt = dem_to_cell_altitude(str(path), E=[50.0, 150.0], N=[50.0, 50.0],
                                unit_size=100.0)
     assert np.allclose(alt, [5.0, 25.0])
+
+
+def test_slope_friction_scales_with_step_length():
+    """BACKLOG 139: under slope too, friction is a delay per unit
+    TRAVELLED - cost = step * (penalty(slope) + friction).
+
+    A mutant writing `step * penalty(s) + friction` passed the whole
+    suite, INCLUDING test_flat_dem_reproduces_friction_exactly. That
+    fixture carries friction 3, high enough that every shortest path
+    routes AROUND the barrier, so no path ever enters a friction cell
+    and the scaling rule is never exercised. Friction 1 here is cheap
+    enough that the diagonal THROUGH it is the shortest path, which
+    is what makes the two rules distinguishable.
+    """
+    from equipop.friction import FrictionGrid
+    from equipop.slope import SlopeGrid
+
+    xs = [0, 0, 0, U, U, U, 2 * U, 2 * U, 2 * U]
+    ys = [0, U, 2 * U, 0, U, 2 * U, 0, U, 2 * U]
+    pop = pd.DataFrame({"x": xs, "y": ys,
+                        "count_all": 1.0, "count_group": 0.0})
+    fr = pd.DataFrame({"x": [U], "y": [U], "friction": [1.0]})
+    flat = np.zeros(9)
+
+    u = int(U)
+    root2 = 2.0 ** 0.5
+    idx = {(int(x / U), int(y / U)): i
+           for i, (x, y) in enumerate(zip(xs, ys))}
+
+    fg = FrictionGrid(pop, fr, unit_size=U)
+    origin = int(((0 - fg.x0) // u) * fg.ny + ((0 - fg.y0) // u))
+    want = fg.rounds_from(np.array([origin]))[0]
+
+    # the absolute truth, independent of the friction engine
+    assert np.isclose(want[idx[(1, 1)]], root2 * 2.0, rtol=1e-12)
+
+    for model in SLOPE_MODELS:
+        sg = SlopeGrid(pop, fr, unit_size=U, altitude=flat, model=model)
+        got = sg.rounds_from(np.array([origin]))[0]
+        assert np.allclose(got, want, rtol=0, atol=1e-9), (
+            f"flat DEM must reproduce friction EXACTLY, model={model}")
+        assert np.isclose(got[idx[(1, 1)]], root2 * 2.0, rtol=1e-12), (
+            f"diagonal into friction 1 must cost sqrt(2)*(1+1), "
+            f"model={model}")

@@ -31,7 +31,8 @@ MEASURES = ["mean", "median", "gini", "sd", "variance", "se",
 MEASURE_KEY = {"variance": "var"}
 
 
-from .alg_counts import (OUTSIDE_MODES, REF_MODES,  # noqa: F401
+from .alg_counts import (OUTSIDE_MODES, OVERSHOOT_MODES,  # noqa: F401
+                         OVERSHOOT_VALUES, REF_MODES,
                          SELFPOT_MODES, SELFPOT_VALUES)
 # REF_MODES carries its "(fill 1a)" hints from alg_counts, so machine
 # 1 and machine 2 cannot start describing the same ladder differently
@@ -116,6 +117,20 @@ class ValueStatistics(EquipopAlgorithm):
             "selfpot", "Self-potential - the distance to what is "
             "LOCAL, inside your own cell", options=SELFPOT_MODES,
             defaultValue=2), advanced=True)
+        # BACKLOG 99. Machine 2 defaults to WHOLE, machine 1 to
+        # PROPORTIONAL, and the difference is deliberate: a median, a
+        # percentile and a Gini need whole cells, so the core refuses
+        # proportional here until weighted statistics land (BACKLOG
+        # 118). All three are still offered - the refusal names the
+        # reason, and an absent option would explain nothing.
+        self.add(QgsProcessingParameterEnum(
+            "overshoot", "The ring that crosses k",
+            options=OVERSHOOT_MODES, defaultValue=0), advanced=True)
+        self.add(QgsProcessingParameterNumber(
+            "seed", "Seed - only used by 'sampled' and by "
+            "permutations; empty draws one and prints it",
+            optional=True,
+            type=QgsProcessingParameterNumber.Integer), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
@@ -183,7 +198,21 @@ class ValueStatistics(EquipopAlgorithm):
                 (self.parameterAsStrings(parameters, "yfield", context)
                  or [None])[0])
 
+        # BACKLOG 99. Named explicitly, as in machine 1. Where the
+        # two machines end up on DIFFERENT modes, say so once: a
+        # student running both tools over one dataset would otherwise
+        # get two different N_k with nothing said, which is the "two
+        # doors disagree" defect arriving as "two machines disagree".
+        from equipop.doors import rungs as _rungs
+        overshoot_mode = OVERSHOOT_VALUES[
+            (self.parameterAsEnums(parameters, "overshoot",
+                                   context) or [0])[0]]
+        if overshoot_mode != _rungs.OVERSHOOT_VALUES[
+                _rungs.OVERSHOOT_DEFAULT]:
+            ch.info(_rungs.overshoot_note(overshoot_mode))
+        seed = self.optional_int(parameters, "seed")
         kw = dict(unit_size=float(unit),
+                  overshoot_mode=overshoot_mode, seed=seed,
                   self_potential=SELFPOT_VALUES[
                       (self.parameterAsEnums(parameters, "selfpot",
                                              context) or [2])[0]],

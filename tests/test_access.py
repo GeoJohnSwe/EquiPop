@@ -112,7 +112,16 @@ def test_opportunity_horizon():
 
 
 def test_effort_potential_brute_flat():
-    """Flat DEM, roundtrip: effort = Chebyshev moves; brute-check A."""
+    """Flat DEM, roundtrip: effort = OCTILE moves; brute-check A.
+
+    BACKLOG 139. The reference below used to be the Chebyshev
+    distance, max(|dx|, |dy|), which assumed a diagonal move was free.
+    A diagonal now costs sqrt(2), so the exact 8-neighbour shortest
+    path is the octile distance. Flat terrain gives penalty(0) = 1 for
+    every model, so a step costs its length and nothing more; the
+    round trip is symmetric, so the per-leg average equals the one-way
+    cost.
+    """
     n = 5
     pop = pd.DataFrame({
         "x": np.repeat(np.arange(n), n) * U + U / 2,
@@ -126,9 +135,12 @@ def test_effort_potential_brute_flat():
                            model="tobler", roundtrip=True,
                            unit_size=U).set_index(["x", "y"])
     gx, gy = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    root2 = 2.0 ** 0.5
     for (px, py), row in res.iterrows():
         i, j = int((px - U / 2) // U), int((py - U / 2) // U)
-        cheb = np.maximum(np.abs(np.array([0, 4]) - i),
-                          np.abs(np.array([0, 4]) - j)).astype(float)
-        a = (dec.weight_vec(cheb) * np.array([2.0, 3.0])).sum()
+        adx = np.abs(np.array([0, 4]) - i).astype(float)
+        ady = np.abs(np.array([0, 4]) - j).astype(float)
+        oct_ = (np.maximum(adx, ady)
+                + (root2 - 1.0) * np.minimum(adx, ady))
+        a = (dec.weight_vec(oct_) * np.array([2.0, 3.0])).sum()
         assert np.isclose(row["A"], a, rtol=1e-9)

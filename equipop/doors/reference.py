@@ -54,13 +54,80 @@ SPEC = {
     "k_values": [400],
     "r_values": [800.0],
     "values": {"count_group": ["mean", "median", "gini"]},
+    # BACKLOG 99: PINNED EXPLICITLY, and that is the point. When the
+    # default moved from `whole` to `proportional` in 1.30 this
+    # reference was silently invalidated - 2287 of 2360 rows changed -
+    # because it inherited whatever the default happened to be. A
+    # conformance answer key exists to prove the DOORS agree with the
+    # core; it must not move when an unrelated default moves. Named
+    # here, a future default change leaves it untouched, and changing
+    # the key becomes a deliberate act with a reason recorded.
+    #
+    # WHY `whole` AND NOT THE NEW DEFAULT. This spec asks for mean,
+    # median and Gini, and `proportional` REFUSES those - a fraction
+    # of a cell has no distribution behind it (BACKLOG 118). Pinning
+    # `whole` keeps the shipped key meaning exactly what it meant, so
+    # no door has to be re-certified for a reason unrelated to it.
+    # THE GAP THIS LEAVES, recorded rather than hidden: the doors are
+    # now conformance-checked only under `whole`, while most users
+    # will get `proportional`. A SECOND key under proportional -
+    # counts, shares and distances only - is needed. BACKLOG 162.
+    "overshoot": "whole",
 }
+
+# ===================================================================
+# BACKLOG 162 - THE SECOND KEY, under the mode users actually get.
+#
+# The key above is pinned to `whole`, and it has to be: it asks for a
+# mean, a median and a Gini, and `proportional` refuses those until
+# weighted statistics land (BACKLOG 118). But from 1.30 the DEFAULT
+# is proportional, so the shipped key certified the doors under a
+# mode most runs will never use. A conformance key that does not
+# cover the default is a certificate for someone else's run.
+#
+# So there are two, and the difference between them is deliberate:
+# this one asks only for counts, shares and distances - everything
+# proportional can compute - and is generated under proportional.
+# Between them the doors are held to both sides of the 1.30 change.
+#
+# WHAT IS EXACT CHANGES WITH THE MODE, and that is not a relaxation.
+# Under `whole`, T_k is a number of PEOPLE and 270 against 271 is
+# wrong rather than imprecise. Under `proportional` T_k is a
+# FRACTION of people - 227.218 - an estimate reached by multiplying,
+# and holding an estimate to bit-equality would be asserting
+# something the mathematics does not claim. N_k stays exact because
+# proportional makes it exactly k by construction, which is the whole
+# point of the mode.
+# ===================================================================
+SPEC_PROPORTIONAL = dict(
+    SPEC,
+    overshoot="proportional",
+    values={},                      # no distributions under a fraction
+    exact_prefixes=("N_", "Rounds_"),
+)
 
 KEY = ["x", "y"]
 # Whole people: these must match exactly. Everything else is
 # continuous (Dist_, R_, Mean_, Med_, Gini_, percentiles) and is
 # compared within a tolerance.
 EXACT_PREFIXES = ("N_", "T_", "Nv_", "Rounds_")
+REFERENCE_PROPORTIONAL_CSV = os.path.join(
+    _DATA, "gridby_reference_proportional.csv")
+
+#: name -> (spec, csv path). The doors and the tests name a key
+#: rather than a file, so adding a third is one entry here.
+KEYS = {
+    "whole": (SPEC, REFERENCE_CSV),
+    "proportional": (SPEC_PROPORTIONAL, REFERENCE_PROPORTIONAL_CSV),
+}
+
+
+def _key(name):
+    if name not in KEYS:
+        raise ValueError(
+            f"[reference] no conformance key called '{name}'. "
+            f"Available: {', '.join(KEYS)}.")
+    return KEYS[name]
 
 
 def _gridby_inputs():
@@ -69,50 +136,62 @@ def _gridby_inputs():
     return p
 
 
-def generate() -> pd.DataFrame:
-    """Run the conformance spec through the Python core."""
+def generate(key: str = "whole") -> pd.DataFrame:
+    """Run a conformance spec through the Python core."""
     from equipop.stata_bridge import dispatch
+    spec, _ = _key(key)
     p = _gridby_inputs()
     x, y = p.x.values.astype(float), p.y.values.astype(float)
-    common = dict(unit_size=SPEC["unit_size"], k_values=SPEC["k_values"])
+    common = dict(unit_size=spec["unit_size"],
+                  k_values=spec["k_values"],
+                  overshoot_mode=spec["overshoot"])
 
     counts = dispatch("counts", x, y,
-                      weight=p[SPEC["weight"]].values,
+                      weight=p[spec["weight"]].values,
                       treat={n: p[c].values
-                             for n, c in SPEC["treat"].items()},
-                      treat_are_counts=SPEC["treat_are_counts"],
-                      r_values=SPEC["r_values"], **common)
+                             for n, c in spec["treat"].items()},
+                      treat_are_counts=spec["treat_are_counts"],
+                      r_values=spec["r_values"], **common)
 
-    stats = dispatch("stats", x, y,
-                     weight=p[SPEC["weight"]].values,
-                     values={c: p[c].values for c in SPEC["values"]},
-                     stats=SPEC["values"], **common)
+    sources = [counts]
+    # A key with no value statistics runs machine 1 only. That is not
+    # a gap in the key: under `proportional` machine 2 REFUSES, so a
+    # stats column here would be a promise no door can keep.
+    if spec["values"]:
+        sources.append(dispatch(
+            "stats", x, y, weight=p[spec["weight"]].values,
+            values={c: p[c].values for c in spec["values"]},
+            stats=spec["values"], **common))
 
     out = pd.DataFrame({"x": x, "y": y})
-    for src in (counts, stats):
+    for src in sources:
         for col, arr in src.items():
             if col not in out:
                 out[col] = np.asarray(arr, dtype=float)
     return out[KEY + sorted(c for c in out.columns if c not in KEY)]
 
 
-def write(path: str = REFERENCE_CSV) -> str:
-    """Write the reference with the format pinned."""
-    df = generate()
+def write(path: str | None = None, key: str = "whole") -> str:
+    """Write a reference with the format pinned."""
+    spec, default_path = _key(key)
+    path = path or default_path
+    df = generate(key)
     df.to_csv(path, index=False, encoding="utf-8",
               float_format="%.10g", lineterminator="\n")
     return path
 
 
-def load_reference() -> pd.DataFrame:
-    if not os.path.exists(REFERENCE_CSV):
+def load_reference(key: str = "whole") -> pd.DataFrame:
+    spec, path = _key(key)
+    if not os.path.exists(path):
         raise FileNotFoundError(
-            "gridby_reference.csv is missing from the package. "
+            f"{os.path.basename(path)} is missing from the package. "
             "Regenerate it with:  python -m equipop.doors.reference")
-    return pd.read_csv(REFERENCE_CSV, encoding="utf-8")
+    return pd.read_csv(path, encoding="utf-8")
 
 
-def compare(table, rtol: float = 1e-6, atol: float = 1e-9) -> dict:
+def compare(table, rtol: float = 1e-6, atol: float = 1e-9,
+            key: str = "whole") -> dict:
     """Measure a door's output against the reference.
 
     `table` is anything pandas can turn into a DataFrame - a door's
@@ -124,12 +203,16 @@ def compare(table, rtol: float = 1e-6, atol: float = 1e-9) -> dict:
     every column that disagrees with the worst offending row named.
     A door is finished when ok is True.
     """
-    ref = load_reference()
+    spec, _ = _key(key)
+    ref = load_reference(key)
     got = pd.DataFrame(table).copy()
+    # Which columns are whole people depends on the MODE, not on the
+    # column name - see the note on SPEC_PROPORTIONAL.
+    exact = tuple(spec.get("exact_prefixes", EXACT_PREFIXES))
 
     report = {"ok": False, "missing_columns": [], "extra_columns": [],
               "row_mismatch": None, "columns_differing": {},
-              "rows_compared": 0}
+              "rows_compared": 0, "key": key}
 
     for k in KEY:
         if k not in got.columns:
@@ -158,7 +241,7 @@ def compare(table, rtol: float = 1e-6, atol: float = 1e-9) -> dict:
             continue
         a = merged[f"{c}_ref"].to_numpy(float)
         b = merged[f"{c}_got"].to_numpy(float)
-        if c.startswith(EXACT_PREFIXES):
+        if c.startswith(exact):
             bad = ~np.isclose(a, b, rtol=0, atol=1e-9, equal_nan=True)
             rule = "exact"
         else:
@@ -180,10 +263,12 @@ def compare(table, rtol: float = 1e-6, atol: float = 1e-9) -> dict:
 
 def explain(report: dict) -> str:
     """The report as sentences, for a door's message pane."""
+    key = report.get("key", "whole")
     if report["ok"]:
         return (f"Conformance PASSED: {report['rows_compared']} rows "
-                "match the Gridby reference on every column.")
-    lines = ["Conformance FAILED."]
+                f"match the Gridby reference ('{key}' key) on every "
+                "column.")
+    lines = [f"Conformance FAILED against the '{key}' key."]
     if report["row_mismatch"]:
         want, got = report["row_mismatch"]
         lines.append(f"  Rows: reference has {want}, this door "
@@ -200,8 +285,10 @@ def explain(report: dict) -> str:
 
 
 if __name__ == "__main__":
-    p = write()
-    df = load_reference()
-    print(f"[reference] wrote {p}")
-    print(f"[reference] {len(df)} rows x {len(df.columns)} columns")
-    print(f"[reference] columns: {', '.join(df.columns)}")
+    for name in KEYS:
+        path = write(key=name)
+        df = load_reference(name)
+        print(f"[reference] {name}: wrote {path}")
+        print(f"[reference] {name}: {len(df)} rows x "
+              f"{len(df.columns)} columns")
+        print(f"[reference] {name}: {', '.join(df.columns)}")

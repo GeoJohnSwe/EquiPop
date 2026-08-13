@@ -18,9 +18,10 @@ costs. 71 and 74 were the same duplication. Items 38/42/43/45/49
 appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
-1. **139** — a diagonal move costs the same as a straight one; RULED sqrt(2), clean break. Prerequisite for 99 under friction
-2. **99** — THE OVERSHOOT. Take a proportional share of the ring that crosses k. Raised by John: the original EquiPop existed to counter this. Tenfold error in R_k at a boundary at k=11
-3. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
+1. ~~**139**~~ — DONE, unreleased. A diagonal move now costs sqrt(2); iso-effort contours are round, not square
+2. ~~**99**~~ — DONE v1.30. THE OVERSHOOT, closed at both doors; ~~**162**~~ and ~~**163**~~ travelled with it
+3. **161** — Pro will not offer a barrier raster from the map. John field-found it: he had to drag and drop. Small, and it makes the barrier box behave the way the DEM box and all of QGIS already do
+4. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
 4. **128** — `equipop doctor`: one read-only diagnostic, every door. The dependency story is the adoption risk
 5. **129** — version the output SEMANTICS, not just the structure. 1.29.5 changed what Dist_k MEANS and said nothing
 6. **117** — one validated run specification, used by the package and every door
@@ -273,6 +274,76 @@ appeared twice; the weaker copy is gone.*
 
 - ~~154~~ | DONE v1.29.8 | Pro's rule promoted into the core, in run_knn_stats - the one place every door and the Python API reach statistics through, and not the per-neighbourhood inner loop. The same data still runs for mean and median; only the Gini is refused, naming the variable. check_gini_input() carries the reasoning, including the measurement that killed the shift-by-minimum idea.
 
+- ~~162~~ | DONE v1.30 | A SECOND CONFORMANCE KEY, under the mode
+  users actually get. The shipped key is pinned to `whole` and has
+  to be - it asks for a mean, a median and a Gini, and
+  `proportional` refuses those until 118. But from 1.30 the DEFAULT
+  is proportional, so the key certified both doors under a mode most
+  runs will never use, and the mode nearly every run WILL use was
+  checked by nothing. equipop/data/gridby_reference_proportional.csv
+  ships beside the first: counts, shares and distances only,
+  generated under `proportional`, both doors held to it.
+  WHAT IS EXACT FOLLOWS THE MODE, and this is not a relaxation.
+  Under `whole` T_k is a number of PEOPLE and 270 against 271 is
+  wrong rather than imprecise. Under `proportional` it is a FRACTION
+  of people reached by multiplying, and holding an estimate to
+  bit-equality asserts more than the mathematics claims. N_k stays
+  exact both ways - proportional makes it exactly k by construction,
+  and the shipped key reads 400 in all 2360 rows, which is the
+  mode's defining property made checkable. reference.py now takes a
+  KEY NAME rather than a path, so a third is one entry in KEYS.
+
+- ~~163~~ | DONE v1.30 | BACKLOG 148 WAS HALF-SHIPPED, found while
+  adding the overshoot to the manifest. 1.29.6 added `population`
+  and `source` to _manifest_rows, wrote the reasoning into the
+  docstring - and NEITHER CALL SITE EVER PASSED THEM. So the
+  settings that define the numbers were still absent from every
+  manifest, and 148's own complaint (Claude could not use two of
+  John's manifests to settle which of his runs had differed) was
+  still true after the fix. Invisible because the manifest test
+  asked for engine, k, cell size and version only.
+  A default argument is the easiest place in this codebase for a
+  feature to disappear. The manifest now records both ladders, the
+  count and type fields, the keepoutside rung, self-potential, the
+  overshoot mode, the seed and the source analysed - and a test
+  reads them back, broken three ways on purpose.
+
+- 161 | open v1.30 | PRO WILL NOT OFFER A BARRIER RASTER FROM THE
+  MAP. John, field, 1.29.9: the raster was already loaded in the
+  Contents pane, but the Barrier rasters box has no dropdown, so he
+  had to drag and drop it in. "It works but it is too complex for
+  unexperienced users." He wants it to look like the DEM box, which
+  does offer the dropdown.
+  THE CAUSE. Two lines, declared differently:
+      dem            ["DERasterDataset", "GPRasterLayer"]
+      barrierrasters  "DERasterDataset"      multiValue=True
+  GPRasterLayer is what makes Pro populate the list from the map.
+  The barrier box never had it. QGIS is NOT affected - it uses
+  QgsProcessingParameterRasterLayer for the barrier raster and the
+  DEM alike, so Q has always behaved the way John wants Pro to.
+  THE TRAP. Adding the datatype alone produces a dropdown that then
+  FAILS. The DEM survives a Layer object because it is read through
+  _ref(), the v1.16.7 normaliser ("Expected a Raster instance or
+  path name"). The barrier rasters are read as DISPLAY TEXT instead:
+      _txt(pm, "barrierrasters").split(";")
+  and a layer's text is its NAME, not a path. So the fix is two
+  parts: add GPRasterLayer, AND read pm["barrierrasters"].values,
+  passing each through _ref().
+  A SECOND, OLDER DEFECT IN THE SAME LINE. Pro renders a multi-value
+  box as its members joined by ";", and QUOTES any member containing
+  a space. So a barrier raster in a folder with a space in its name
+  already comes back as 'C:\My Data\friction.tif' - quotes included -
+  and splitting on ";" hands that straight to the reader. Present
+  since the parameter was written; invisible because no test uses a
+  path with a space in it. Same family as the GeoPackage catalogPath
+  finding: arcpy hands back a display string and the code treats it
+  as a location.
+  THE SIMULATOR CANNOT SEE ANY OF THIS. tests/test_arcgis_stub.py
+  models Parameter.valueAsText as str(self.value) and has no notion
+  of multiValue, .values, semicolon joining or quoting. It must
+  learn the real behaviour first, or the fix is unprovable here and
+  John field-tests it blind.
+
 - ~~160~~ | DONE v1.29.8 | Both doors read the working CRS's linear unit and say it. QGIS maps QgsUnitTypes; Pro reads linearUnitName. The run message and the closing Dist_k note both carry the real unit, the box labels say 'map units', and NO WARNING is raised - John, 1.29.7: 'no need to warn - the users will understand.' Guarded by a test that no source file asserts metres without asking.
 
 - ~~155~~ | DONE v1.29.8 | A fractional cell size is REFUSED, not rounded, in both QGIS machines and in Pro's runner. The rule is whole MAP UNITS, per John's correction in 160.
@@ -500,7 +571,8 @@ appeared twice; the weaker copy is gone.*
 
 - ~~140~~ | DONE v1.29.6 | The label leads with what it wants: "OR: self-calibrating - ENTER A k, and each point's own Dist_k becomes its half-life (a number, not a field...)". The instruction was fifteen words in and misled the author of the software twice in two days.
 
-- 139 | open v1.29.5 | A DIAGONAL MOVE COSTS THE SAME AS A STRAIGHT
+- ~~139~~ | DONE, UNRELEASED (version number pending) | A DIAGONAL
+  MOVE COSTS THE SAME AS A STRAIGHT
   ONE, so on open ground the effort engine measures CHEBYSHEV
   distance, not Euclidean. FrictionGrid builds 8-neighbour moves with
   `data.append(1 + friction[dst])` - no sqrt(2). Consequences,
@@ -522,9 +594,63 @@ appeared twice; the weaker copy is gone.*
   why 99 must cover the effort engines from the start.
   Changes every effort result ever produced.
 
+  THE FIX. A step now costs its TRUE LENGTH and the penalty scales
+  with it, because friction is a delay per unit TRAVELLED, not a toll
+  paid at the door:
+      friction.py   step * (1 + friction[dst])
+      slope.py      step * (penalty(s) + friction[dst])
+  where step = hypot(dx, dy) = 1 or sqrt(2). slope.py had ALREADY
+  computed this - `run` uses it for the gradient - and then discarded
+  it when building the cost.
+
+  MEASURED, 21x21 open grid, one person per cell, tau budget:
+      tau      before (Chebyshev)   after (octile disc)
+        1               9                   5
+        2              25                  13
+        3              49                  29
+  "Before" measured against the untouched 1.29.9 archive, not
+  recalled. Open ground now agrees with the radial engine exactly at
+  k=5, 11 and 25 - an empty barrier layer no longer changes anything.
+  Flat DEM still reproduces run_knn_friction exactly, all models.
+
+  THE HONEST LIMIT, now written into the friction.py docstring and
+  the rewritten test: an 8-neighbour graph walks only in 45- and
+  90-degree steps, so its shortest path is OCTILE, max +
+  (sqrt(2)-1)*min. That overstates Euclidean distance by up to 8.2%,
+  worst at 22.5 degrees off an axis, zero along an axis or a perfect
+  diagonal. Systematic, bounded, declared.
+
+  TESTS. Two pinned the defect as the specification and were
+  rewritten: test_tau_flat_grid_is_chebyshev (now
+  ..._is_octile_disc) and test_effort_potential_brute_flat, whose
+  brute-force reference WAS the Chebyshev distance. A third,
+  test_effort_reach_flat_brute, was labelled "Chebyshev" but runs on
+  a 3x1 domain where no diagonal exists, so it passed for a reason
+  its own comment got wrong; relabelled, and it does NOT discriminate
+  this fix. MANUAL.md's validation record asserted the old behaviour
+  in three places and was corrected rather than left to contradict
+  pytest.
+
+  TWO MUTANTS SURVIVED THE WHOLE SUITE and are now killed by new
+  tests. (a) scaling the step but adding friction unscaled -
+  `step + friction` - is algebraically identical on open ground and
+  on every orthogonal move, so all 353 tests passed it; nothing
+  crossed a barrier on the diagonal. (b) the same in slope.py -
+  `step * penalty(s) + friction` - survived even
+  test_flat_dem_reproduces_friction_exactly, because that fixture
+  carries friction 3, high enough that every shortest path routes
+  AROUND the barrier and the scaling rule is never exercised. Both
+  are now pinned by a 3x3 fixture with friction 1 on the diagonal
+  cell, where the direct diagonal IS the shortest path: entering it
+  costs sqrt(2)*(1+1) = 2.8284, not sqrt(2)+1 = 2.4142.
+
+  NOT DONE HERE: the MANUAL row John asked for as the loud statement
+  of the clean break. The validation record is corrected; the
+  user-facing row is not written.
+
 - ~~138~~ | DONE v1.29.6 | Pro refuses an empty rung box exactly as QGIS does, and the verification now compares against what was ASKED FOR rather than what came back - so a dropped treatment can no longer pass a check that only ever saw the output. Guarded.
 
-- 99 | open v1.29.5 | THE OVERSHOOT: TAKE A PROPORTIONAL SHARE OF
+- ~~99~~ | DONE v1.30 | THE OVERSHOOT: TAKE A PROPORTIONAL SHARE OF
   THE RING THAT CROSSES k. Logged far too narrowly the first time -
   as a seam in Dist_k - and RAISED by John, 1.29.5, who is the
   authority here: "the original EquiPop was developed to counter the
@@ -585,9 +711,148 @@ appeared twice; the weaker copy is gone.*
        overshoot bounded by ONE CELL rather than a whole ring,
        reproducible from the seed. John ruled it is for the POINT
        ESTIMATE, not for a spread.
+  CLOSED v1.30. The last two reds were the SAME defect - NEITHER
+  DOOR COULD NAME A MODE - and they are gone the way the item said
+  they had to be, not papered over. Both machines in both doors
+  carry the box, the shared help and a SEED field; the two
+  conformance tests name the mode from the spec rather than
+  inheriting a default. 373 green.
+  WHAT THE DOOR HALF ADDED, beyond the box:
+  - THE SEED IS NOW AN ANALYTICAL BOX. Under `sampled` it decides
+    the answer, so by door_parity.py's own stated rule it belongs in
+    CORE. QGIS had never offered one and Pro's MACHINE 2 had never
+    offered one. Both now do, and both lists carry it.
+  - A ZERO-TRAP, caught before shipping. `parameterAsInt` returns 0
+    for an empty box, so an untouched QGIS seed would have read as
+    seed 0 - every `sampled` run pinned to one draw while announcing
+    that none was given. base.optional_int() distinguishes empty
+    from zero. The BACKLOG 116 family, and the reason the test for
+    it drives processAlgorithm rather than the helper: the FIRST
+    version of that test drove the helper, and swapping optional_int
+    back for parameterAsInt left it perfectly green. BACKLOG 95's
+    lesson, met again in the same shape.
+  - MACHINE 2 DEFAULTS TO `whole`, machine 1 to `proportional`, and
+    this is forced rather than chosen: run_knn_stats computes
+    `chosen = overshoot_mode is not None`, so the moment a door
+    passes its dropdown value explicitly an inherited `proportional`
+    becomes an EXPLICIT one and every value-statistics run raises.
+    Machine 2 still OFFERS all three - the refusal names 118, an
+    absent option would explain nothing, and the choice starts
+    working by itself when 118 lands.
+  - MACHINE 2 SAYS SO, once per run, naming the mode it used and
+    machine 1's default. Without it a student runs both machines
+    over one dataset and gets two different N_k with nothing said.
+    The condition is written against machine 1's DEFAULT so that it
+    retires by itself when 118 lands. Note honestly: today it fires
+    on EVERY machine-2 run, because both modes machine 2 can run
+    differ from machine 1's default. A test asserting a silent case
+    was written, failed, and was replaced rather than weakened.
+  - Pro's seed label said "only matters where permutations are
+    used". From 1.30 that is false.
+
+  THE CONFORMANCE KEY IS NOW PINNED EXPLICITLY, reference.py SPEC
+  "overshoot": "whole". The default flip had silently invalidated it -
+  2287 of 2360 rows moved - because it inherited whatever the default
+  was. A key that proves DOORS agree with the CORE must not move when
+  an unrelated default moves. Pinned to `whole` and not to the new
+  default because the spec asks for mean, median and Gini, which
+  `proportional` refuses. GAP RECORDED, BACKLOG 162: the doors are
+  therefore certified only under `whole` while most users will get
+  `proportional`; a second key - counts, shares and distances only -
+  is needed.
+
+  JOHN, 1.30, on 118: shares and distances matter more than the
+  awkward value statistics, and those can be dropped if they block
+  progress. That makes 118 far less of a barrier than feared.
+
+  FIVE ENGINES, NOT FOUR. run_knn_stats - machine 2 - walks its own
+  neighbour list and was missed. It disagreed with machine 1 on
+  Dist_50 (570.71 against 583.09) until wired. All five now agree to
+  ZERO in all three modes.
+
+  TWO DEFECTS FOUND WHILE UPDATING THE CHECKS, both mine, both
+  invisible under `whole`:
+  (a) the self-potential equal-area radius was handed the SHARE
+      reported instead of the people standing in the cell. Under
+      `proportional` N_k is k exactly, so the radius became a
+      constant - 56.42 m where 10.30 m was right. Five of the
+      seventeen red checks were this, not the default flip. I had
+      told John the seventeen were "the default flip and nothing
+      else"; a defect that only appears under the new default hides
+      from exactly the test that claim rested on.
+  (b) an edit script asserted and died BEFORE writing, so a signature
+      change was silently lost and only surfaced as a TypeError two
+      steps later.
+
+  THE DEFAULT FLIP BREAKS MACHINE 2 - NEEDS JOHN. `proportional`
+  cannot produce a median, percentile or Gini, so making it the
+  DEFAULT means every value-statistics run refuses without the user
+  having chosen anything. Interim rule, pending his ruling: an
+  EXPLICIT proportional + value statistics is refused; an inherited
+  default falls back to `whole` and PRINTS why. Machines 1 and 2 then
+  still agree wherever both can answer. Properly fixed by BACKLOG 118
+  (weighted statistics with fractional weights), which is also the
+  continental blocker.
+
+  PROGRESS v1.30. equipop/overshoot.py holds the shared rule; all
+  FOUR engines call it - both radial (fastcounts, analysis) and both
+  effort (friction, slope, via _count_from_grid). Measured, unequal
+  cells, k = 11/25/60: every engine agrees with every other to ZERO
+  in all three modes. Under `whole` the whole suite is green (355),
+  so the wiring changes nothing on its own; the 17 red checks are the
+  DEFAULT FLIP to proportional, ruled by John, and nothing else.
+
+  THE SAMPLED DISAGREEMENT IS SOLVED, and the cause was not ordering.
+  The engines could not agree on what a CELL IS: the fast engine
+  knows a cell by its row in the file, the ring engine stores only
+  (count, group) keyed by grid position and never sees a row number.
+  Identity now comes from GRID POSITION - overshoot.cell_identity -
+  which both already hold. Stronger than John asked for: a re-sorted
+  or re-exported file now reproduces a seeded run exactly.
+
+  That fix exposed a second disagreement, proportional, up to 28
+  people. Cause: the ring engine handled the ORIGIN CELL before its
+  ring loop began, so a k smaller than the origin's own population
+  still reported the whole cell. The origin is a ring too - a ring of
+  one.
+
+  FOUND BY JOHN'S HAND CHECK: k <= 0 was ACCEPTED by every engine,
+  returning zeros and NaN. k=0 asks for nobody and each mode then
+  answers differently about a neighbourhood that does not exist. All
+  four engines now refuse.
+
+  STILL TO DO: the 17 checks, of which 6 are the conformance answer
+  key - John ruled it regenerated under proportional, anchored to the
+  hand-check workbook rather than to this code; the doors (boxes,
+  help, seed field); and the MANUAL row.
+
   Note what 2 and 3 are to each other: 2 is the EXPECTED VALUE of 3
   over every possible draw. So 3 as a point estimate is 2 with noise.
   Say that in the help rather than let someone discover it.
+  *** CORRECTED v1.30, MEASURED, NOT ARGUED: THAT IS FALSE. ***
+  Sampled is proportional ROUNDED UP TO A WHOLE CELL. The two agree
+  when the shortfall is a whole number of cells; otherwise sampled
+  overshoots to the next cell boundary and averaging draws does NOT
+  converge on the proportional answer - the overshoot is systematic,
+  not noise. Ring of 8 equal cells, core of 10, ring share 0.75:
+      shortfall/ring   proportional N/R    sampled mean N/R
+          0.0125        11.00 / 0.9773     20.00 / 0.8736
+          0.05          14.00 / 0.9286     20.00 / 0.8736
+          0.125         20.00 / 0.8750     20.00 / 0.8736
+          0.25          30.00 / 0.8333     30.00 / 0.8341
+          1.00          90.00 / 0.7778     90.00 / 0.7778
+  The entry's own worked example already contradicted the claim -
+  proportional 11, sampled 20 - and it went unnoticed for four
+  sessions because the sentence read plausibly.
+  THE CONSEQUENCE JOHN MUST RULE ON: on the k=11 case that motivated
+  this whole item, sampled still overshoots by 82% and reads R 0.874
+  against proportional's 0.977. Sampled REDUCES the overshoot (50 to
+  20) but does not remove it. It buys whole people and a bound of one
+  cell. Whether that is worth a third mode is his call.
+  With UNEQUAL cells there is a second effect on top: a large cell is
+  more likely to be the one that crosses the threshold, so sampled
+  over-represents large cells. Measured (3,11,2,24), need 7:
+  proportional R 0.4250, sampled mean R 0.3225.
   THE SEED MUST BE PER-ORIGIN. One shuffle order applied everywhere
   would favour the same direction at every origin - a spatial
   artefact worse than the thing it fixes.

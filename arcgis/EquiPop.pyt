@@ -1021,7 +1021,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
-              seed=None):
+              seed=None, overshoot=None):
     """The single glue path both machines share (stub-validated)."""
     import pandas as pd
     from equipop.stata_bridge import dispatch
@@ -1238,6 +1238,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     unit = float(round(float(unit)))
     kw = dict(unit_size=float(unit),
               self_potential=float(self_potential))
+    # BACKLOG 99. None means "the dialog did not ask", which
+    # only happens on the Python/Stata routes and in older
+    # saved models; the engine then applies its own default.
+    # A named mode is passed through untranslated, so the word
+    # in the box is the word in the message, the manifest and
+    # the manual.
+    if overshoot is not None:
+        kw["overshoot_mode"] = str(overshoot)
     kw["k_values"] = [int(round(v)) for v in _numlist(k_text)] or None
     kw["r_values"] = _numlist(r_text) or None
     if tau_text:
@@ -1360,6 +1368,18 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["stats"] = {f: wanted for f in vals}
         messages.addMessage("Measures: " + " ".join(wanted) +
                             " (only these are calculated).")
+        # BACKLOG 99. The two machines default to DIFFERENT overshoot
+        # modes, because value statistics cannot take a fraction of a
+        # cell. Unsaid, a student runs both tools over one dataset and
+        # gets two different N_k with nothing to explain it - the
+        # "two doors disagree" defect arriving as "two machines
+        # disagree". Said only when they really do differ.
+        if overshoot is not None:
+            from equipop.doors import rungs as _rungs
+            if str(overshoot) != _rungs.OVERSHOOT_VALUES[
+                    _rungs.OVERSHOOT_DEFAULT]:
+                messages.addMessage(_rungs.overshoot_note(
+                    str(overshoot)))
 
     messages.addMessage(
         f"Calculating ({engine} engine, {len(x)} rows, cell size "
@@ -1382,7 +1402,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             engine, layer, unit, k_text, r_text, tau_text, stats_list,
             pct_text, half_life, decay_model, decay_eps, barrier,
             barrier_field, barrier_agg, auto_project, len(x),
-            list(res), stages, time.time() - t_all), messages)
+            list(res), stages, time.time() - t_all,
+            population=_settings_rows(
+                engine, ref_mode, treat_mode, weight_field,
+                cat_field, treat_cat_field, keep_outside,
+                self_potential, rest_group, groups_count,
+                treat_fields, value_fields),
+            source=_catalog_of(layer) or str(layer),
+            overshoot=overshoot, seed=seed), messages)
         messages.addMessage("[time] TOTAL: " + _hms(time.time()
                                                     - t_all))
         return
@@ -1507,7 +1534,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         engine, layer, unit, k_text, r_text, tau_text, stats_list,
         pct_text, half_life, decay_model, decay_eps, barrier,
         barrier_field, barrier_agg, auto_project, len(x),
-        list(names.values()), stages, time.time() - t_all), messages)
+        list(names.values()), stages, time.time() - t_all,
+        population=_settings_rows(
+            engine, ref_mode, treat_mode, weight_field,
+            cat_field, treat_cat_field, keep_outside,
+            self_potential, rest_group, groups_count,
+            treat_fields, value_fields),
+        source=_catalog_of(layer) or str(layer),
+        overshoot=overshoot, seed=seed), messages)
     if stages:
         slow = max(stages, key=lambda p: p[1])
         messages.addMessage(
@@ -1525,7 +1559,8 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
                    stats_list, pct_text, half_life, decay_model,
                    decay_eps, barrier, barrier_field, barrier_agg,
                    auto_project, n_rows, out_fields, stages, total,
-                   population=None, source=None):
+                   population=None, source=None, overshoot=None,
+                   seed=None):
     """BACKLOG 148: `population` carries the settings that DEFINE the
     numbers - the reference and treatment rungs, the count field, the
     types, the keepoutside rung and self-potential. Until 1.29.6 the
@@ -1565,6 +1600,13 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
         ("barrier_field", barrier_field or ""),
         ("barrier_overlap_rule", _agg_key(barrier_agg)
          if barrier is not None else ""),
+        # BACKLOG 99 + 148. The overshoot mode moves EVERY k-based
+        # number, and under `sampled` the seed decides which cells
+        # were taken. A manifest that records k and cell size but not
+        # these describes a run it cannot reproduce - which is the
+        # exact complaint 148 was raised on.
+        ("overshoot", overshoot or ""),
+        ("overshoot_seed", "" if seed is None else seed),
         # BACKLOG 148 - the settings that define the POPULATION, and
         # therefore the numbers. A manifest without them cannot
         # reproduce the run it describes.
@@ -1576,6 +1618,46 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
     ]
     rows += [(f"time_{lbl.replace(' ', '_')}_seconds", round(dt, 1))
              for lbl, dt in stages]
+    return rows
+
+
+def _settings_rows(engine, ref_mode, treat_mode, weight_field,
+                   cat_field, treat_cat_field, keep_outside,
+                   self_potential, rest_group, groups_count,
+                   treat_fields, value_fields):
+    """The dialog settings that DEFINE the numbers, as manifest rows.
+
+    BACKLOG 148 added the `population` argument to _manifest_rows in
+    1.29.6, wrote its reasoning into the docstring - and NEITHER CALL
+    SITE EVER PASSED IT. Found in 1.30 while adding the overshoot
+    mode. The item's own complaint was that Claude could not use two
+    of John's manifests to settle which of his runs had differed;
+    that complaint was still true after the fix, because the fix was
+    a parameter with no argument. The manifest test asked for engine,
+    k, cell size and version only, so nothing objected.
+
+    A reminder for the next reader: a default argument is the easiest
+    place in this codebase for a feature to disappear.
+    """
+    def _rung(modes, i):
+        return "" if i is None else modes[int(i)]
+    rows = {
+        "reference_rung": _rung(REF_MODES, ref_mode),
+        "reference_count_field": weight_field or "",
+        "reference_type_field": cat_field or "",
+        "rows_outside_reference": ("" if keep_outside is None else
+                                   OUTSIDE_MODES[0 if keep_outside
+                                                 else 1]),
+        "self_potential": self_potential,
+    }
+    if engine == "stats":
+        rows["value_fields"] = ";".join(value_fields or ())
+    else:
+        rows["treatment_rung"] = _rung(TREAT_MODES, treat_mode)
+        rows["treatment_count_fields"] = ";".join(treat_fields or ())
+        rows["treatment_type_field"] = treat_cat_field or ""
+        rows["remainder_group"] = rest_group or ""
+        rows["groups_counted_as"] = groups_count or ""
     return rows
 
 
@@ -1688,6 +1770,19 @@ SELFPOT_MODES = [
     "1 - the radius at which k of it is reached (recommended)",
 ]
 SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]
+# BACKLOG 99: the ring that crosses k. Duplicated from
+# equipop/doors/rungs.py and pinned by test_rungs.py, for the reason
+# recorded there - neither door may import the package to learn what
+# its own dropdowns say (BACKLOG 78/105).
+OVERSHOOT_MODES = [
+    "whole ring - every cell at that distance, so N_k overshoots k "
+    "(EquiPop before 1.30)",
+    "proportional share - each cell gives the same fraction, so N_k "
+    "is exactly k (recommended)",
+    "sampled, seeded - whole cells one at a time until k is reached "
+    "(the original 2014 method)",
+]
+OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 
 
 def _mode(pm, name, modes):
@@ -2279,6 +2374,8 @@ class CountsShares:
                _p("selfpot", "Self-potential - the distance to "
                   "what is LOCAL, inside your own cell",
                   "GPString", required=False),
+               _p("overshoot", "The ring that crosses k",
+                  "GPString", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2287,8 +2384,8 @@ class CountsShares:
                   "target is a shapefile (10-character cap; names "
                   "stay collision-free and the mapping is printed)",
                   "GPBoolean", required=False),
-               _p("seed", "Random seed (only matters where "
-                  "permutations are used; recorded in the manifest)",
+               _p("seed", "Seed - used by 'sampled' and by "
+                  "permutations; empty draws one and prints it",
                   "GPLong", required=False)]
         pm = _byname(ps)
         # BACKLOG 143. This list used to be written out by hand -
@@ -2368,6 +2465,10 @@ class CountsShares:
             "existing": "Output", "outmode": "Output",
             "outfc": "Output", "outtable": "Output",
             "shortnames": "Output", "seed": "Advanced",
+            # BACKLOG 99. ANALYTICAL, not plumbing - it moves
+            # every k-based number - so it sits with the
+            # neighbourhood boxes rather than in Advanced.
+            "overshoot": "Neighbourhood",
         }
         for nm, cat in SECTION.items():
             if nm in pm:
@@ -2397,6 +2498,13 @@ class CountsShares:
         pm["selfpot"].filter.type = "ValueList"
         pm["selfpot"].filter.list = SELFPOT_MODES
         pm["selfpot"].value = SELFPOT_MODES[2]
+        # BACKLOG 99. Machine 1 defaults to PROPORTIONAL - the
+        # engine default from 1.30, John's ruling - so the box
+        # reports what the run will do rather than offering a
+        # second opinion on it.
+        pm["overshoot"].filter.type = "ValueList"
+        pm["overshoot"].filter.list = OVERSHOOT_MODES
+        pm["overshoot"].value = OVERSHOOT_MODES[1]
         return ps
 
     def updateParameters(self, parameters):
@@ -2510,6 +2618,12 @@ class CountsShares:
                   # replaced. _run_tool validates it.
                   self_potential=SELFPOT_VALUES[
                       _mode(pm, "selfpot", SELFPOT_MODES)],
+                  # BACKLOG 99. Passed EXPLICITLY, never left
+                  # to the engine default: a door that names
+                  # no mode cannot be measured against an
+                  # answer key pinned to one.
+                  overshoot=OVERSHOOT_VALUES[
+                      _mode(pm, "overshoot", OVERSHOOT_MODES)],
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))
 
@@ -2575,6 +2689,8 @@ class ValueStatistics:
                _p("selfpot", "Self-potential - the distance to "
                   "what is LOCAL, inside your own cell",
                   "GPString", required=False),
+               _p("overshoot", "The ring that crosses k",
+                  "GPString", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2582,7 +2698,10 @@ class ValueStatistics:
                _p("shortnames", "Allow shortened field names when the "
                   "target is a shapefile (10-character cap; names "
                   "stay collision-free and the mapping is printed)",
-                  "GPBoolean", required=False)]
+                  "GPBoolean", required=False),
+               _p("seed", "Seed - used by 'sampled' and by "
+                  "permutations; empty draws one and prints it",
+                  "GPLong", required=False)]
         # v1.29.2: BY NAME. This block still counted boxes off by
         # position after 1.29.0 converted the rest of machine 2, and
         # the ladder above inserts four of them - which would have
@@ -2626,7 +2745,9 @@ class ValueStatistics:
                         "pcts": "Treatment values - what you measure",
                         "existing": "Output", "outmode": "Output",
                         "outfc": "Output", "outtable": "Output",
-                        "shortnames": "Output"}.items():
+                        "shortnames": "Output",
+                        "overshoot": "Neighbourhood",
+                        "seed": "Advanced"}.items():
             if nm in pm2:
                 pm2[nm].category = cat
         # v1.17: no preset value on the measures list - Pro merged the
@@ -2647,6 +2768,16 @@ class ValueStatistics:
         pm2["selfpot"].filter.type = "ValueList"
         pm2["selfpot"].filter.list = SELFPOT_MODES
         pm2["selfpot"].value = SELFPOT_MODES[2]
+        # BACKLOG 99. Machine 2 defaults to WHOLE where machine
+        # 1 defaults to proportional, because a fraction of a
+        # cell has no median, percentile or Gini and the core
+        # refuses it here until BACKLOG 118. All three are
+        # still offered: the refusal names the reason, an
+        # absent option would explain nothing, and the choice
+        # starts working by itself when 118 lands.
+        pm2["overshoot"].filter.type = "ValueList"
+        pm2["overshoot"].filter.list = OVERSHOOT_MODES
+        pm2["overshoot"].value = OVERSHOOT_MODES[0]
         return ps
 
     def updateParameters(self, parameters):
@@ -2724,5 +2855,12 @@ class ValueStatistics:
                   # replaced. _run_tool validates it.
                   self_potential=SELFPOT_VALUES[
                       _mode(pm, "selfpot", SELFPOT_MODES)],
+                  # BACKLOG 99. Passed EXPLICITLY, never left
+                  # to the engine default: a door that names
+                  # no mode cannot be measured against an
+                  # answer key pinned to one.
+                  overshoot=OVERSHOOT_VALUES[
+                      _mode(pm, "overshoot", OVERSHOOT_MODES)],
+                  seed=_num(pm, "seed"),
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))

@@ -2,15 +2,33 @@
 friction.py - the friction growth model (EquiPop Flow / FARB core).
 
 THE MODEL (Östh & Türk 2020, ch. 22): neighbourhood growth proceeds
-from each origin to its eight surrounding cells, one 'round' per move.
-A cell with friction value f sits out f extra rounds before it is
-included (and before its own neighbours can be reached through it):
+from each origin to its eight surrounding cells. A move costs its
+TRUE LENGTH in cell widths - 1 for an orthogonal step, sqrt(2) for a
+diagonal - and a cell with friction value f delays passage in
+proportion to the distance travelled through it:
 
-    included_round(neighbour) = included_round(cell) + 1 + friction(neighbour)
+    included_round(neighbour) = included_round(cell)
+                                + step * (1 + friction(neighbour))
 
-Friction 0 = free passage; higher = later inclusion. Neighbourhoods
-therefore grow fast along low-friction paths and refuse to jump
-across barriers (water, motorways) unless waiting out the delay.
+where step = 1 or sqrt(2). Friction 0 = free passage; higher = later
+inclusion. Neighbourhoods therefore grow fast along low-friction
+paths and refuse to jump across barriers (water, motorways) unless
+waiting out the delay.
+
+WHY step-scaled (BACKLOG 139): before v1.29.9 every move cost the
+same, so eight moves in any direction reached the same round and the
+reachable set on open ground was the SQUARE Chebyshev ball rather
+than a disc. An empty barrier layer therefore changed the answer,
+which no friction model may do. Friction is a delay per unit
+TRAVELLED, not a toll paid at the door.
+
+THE HONEST LIMIT: an 8-neighbour graph cannot walk in a straight
+line, only in 45- and 90-degree steps, so its shortest path is the
+OCTILE distance, max + (sqrt(2)-1)*min. That overstates true
+Euclidean distance by up to 8.2%, worst at 22.5 degrees off an axis
+and zero along an axis or a perfect diagonal. Rounds are therefore a
+slight over-estimate of effort in off-axis directions; the bias is
+systematic, bounded, and reported here rather than hidden.
 
 IMPLEMENTATION: this is mathematically a shortest-path problem with
 node weights, so we solve it exactly with Dijkstra on the grid graph
@@ -30,7 +48,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
-from . import selfpot
+from . import overshoot, selfpot
 
 
 def load_friction_table(
@@ -220,7 +238,16 @@ class FrictionGrid:
                 src = gx[ok] * self.ny + gy[ok]
                 dst = (gx[ok] + dx) * self.ny + (gy[ok] + dy)
                 rows.append(src); cols.append(dst)
-                data.append(1 + self.friction[dst])
+                # BACKLOG 139: a step costs its TRUE LENGTH. A diagonal
+                # move covers sqrt(2) cell widths, so it costs sqrt(2)
+                # base rounds - and the friction scales with it, because
+                # friction is a delay per unit TRAVELLED, not a toll paid
+                # at the door. Before this, every move cost the same and
+                # the reachable set was the square Chebyshev ball rather
+                # than the Euclidean disc: an EMPTY barrier layer changed
+                # the answer.
+                step = np.hypot(dx, dy)
+                data.append(step * (1 + self.friction[dst]))
         self.graph = csr_matrix(
             (np.concatenate(data),
              (np.concatenate(rows), np.concatenate(cols))),
@@ -235,7 +262,8 @@ class FrictionGrid:
 
 def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                      tau_values=None,
-                     self_potential=selfpot.DEFAULT_SELF_POTENTIAL):
+                     self_potential=selfpot.DEFAULT_SELF_POTENTIAL,
+                     overshoot_mode=None, seed=None):
     """Shared origin loop: count cells in included-round order from a
     prepared grid (FrictionGrid or SlopeGrid). Tie convention: equal
     rounds form one atomic ring, as everywhere in EquiPop.
@@ -248,6 +276,18 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
     sp = selfpot.check(self_potential)
     k_values = sorted(k_values or [])
     tau_values = sorted(tau_values or [])
+    bad = [k for k in k_values if k <= 0]
+    if bad:
+        raise ValueError(
+            f"[k] k must be a POSITIVE number of people; got {bad}. "
+            "Found by John's hand check, 1.30. Nothing was computed.")
+    # BACKLOG 99: the effort engines take whole rings too, and an
+    # effort ring overshoots exactly as a distance ring does.
+    osm = overshoot.resolve(overshoot_mode)
+    _sg = seed is not None
+    os_seed = int(seed) if _sg else overshoot.draw_seed()
+    if osm == overshoot.SAMPLED:
+        print(overshoot.seed_message(os_seed, _sg))
     if not (k_values or tau_values):
         raise ValueError("give k_values and/or tau_values")
     n_pop = len(grid.pop_idx)
@@ -276,6 +316,9 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 "CountAllLocal": ca[oi],
                 "CountGroupLocal": cg[oi],
             }
+            _oid = int(overshoot.cell_identity(
+                round(grid.pop_x[oi] / grid.unit_size),
+                round(grid.pop_y[oi] / grid.unit_size)))
             sum_all = sum_grp = 0.0
             dist_m = rounds_now = 0.0
             pending = list(k_values)
@@ -299,6 +342,44 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 ring = []
                 while j < n_pop and rr[order[j]] == r0:
                     ring.append(order[j]); j += 1
+                ring_all = float(sum(ca[ci] for ci in ring))
+                ring_grp = float(sum(cg[ci] for ci in ring))
+                d_ring = max(
+                    float(np.hypot(grid.pop_x[ci] - grid.pop_x[oi],
+                                   grid.pop_y[ci] - grid.pop_y[oi]))
+                    for ci in ring)
+                # BACKLOG 99: record any k this ring CROSSES with only
+                # a share of it, BEFORE the totals swallow the whole.
+                if osm != overshoot.WHOLE and ring_all > 0:
+                    r_pop = np.array([ca[ci] for ci in ring], float)
+                    r_grp = np.array([cg[ci] for ci in ring], float)
+                    r_ids = overshoot.cell_identity(
+                        np.round(np.array([grid.pop_x[ci] for ci in ring])
+                                 / grid.unit_size),
+                        np.round(np.array([grid.pop_y[ci] for ci in ring])
+                                 / grid.unit_size))
+                    while pending and sum_all + ring_all >= pending[0]:
+                        k = pending.pop(0)
+                        wt, taken = overshoot.ring_weights(
+                            osm, k, sum_all, r_pop, r_ids,
+                            seed=os_seed, origin_id=_oid)
+                        n_k = sum_all + taken
+                        rec[f"N_{k}"] = n_k
+                        if _has_group:
+                            t_k = sum_grp + float((r_grp * wt).sum())
+                            rec[f"T_{k}"] = t_k
+                            rec[f"R_{k}"] = t_k / n_k if n_k else np.nan
+                        d_k = float(overshoot.radius(
+                            dist_m, d_ring,
+                            taken / ring_all if ring_all else 1.0))
+                        if d_k <= 0.0 and n_k >= k:
+                            # the radius needs the people STANDING in
+                            # the cell, not the share reported
+                            d_k = selfpot.radius_for_k(
+                                grid.unit_size, k,
+                                float(sum_all + ring_all), sp)
+                        rec[f"Dist_{k}"] = d_k
+                        rec[f"Rounds_{k}"] = float(r0)
                 for ci in ring:
                     sum_all += ca[ci]; sum_grp += cg[ci]
                 # BACKLOG 115, ruled by John: the MAXIMUM straight-line
@@ -374,6 +455,8 @@ def run_knn_friction(
     origins=None,
     tau_values: list[float] | None = None,
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
+    overshoot_mode: str | None = None,
+    seed: int | None = None,
 ) -> pd.DataFrame:
     """
     Friction-aware k-NN for aggregated cell data.
@@ -400,7 +483,8 @@ def run_knn_friction(
     grid = FrictionGrid(pop, fr, unit_size, default_friction,
                         count_all_col, count_group_col)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
-                            tau_values, self_potential)
+                            tau_values, self_potential,
+                            overshoot_mode, seed)
 
 
 # ===================================================================

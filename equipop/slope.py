@@ -5,9 +5,12 @@ THE MODEL: neighbourhood growth as in the friction engine (FARB), but
 the effort of a move now depends on the TERRAIN GRADIENT along it.
 The cost of entering cell j from cell i becomes
 
-    cost(i -> j) = penalty(slope_ij) + friction(j)
+    cost(i -> j) = step_ij * (penalty(slope_ij) + friction(j))
 
-where slope_ij = (alt_j - alt_i) / centre_distance(i, j) is the
+where step_ij is the length of the move in cell widths (1 for an
+orthogonal move, sqrt(2) for a diagonal - BACKLOG 139: walking
+further up the same gradient costs more), and
+slope_ij = (alt_j - alt_i) / centre_distance(i, j) is the
 signed gradient (positive = uphill) over the true centre distance
 (unit for orthogonal moves, unit * sqrt(2) for diagonal moves - a
 diagonal move over the same rise is a gentler climb, as in reality).
@@ -184,10 +187,16 @@ class SlopeGrid(FrictionGrid):
                       & (gy + dy >= 0) & (gy + dy < self.ny))
                 src = gx[ok] * self.ny + gy[ok]
                 dst = (gx[ok] + dx) * self.ny + (gy[ok] + dy)
-                run = u * (np.sqrt(2.0) if dx and dy else 1.0)
+                # BACKLOG 139: `step` was already computed here - `run`
+                # uses it for the GRADIENT - and then discarded when the
+                # cost was built, so a diagonal climb cost the same as an
+                # orthogonal one despite covering sqrt(2) cell widths.
+                # Walking further up the same gradient costs more.
+                step = np.hypot(dx, dy)
+                run = u * step
                 s = (alt[dst] - alt[src]) / run
                 rows.append(src); cols.append(dst)
-                data.append(penalty(s) + self.friction[dst])
+                data.append(step * (penalty(s) + self.friction[dst]))
         self.graph = csr_matrix(
             (np.concatenate(data),
              (np.concatenate(rows), np.concatenate(cols))),
@@ -231,6 +240,8 @@ def run_knn_slope(
     tau_values: list[float] | None = None,
     roundtrip: bool = False,
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
+    overshoot_mode: str | None = None,
+    seed: int | None = None,
     **model_params,
 ) -> pd.DataFrame:
     """
@@ -254,4 +265,5 @@ def run_knn_slope(
                      altitude=altitude, model=model,
                      roundtrip=roundtrip, **model_params)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
-                            tau_values, self_potential)
+                            tau_values, self_potential,
+                            overshoot_mode, seed)

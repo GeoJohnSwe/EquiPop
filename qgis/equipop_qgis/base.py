@@ -214,6 +214,30 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(param)
         return param
 
+    # -- reading a box that may be EMPTY -------------------------
+    @staticmethod
+    def optional_int(parameters, name):
+        """An optional whole number, where EMPTY and ZERO differ.
+
+        BACKLOG 99. `parameterAsInt` cannot express "the user left
+        this box alone": it hands back 0, which is a legitimate seed
+        and would silently pin every 'sampled' run to the same draw
+        while claiming none was given. Same family as BACKLOG 116
+        (`... or 100.0` swallowing a deliberate cell size of 0) and
+        as `_num(pm, "x", d) or d` in Pro - a falsy value that means
+        something being read as a value that means nothing.
+
+        So the raw parameter is read instead. Returns None when the
+        box is empty, and an int otherwise.
+        """
+        v = parameters.get(name)
+        if v is None or v == "":
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
     # -- speaking ------------------------------------------------
     @staticmethod
     def channel(feedback):

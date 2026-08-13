@@ -91,7 +91,13 @@ def test_segments_orchestrator_matches_single_runs():
 
 
 def test_effort_reach_flat_brute():
-    """Flat DEM: effort = Chebyshev moves; brute-check A for 2SFCA."""
+    """Flat DEM: effort brute-check of A for 2SFCA.
+
+    NOTE the domain is 3x1 - ONE ROW - so no diagonal move exists and
+    octile, Chebyshev and Euclidean rounds are indistinguishable here.
+    The reference below was labelled "Chebyshev"; it is really just
+    orthogonal steps. This test does NOT discriminate BACKLOG 139.
+    """
     U = 100.0
     demand = pd.DataFrame({"x": [U / 2, 2 * U + U / 2], "y": U / 2,
                            "workers": [4.0, 6.0]})
@@ -101,7 +107,7 @@ def test_effort_reach_flat_brute():
     d, s = fca(demand, supply, "workers", "jobs", decay=dec,
                reach="effort", altitude=np.zeros(n_dom),
                model="tobler", roundtrip=True, unit_size=U)
-    w = dec.weight_vec(np.array([0.0, 2.0]))       # Chebyshev rounds
+    w = dec.weight_vec(np.array([0.0, 2.0]))       # 2 orthogonal steps
     R = 3.0 / (w[0] * 4.0 + w[1] * 6.0)
     assert np.allclose(s["R"], [R])
     assert np.allclose(d["A"], [w[0] * R, w[1] * R], rtol=1e-9)

@@ -34,7 +34,8 @@ from .fastcounts import run_knn_counts
 
 def _binned_decay_counts(cd, cells, k_values, r_values, decay,
                          half_life, n_bins, decay_eps, m_neighbors,
-                         n_rows, valid, self_potential=1.0):
+                         n_rows, valid, self_potential=1.0,
+                         overshoot_mode=None, seed=None):
     """VARIABLE-BANDWIDTH decay (v1.17): each row carries its own
     half-life - an estimated median travel distance, a group
     potential, or the row's own Dist_k (urban form setting the
@@ -90,6 +91,7 @@ def _binned_decay_counts(cd, cells, k_values, r_values, decay,
         part = run_knn_counts(cd, k_values, decay_eps=decay_eps,
                               m_neighbors=m_neighbors,
                               r_values=r_values, decay=dec_b,
+                              overshoot_mode=overshoot_mode, seed=seed,
                               origins=np.asarray(origins, int),
                               self_potential=self_potential,
                               report=False)
@@ -117,6 +119,8 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 treat_are_counts: bool = False,
                 decay_half_life=None, decay_bins: int = 10,
                 self_potential: float = 1.0,
+                overshoot_mode: str | None = None,
+                seed: int | None = None,
                 report_label: str = "") -> dict:
     """
     k-NN counts/ratios for individual-level rows, returned row-aligned.
@@ -200,13 +204,15 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
         bin_frames, bin_of_row, base = _binned_decay_counts(
             cd, cells, k_values, r_values, decay, decay_half_life,
             decay_bins, decay_eps, m_neighbors, n_rows, valid,
-            self_potential=self_potential)
+            self_potential=self_potential,
+            overshoot_mode=overshoot_mode, seed=seed)
         res = base.reset_index()
     else:
         res = run_knn_counts(cd, k_values, decay_eps=decay_eps,
                              m_neighbors=m_neighbors,
                              r_values=r_values, decay=decay,
                              self_potential=self_potential,
+                             overshoot_mode=overshoot_mode, seed=seed,
                              report_label=report_label)
 
     # map cell results back to every individual row
@@ -328,6 +334,8 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              half_life_field=None, half_life_from_dist=None,
              decay_bins: int = 10,
              self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
+             overshoot_mode: str | None = None,
+             seed: int | None = None,
              **extra) -> dict:
     """
     One entry point, five engines, row-aligned results:
@@ -404,6 +412,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                          f"{k0} - see BACKLOG 95."
                          if selfpot.check(self_potential) <= 0 else ""))
         return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
+                           overshoot_mode=overshoot_mode, seed=seed,
                            unit_size=unit_size, r_values=r_values,
                            decay=dec, decay_eps=decay_eps,
                            decay_half_life=hl, decay_bins=decay_bins,
@@ -465,6 +474,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         cd = _add_empty_origin_cells(cd, E, N, list(values))
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            self_potential=self_potential,
+                           overshoot_mode=overshoot_mode, seed=seed,
                            stats=stats or {v: ["mean", "median", "gini"]
                                            for v in values})
         from .stats import stat_prefix

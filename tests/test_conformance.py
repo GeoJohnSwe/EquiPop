@@ -183,13 +183,19 @@ def test_the_arcgis_door_matches_the_same_reference():
         def addErrorMessage(self, _): pass
 
     m = _Quiet()
+    # BACKLOG 99. The mode is NAMED, from the spec. The answer key is
+    # pinned to one mode, so a door can only be judged against it once
+    # the door can say which mode it ran - which is exactly what this
+    # test could not do before the box existed, and why it failed on
+    # 2287 of 2360 rows the moment the core default moved.
     pyt._run_tool("counts", "lyr", m, treat_fields=["count_group"],
                   weight_field=SPEC["weight"], k_text="400",
-                  r_text="800", unit=SPEC["unit_size"])
+                  r_text="800", unit=SPEC["unit_size"],
+                  overshoot=SPEC["overshoot"])
     pyt._run_tool("stats", "lyr", m, value_fields=["count_group"],
                   weight_field=SPEC["weight"], k_text="400",
                   stats_list=["mean", "median", "gini"],
-                  unit=SPEC["unit_size"])
+                  unit=SPEC["unit_size"], overshoot=SPEC["overshoot"])
 
     out = state["table"].rename(columns={"SHAPE@X": "x",
                                          "SHAPE@Y": "y"})
