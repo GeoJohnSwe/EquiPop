@@ -409,6 +409,59 @@ appeared twice; the weaker copy is gone.*
   Also hardened: the script died with AttributeError where Qgis was
   absent, which made it impossible to smoke-test before sending.
 
+- 118 | STATS ENGINE DONE v1.31, UPSTREAM EXPANSION REMAINS | WEIGHTED
+  STATISTICS WITHOUT PERSON EXPANSION. equipop/wstats.py computes
+  mean, median, percentiles, sd, se, var, gini, min, max, sum, count
+  and range straight from (value, weight) pairs.
+  THE CONSTRAINT THAT MAKES IT SAFE, and it holds: for WHOLE-NUMBER
+  weights it returns what the expansion returns, checked over ~20,000
+  random neighbourhoods per statistic at 1e-12 relative. So this is a
+  refactor with a proof and nothing published moves.
+  ONE FAMILY OF CASES DIFFERS, AND THE OLD CODE IS THE WRONG ONE: 55
+  copies of a single value have a standard deviation of exactly zero;
+  the expansion returns ~1.2e-10 of noise from summing 55 large
+  identical floats, the weighted route returns 0. Pinned so nobody
+  restores the noise in the name of agreement.
+  JOHN'S RULING, quantiles are INTERPOLATED not stepped, and his
+  reason is the good one: EquiPop already averages the two middle
+  values for an even count, which IS a linear interpolation, so
+  interpolating everywhere is the consistent generalisation rather
+  than a new convention. It also keeps the promise `proportional` was
+  introduced to make - a stepped median would move the jump out of
+  the count and into the statistic. Guarded by comparing against a
+  step median on the same data: as a ring is swallowed the step
+  version leaps a whole value gap while the interpolated one does not.
+  WIRED v1.31. run_knn_stats compresses each cell's expanded array to
+  (distinct value, how many people hold it) in one pass, and the
+  crossing ring's weights are multiplied by the same per-cell share
+  the binary sums already got. THE REFUSAL IS GONE, both machines
+  share one default again, and the line machine 2 printed on every
+  run is retired to a stub that returns "" - an older saved toolbox
+  calls something harmless rather than dying.
+  THE FIRST WIRING HAD NO GUARD AT ALL. Three deliberate breaks -
+  dropping the ring share, dropping the crossing ring's values,
+  disabling the seeded order - ALL PASSED the whole suite. The cause
+  was the fixture, not a missing test: every cell in it held the same
+  value, so the median came back 4.0 whatever the weights were and
+  the tests could not have failed. tests/test_wstats_engine.py builds
+  the layout the other way round, with the ring holding a different
+  value from the interior and every expected number worked out by
+  hand. All four breaks now caught.
+  AND IT FOUND A 40% WASTE. Profiling the newly-live `proportional`
+  path showed cell_identity/_mix64 taking 40% of the run. Those
+  hashes name cells for the SEEDED ORDER and nothing else reads them
+  - ring_weights uses them under `sampled` alone - yet they were
+  computed for every crossing ring in every mode. Only visible once
+  machine 2 stopped falling back to `whole` and the code ran for
+  real. Suite 207s -> 79s, which is faster than before 118 landed.
+  STILL TO DO: the expansion UPSTREAM, where counts become persons.
+  That is the half that unblocks BACKLOG 38, and it is a change to
+  the whole pipeline rather than to one function.
+  WHAT IT UNBLOCKS: BACKLOG 38, the continental machine - WorldPop
+  counts are fractional and a 1 km African run would try to
+  materialise on the order of a billion rows - and `proportional` for
+  value statistics, which is three complaints closed by one item.
+
 - 161 | open v1.30 | PRO WILL NOT OFFER A BARRIER RASTER FROM THE
   MAP. John, field, 1.29.9: the raster was already loaded in the
   Contents pane, but the Barrier rasters box has no dropdown, so he

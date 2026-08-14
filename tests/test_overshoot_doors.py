@@ -175,49 +175,53 @@ def test_6b_the_door_really_uses_it_and_says_which_seed_it_drew():
 
 
 # ====================================================== machine 2
-def test_7_machine_2_says_when_it_differs_from_machine_1():
-    """Two machines, two defaults, one dataset. Unsaid, the student
-    gets two different N_k and nothing to explain it."""
-    _, fb = _run(ValueStatistics, pop=["Population"],
-                 values=["Grp"], measures=[0, 1, 2])
-    said = _said(fb)
-    assert "[overshoot]" in said and "BACKLOG 118" in said
-    assert rungs.OVERSHOOT_VALUES[rungs.OVERSHOOT_DEFAULT] in said
+def test_7_machine_2_computes_a_median_from_a_fraction_of_a_cell():
+    """v1.31, BACKLOG 118. This is the assertion that used to be a
+    refusal.
+
+    Until weighted statistics landed, machine 2 raised on
+    `proportional`: a quarter of a cell has no median. It has one
+    now - the statistics come from (value, weight) pairs, where a
+    weight of 0.4 is ordinary - so the run must SUCCEED and produce
+    numbers rather than explain why it cannot.
+    """
+    out, fb = _run(ValueStatistics, pop=["Population"],
+                   values=["Grp"], measures=[0, 1, 2],
+                   overshoot=[PROP])
+    med = [c for c in out.columns if c.startswith("Med_")]
+    assert med, f"no median column was produced: {list(out.columns)}"
+    assert out[med[0]].notna().all(), \
+        "proportional produced a column of nothing"
+    # every cell holds the same value, so the median is that value
+    assert out[med[0]].to_numpy() == pytest.approx(4.0)
 
 
-def test_8_the_note_names_the_mode_that_was_actually_used():
-    """Not "fires when the two differ" - that condition is TRUE FOR
-    EVERY MACHINE-2 RUN today, and pretending otherwise would be a
-    test asserting something unreachable.
-
-    The reason is worth keeping: machine 2 can run `whole` or
-    `sampled`, and BOTH differ from machine 1's default of
-    `proportional`, so there is no combination that silences the
-    note. It silences itself when BACKLOG 118 lands weighted
-    statistics and machine 2 can take a fraction of a cell - the
-    condition is written against machine 1's default precisely so
-    that it retires on its own rather than needing to be remembered.
-
-    What is testable now is that the line tells the truth about the
-    run it belongs to."""
-    _, fb = _run(ValueStatistics, pop=["Population"], values=["Grp"],
-                 measures=[0, 1, 2], overshoot=[SAMPLED], seed=1848)
-    said = _said(fb)
-    assert "this run used 'sampled'" in said
-    _, fb2 = _run(ValueStatistics, pop=["Population"], values=["Grp"],
-                  measures=[0, 1, 2], overshoot=[WHOLE])
-    assert "this run used 'whole'" in _said(fb2)
+def test_8_the_retired_note_stays_quiet():
+    """The line machine 2 printed on every run - naming its mode and
+    machine 1's - had one job: warn that the machines disagreed. They
+    agree now, so it must not fire. A warning nobody needs is how
+    people learn to ignore warnings."""
+    for mode in (WHOLE, PROP):
+        _, fb = _run(ValueStatistics, pop=["Population"],
+                     values=["Grp"], measures=[0, 1, 2],
+                     overshoot=[mode])
+        assert "[overshoot] this run used" not in _said(fb)
 
 
-def test_9_machine_2_refuses_a_fraction_of_a_cell_by_name():
-    """Asked explicitly for proportional, machine 2 must refuse and
-    say why - a quarter of a cell has no median. It must NOT quietly
-    compute one."""
-    with pytest.raises(Exception) as e:
-        _run(ValueStatistics, pop=["Population"], values=["Grp"],
-             measures=[0, 1, 2], overshoot=[PROP])
-    msg = str(e.value)
-    assert "median" in msg and "Nothing was computed" in msg
+def test_9_the_two_machines_now_report_the_same_neighbourhood():
+    """The point of closing 118, stated as the user meets it: run
+    both machines over one dataset with the defaults, and N_k agrees.
+
+    Before, machine 1 defaulted to `proportional` and machine 2 to
+    `whole`, so the same data gave two different N_k with only a
+    printed line to explain it."""
+    counts, _ = _run(CountsAndShares, pop=["Population"], refmode=[1],
+                     treatmode=[1], treat=["Grp"])
+    stats, _ = _run(ValueStatistics, pop=["Population"],
+                    values=["Grp"], measures=[0])
+    assert counts["N_11"].to_numpy() == pytest.approx(
+        stats["N_11"].to_numpy()), \
+        "the two machines disagree about the same neighbourhood"
 
 
 def test_10_machine_2_can_still_do_counts_under_proportional():

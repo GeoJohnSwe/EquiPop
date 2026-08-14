@@ -325,6 +325,7 @@ def run_knn(
 #  run_knn_stats - k-NN with per-variable statistics (tiers 1-3)
 # ======================================================================
 from .cells import CellData
+from .wstats import weighted_stats
 from .stats import (BINARY_STATS, VALUE_STATS, PREFIX,
                     check_gini_input,
                     value_stat, stat_prefix, is_percentile)
@@ -403,10 +404,18 @@ def run_knn_stats(
     if unknown:
         raise ValueError(f"Variables {unknown} were not declared in "
                          f"build_cells(binary_vars=..., value_vars=...).")
-    # BACKLOG 99/118: a quarter of a boundary cell has no median.
-    osm = overshoot.fallback_for_value_statistics(
-        osm, [f"{s} of {v}" for v in val_vars for s in stats[v]],
-        chosen=overshoot_mode is not None)
+    # BACKLOG 118, v1.31: the refusal that stood here is GONE.
+    #
+    # It read: a quarter of a boundary cell has no median. That was
+    # true of the IMPLEMENTATION, not of the mathematics - value
+    # statistics were computed by repeating each person, and you
+    # cannot repeat somebody 0.4 times. equipop/wstats.py computes
+    # them from (value, weight) pairs, where a weight of 0.4 is
+    # ordinary, so `proportional` is answerable here now.
+    #
+    # Both machines can therefore share ONE default, and the line
+    # machine 2 printed on every run - naming its mode and machine
+    # 1's - has nothing left to warn about.
     for v in bin_vars:
         for s in stats[v]:
             if s not in BINARY_STATS:
@@ -433,6 +442,27 @@ def run_knn_stats(
                      and len(a)]
             if _flat:
                 check_gini_input(np.concatenate(_flat), f"'{_v}'")
+    # BACKLOG 118. One pass, per cell: the expanded per-person array
+    # becomes (distinct value, how many people hold it). Lossless, and
+    # it is what lets a crossing ring contribute a SHARE of a cell -
+    # multiply the counts by the share and the arithmetic carries on.
+    #
+    # NOTE what this does NOT yet fix: the expansion itself still
+    # happens upstream, where counts become persons. That is the half
+    # of 118 that unblocks continental runs, and it is a change to the
+    # whole pipeline rather than to this function.
+    val_pairs = {}
+    for v in val_vars:
+        per_cell = []
+        for a in cd.value_arrays[v]:
+            if a is None or len(a) == 0:
+                per_cell.append((np.empty(0), np.empty(0)))
+            else:
+                u, c = np.unique(np.asarray(a, dtype=float),
+                                 return_counts=True)
+                per_cell.append((u, c.astype(float)))
+        val_pairs[v] = per_cell
+
     tally = {"selfpot": {}, "over": {}, "origins": 0}
     scratch = {"selfpot": {}, "over": {}}      # BACKLOG 111
 
@@ -521,11 +551,21 @@ def run_knn_stats(
                 for s in stats[v]:
                     rec[f"{PREFIX[s]}_{v}_{suffix}"] = BINARY_STATS[s](n_use, t_use[v])
             for v in val_vars:
-                x = (np.concatenate(val_chunks[v])
-                     if val_chunks[v] else np.empty(0))
-                rec[f"Nv_{v}_{suffix}"] = len(x)
+                chunks = list(val_chunks[v])
+                if partial is not None:
+                    chunks += partial["vals"][v]
+                if chunks:
+                    vv = np.concatenate([c[0] for c in chunks])
+                    ww = np.concatenate([c[1] for c in chunks])
+                else:
+                    vv = ww = np.empty(0)
+                # Nv_ is PEOPLE with a usable value, as it always was -
+                # now a sum of weights rather than a length, so a
+                # fractional ring reports the fraction it contributed.
+                rec[f"Nv_{v}_{suffix}"] = float(ww.sum())
+                got = weighted_stats(stats[v], vv, ww)
                 for s in stats[v]:
-                    rec[f"{stat_prefix(s)}_{v}_{suffix}"] = value_stat(s, x)
+                    rec[f"{stat_prefix(s)}_{v}_{suffix}"] = got[s]
 
         # walk cells in distance order, atomically per equal-distance ring
         def record_r(rv):
@@ -552,11 +592,20 @@ def run_knn_stats(
             ring_n = float(sum(float(cd.n[ci]) for ci in ring))
             if osm != overshoot.WHOLE and ring_n > 0:
                 r_pop = np.array([float(cd.n[ci]) for ci in ring])
-                r_ids = overshoot.cell_identity(
+                # BACKLOG 118, v1.31. Cell identities are the seeded
+                # order's business and NOTHING else looks at them -
+                # ring_weights uses them under `sampled` alone. They
+                # were being hashed for every crossing ring in every
+                # mode, which was 40% of a profiled `proportional`
+                # run doing nothing at all. Measured, not guessed:
+                # the cost only became visible once machine 2 stopped
+                # falling back to `whole` and the path ran for real.
+                r_ids = (overshoot.cell_identity(
                     np.round(np.array([cd.E[ci] for ci in ring])
                              / cd.unit_size),
                     np.round(np.array([cd.N[ci] for ci in ring])
                              / cd.unit_size))
+                    if osm == overshoot.SAMPLED else None)
                 while pending and sum_n + ring_n >= pending[0]:
                     k = pending.pop(0)
                     wt, taken = overshoot.ring_weights(
@@ -570,16 +619,25 @@ def run_knn_stats(
                             for ci, w in zip(ring, wt)))
                             for v in bin_vars},
                         "d": float(overshoot.radius(dist_m, float(d), f)),
-                        "cellpop": sum_n + ring_n}
+                        "cellpop": sum_n + ring_n,
+                        # BACKLOG 118: the same per-cell share the
+                        # binary sums get, applied to the value
+                        # weights. `whole` gives w = 1 and nothing
+                        # changes; `proportional` gives the fraction.
+                        "vals": {v: [(val_pairs[v][ci][0],
+                                      val_pairs[v][ci][1] * w)
+                                     for ci, w in zip(ring, wt)
+                                     if len(val_pairs[v][ci][0])]
+                                 for v in val_vars}}
                     record(k, partial=_partial)
             for ci in ring:
                 sum_n += float(cd.n[ci])
                 for v in bin_vars:
                     bin_t[v] += cd.binary_sums[v][ci]
                 for v in val_vars:
-                    a = cd.value_arrays[v][ci]
-                    if len(a):
-                        val_chunks[v].append(a)
+                    pair = val_pairs[v][ci]
+                    if len(pair[0]):
+                        val_chunks[v].append(pair)
             dist_m = float(d)
             while pending and sum_n >= pending[0]:
                 record(pending.pop(0))

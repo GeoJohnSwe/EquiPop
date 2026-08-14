@@ -1407,18 +1407,10 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["stats"] = {f: wanted for f in vals}
         messages.addMessage("Measures: " + " ".join(wanted) +
                             " (only these are calculated).")
-        # BACKLOG 99. The two machines default to DIFFERENT overshoot
-        # modes, because value statistics cannot take a fraction of a
-        # cell. Unsaid, a student runs both tools over one dataset and
-        # gets two different N_k with nothing to explain it - the
-        # "two doors disagree" defect arriving as "two machines
-        # disagree". Said only when they really do differ.
-        if overshoot is not None:
-            from equipop.doors import rungs as _rungs
-            if str(overshoot) != _rungs.OVERSHOOT_VALUES[
-                    _rungs.OVERSHOOT_DEFAULT]:
-                messages.addMessage(_rungs.overshoot_note(
-                    str(overshoot)))
+        # BACKLOG 118, v1.31: the note that stood here - the two
+        # machines using different modes - retired when machine 2
+        # gained the ability to take a fraction of a cell. They
+        # share one default again.
 
     messages.addMessage(
         f"Calculating ({engine} engine, {len(x)} rows, cell size "
@@ -2872,7 +2864,7 @@ class ValueStatistics:
         # starts working by itself when 118 lands.
         pm2["overshoot"].filter.type = "ValueList"
         pm2["overshoot"].filter.list = OVERSHOOT_MODES
-        pm2["overshoot"].value = OVERSHOOT_MODES[0]
+        pm2["overshoot"].value = OVERSHOOT_MODES[1]
         return ps
 
     def updateParameters(self, parameters):

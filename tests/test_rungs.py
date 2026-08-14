@@ -234,18 +234,25 @@ def test_every_overshoot_choice_is_one_the_engine_accepts():
     assert len(rungs.OVERSHOOT) == len(rungs.OVERSHOOT_VALUES)
 
 
-def test_the_two_machines_default_to_what_they_can_actually_do():
-    """Machine 1 must default to the ENGINE's default, or the box
-    would report a second opinion on what the run will do. Machine 2
-    must NOT default to proportional, because the core refuses a
-    fraction of a cell wherever a median is asked for - which is
-    every machine-2 run."""
+def test_the_two_machines_default_to_the_same_mode():
+    """v1.31, BACKLOG 118. They used to differ, and the difference was
+    forced: machine 2 could not take a fraction of a cell, so it
+    defaulted to `whole` while machine 1 defaulted to `proportional`,
+    and every Value Statistics run printed a line explaining the gap.
+
+    Weighted statistics closed it. Both machines now default to the
+    ENGINE's own default, which is the only arrangement in which a
+    student running both tools over one dataset gets one answer.
+    """
     from equipop import overshoot
     from equipop.doors import rungs
     assert rungs.OVERSHOOT_VALUES[rungs.OVERSHOOT_DEFAULT] == \
         overshoot.DEFAULT
-    assert rungs.OVERSHOOT_VALUES[rungs.OVERSHOOT_DEFAULT_M2] != \
-        overshoot.PROPORTIONAL
+    assert rungs.OVERSHOOT_DEFAULT_M2 == rungs.OVERSHOOT_DEFAULT, \
+        "the machines have diverged again - if that is deliberate, " \
+        "the reason belongs in rungs.py beside the constant"
+    assert rungs.overshoot_note("whole") == "", \
+        "the retired note has started speaking again"
 
 
 def test_the_doors_default_boxes_match_the_canonical_defaults():

@@ -117,15 +117,14 @@ class ValueStatistics(EquipopAlgorithm):
             "selfpot", "Self-potential - the distance to what is "
             "LOCAL, inside your own cell", options=SELFPOT_MODES,
             defaultValue=2), advanced=True)
-        # BACKLOG 99. Machine 2 defaults to WHOLE, machine 1 to
-        # PROPORTIONAL, and the difference is deliberate: a median, a
-        # percentile and a Gini need whole cells, so the core refuses
-        # proportional here until weighted statistics land (BACKLOG
-        # 118). All three are still offered - the refusal names the
-        # reason, and an absent option would explain nothing.
+        # BACKLOG 118, v1.31: the same default as machine 1. This box
+        # defaulted to `whole` while a fraction of a cell had no
+        # median; weighted statistics gave it one, so the two machines
+        # agree again and a student running both over one dataset gets
+        # one answer instead of two.
         self.add(QgsProcessingParameterEnum(
             "overshoot", "The ring that crosses k",
-            options=OVERSHOOT_MODES, defaultValue=0), advanced=True)
+            options=OVERSHOOT_MODES, defaultValue=1), advanced=True)
         self.add(QgsProcessingParameterNumber(
             "seed", "Seed - only used by 'sampled' and by "
             "permutations; empty draws one and prints it",
@@ -198,18 +197,12 @@ class ValueStatistics(EquipopAlgorithm):
                 (self.parameterAsStrings(parameters, "yfield", context)
                  or [None])[0])
 
-        # BACKLOG 99. Named explicitly, as in machine 1. Where the
-        # two machines end up on DIFFERENT modes, say so once: a
-        # student running both tools over one dataset would otherwise
-        # get two different N_k with nothing said, which is the "two
-        # doors disagree" defect arriving as "two machines disagree".
-        from equipop.doors import rungs as _rungs
+        # BACKLOG 99, named explicitly as in machine 1. The note that
+        # stood here - warning that the two machines used different
+        # modes - retired with BACKLOG 118: they no longer do.
         overshoot_mode = OVERSHOOT_VALUES[
             (self.parameterAsEnums(parameters, "overshoot",
-                                   context) or [0])[0]]
-        if overshoot_mode != _rungs.OVERSHOOT_VALUES[
-                _rungs.OVERSHOOT_DEFAULT]:
-            ch.info(_rungs.overshoot_note(overshoot_mode))
+                                   context) or [1])[0]]
         seed = self.optional_int(parameters, "seed")
         kw = dict(unit_size=float(unit),
                   overshoot_mode=overshoot_mode, seed=seed,

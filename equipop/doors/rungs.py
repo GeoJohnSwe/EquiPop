@@ -158,27 +158,29 @@ OVERSHOOT = [
 #: The engine's own words, in the same order. These are what reach
 #: run_knn / run_knn_counts / run_knn_stats as `overshoot_mode`.
 OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
-OVERSHOOT_DEFAULT = 1               # proportional - machine 1
-OVERSHOOT_DEFAULT_M2 = 0            # whole - machine 2, until 118
+OVERSHOOT_DEFAULT = 1               # proportional - BOTH machines
+# v1.31, BACKLOG 118: machine 2 used to default to `whole`
+# because a quarter of a cell had no median. It has one now -
+# weighted statistics compute from (value, weight) pairs - so
+# the two machines agree again and this alias exists only so
+# that a door which asks for the machine-2 default still gets
+# an answer. If they ever diverge again it should be for a new
+# reason, recorded here.
+OVERSHOOT_DEFAULT_M2 = OVERSHOOT_DEFAULT
 
 
 def overshoot_note(mode: str) -> str:
-    """The one line machine 2 prints when its mode differs from the
-    mode machine 1 would have used on the same data.
+    """RETIRED in v1.31 and kept as a stub on purpose.
 
-    Without it a student runs both machines over one dataset and gets
-    two different N_400 with nothing said - which is the "two doors
-    disagree" family of defect, arriving through the back door as
-    "two machines disagree". It fires only when the modes really do
-    differ, so choosing `whole` in both machines is silent.
+    BACKLOG 118 removed the reason for it: machine 2 can take a
+    fraction of a cell now, so both machines share one default and
+    there is no divergence to warn about. The function stays so that
+    an older door - a saved Pro toolbox, a plugin somebody has not
+    updated - calls something harmless rather than dying on an
+    AttributeError. It returns nothing, and the doors no longer call
+    it.
     """
-    return (f"[overshoot] this run used '{mode}'. Value statistics "
-            "need WHOLE cells - a fraction of a cell has no median, "
-            "percentile or Gini (BACKLOG 118) - while Counts and "
-            f"Shares defaults to "
-            f"'{OVERSHOOT_VALUES[OVERSHOOT_DEFAULT]}'. So N_k and "
-            "Dist_k from the two tools will differ on the same data "
-            "until you set both boxes the same way.")
+    return ""
 
 
 # ===================================================================
