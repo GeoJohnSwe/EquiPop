@@ -25,7 +25,8 @@ from .decay import Decay
 from .analysis import run_knn_stats
 from .cells import build_cells, CellData
 from .friction import run_knn_friction, load_friction_table
-from .projection import suggest_projection, assign_zones
+from .projection import (suggest_projection,
+                         suggest_projection_xy, assign_zones)
 from .io import read_table, save_output
 from .fetch import fetch
 from .hex import build_hex_cells
@@ -41,8 +42,8 @@ except ImportError:                       # matplotlib is an optional extra
         raise ImportError("map_output needs matplotlib: "
                           "pip install equipop[viz]")
 
-__version__ = "1.31"
-__all__ = ["project_to_metric", "snap_to_grid", "run_knn", "Decay", "run_knn_stats", "build_cells", "CellData", "run_knn_friction", "load_friction_table", "suggest_projection", "assign_zones", "read_table", "save_output", "fetch", "build_hex_cells", "RunLog", "load_meta", "list_layers", "run_knn_counts", "seg_profile", "aggregate_output", "map_output"]
+__version__ = "1.34"
+__all__ = ["project_to_metric", "snap_to_grid", "run_knn", "Decay", "run_knn_stats", "build_cells", "CellData", "run_knn_friction", "load_friction_table", "suggest_projection", "suggest_projection_xy", "assign_zones", "read_table", "save_output", "fetch", "build_hex_cells", "RunLog", "load_meta", "list_layers", "run_knn_counts", "seg_profile", "aggregate_output", "map_output"]
 
 from .slope import run_knn_slope, dem_to_cell_altitude, SLOPE_MODELS, slope_penalty
 from .area import area_stats

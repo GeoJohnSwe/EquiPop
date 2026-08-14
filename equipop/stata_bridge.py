@@ -179,13 +179,25 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                    + half).astype(np.int64)
     cells["_N"] = (np.floor(cells["_y"] / unit_size) * unit_size
                    + half).astype(np.int64)
-    agg = {"_w": "sum", **{v: "sum" for v in treat}}
+    # BACKLOG 168. Alongside each treatment total, the WEIGHT of the
+    # rows whose value for it is usable. Not the count of rows: with
+    # aggregated input a row stands for many people, and the
+    # denominator John ruled on counts PEOPLE. Identical to `_w`
+    # unless missing codes blanked something, so nothing moves for a
+    # run that declares none.
+    for v in treat:
+        cells[f"__ok__{v}"] = np.where(cells[v].notna(),
+                                       cells["_w"], 0.0)
+    agg = {"_w": "sum", **{v: "sum" for v in treat},
+           **{f"__ok__{v}": "sum" for v in treat}}
     g = cells.groupby(["_E", "_N"], as_index=False).agg(agg)
 
     from .cells import CellData
     cd = CellData(E=g["_E"].to_numpy(), N=g["_N"].to_numpy(),
                   n=g["_w"].to_numpy(),
                   binary_sums={v: g[v].to_numpy(float) for v in treat},
+                  binary_valid={v: g[f"__ok__{v}"].to_numpy(float)
+                                for v in treat},
                   value_arrays={}, unit_size=unit_size)
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
@@ -336,6 +348,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
              overshoot_mode: str | None = None,
              seed: int | None = None,
+             missing_codes=None,
              **extra) -> dict:
     """
     One entry point, five engines, row-aligned results:
@@ -353,6 +366,40 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
     x = np.asarray(x, float); y = np.asarray(y, float)
     n_rows = len(x)
     valid = np.isfinite(x) & np.isfinite(y)
+
+    # BACKLOG 168, John's ruling: declared codes ARE missing.
+    #
+    # Done HERE, once, rather than inside each engine. Every door and
+    # the Python API reach the engines through this function, so one
+    # conversion covers counts, stats, friction, slope and fca - and
+    # no engine learns a new concept. Same reasoning as the Gini
+    # guard of BACKLOG 154, which sits here for the same reason.
+    #
+    # The effect, in his words: such a case "could still be the
+    # placeholder for results - it just doesn't contribute self". It
+    # stays a person towards k and still receives its own row of
+    # answers; only its VALUE drops out, and any share it helps form
+    # is divided by the people actually observed, never by everybody
+    # present.
+    if missing_codes:
+        _codes = np.asarray([float(c) for c in missing_codes],
+                            dtype=float)
+        _hits = 0
+        for _bag in (values, treat):
+            if isinstance(_bag, dict):
+                for _name, _arr in list(_bag.items()):
+                    _a = np.asarray(_arr, dtype=float).copy()
+                    _hit = np.isin(_a, _codes)
+                    if _hit.any():
+                        _a[_hit] = np.nan
+                        _hits += int(_hit.sum())
+                    _bag[_name] = _a
+        if _hits:
+            print(f"[equipop] {_hits} values matched a declared "
+                  "missing code - those cases still count as people "
+                  "towards k and still receive results, but "
+                  "contribute nothing of their own, and shares are "
+                  "divided by the people actually observed.")
 
     if engine == "counts":
         dec = None

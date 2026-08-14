@@ -519,6 +519,9 @@ def run_knn_stats(
         # running state
         sum_n = 0.0
         bin_t = {v: 0.0 for v in bin_vars}
+        # BACKLOG 168: the denominator John ruled on - people whose
+        # value is OBSERVED, not everybody present.
+        bin_ok = {v: 0.0 for v in bin_vars}
         val_chunks = {v: [] for v in val_vars}
         dist_m = 0.0
         pending = list(k_values)
@@ -548,8 +551,11 @@ def run_knn_stats(
                     scratch["over"][k] = scratch["over"].get(k, 0) + 1
                 rec[f"Dist_{suffix}"] = d_k
             for v in bin_vars:
+                d_use = (bin_ok[v] if partial is None
+                         else partial["ok"][v])
                 for s in stats[v]:
-                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = BINARY_STATS[s](n_use, t_use[v])
+                    rec[f"{PREFIX[s]}_{v}_{suffix}"] = \
+                        BINARY_STATS[s](d_use, t_use[v])
             for v in val_vars:
                 chunks = list(val_chunks[v])
                 if partial is not None:
@@ -620,6 +626,10 @@ def run_knn_stats(
                             for v in bin_vars},
                         "d": float(overshoot.radius(dist_m, float(d), f)),
                         "cellpop": sum_n + ring_n,
+                        "ok": {v: bin_ok[v] + float(sum(
+                            cd.valid_for(v)[ci] * w
+                            for ci, w in zip(ring, wt)))
+                            for v in bin_vars},
                         # BACKLOG 118: the same per-cell share the
                         # binary sums get, applied to the value
                         # weights. `whole` gives w = 1 and nothing
@@ -634,6 +644,7 @@ def run_knn_stats(
                 sum_n += float(cd.n[ci])
                 for v in bin_vars:
                     bin_t[v] += cd.binary_sums[v][ci]
+                    bin_ok[v] += cd.valid_for(v)[ci]
                 for v in val_vars:
                     pair = val_pairs[v][ci]
                     if len(pair[0]):

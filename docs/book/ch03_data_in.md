@@ -55,7 +55,8 @@ from equipop.cells import build_cells
 
 df = read_table("residents.sav")          # sniffed and reported
 # if the coordinates are degrees:
-print(suggest_projection(df, "lon", "lat"))
+print(suggest_projection(df, lat_col="lat", lon_col="lon"))
+# or, in EquiPop's usual order:  suggest_projection_xy(df, "x", "y")
 df = project_to_metric(df, "lon", "lat", crs="EPSG:3006")  # SWEREF 99
 
 cd = build_cells(df, "x", "y", binary_vars=["HighEdu"],

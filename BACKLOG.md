@@ -462,6 +462,144 @@ appeared twice; the weaker copy is gone.*
   materialise on the order of a billion rows - and `proportional` for
   value statistics, which is three complaints closed by one item.
 
+- 168 | CORE DONE v1.32, DOORS STILL TO DO | MISSING-VALUE CODES.
+  John, field, 1.31, on finding the Census sentinel -666666666 in 64
+  of his 1074 Bristol rows: "the cause is unimportant, but the
+  possibility to dismiss/exclude those values would be of importance
+  ... when a case with this kind of value is reached the treatment
+  value is not included (it could still be the placeholder for
+  results - it just doesn't contribute self)".
+  Undeclared, that sentinel takes a neighbourhood mean household
+  income to MINUS 166 MILLION, quietly. Declared, the same run reads
+  300.0 on the test layout.
+  DONE: `missing_codes=[...]` on dispatch. The conversion happens
+  ONCE, at that door, so counts, stats, friction, slope and fca all
+  get it and no engine learns a new concept - the same placement and
+  the same reasoning as the Gini guard of BACKLOG 154. A declared
+  code becomes ordinary missing, and every path downstream already
+  knew what missing meant.
+  THE DENOMINATOR, John's ruling on his own worked example: of 400
+  people with 60 of unknown group the share divides by 340, never by
+  400 - dividing by 400 quietly assumes those 60 were not in the
+  group. CellData gained `binary_valid` (people whose value for that
+  variable is usable) and both engines divide by it. It equals the
+  full population unless codes were declared, so no published number
+  moves. Note the trap avoided: with aggregated input one ROW stands
+  for many people, so the valid count sums WEIGHTS, not rows -
+  broken on purpose and caught.
+  The case still counts towards k and still receives its own results;
+  N_k and Dist_k are unchanged by declaring a code, and only Nv_ and
+  the statistics move. Guarded.
+  STILL TO DO: the box in all three doors - Pro, QGIS and Stata - so
+  a user can paste the codes without writing Python. John's shape: a
+  text box.
+
+- ~~169~~ | DONE v1.33 | THE PROJECTION ARGUMENT ORDER, and the
+  book taught the mistake. suggest_projection() says (lat, lon);
+  every other module in EquiPop says (x, y), which is (lon, lat).
+  Called positionally in the codebase's own order on John's Bristol
+  County data it returned EPSG:32737 - UTM zone 37 SOUTH, for Rhode
+  Island - and reported "single-zone projection is safe (distortion
+  < 0.1%)" while doing it. Found by Claude making exactly that call
+  by accident while answering John's question about autoprojecting
+  for Stata.
+  NOTHING DOWNSTREAM COULD CATCH IT. The output is metres, the metres
+  are plausible, and every distance is wrong by a factor nobody can
+  see. And RANGE CHECKS CANNOT RESCUE THIS CASE: -71.3 is a perfectly
+  legal latitude, so the swapped call is not detectably wrong - it is
+  a correct answer about somewhere else.
+  So the ORDER was removed as a thing a caller can get wrong:
+  lat_col/lon_col are KEYWORD-ONLY in suggest_projection and
+  assign_zones, and suggest_projection_xy() takes EquiPop's usual
+  (x, y). A positional call now raises TypeError.
+  What CAN be checked now is: a latitude beyond +/-90 or a longitude
+  beyond +/-180 is refused by name, which catches the commoner
+  mistake of handing projected metres to a function that wants
+  degrees.
+  THE SHIPPED BOOK HAD IT WRONG: docs/book/ch03_data_in.md printed
+  `suggest_projection(df, "lon", "lat")` - swapped AND positional.
+  Anyone following it got the wrong CRS. Corrected, and pinned by a
+  test that reads the book.
+  WHY IT MATTERED NOW: projection becomes a MUST-HAVE on the Stata
+  door, and John's reason is that most Stata users are not GIS people
+  - "forcing them to project may be a big usage blocker". The users
+  least able to spot a wrong CRS are exactly the ones about to be
+  handed this.
+
+- ~~170~~ | CLOSED v1.34, WILL NOT DO - John's ruling | WARN WHEN A
+  VALUE VARIABLE HAS FAR FEWER
+  DISTINCT VALUES THAN ROWS. John's ruling, 1.31, on the Gini: it
+  measures inequality BETWEEN cell values, so within-cell inequality
+  is invisible. On his Bristol extract the ACS attributes are
+  block-GROUP values back-filled to blocks - 34 distinct incomes
+  across 1074 rows - so a Gini there is dispersion between area
+  medians and understates household inequality substantially. He
+  agreed it should say so: "Most of the listeners will be advanced
+  econometricians and spatial analysts so in my work (and the user of
+  EquiPop) this is easy to grasp." Cheap to add, one line at run
+  time, and it protects him from the question at the conference.
+  DECLINED, 1.34: "no need, the users will either know what they test
+  or understand statistics better than using it with too few distinct
+  values." Recorded rather than deleted: the observation is still
+  true and the reason for not warning is a judgement about WHO USES
+  THIS, which a later session should not quietly reverse.
+
+- ~~171~~ | CLOSED v1.34, WILL NOT DO - John's ruling | THE
+  SINGLE-ZONE PROJECTION NOTE.
+  John, 1.32, ruling that single-zone is acceptable: "there is always
+  a potential of doing better things in GIS ... There need to be a
+  comment in the help sections where the single projection biases are
+  mentioned (not at any length but as just to hint the user - i.e.
+  thinking of the US data, using the projection for attached County
+  also in Chicago means that the xxx feet/meters are 'floating') - in
+  most cases this has no effects (since we study nearest neighbours
+  where this problem becomes small in relative terms)". Belongs in
+  the Stata help and the shared help text, briefly.
+  DECLINED, 1.34, and the reasoning is worth keeping because it is a
+  statement about when projection error MATTERS: "Professionals would
+  project according to specific settings, this is to make sure all
+  have the opportunity to run EquiPop, especially when the effect is
+  close to none. (if we have 100m units, the sheer amount of k needed
+  to reach an erroneous cell due to mis-projection before reaching
+  the correct one is likely very high, and the effect would be so
+  minimal that it wouldn't matter - and at those distances, the
+  precise metric distance to k is of no importance)".
+  In other words the error is bounded by the ORDER in which cells are
+  reached, not by the distance figure itself: a projection wrong
+  enough to reorder a k-neighbourhood at 100 m units would have to be
+  wrong by a great deal, and by the time k is large enough to span
+  that distance the exact metric radius has stopped carrying the
+  meaning. The autoprojection stays silent.
+
+- ~~101~~ | DONE v1.34 | THE TEST SUITE WROTE INTO THE REPOSITORY.
+  Open since v1.24. Running the suite left files like
+  `C:\Data\Kayseri_EquiPop_run.csv` and `memory/lyr_EquiPop_run.csv`
+  in the repository ROOT, and seven are committed to main. The
+  release-zip guard refused a build over them TWICE in the 1.30
+  series, which is the only reason they never shipped inside a zip.
+  NOT A BUG IN THE WRITERS. The ArcGIS tests hand the toolbox
+  realistic Windows catalog paths - that is their job, they simulate
+  Pro on Windows - and on Windows the sidecar lands beside the output
+  correctly. On Linux a backslash is an ordinary character, so the
+  whole thing is one long FILENAME and it lands wherever the suite is
+  standing.
+  NO PRODUCT-SIDE GUARD WOULD DO IT. Refusing to write a sidecar when
+  the output's folder does not exist cannot tell that case apart from
+  a user legitimately passing a relative `out.csv` and expecting the
+  manifest beside it - both have an empty directory component. It
+  would break the honest case to tidy up after the dishonest one, and
+  John's own field testing writes relative paths.
+  So tests/conftest.py runs the whole suite from a temporary
+  directory. That holds whatever a future test does with a path,
+  which is the property worth having: the repository cannot be
+  polluted by a test nobody has written yet. It ALSO fails the run if
+  anything new appears in the root anyway, naming the file, so a test
+  writing there by absolute path is reported rather than tidied away
+  silently. Verified by writing a stray on purpose.
+  STILL JOHN'S: `git rm -r --cached` on the seven already committed -
+  C__/Data/, Instance=C_/Data/, segregation_profile_HighEdu.csv. This
+  stops new ones; it cannot un-commit the old ones.
+
 - 161 | open v1.30 | PRO WILL NOT OFFER A BARRIER RASTER FROM THE
   MAP. John, field, 1.29.9: the raster was already loaded in the
   Contents pane, but the Barrier rasters box has no dropdown, so he

@@ -29,12 +29,32 @@ class CellData:
     N: np.ndarray                 # cell midpoint northings
     n: np.ndarray                 # individuals per cell
     binary_sums: dict = field(default_factory=dict)   # var -> array (m,)
+    # BACKLOG 168. Persons in the cell whose value for that variable
+    # is USABLE. Equal to `n` unless missing codes were declared, so
+    # nothing moves for anyone not using them. It exists because of
+    # John's ruling: a share is estimated from the part that was
+    # OBSERVED, not diluted by cases whose value nobody knows. Of 400
+    # people with 60 of unknown group the denominator is 340, never
+    # 400 - dividing by 400 quietly assumes those 60 were not in the
+    # group.
+    binary_valid: dict = field(default_factory=dict)  # var -> array (m,)
     value_arrays: dict = field(default_factory=dict)  # var -> list of arrays
     unit_size: float = 100.0
     labels: list | None = None    # optional per-cell ID/label (e.g. place, year)
 
     def __len__(self):
         return len(self.n)
+
+    def valid_for(self, v):
+        """Persons whose value for `v` is usable, per cell.
+
+        BACKLOG 168. Falls back to the full population when nothing
+        was declared missing - which is every CellData built before
+        1.32 and every run without missing codes - so the denominator
+        is unchanged unless the user asked for it to change.
+        """
+        got = self.binary_valid.get(v)
+        return self.n.astype(float) if got is None else got
 
 
 def build_cells(
@@ -46,6 +66,7 @@ def build_cells(
     unit_size: float = 100.0,
     snap: bool = True,
     label_col: str | None = None,
+    missing_codes=None,
 ) -> CellData:
     """
     Aggregate an individual-level DataFrame into CellData.
@@ -92,6 +113,37 @@ def build_cells(
         df["_N"] = df[n_col].astype(int)
 
     # --- report missing values in analysis variables ---
+    # BACKLOG 168, John's ruling: a declared code IS missing.
+    #
+    # "The sentinels are likely what I would refer to as missing
+    # values that have representations (usually different depending
+    # on the cause for missing) - the cause is unimportant, but the
+    # possibility to dismiss/exclude those values would be of
+    # importance."
+    #
+    # So the codes are converted HERE, at the door, and every path
+    # downstream already knows what missing means. No new concept
+    # reaches the engines - which is the whole design, because the
+    # engines are where a new concept would be expensive to trust.
+    #
+    # Not cosmetic: John's Bristol County extract carries the Census
+    # sentinel -666666666 in 64 of 1074 rows for median household
+    # income. Left alone a neighbourhood mean lands near minus forty
+    # million, and it lands there quietly.
+    if missing_codes:
+        codes = [float(c) for c in missing_codes]
+        for v in list(value_vars) + list(binary_vars):
+            if v not in df.columns:
+                continue
+            col = pd.to_numeric(df[v], errors="coerce")
+            hit = col.isin(codes)
+            if bool(hit.any()):
+                print(f"[cells] '{v}': {int(hit.sum())} values matched "
+                      f"a declared missing code - those cases still "
+                      "count as people towards k and still receive "
+                      "results, but contribute nothing of their own.")
+            df[v] = col.where(~hit)
+
     for v in value_vars:
         miss = df[v].isna().sum()
         if miss:
@@ -102,6 +154,7 @@ def build_cells(
     groups = df.groupby(["_E", "_N"], sort=True)
     E, N, n = [], [], []
     bsums = {v: [] for v in binary_vars}
+    bvalid = {v: [] for v in binary_vars}
     varrs = {v: [] for v in value_vars}
     labels = [] if label_col else None
     mixed = 0
@@ -112,6 +165,7 @@ def build_cells(
         n.append(len(g))
         for v in binary_vars:
             bsums[v].append(g[v].sum())
+            bvalid[v].append(int(g[v].notna().sum()))
         for v in value_vars:
             varrs[v].append(g[v].dropna().to_numpy(dtype=float))
         if label_col:
@@ -130,6 +184,8 @@ def build_cells(
         N=np.array(N, dtype=np.int64),
         n=np.array(n, dtype=np.int64),
         binary_sums={v: np.array(a, dtype=float) for v, a in bsums.items()},
+        binary_valid={v: np.array(a, dtype=float)
+                      for v, a in bvalid.items()},
         value_arrays=varrs,
         unit_size=unit_size,
         labels=labels,

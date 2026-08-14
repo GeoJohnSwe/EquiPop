@@ -55,11 +55,32 @@ def _utm_epsg(zone: int, north: bool) -> int:
     return (32600 if north else 32700) + zone
 
 
-def suggest_projection(df: pd.DataFrame,
+def suggest_projection(df: pd.DataFrame, *,
                        lat_col: str = "lat", lon_col: str = "lon",
                        zone_tolerance: float = 0.05) -> ProjectionAdvice:
     """
     Analyse WGS84 coordinates and recommend a metric projection.
+
+    BACKLOG 169. THE COLUMNS ARE KEYWORD-ONLY, deliberately, and a
+    positional call now raises instead of answering.
+
+    This function says (lat, lon). Every other module in EquiPop says
+    (x, y) - which is (lon, lat), the other way round. Called
+    positionally in the codebase's own order on Rhode Island data it
+    returned EPSG:32737, UTM zone 37 SOUTH, half a world away, and
+    said "single-zone projection is safe (distortion < 0.1%)" while
+    doing it. Nothing downstream could have caught that: the numbers
+    are all perfectly plausible metres.
+
+    Range checks cannot save this case - Rhode Island's longitude is
+    -71.3, which is a legal LATITUDE too - so the argument order is
+    removed as a thing a caller can get wrong. Use
+    suggest_projection_xy() to pass EquiPop's usual (x, y).
+
+    The shipped book had this wrong: docs/book/ch03_data_in.md showed
+    `suggest_projection(df, "lon", "lat")`, which is swapped. Anyone
+    following it got the wrong CRS. That call now raises rather than
+    misleading a second reader.
 
     zone_tolerance : share of points allowed to spill into a
         neighbouring zone while still recommending a single zone
@@ -70,6 +91,28 @@ def suggest_projection(df: pd.DataFrame,
     lon = pd.to_numeric(df[lon_col], errors="coerce")
     ok = lat.notna() & lon.notna()
     lat, lon = lat[ok], lon[ok]
+    # BACKLOG 169. What CAN be checked, is. Degrees have limits, and
+    # projected metres blow straight through them - the commonest
+    # version of this mistake is handing a metric grid to a function
+    # that wants degrees, and it must not be answered politely.
+    if len(lat) == 0:
+        raise ValueError(
+            f"[projection] no usable coordinates in '{lat_col}' and "
+            f"'{lon_col}'. Nothing was computed.")
+    if float(lat.abs().max()) > 90.0:
+        raise ValueError(
+            f"[projection] '{lat_col}' holds values beyond +/-90 "
+            f"(max {float(lat.abs().max()):,.1f}), so it is not a "
+            "latitude in degrees. If these are projected metres they "
+            "need no projecting; if the columns are the other way "
+            "round, name them - lat_col= and lon_col= are "
+            "keyword-only for exactly this reason. Nothing was "
+            "computed.")
+    if float(lon.abs().max()) > 180.0:
+        raise ValueError(
+            f"[projection] '{lon_col}' holds values beyond +/-180 "
+            f"(max {float(lon.abs().max()):,.1f}), so it is not a "
+            "longitude in degrees. Nothing was computed.")
     north = lat.mean() >= 0
 
     zones = lon.apply(_utm_zone)
@@ -138,7 +181,7 @@ def suggest_projection(df: pd.DataFrame,
         warnings=warns)
 
 
-def assign_zones(df: pd.DataFrame, buffer_m: float = 20000,
+def assign_zones(df: pd.DataFrame, buffer_m: float = 20000, *,
                  lat_col: str = "lat", lon_col: str = "lon") -> pd.DataFrame:
     """
     The spec's A/B overlap workflow for two-zone (or multi-zone) data:
@@ -166,3 +209,17 @@ def assign_zones(df: pd.DataFrame, buffer_m: float = 20000,
     print(f"[projection] A/B zones assigned; {int(n_buf)} point-inclusions "
           f"added via {buffer_m/1000:.0f} km buffers.")
     return df
+
+
+def suggest_projection_xy(df: pd.DataFrame, x_col: str = "x",
+                          y_col: str = "y", **kw) -> ProjectionAdvice:
+    """The same advice, taking EquiPop's usual (x, y).
+
+    BACKLOG 169. x is EASTING - a longitude in degrees - and y is
+    NORTHING, a latitude. Every engine, every door and every dataset
+    in this project uses that order, and suggest_projection() uses
+    the other one, so this exists to stop anybody translating by hand
+    at the call site. Translating by hand is how EPSG:32737 came back
+    for Rhode Island.
+    """
+    return suggest_projection(df, lat_col=y_col, lon_col=x_col, **kw)

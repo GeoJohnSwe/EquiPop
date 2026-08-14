@@ -98,6 +98,11 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     bvars = list(cd.binary_sums)
     pop = cd.n.astype(float)
     grp = {v: cd.binary_sums[v].astype(float) for v in bvars}
+    # BACKLOG 168. A parallel population per variable: the people
+    # whose value for it is usable. Identical to `pop` unless missing
+    # codes were declared, so this changes nothing for anyone who
+    # does not use them.
+    okp = {v: np.asarray(cd.valid_for(v), dtype=float) for v in bvars}
 
     modes = []
     if k_values: modes.append(f"k = {k_values}")
@@ -117,6 +122,7 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         # dist, idx: (C, m) sorted by distance (self included at 0)
         cpop = np.cumsum(pop[idx], axis=1)
         cgrp = {v: np.cumsum(grp[v][idx], axis=1) for v in bvars}
+        cok = {v: np.cumsum(okp[v][idx], axis=1) for v in bvars}
         for r, oi in enumerate(oi_range):
             covered = dist[r, -1]
             if ((cpop[r, -1] < kmax or covered < rmax or covered < trunc)
@@ -144,6 +150,7 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 if partial or osm == overshoot.WHOLE:
                     n_k = cp[pos]
                     grp_k = {v: cgrp[v][r][pos] for v in bvars}
+                    den_k = {v: float(cok[v][r][pos]) for v in bvars}
                     d_k = float(dd[pos])
                 else:
                     # BACKLOG 99: take only part of the crossing ring.
@@ -162,12 +169,16 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                             round(cd.E[oi] / cd.unit_size),
                             round(cd.N[oi] / cd.unit_size))))
                     n_k = before + taken
-                    grp_k = {}
+                    grp_k, den_k = {}, {}
                     for v in bvars:
                         t_before = (float(cgrp[v][r][lo - 1])
                                     if lo > 0 else 0.0)
                         grp_k[v] = t_before + float(
                             (grp[v][cells_i] * w).sum())
+                        o_before = (float(cok[v][r][lo - 1])
+                                    if lo > 0 else 0.0)
+                        den_k[v] = o_before + float(
+                            (okp[v][cells_i] * w).sum())
                     ring_all = float(rpop.sum())
                     f = taken / ring_all if ring_all > 0 else 1.0
                     d_prev = float(dd[lo - 1]) if lo > 0 else 0.0
@@ -175,8 +186,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 rec[f"N_{k}"] = n_k
                 for v in bvars:
                     rec[f"T_{v}_{k}"] = grp_k[v]
-                    rec[f"R_{v}_{k}"] = (grp_k[v] / n_k if n_k > 0
-                                         else np.nan)
+                    rec[f"R_{v}_{k}"] = (grp_k[v] / den_k[v]
+                                         if den_k[v] > 0 else np.nan)
                 if d_k <= 0.0 and n_k >= k:
                     # the whole neighbourhood IS the origin cell, so
                     # the radius is not zero - it is unmeasured, and
@@ -199,7 +210,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 rec[f"N_r{lab}"] = cp[pos]  # construction)
                 for v in bvars:
                     rec[f"T_{v}_r{lab}"] = cgrp[v][r][pos]
-                    rec[f"R_{v}_r{lab}"] = (cgrp[v][r][pos] / cp[pos]
+                    rec[f"R_{v}_r{lab}"] = (cgrp[v][r][pos]
+                                            / cok[v][r][pos]
                                             if cp[pos] > 0 else np.nan)
                 last = max(last, pos)
             if decay is not None:          # unbounded decayed sum,
