@@ -3,6 +3,7 @@ arcpy - the sfi-stub discipline applied to ArcGIS Pro."""
 import importlib.util
 import os
 import sys
+import re
 import types
 
 import numpy as np
@@ -553,6 +554,102 @@ def test_a_new_feature_class_matches_rows_not_borrowed_identifiers(
                            truth[col].to_numpy(float)), (
             f"{label}: the copy's {col} is not what the same rows got "
             "in place - results are shifted")
+
+
+@pytest.mark.parametrize("target,expect_moved", [
+    (os.path.join("{root}", "TestBed", "p.gdb", "fc"), True),
+    (os.path.join("{root}", "TestBed", "big.gdb", "ds", "fc"), True),
+    (os.path.join("{root}", "malta.gpkg", "main.pois"), True),
+    (os.path.join("{root}", "TestBed", "ee.shp"), False),
+    (os.path.join("{root}", "TestBed", "out.csv"), False),
+    # nested containers: the folder must escape ALL of them, so the
+    # FIRST is the anchor. Anchoring on the last put EquiPop_runs
+    # inside the outer .gpkg, where Catalog hides it just as well.
+    (os.path.join("{root}", "a.gpkg", "b.gpkg", "fc"), False),
+    # forward slashes, which ArcGIS also hands back
+    ("{root}/TestBed/p.gdb/fc", True),
+])
+def test_sidecars_never_land_inside_a_geodatabase(tmp_path, target,
+                                                  expect_moved):
+    """BACKLOG 166, John's field test of 1.30.1: "I can't see the
+    csv's".
+
+    A file geodatabase is a FOLDER, so a manifest written beside
+    `...\\testingEQP.gdb\\testaMig` is a loose file INSIDE the .gdb -
+    and Catalog presents a geodatabase as a database, not a
+    directory, so it lists no foreign files. The manifest was on
+    disk and invisible in Pro. Two faults: the user cannot find
+    their own record, and EquiPop litters a geodatabase.
+
+    A shapefile or CSV target must be UNCHANGED - that is where John
+    already found them, and moving those would fix nothing and break
+    a habit.
+    """
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    tgt = target.format(root=str(tmp_path))
+    path, moved = pyt._sidecar_path(tgt, "_EquiPop_run.csv")
+    if "a.gpkg" in tgt:            # nested: must escape every one
+        assert moved is True
+    else:
+        assert moved is expect_moved
+    low = path.lower()
+    for ext in (".gdb", ".gpkg", ".sde", ".mdb"):
+        assert ext + os.sep not in low, (
+            f"the sidecar is inside a {ext} container: {path}")
+    if expect_moved or "a.gpkg" in tgt:
+        assert os.path.basename(os.path.dirname(path)) == "EquiPop_runs"
+        # deliberately NOT asserting the folder exists: working out
+        # where a file goes must not create anything. An earlier
+        # version made the folder here and the release zip was
+        # refused, because the suite left directories all over the
+        # working tree.
+        assert not os.path.isdir(os.path.dirname(path))
+    elif "a.gpkg" not in tgt:
+        assert os.path.dirname(path) == os.path.dirname(tgt)
+    assert path.endswith("_EquiPop_run.csv")
+
+
+def test_the_manifest_of_a_geodatabase_run_is_findable(tmp_path):
+    """End to end, through the route John actually used: a point
+    layer written to a NEW feature class inside a .gdb.
+
+    The assertion is on the ROUTING, not on a path guessed in
+    advance - the simulator's catalogPath carries a 'memory/' prefix
+    a real Pro would not, and a test that hard-coded the expected
+    location would be testing the stub. What must be true either
+    way: the file EXISTS, it sits in an EquiPop_runs folder, no .gdb
+    lies above it, and the run SAID where it went.
+    """
+    gdb = tmp_path / "proj.gdb"
+    gdb.mkdir()
+    n = 60
+    t = pd.DataFrame({"FID": np.arange(0, n),
+                      "SHAPE@X": np.linspace(10, 900, n),
+                      "SHAPE@Y": np.full(n, 50.0),
+                      "Pop": np.full(n, 5.0)})
+    state = _install_fake_arcpy(t)
+    state.setdefault("oid_names", {})["lyr"] = "FID"
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("counts", "lyr", msg, k_text="10", unit=100.0,
+                  weight_field="Pop", out_mode="New feature class",
+                  out_fc=str(gdb / "result"))
+
+    said = [m for m in msg.log if "Run manifest written to" in m]
+    assert said, "the run never said where the manifest went"
+    assert "beside the geodatabase" in said[0]
+    path = said[0].split("Run manifest written to ", 1)[1].split(" - ")[0]
+
+    assert os.path.exists(path), (
+        f"the run named {path} and nothing is there")
+    parts = re.split(r"[\\/]+", path)
+    assert "EquiPop_runs" in parts
+    assert not any(q.lower().endswith(".gdb") for q in parts), (
+        f"the manifest is still inside a geodatabase: {path}")
+    man = pd.read_csv(path).set_index("item")["value"].to_dict()
+    assert man["equipop_version"]
 
 
 def test_the_copy_refuses_rather_than_guess_if_the_row_count_moved():

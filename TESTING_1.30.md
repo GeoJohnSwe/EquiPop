@@ -1,4 +1,4 @@
-# Testing 1.30 before you publish it
+# Testing 1.30.2 before you publish it
 
 **1.30 CHANGES NUMBERS.** Every k-based number EquiPop has ever
 produced moves, unless you set one box back. That is the release, not
@@ -150,16 +150,41 @@ This is BACKLOG 148, which was marked done in 1.29.6 and was not —
 the argument existed and nothing ever passed it. If two of your runs
 ever disagree again, this file should now be enough to tell us why.
 
+## Already passed in the field — 1.30 / 1.30.1
+
+Tests 1 to 6 were run by John on 13 Aug 2026 and all passed. Test 2
+came back **identical**, which was the one that could have stopped the
+release. The stub audit ran clean in QGIS 3.42.1-Münster.
+
+**Only two things need re-checking in 1.30.2**, both small and both
+Pro-only:
+
+- **Write to a geodatabase.** The last message should now name an
+  `EquiPop_runs` folder BESIDE the .gdb, and the CSV should be visible
+  in Catalog there. Before, it was written inside the .gdb and only
+  Explorer could see it.
+- **Shapefile in, geodatabase out.** You should NO LONGER be warned
+  about ten-character truncation, because none happens. Write to a
+  shapefile and the warning should still appear.
+
+Test 7 was skipped by John's ruling.
+
 ## Test 6 — the stub audit (BACKLOG 80)
 
 In a live QGIS Python Console, as every release that touches the QGIS
 door:
 
-```
-python tools/stub_audit.py
+QGIS -> Plugins -> Python Console (NOT the OSGeo4W Shell), one line:
+
+```python
+exec(open(r"C:\path\to\EquiPop\tools\stub_audit.py", encoding="utf-8").read())
 ```
 
 I cannot run this. Result goes in the MANUAL validation row.
+
+**Worth re-running in 1.30.2**: the surface list has been regenerated
+from 63 checks to 78, and now covers the twelve classes it had been
+missing since v1.29.1 - including the one the seed box is built from.
 
 ## Test 7 — carried over, still unfinished
 

@@ -346,6 +346,69 @@ appeared twice; the weaker copy is gone.*
   and the second time it hid a silent wrong answer rather than a
   crash.
 
+- ~~165~~ | DONE v1.30.2 | PRO WARNED ABOUT THE INPUT WHEN THE
+  TRUNCATION BELONGS TO THE TARGET. John, field, 1.30.1: a shapefile
+  read, a geodatabase written, and "a file geodatabase layer is
+  strongly recommended" printed anyway - then N_33, Dist_33,
+  T_LowInc_33 and R_LowInc_33 were written in full, because nothing
+  was ever going to truncate. He asked whether it was a known item.
+  It was not.
+  The warning fired in _read_input on the INPUT's format. Ten
+  characters is a property of the TARGET. Pro already had a correct
+  target-based message, so the input one was both redundant and
+  wrong; it now fires once, after the target is settled, and only
+  when the target is a shapefile.
+  QGIS HAS ALWAYS GOT THIS RIGHT - check_target() asks about the
+  target - so Pro was the odd door out. BACKLOG 103's shape again:
+  the doors disagreeing about when to speak.
+  A warning that cannot come true teaches people to ignore warnings,
+  which is the real cost. Guarded both ways: disabling it fails, and
+  so does making it unconditional. NOTE the first guard was written
+  AFTER a deliberate break went uncaught - the fix had shipped into
+  the tree with no test at all.
+
+- ~~166~~ | DONE v1.30.2 | THE RUN MANIFEST WAS INVISIBLE FOR
+  GEODATABASE OUTPUT. John, field, 1.30.1: "I am puzzled ... I can't
+  see the csv's". A file geodatabase is a FOLDER, so a sidecar
+  written beside `...\testingEQP.gdb\testaMig` is a loose file
+  INSIDE the .gdb - and ArcGIS Catalog presents a geodatabase as a
+  database rather than a directory, listing no foreign files. The
+  manifest was on disk the whole time; only Windows Explorer would
+  show it, which John confirmed.
+  Two faults in one: the user cannot find their own record of a run,
+  and EquiPop drops litter inside a geodatabase. Same shape as the
+  `malta.gpkg\malta.gpkg\...csv` files in BACKLOG 101's litter.
+  FIXED for .gdb, .gpkg, .sde and .mdb: sidecars go to an
+  EquiPop_runs folder BESIDE the container, and the run says so
+  rather than leaving the user to search. John's ruling on the
+  folder - a manifest per run would otherwise scatter through the
+  project folder. SHAPEFILE AND CSV TARGETS ARE UNCHANGED: they land
+  beside the file, which is where he already found them, and moving
+  them would fix nothing while breaking a habit.
+  Not pursued, John's call: making the file visible to Catalog by
+  writing .txt instead. Writing into a geodatabase is the thing worth
+  stopping, not the extension.
+
+- ~~167~~ | DONE v1.30.2 | THE STUB AUDIT WAS AUDITING A DOOR NOBODY
+  RUNS. tools/stub_audit.py carried a SURFACE list regenerated for
+  v1.29.1 and never moved since. Measured against what the QGIS door
+  actually calls today: TWELVE classes unchecked, including
+  QgsProcessingParameterNumber - the class the 1.30 SEED BOX is built
+  from - four constants unchecked, among them .Integer and .Double,
+  which is precisely the FlagAdvanced 1-vs-2 shape the value
+  comparison was added for, and one method, parameterAsStrings.
+  So John's clean run of 13 Aug (QGIS 3.42.1, 63 checks, 0 gaps, 0
+  skipped) certified the 1.29.1 door honestly and the 1.30 door not
+  at all. Surface regenerated: 31 classes, 78 checks, nothing the
+  door uses left out. The constant VALUES are taken from the stub
+  itself rather than written from memory - a wrong snapshot would
+  hand John a false alarm on his own machine, which is a worse
+  failure than a gap.
+  Zero-check entries were removed rather than left to pad the count:
+  a class listed with no methods and no constants is fake coverage.
+  Also hardened: the script died with AttributeError where Qgis was
+  absent, which made it impossible to smoke-test before sending.
+
 - 161 | open v1.30 | PRO WILL NOT OFFER A BARRIER RASTER FROM THE
   MAP. John, field, 1.29.9: the raster was already loaded in the
   Contents pane, but the Barrier rasters box has no dropdown, so he

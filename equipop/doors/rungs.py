@@ -151,12 +151,9 @@ SELF_POTENTIAL_DEFAULT = 2          # the equal-area radius
 # ===================================================================
 
 OVERSHOOT = [
-    "whole ring - every cell at that distance, so N_k overshoots k "
-    "(EquiPop before 1.30)",
-    "proportional share - each cell gives the same fraction, so N_k "
-    "is exactly k (recommended)",
-    "sampled, seeded - whole cells one at a time until k is reached "
-    "(the original 2014 method)",
+    "whole ring - every cell at that distance",
+    "proportional share - the same fraction of each cell",
+    "sampled, seeded - whole cells, one at a time",
 ]
 #: The engine's own words, in the same order. These are what reach
 #: run_knn / run_knn_counts / run_knn_stats as `overshoot_mode`.

@@ -41,6 +41,8 @@ row-aligned double fields (Null where coordinates are missing);
 table inputs write a NEW output table.
 """
 
+import os
+import re
 import time
 
 import numpy as np
@@ -342,13 +344,6 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
                 "this machine analyses POINTS (one per person/place)."
                 " Lines and polygons belong in the barrier input.")
         oid = desc.OIDFieldName
-        if str(getattr(desc, "dataType", "")).lower().startswith(
-                "shape") or str(getattr(desc, "catalogPath", "")
-                                ).endswith(".shp"):
-            messages.addWarningMessage(
-                "Shapefile input: field names truncate to 10 "
-                "characters - a file geodatabase layer is strongly "
-                "recommended.")
         sr_used = _check_metric(desc, f"The {context}", auto_project)
         _read_input.last_sr = sr_used
         proj = (sr_used is not None
@@ -1097,6 +1092,26 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                 "are matched on row order, which the copy preserves.")
         oid = new_oid
 
+    # BACKLOG 165. Truncation is a property of the TARGET, not of the
+    # input, and until 1.30.2 this warning was raised in _read_input
+    # on the INPUT. John's field run of 1.30.1 read a shapefile and
+    # wrote to a geodatabase: he was warned that names would truncate,
+    # and then N_33, Dist_33, T_LowInc_33 and R_LowInc_33 were written
+    # in full, because nothing was ever going to truncate. A warning
+    # that cannot come true teaches people to ignore warnings.
+    #
+    # QGIS has always got this right - check_target() asks about the
+    # target - so Pro was the odd door out, which is the BACKLOG 103
+    # shape again: the two doors disagreeing about when to speak.
+    if kind != "table":
+        _tgt = str(_catalog_of(layer) or layer)
+        if _tgt.lower().endswith(".shp"):
+            messages.addWarningMessage(
+                "Shapefile target: field names cap at 10 characters. "
+                "EquiPop will shorten them collision-free and print "
+                "the mapping, but a file geodatabase keeps the full "
+                "names.")
+
     x, y = data["x"], data["y"]
     n_missing = int((~(np.isfinite(x) & np.isfinite(y))).sum())
     if n_missing:
@@ -1452,7 +1467,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         names = {c: short[n] for c, n in names.items()}
         try:    # a mapping that lives only in a run log is useless
             import csv as _csv
-            side = str(cat).rsplit(".", 1)[0] + "_EquiPop_fields.csv"
+            side, _moved = _sidecar_path(cat, "_EquiPop_fields.csv")
+            if _moved:
+                os.makedirs(os.path.dirname(side), exist_ok=True)
             with open(side, "w", newline="", encoding="utf-8") as fh:
                 w = _csv.writer(fh)
                 w.writerow(["full_name", "shapefile_name"])
@@ -1685,6 +1702,61 @@ def _settings_rows(engine, ref_mode, treat_mode, weight_field,
     return rows
 
 
+#: Container formats that LOOK like a folder to the file system but
+#: are presented as a database by ArcGIS Catalog.
+_CONTAINERS = (".gdb", ".gpkg", ".sde", ".mdb")
+
+
+def _sidecar_path(target, suffix):
+    """Where a small CSV written BESIDE an output should actually go.
+
+    BACKLOG 166. A file geodatabase is a FOLDER. So
+    `...\\testingEQP.gdb\\testaMig` + '_EquiPop_run.csv' is a loose
+    file written INSIDE the .gdb, and ArcGIS Catalog presents a
+    geodatabase as a database rather than a directory: it does not
+    list foreign files, so the manifest is invisible in Pro. John,
+    field, 1.30.1: "I can't see the csv's" - they were on disk, and
+    only Windows Explorer would show them.
+
+    Two faults in one: the user cannot find their own manifest, and
+    EquiPop is dropping litter inside a geodatabase. Same shape as the
+    `malta.gpkg\\malta.gpkg\\...csv` files in the test litter of
+    BACKLOG 101.
+
+    So for a target inside a container the sidecars go to an
+    EquiPop_runs folder BESIDE the container - John's ruling, to keep
+    a run-per-CSV from scattering through the project folder. For a
+    shapefile or a CSV target NOTHING CHANGES: they land beside the
+    file exactly as before, which is where he already found them.
+    """
+    base = str(target)
+    for ext in (".shp", ".csv") + _CONTAINERS:
+        if base.lower().endswith(ext):
+            base = base[: -len(ext)]
+    # BOTH separators: ArcGIS hands back forward slashes in some
+    # places and backslashes in others, sometimes in the same path,
+    # and a geodatabase reached through the wrong one would go
+    # undetected and put the manifest back inside the .gdb.
+    parts = [q for q in re.split(r"[\\/]+", base) if q != ""]
+    # the FIRST container, not the last: the point is to get OUT of
+    # every container, and anchoring on the last one would drop the
+    # folder inside an outer one where Catalog still hides it.
+    holder = None
+    for i, part in enumerate(parts[:-1]):
+        if part.lower().endswith(_CONTAINERS):
+            holder = i
+            break
+    if holder is None:                      # a plain file - unchanged
+        return base + suffix, False
+    # NOT created here: working out WHERE a file goes must not make
+    # a folder. A path-computing function with a side effect got the
+    # 1.30.2 release zip refused, because the test suite called it
+    # thousands of times and left directories behind (BACKLOG 101).
+    # The caller creates it, once, when it really is about to write.
+    folder = os.path.join(os.sep.join(parts[:holder]), "EquiPop_runs")
+    return os.path.join(folder, parts[-1] + suffix), True
+
+
 def _write_manifest(target, rows, messages):
     """One small CSV per run beside the output: which EquiPop, which
     CRS (and whether it was auto-projected), which parameters, how
@@ -1695,17 +1767,19 @@ def _write_manifest(target, rows, messages):
         return
     try:
         import csv as _csv
-        base = str(target)
-        for ext in (".shp", ".csv", ".gdb"):
-            if base.lower().endswith(ext):
-                base = base[: -len(ext)]
-        path = base + "_EquiPop_run.csv"
+        path, moved = _sidecar_path(target, "_EquiPop_run.csv")
+        if moved:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", newline="", encoding="utf-8") as fh:
             w = _csv.writer(fh)
             w.writerow(["item", "value"])
             for k, v in rows:
                 w.writerow([k, "" if v is None else str(v)])
-        messages.addMessage(f"Run manifest written to {path}")
+        messages.addMessage(
+            f"Run manifest written to {path}"
+            + (" - beside the geodatabase rather than inside "
+               "it, where ArcGIS Catalog would not show it."
+               if moved else ""))
     except Exception as exc:
         messages.addWarningMessage(
             f"Could not write the run manifest ({exc}).")
@@ -1799,12 +1873,9 @@ SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]
 # recorded there - neither door may import the package to learn what
 # its own dropdowns say (BACKLOG 78/105).
 OVERSHOOT_MODES = [
-    "whole ring - every cell at that distance, so N_k overshoots k "
-    "(EquiPop before 1.30)",
-    "proportional share - each cell gives the same fraction, so N_k "
-    "is exactly k (recommended)",
-    "sampled, seeded - whole cells one at a time until k is reached "
-    "(the original 2014 method)",
+    "whole ring - every cell at that distance",
+    "proportional share - the same fraction of each cell",
+    "sampled, seeded - whole cells, one at a time",
 ]
 OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 

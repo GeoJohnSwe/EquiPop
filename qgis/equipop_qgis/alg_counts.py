@@ -77,12 +77,9 @@ SELFPOT_VALUES = [0.0, 2 ** -0.5, 1.0]
 # test_rungs.py, for the reason given above - a door may not import
 # the package to learn what its own dropdowns say.
 OVERSHOOT_MODES = [
-    "whole ring - every cell at that distance, so N_k overshoots k "
-    "(EquiPop before 1.30)",
-    "proportional share - each cell gives the same fraction, so N_k "
-    "is exactly k (recommended)",
-    "sampled, seeded - whole cells one at a time until k is reached "
-    "(the original 2014 method)",
+    "whole ring - every cell at that distance",
+    "proportional share - the same fraction of each cell",
+    "sampled, seeded - whole cells, one at a time",
 ]
 OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 

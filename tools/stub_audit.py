@@ -1,5 +1,5 @@
 # =====================================================================
-# EquiPop - stub audit  (regenerated for v1.29.1)
+# EquiPop - stub audit  (surface regenerated for v1.30.2)
 #
 # WHERE: QGIS -> Plugins -> Python Console, as ONE line:
 #   exec(open(r"C:\\Data\\EQP\\stub_audit.py", encoding="utf-8").read())
@@ -28,9 +28,25 @@ SURFACE = [
     ('QgsFields', 'QgsFields', ['append', 'names'], {}),
     ('QgsGeometry', 'QgsGeometry', ['asMultiPolygon', 'asMultiPolyline', 'asPoint', 'asPolygon', 'asPolyline', 'isEmpty', 'isMultipart', 'transform', 'wkbType'], {}),
     ('QgsPointXY', 'QgsPointXY', ['x', 'y'], {}),
-    ('QgsProcessingAlgorithm', 'QgsProcessingAlgorithm', ['addParameter', 'parameterAsBool', 'parameterAsDouble', 'parameterAsEnums', 'parameterAsFields', 'parameterAsMatrix', 'parameterAsRasterLayer', 'parameterAsSink', 'parameterAsSource', 'parameterAsString', 'parameterDefinitions'], {}),
+    ('QgsProcessingAlgorithm', 'QgsProcessingAlgorithm', ['addParameter', 'parameterAsBool', 'parameterAsDouble', 'parameterAsEnums', 'parameterAsFields', 'parameterAsMatrix', 'parameterAsRasterLayer', 'parameterAsSink', 'parameterAsSource', 'parameterAsString', 'parameterDefinitions', 'parameterAsStrings'], {}),
     ('QgsProcessingFeedback', 'QgsProcessingFeedback', ['setProgress'], {}),
     ('QgsProcessingParameterDefinition', 'QgsProcessingParameterDefinition', [], {'FlagAdvanced': 2}),
+    # v1.30.2: the twelve parameter classes and four constants the
+    # door actually builds its dialogs from. The list had not moved
+    # since v1.29.1, so the 1.30 SEED BOX - QgsProcessingParameterNumber
+    # and its .Integer constant - was audited by nothing. A surface
+    # list that lags the door audits a door nobody is running.
+    ('QgsProcessing', 'QgsProcessing', [], {'TypeVectorAnyGeometry': 2}),
+    ('QgsProcessingException', 'QgsProcessingException', ['args'], {}),
+    ('QgsProcessingParameterBoolean', 'QgsProcessingParameterBoolean', ['name'], {}),
+    ('QgsProcessingParameterEnum', 'QgsProcessingParameterEnum', ['name'], {}),
+    ('QgsProcessingParameterFeatureSink', 'QgsProcessingParameterFeatureSink', ['name'], {}),
+    ('QgsProcessingParameterFeatureSource', 'QgsProcessingParameterFeatureSource', ['name'], {}),
+    ('QgsProcessingParameterField', 'QgsProcessingParameterField', ['name'], {'Numeric': 1}),
+    ('QgsProcessingParameterMatrix', 'QgsProcessingParameterMatrix', ['name'], {}),
+    ('QgsProcessingParameterNumber', 'QgsProcessingParameterNumber', ['name'], {'Integer': 0, 'Double': 1}),
+    ('QgsProcessingParameterRasterLayer', 'QgsProcessingParameterRasterLayer', ['name'], {}),
+    ('QgsApplication', 'QgsApplication', ['processingRegistry'], {}),
     ('QgsProcessingProvider', 'QgsProcessingProvider', ['addAlgorithm'], {}),
     ('QgsProject', 'QgsProject', ['instance', 'transformContext'], {}),
     ('QgsWkbTypes', 'QgsWkbTypes', ['geometryType'], {}),
@@ -72,7 +88,7 @@ except ModuleNotFoundError:                       # BACKLOG 80
 
 print("=" * 68)
 print("Auditing the simulator against QGIS",
-      getattr(C.Qgis, "QGIS_VERSION", "?"))
+      getattr(getattr(C, "Qgis", None), "QGIS_VERSION", "?"))
 print("=" * 68)
 gaps, checked, skipped = [], 0, []
 for stub_name, real_name, methods, constants in SURFACE:
