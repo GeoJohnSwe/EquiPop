@@ -5,9 +5,9 @@
 * package installed in THAT Python:  pip install equipop
 *
 * Run from the stata/ folder of the EquiPop repository (it needs
-* equipop_knn.ado and stata_test_data.dta next to it).
+* equipop.ado and stata_test_data.dta next to it).
 *
-* Sections 1-5 use the equipop_knn command (the ado). Sections 6-8 reach
+* Sections 1-5 use the equipop command (the ado; equipop_knn still works). Sections 6-8 reach
 * deeper into the EquiPop package through Stata's python blocks: value
 * statistics, distance decay, and a segregation profile.
 *
@@ -30,7 +30,7 @@ set more off
 * python set exec "C:\ProgramData\anaconda3\python.exe", permanently
 *     // then, in a terminal for that Python:  pip install equipop
 
-* make the equipop_knn command visible this session (ado in current folder)
+* make the equipop command visible this session (ado in current folder)
 adopath + "`c(pwd)'"
 
 * ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ count if missing(X_local) | missing(Y_local)
 *   T_<v>_<k>     group members among them
 *   R_<v>_<k>     the ratio T/N - the individualised context share
 
-equipop_knn, x(X_local) y(Y_local) treat(HighEdu) k(50 200 800) unit(100)
+equipop, x(X_local) y(Y_local) treat(HighEdu) k(50 200 800) unit(100)
 
 summarize N_200 Dist_200 R_HighEdu_*
 * EXPECT (means): N_200 228.88 | Dist_200 1155.06 | R_HighEdu_50 .1872 |
@@ -73,7 +73,7 @@ twoway (histogram R_HighEdu_50,  color(navy%40))  ///
 * SECTION 3 - several treatments at once, and the replace option
 * ---------------------------------------------------------------------------
 * treat() takes a varlist: one spatial search, results for every variable.
-equipop_knn, x(X_local) y(Y_local) treat(HighEdu LowEdu TheoEdu VocaEdu) ///
+equipop, x(X_local) y(Y_local) treat(HighEdu LowEdu TheoEdu VocaEdu) ///
              k(50 200 800) unit(100) replace
 * (replace: drop and recreate any of the result variables that already
 *  exist - without it the command refuses to overwrite, on purpose.)
@@ -87,7 +87,7 @@ summarize R_*_200
 * then treated as shares/counts scaled by the weight. Here we PRETEND
 * ValCount is such a population weight, purely to demonstrate the option.
 preserve
-equipop_knn, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(100) ///
+equipop, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(100) ///
              weight(ValCount) replace
 summarize R_HighEdu_200
 * EXPECT: mean approx .2076 (differs from .1840 - the weighting matters)
@@ -98,7 +98,7 @@ restore
 * ---------------------------------------------------------------------------
 * Same data, same k, coarser grid: 400 m cells instead of 100 m.
 rename R_HighEdu_200 R_u100_200
-equipop_knn, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(400) replace
+equipop, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(400) replace
 rename R_HighEdu_200 R_u400_200
 
 correlate R_u100_200 R_u400_200

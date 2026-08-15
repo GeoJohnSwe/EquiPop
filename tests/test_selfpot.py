@@ -320,11 +320,20 @@ def test_stata_can_reach_the_old_behaviour():
     pre-1.29.5 result. Live Stata is outside pytest, so this checks
     the two things that can be checked from here: the option exists,
     and it is passed on rather than accepted and dropped.
+
+    v1.35, BACKLOG 172, and worth reading before trusting a test that
+    greps: BOTH assertions below PASSED for eleven releases on a file
+    that could not run. `selfpot` did appear at the call site and
+    `self_potential=float(selfpot)` did appear in the body - while the
+    def in between took seven parameters and was handed eight. Text
+    that is present is not text that is reachable. What settles it is
+    tests/test_stata_ado.py, which parses the file instead of
+    searching it.
     """
     import os
     import re
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for name, fn in (("equipop_knn.ado", "_equipop_knn"),
+    for name, fn in (("equipop.ado", "_equipop_machine1"),
                      ("equipop_run.ado", "_equipop_run")):
         src = open(os.path.join(root, "stata", name),
                    encoding="utf-8").read()
@@ -336,13 +345,13 @@ def test_stata_can_reach_the_old_behaviour():
 
 
 def test_stata_drops_result_columns_for_decimal_radii():
-    """Same item: equipop_knn.ado computed an underscore-safe name for
+    """Same item: the machine-1 ado computed an underscore-safe name for
     a decimal radius (r=1.5 -> r1_5, since a dot cannot appear in a
     Stata variable name) and then kept using the unsanitised one, so
     `replace` silently dropped nothing for any decimal radius."""
     import os
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    src = open(os.path.join(root, "stata", "equipop_knn.ado"),
+    src = open(os.path.join(root, "stata", "equipop.ado"),
                encoding="utf-8").read()
     block = src[src.index('local rl : subinstr'):]
     block = block[:block.index("        }")]

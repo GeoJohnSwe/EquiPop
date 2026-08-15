@@ -15,11 +15,11 @@ adopath + "`c(pwd)'"
 
 * --- load data and compute k-NN context variables ------------
 use stata_test_data, clear
-equipop_knn, x(X_local) y(Y_local) treat(HighEdu) ///
+equipop, x(X_local) y(Y_local) treat(HighEdu) ///
              k(50 200 800) unit(100) replace
 
 * --- results are ordinary Stata variables: analyse away ------
 summarize R_HighEdu_*
 regress ValFloat R_HighEdu_200 ValCount
-* ...change something, rerun equipop_knn with replace, regress again:
+* ...change something, rerun equipop with replace, regress again:
 * the promised back-and-forth between Stata and EquiPop.

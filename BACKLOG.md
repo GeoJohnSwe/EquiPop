@@ -462,6 +462,52 @@ appeared twice; the weaker copy is gone.*
   materialise on the order of a billion rows - and `proportional` for
   value statistics, which is three complaints closed by one item.
 
+- 172 | DONE v1.35 | THE STATA COMMAND COULD NOT RUN, AND HAD NOT
+  SINCE v1.29.5. Found by Claude reading the file at the start of the
+  1.35 session, in the first ten minutes of a deadline session, before
+  any of the Stata catch-up work was planned.
+  `stata/equipop_knn.ado` called `_equipop_knn` with EIGHT arguments;
+  the def in the same file took SEVEN (six required, `rlist=""`). The
+  body ALSO read `selfpot`, which was not one of its parameters. So
+  every invocation raised TypeError before EquiPop was reached, and
+  would have raised NameError immediately after.
+  IT BROKE IN THE RELEASE THAT ADDED THE OPTION. v1.29.5 (BACKLOG 113)
+  put `SELFpot(real 1)` on the syntax line and `selfpot` at the call
+  site and left the def alone. Eleven releases, 435 green tests, and
+  the only detector was John running it - which he had not, because he
+  works in GIS and the Stata door was assumed done at v1.0.
+  WHY NOTHING SAW IT. Stata sits outside `door_parity.py`, which
+  HANDOVER 8 already says. It also sat outside the suite ENTIRELY:
+  nothing in the project had ever opened an `.ado`. `door_parity`
+  compares box names and `LADDER_CASES` compares result columns;
+  neither can see a file that no test reads.
+  THE FIX IS TO THE TRAP, NOT THE INSTANCE. The glue is called by
+  NAME and its parameters are KEYWORD-ONLY. Adding a box can no
+  longer shift the meaning of every argument after it, order cannot
+  be got wrong, and a wrong name is refused BY that name. This is
+  BACKLOG 169's medicine applied to the other door that threads
+  arguments positionally.
+  THE GUARD: tests/test_stata_ado.py, which reads every `.ado` and
+  refuses (1) a `python:` block that does not compile, (2) a call
+  site that does not match its own def by arity or by keyword, (3) a
+  name read in the glue that nothing defines, (4) an option declared
+  on the `syntax` line and never read - BACKLOG 148's failure in
+  Stata dress, and (5) a keyword handed to `equipop.stata_bridge`
+  that no longer exists there, which is the narrow parity check the
+  Stata door has never had. All five broken on purpose; each names
+  the offending line. Run against the real 1.34 file, (2) and (3)
+  fail with the exact TypeError Stata would have printed.
+  THE NAME: the command is `equipop` from 1.35, John's call, with
+  `equipop_knn.ado` kept as a forwarding alias. `equipop_run.ado` was
+  read by the same test and is sound - 28 arguments into 28
+  parameters, `selfpot` and `wperm` threaded properly.
+  WHAT THIS SAYS ABOUT THE REST OF THE STATA WORK: the bridge is far
+  AHEAD of the doors. `dispatch()` already takes missing_codes,
+  overshoot_mode, seed, self_potential, decay in every form,
+  r_values and treat_are_counts. The catch-up of section 1 of
+  HANDOVER 8 is `.ado` syntax lines and threading, not engine work -
+  with projection the one real exception.
+
 - 168 | CORE DONE v1.32, DOORS STILL TO DO | MISSING-VALUE CODES.
   John, field, 1.31, on finding the Census sentinel -666666666 in 64
   of his 1074 Bristol rows: "the cause is unimportant, but the
