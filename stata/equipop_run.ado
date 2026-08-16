@@ -56,7 +56,7 @@ end
 python:
 from sfi import Data, SFIToolkit
 import numpy as np
-from equipop.stata_bridge import dispatch
+from equipop.stata_bridge import dispatch, to_stata_values
 
 def _col(v):
     a = np.array(Data.get(v), dtype=float)
@@ -109,8 +109,10 @@ def _equipop_run(engine, xv, yv, treatv, valuesv, statss, ks, rs,
         if rep:
             SFIToolkit.stata(f"capture drop {safe}")
         Data.addVarDouble(safe)
-        Data.store(safe, None,
-                   [v if np.isfinite(v) else None for v in arr])
+        # BACKLOG 173: same fault as machine 1 had - Stata refuses
+        # None for a missing number. It had simply never been reached
+        # here either, because it needs a missing RESULT to appear.
+        Data.store(safe, None, to_stata_values(arr))
     SFIToolkit.displayln(
         f"equipop_run: engine {engine}, {len(res)} variables stored")
 end

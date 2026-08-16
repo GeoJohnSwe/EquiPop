@@ -1,4 +1,4 @@
-*! equipop v1.35  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.35.1  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -111,7 +111,7 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
     # KEYWORD-ONLY on purpose: a positional call raises TypeError
     # rather than quietly meaning something else.
     try:
-        from equipop.stata_bridge import knn_to_rows
+        from equipop.stata_bridge import knn_to_rows, to_stata_values
     except ImportError:
         SFIToolkit.errprintln(
             "equipop is not installed in Stata's Python. In a terminal "
@@ -138,6 +138,8 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
             SFIToolkit.error(110)
             return
         Data.addVarDouble(name)
-        Data.store(name, None,
-                   [v if np.isfinite(v) else None for v in arr])
+        # BACKLOG 173: to_stata_values, not a list comprehension here.
+        # Stata refuses None for a missing number, and the conversion
+        # belongs where the suite can test it.
+        Data.store(name, None, to_stata_values(arr))
 end

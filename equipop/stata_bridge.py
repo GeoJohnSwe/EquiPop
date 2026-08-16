@@ -667,3 +667,34 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
 
     raise ValueError(f"unknown engine '{engine}' - use counts / stats "
                      "/ friction / slope / fca / lisa")
+
+
+# --------------------------------------------------------------------
+# Handing values BACK to Stata.  BACKLOG 173.
+# --------------------------------------------------------------------
+# Stata has no NaN. A missing number in a Stata double is stored as
+# 2**1023, and anything larger encodes .a through .z - which is why
+# every reader in this file treats `> 8.9e307` as missing on the way
+# IN. What follows is the same convention on the way OUT, and it lives
+# here rather than in the .ado for one reason: code inside a `python:`
+# block can only be run by Stata, so nothing in the test suite can
+# reach it. Moving the conversion into the package moves it inside the
+# suite. The .ado keeps the sfi calls and nothing else.
+#
+# What went wrong before: the glue passed Python's None for a missing
+# result, and Stata's sfi refuses it - "the specified value should be
+# a numeric value". It only ever appeared when a result WAS missing,
+# so a dataset with complete coordinates ran fine for eleven releases
+# and John's first real run - 9 rows without coordinates - did not.
+
+STATA_MISSING = 8.98846567431158e+307   # 2**1023, Stata's system `.`
+
+
+def to_stata_values(arr):
+    """A numpy array as a list Stata's `Data.store` will accept.
+
+    Plain Python floats, never numpy scalars, and NaN or infinity
+    rendered as Stata's own system missing rather than None.
+    """
+    out = np.asarray(arr, dtype=float)
+    return [float(v) if np.isfinite(v) else STATA_MISSING for v in out]

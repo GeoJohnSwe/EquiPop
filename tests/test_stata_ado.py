@@ -290,3 +290,73 @@ def test_glue_keywords_exist_in_the_package():
                     f"{ado}: passes {kw.arg}= to "
                     f"stata_bridge.{fname}(), which has no such "
                     f"parameter")
+
+
+# ---------------------------------------------------------------
+# BACKLOG 173. What crosses back INTO Stata.
+# ---------------------------------------------------------------
+# John's first real Stata run: the engine finished, all sixteen
+# columns were computed, and the command then died handing them over,
+# with "TypeError: the specified value should be a numeric value".
+# The glue passed Python's None for a missing result. It needed a
+# missing RESULT to appear at all - his data had 9 rows without
+# coordinates - so eleven releases of complete-coordinate testing
+# never reached it.
+#
+# The conversion now lives in the package, so these run for real
+# rather than reading the .ado as text.
+
+def test_missing_becomes_stata_missing_not_none():
+    import numpy as np
+    from equipop.stata_bridge import to_stata_values, STATA_MISSING
+
+    out = to_stata_values(np.array([1.5, np.nan, 3.0, np.inf, -np.inf]))
+    assert None not in out, "None is what Stata refused"
+    assert all(type(v) is float for v in out), (
+        "numpy scalars are not plain floats; sfi type-checks the value")
+    assert out[1] == STATA_MISSING and out[3] == STATA_MISSING
+    assert out[0] == 1.5 and out[2] == 3.0
+
+
+def test_the_missing_sentinel_survives_the_round_trip():
+    """Out and back in must agree.
+
+    Every reader in stata_bridge treats `> 8.9e307` as missing on the
+    way in. What we write out must be caught by that same rule, or a
+    result would return from Stata as an enormous number rather than
+    as a full stop.
+    """
+    import numpy as np
+    from equipop.stata_bridge import to_stata_values
+
+    back = np.asarray(to_stata_values(np.array([2.0, np.nan])))
+    assert not back[0] > 8.9e307
+    assert back[1] > 8.9e307
+    assert np.isnan(np.where(back > 8.9e307, np.nan, back)[1])
+
+
+@pytest.mark.parametrize("ado", ADOS)
+def test_no_ado_hands_none_to_stata(ado):
+    """The written form of the same fault, in case it is re-typed.
+
+    Data.store(variable, observation, VALUES). A None in the SECOND
+    position is correct and means every observation; a None anywhere
+    in the THIRD is the fault that killed the first field run.
+    """
+    text = _read(ado)
+    block = _python_block(text)
+    if block is None:
+        pytest.skip(f"{ado} has no python: block")
+    tree = ast.parse(block)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if getattr(node.func, "attr", None) != "store":
+            continue
+        assert len(node.args) >= 3, f"{ado}: odd Data.store call"
+        values = node.args[2]
+        for sub in ast.walk(values):
+            assert not (isinstance(sub, ast.Constant) and sub.value is None), (
+                f"{ado}: Data.store is handed None among its VALUES - "
+                f"Stata refuses it with 'the specified value should be "
+                f"a numeric value'. Use to_stata_values().")

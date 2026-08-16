@@ -462,6 +462,36 @@ appeared twice; the weaker copy is gone.*
   materialise on the order of a billion rows - and `proportional` for
   value statistics, which is three complaints closed by one item.
 
+- 173 | DONE v1.35.1 | STATA REFUSES None FOR A MISSING NUMBER.
+  John's FIRST successful field run of the Stata door, 1.35 session.
+  The engine finished - 1,958 cells, both k, the self-potential
+  report, 16 columns for 10,892 observations - and the command then
+  died handing the results back: TypeError, the specified value
+  should be a numeric value.
+  CAUSE. Stata has no NaN. A missing number in a Stata double is
+  2**1023 and anything larger encodes .a-.z, which is why every
+  reader in stata_bridge treats `> 8.9e307` as missing on the way IN.
+  The glue passed None on the way OUT. sfi refuses it.
+  WHY IT SURVIVED. It needs a missing RESULT to be reached at all.
+  Every earlier exercise used complete coordinates, so the branch had
+  never once executed. John's data had 9 rows without coordinates and
+  hit it on the first run. Same line, same latent fault, in
+  equipop_run.ado - never reached there either.
+  FIX. The conversion moved OUT of the .ado and INTO the package as
+  stata_bridge.to_stata_values(): plain Python floats, never numpy
+  scalars, NaN and infinity written as Stata's own missing sentinel so
+  the value survives the round trip through the `> 8.9e307` readers.
+  THE PRINCIPLE THIS SETTLES: code inside a `python:` block can only
+  be run by Stata, so nothing in pytest can reach it. Every line moved
+  out of that block is a line the suite can test. The block should
+  hold sfi calls and nothing else. 172 made the block READABLE by the
+  suite; 173 makes as much of it as possible RUNNABLE by the suite.
+  GUARDS. to_stata_values tested directly, including the round trip
+  back through the missing-value convention, plus a reader over every
+  Data.store call in every .ado that refuses None among its VALUES
+  while allowing the legitimate None in the observation slot - broken
+  on purpose against the pre-fix line.
+
 - 172 | DONE v1.35 | THE STATA COMMAND COULD NOT RUN, AND HAD NOT
   SINCE v1.29.5. Found by Claude reading the file at the start of the
   1.35 session, in the first ten minutes of a deadline session, before
