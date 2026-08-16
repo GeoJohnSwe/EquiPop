@@ -38,6 +38,7 @@ import builtins
 import inspect
 import os
 import re
+import sys
 
 import pytest
 
@@ -225,6 +226,15 @@ def test_glue_reads_no_undefined_name(ado):
             f"in the file defines - NameError inside Stata")
 
 
+# Stata's own declarations, which are not options and are not read
+# as macros of their own name. A weight sets `weight` and `exp`;
+# [if] and [in] are consumed by marksample, which builds `touse`.
+SYNTAX_TYPES = {"varname", "varlist", "numlist", "real", "integer",
+                "string", "numeric", "or", "min", "max", "str"}
+WEIGHT_TYPES = {"fweight", "aweight", "pweight", "iweight", "weight"}
+SAMPLE_TYPES = {"if", "in"}
+
+
 @pytest.mark.parametrize("ado", ADOS)
 def test_every_syntax_option_is_used(ado):
     """A box declared and never read.
@@ -232,6 +242,11 @@ def test_every_syntax_option_is_used(ado):
     BACKLOG 148 shipped a `population` parameter no call site passed.
     The Stata shape of that failure is an option on the syntax line
     whose macro is never referenced in the program.
+
+    v1.36: Stata's own declarations are checked differently, because
+    they do not set a macro of their own name. Declaring a weight and
+    never reading `exp` is the same defect wearing different clothes -
+    the user types [fweight=pop] and it silently does nothing.
     """
     text = _read(ado)
     m = re.search(r"^\s*syntax\s(.*?)$",
@@ -239,16 +254,30 @@ def test_every_syntax_option_is_used(ado):
     if not m:
         pytest.skip(f"{ado} declares no syntax line")
     decl = m.group(1)
-    body = text.split("end", 1)[0]
+    body = text.split("\nend", 1)[0]
 
-    opts = set()
-    for tok in re.findall(r"([A-Za-z_]+)\s*\(", decl):
+    # Stata's grammar: everything BEFORE the first comma declares the
+    # varlist, [if], [in] and any weight; everything AFTER it is
+    # options. `Weight(varname)` after the comma is an ordinary
+    # option that happens to be named weight - not a weight clause.
+    pre, _, post = decl.partition(",")
+    declared = {t.lower() for t in
+                re.findall(r"(?<![\w(])([A-Za-z_]{2,})(?![\w(])", pre)}
+
+    opts = {tok.lower() for tok in re.findall(r"([A-Za-z_]+)\s*\(", post)}
+    for tok in re.findall(r"(?<![\w(])([A-Za-z_]{2,})(?![\w(])", post):
         opts.add(tok.lower())
-    for tok in re.findall(r"(?<![\w(])([A-Za-z_]{2,})(?![\w(])", decl):
-        if tok.lower() not in {"varname", "varlist", "numlist", "real",
-                               "integer", "string", "numeric", "or",
-                               "min", "max"}:
-            opts.add(tok.lower())
+    opts -= SYNTAX_TYPES
+
+    if declared & WEIGHT_TYPES:
+        assert re.search(r"`exp'", body), (
+            f"{ado}: a weight is declared and `exp' is never read - "
+            f"[fweight=var] would be accepted and ignored")
+
+    if declared & SAMPLE_TYPES:
+        assert "marksample" in body, (
+            f"{ado}: [if]/[in] are declared but marksample is never "
+            f"called - they would be accepted and ignored")
 
     for opt in sorted(opts):
         assert re.search(r"`" + re.escape(opt) + r"'", body), (
@@ -360,3 +389,102 @@ def test_no_ado_hands_none_to_stata(ado):
                 f"{ado}: Data.store is handed None among its VALUES - "
                 f"Stata refuses it with 'the specified value should be "
                 f"a numeric value'. Use to_stata_values().")
+
+
+# ---------------------------------------------------------------
+# BACKLOG 174 and 175. The command as a STATA command, and its help.
+# ---------------------------------------------------------------
+
+def _ado_text():
+    return _read("equipop.ado")
+
+
+def test_if_and_in_reach_the_engine():
+    """John's ruling: [if]/[in] restrict the rows that RECEIVE
+    results, never who counts as a neighbour. So `touse` must be
+    declared, built by marksample, AND handed to the glue - a
+    marksample whose answer is never used is the same as no if at
+    all, and would silently compute for everyone."""
+    text = _ado_text()
+    assert "marksample touse" in text
+    assert 'touse="`touse\'"' in text, (
+        "touse is built and never passed - [if] would be ignored")
+
+
+def test_a_weight_reaches_the_engine_under_either_name():
+    """[fweight=var] is the conventional form; pop() is ours, for
+    the fractional counts fweight refuses. Both must arrive."""
+    text = _ado_text()
+    assert "`exp'" in text and "`pop'" in text
+    assert 'weight="`wvar\'"' in text, "neither weight form is passed"
+
+
+def test_returns_include_the_useful_ones():
+    """r(varlist) is the one that changes how the command is used."""
+    text = _ado_text()
+    assert re.search(r"program define equipop, rclass", text), (
+        "a command that returns results must be declared rclass")
+    for want in ("r(varlist)", "r(cmd)", "r(k)", "r(N_missing)",
+                 "r(N_origins)", "r(unit)"):
+        name = want[2:-1]
+        assert re.search(r"return (local|scalar) %s\b" % name, text), (
+            f"{want} is documented in the help and never set")
+
+
+def test_the_help_file_exists_and_is_current():
+    """`help equipop` failed until 1.36 - the first thing a Stata
+    user types. The file is GENERATED from equipop/doors/help.py, so
+    it cannot drift from what the other doors say."""
+    import subprocess
+    import sys
+    sthlp = os.path.join(STATA_DIR, "equipop.sthlp")
+    assert os.path.exists(sthlp), "no help file - `help equipop` fails"
+    root = os.path.dirname(STATA_DIR)
+    r = subprocess.run(
+        [sys.executable, os.path.join(root, "tools", "make_sthlp.py"),
+         "--check"], capture_output=True, text=True)
+    assert r.returncode == 0, (
+        "stata/equipop.sthlp is out of date - "
+        "run python tools/make_sthlp.py\n" + r.stdout + r.stderr)
+
+
+def test_every_option_is_documented_in_the_help():
+    """The Stata shape of door drift: an option the user can type
+    and the help has never heard of."""
+    sys.path.insert(0, os.path.dirname(STATA_DIR))
+    from tools.make_sthlp import OPTION_HELP, option_text
+
+    text = _ado_text()
+    m = re.search(r"^\s*syntax\s(.*?)$", _join_continuations(text), re.M)
+    _, _, post = m.group(1).partition(",")
+    declared = {t.lower() for t in re.findall(r"([A-Za-z_]+)\s*\(", post)}
+    for tok in re.findall(r"(?<![\w(])([A-Za-z_]{2,})(?![\w(])", post):
+        declared.add(tok.lower())
+    declared -= SYNTAX_TYPES
+
+    documented = {o.split("(")[0].lower() for o in OPTION_HELP}
+    missing = declared - documented
+    assert not missing, (
+        f"options with no help: {sorted(missing)} - add them to "
+        f"OPTION_HELP in tools/make_sthlp.py")
+    for opt in OPTION_HELP:
+        assert option_text(opt).strip(), f"{opt} has empty help"
+
+
+def test_net_install_manifest_lists_files_that_exist():
+    """`net install` fails at the user's end, not ours, when the
+    .pkg names a file that was never committed."""
+    pkg = os.path.join(STATA_DIR, "equipop.pkg")
+    toc = os.path.join(STATA_DIR, "stata.toc")
+    assert os.path.exists(pkg) and os.path.exists(toc)
+    listed = [ln.split(None, 1)[1].strip()
+              for ln in open(pkg, encoding="utf-8")
+              if ln.startswith("f ")]
+    assert listed, "the package lists no files"
+    for f in listed:
+        assert os.path.exists(os.path.join(STATA_DIR, f)), (
+            f"equipop.pkg lists {f}, which is not in stata/")
+    assert any(f.endswith(".sthlp") for f in listed), (
+        "the package ships no help file")
+    assert "p equipop" in open(toc, encoding="utf-8").read(), (
+        "stata.toc does not offer the equipop package")

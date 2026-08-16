@@ -83,12 +83,12 @@ summarize R_*_200
 * ---------------------------------------------------------------------------
 * SECTION 4 - weighted rows (aggregated in-data)
 * ---------------------------------------------------------------------------
-* weight() says "this row represents <w> persons". Treatment values are
+* pop() says "this row represents <w> persons". Treatment values are
 * then treated as shares/counts scaled by the weight. Here we PRETEND
 * ValCount is such a population weight, purely to demonstrate the option.
 preserve
 equipop, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(100) ///
-             weight(ValCount) replace
+             pop(ValCount) replace
 summarize R_HighEdu_200
 * EXPECT: mean approx .2076 (differs from .1840 - the weighting matters)
 restore

@@ -1,0 +1,10 @@
+v 3
+d EquiPop - k-nearest neighbour context variables
+d
+d Individual, overlapping neighbourhoods measured in PEOPLE rather
+d than in rows, so they cut across administrative boundaries instead
+d of being bound by them.
+d
+d John Osth, OsloMet
+d https://github.com/GeoJohnSwe/EquiPop
+p equipop

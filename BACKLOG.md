@@ -462,6 +462,62 @@ appeared twice; the weaker copy is gone.*
   materialise on the order of a billion rows - and `proportional` for
   value statistics, which is three complaints closed by one item.
 
+- 174/175 | DONE v1.36 | THE STATA COMMAND BECOMES A STATA COMMAND.
+  John asked, in his own words, whether the Stata functions match
+  Stata coding convention. They did not. Six gaps were found; four
+  are closed here and two were already closed by his rulings.
+  1. [if] [in] - ABSENT. Every Stata command that touches data takes
+     them. RULED: they restrict the rows that RECEIVE results, not
+     who counts as a neighbour. `equipop if urban==1` computes for
+     urban origins and rural people still fill neighbourhoods. This
+     is NOT the reference-population ladder, which is a separate
+     option answering the other question. Implemented with
+     `marksample touse, novarlist`. NOVARLIST IS THE POINT: the
+     default also marks out rows with a missing value among the
+     variables, which would silently shrink the reference
+     population, and missing handling is EquiPop's own (168). John's
+     rule was "use Stata's own commands where we can, not where it
+     jeopardises our code" - this is exactly that seam.
+  2. weight() FOUGHT STATA'S OWN WEIGHT SYNTAX. fweight means "this
+     row stands for N identical observations", which IS an EquiPop
+     population weight, and Stata validates it. But fweight demands
+     whole numbers and EquiPop supports fractional population on
+     purpose, so pop() stays for that case. Mutually exclusive, each
+     error naming the other. weight() REMOVED - the door could not
+     run for eleven releases (172), so there were no working
+     do-files to protect. That window closes the moment users appear.
+  3. NOTHING WAS RETURNED. Now rclass, with r(cmd), r(cmdline),
+     r(varlist), r(treat), r(k), r(r), r(unit), r(selfpot),
+     r(N_origins), r(N_missing). r(varlist) is the one that changes
+     how the command can be used.
+  4. `help equipop` FAILED. See 175 below.
+  5. marksample - closed by (1).
+  6. Fixed variable names - prefix() added.
+  Also: treat() is OPTIONAL, rung 0 of the treatment ladder.
+
+- 175 | DONE v1.36 | THE STATA HELP IS GENERATED, NOT WRITTEN.
+  `stata/equipop.sthlp` comes from tools/make_sthlp.py, which reads
+  equipop/doors/help.py - the same sentences ArcGIS Pro renders
+  through make_help_xml.py and QGIS reads for shortHelpString.
+  WHY THIS AND NOT A HAND-WRITTEN FILE: John ruled help ahead of
+  projection ON CONDITION that projection could be added to the help
+  easily afterwards. Generated help satisfies that condition
+  exactly - projection's sentences get written once in help.py and
+  appear at all four doors together. A hand-written .sthlp would
+  have to be remembered separately, and would be the first thing to
+  drift.
+  WHAT IS NOT INHERITED: door-specific wording. The dialogs qualify
+  x and y with "only for tables or attribute mode", because a GIS
+  layer may carry geometry instead of columns. A Stata dataset never
+  does. Those two are overridden in make_sthlp.py with a comment
+  saying why. Shared text where it is genuinely shared; door text
+  where pretending otherwise would mislead.
+  PACKAGING: stata.toc and equipop.pkg, so
+  `net install equipop, from(https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata)`
+  works the moment he pushes. A test refuses a .pkg that names a
+  file which is not in stata/ - that failure would otherwise happen
+  at the user's end, not ours.
+
 - 173 | DONE v1.35.1 | STATA REFUSES None FOR A MISSING NUMBER.
   John's FIRST successful field run of the Stata door, 1.35 session.
   The engine finished - 1,958 cells, both k, the self-potential

@@ -1,0 +1,21 @@
+v 3
+d EquiPop 1.36 - k-nearest neighbour context variables
+d
+d equipop builds, for every observation, the neighbourhood of its k
+d nearest neighbours measured in people, and reports what that
+d neighbourhood contains.
+d
+d Requires: Stata 17 or later, and Python with the equipop package
+d installed in the Python that Stata uses. See help equipop.
+d
+d NOTE: Stata and Anaconda do not mix - Anaconda's numpy closes
+d Stata on import. Use a plain python.org Python for Stata.
+d
+d Author: John Osth, OsloMet
+d Support: https://github.com/GeoJohnSwe/EquiPop
+d
+d Distribution-Date: 20260816
+f equipop.ado
+f equipop.sthlp
+f equipop_knn.ado
+f equipop_run.ado

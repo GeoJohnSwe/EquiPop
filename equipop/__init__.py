@@ -42,7 +42,7 @@ except ImportError:                       # matplotlib is an optional extra
         raise ImportError("map_output needs matplotlib: "
                           "pip install equipop[viz]")
 
-__version__ = "1.35.1"
+__version__ = "1.36"
 __all__ = ["project_to_metric", "snap_to_grid", "run_knn", "Decay", "run_knn_stats", "build_cells", "CellData", "run_knn_friction", "load_friction_table", "suggest_projection", "suggest_projection_xy", "assign_zones", "read_table", "save_output", "fetch", "build_hex_cells", "RunLog", "load_meta", "list_layers", "run_knn_counts", "seg_profile", "aggregate_output", "map_output"]
 
 from .slope import run_knn_slope, dem_to_cell_altitude, SLOPE_MODELS, slope_penalty
