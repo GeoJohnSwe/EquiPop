@@ -50,7 +50,7 @@ def test_tiled_equals_untiled_exactly(tmp_path):
            .reset_index(drop=True))
     assert len(tiled) == len(ref)
     for c in ["N_50", "N_400", "T_t_400", "R_t_400", "Dist_400",
-              "N_r900", "ND_inf", "RD_t_inf"]:
+              "N_r900", "ND_r900", "RD_t_r900"]:
         assert np.allclose(tiled[c].to_numpy(dtype=float),
                            ref[c].to_numpy(dtype=float),
                            rtol=2e-7), c        # float32 packaging

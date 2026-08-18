@@ -111,12 +111,234 @@ def _binned_decay_counts(cd, cells, k_values, r_values, decay,
     return parts, row_bin, base
 
 
+def blank_missing_codes(bag, codes):
+    """Turn declared missing codes into real missing values.
+
+    Returns (new_bag, how_many_blanked). The input dict is not changed.
+
+    BACKLOG 168, and it is not cosmetic. John's Bristol County extract
+    carries the Census sentinel -666666666 in 64 of 1,074 rows for
+    median household income. Left alone, a neighbourhood mean lands
+    near minus forty million, and it lands there quietly.
+
+    John's ruling on what a blanked case IS: the cause does not matter,
+    the ability to exclude does. Such a case "could still be the
+    placeholder for results - it just doesn't contribute self". So it
+    stays a person towards k, and still receives its own row of
+    answers; only its VALUE drops out. Any share it helps form is
+    divided by the people actually OBSERVED, never by everybody
+    present - 400 people with 60 of unknown group gives a denominator
+    of 340.
+    """
+    if not codes or not bag:
+        return dict(bag or {}), 0
+    arr_codes = np.asarray([float(c) for c in codes], dtype=float)
+    out, hits = {}, 0
+    for name, arr in bag.items():
+        a = np.asarray(arr, dtype=float).copy()
+        hit = np.isin(a, arr_codes)
+        n = int(hit.sum())
+        if n:
+            a[hit] = np.nan
+            hits += n
+            print(f"[equipop] '{name}': {n} values matched a declared "
+                  f"missing code - those cases still count as people "
+                  f"towards k and still receive results, but "
+                  f"contribute nothing of their own.")
+        out[name] = a
+    return out, hits
+
+
+def validate_treatment(treat, weight, treat_are_counts):
+    """Refuse a treatment specification that cannot be true.
+
+    Returns None, or raises ValueError with a sentence a non-programmer
+    can act on.
+
+    THE DEFECT THIS CLOSES (external review of 1.36, confirmed):
+    the help and both GIS doors say treat() holds the group's PERSON
+    COUNT at each point; the Stata bridge applied the legacy rule, in
+    which treat is a 0/1 flag multiplied by the population. A user
+    following the help with a population of 100 and a group count of
+    30 received T = 3000 - a group three times larger than the
+    neighbourhood containing it - and a share of 30.0, meaning 3000%.
+    Nothing stopped, nothing warned loudly enough, and the numbers look
+    like numbers.
+
+    John's ruling, v1.37.1: counts are the default, the flag rule stays
+    available by name, and a group larger than its own population is
+    refused rather than reported. No correct configuration can trip
+    this, which is the test of a good guard.
+    """
+    if not treat:
+        return
+
+    if not treat_are_counts:
+        # Flag rule: the value multiplies the population, so anything
+        # outside 0-1 silently invents or destroys people.
+        for name, arr in treat.items():
+            a = np.asarray(arr, dtype=float)
+            fin = a[np.isfinite(a)]
+            if len(fin) and (fin.min() < 0 or fin.max() > 1):
+                raise ValueError(
+                    f"treatmode(flags) means '{name}' holds 0 or 1 - a "
+                    f"share of each row's population - but it ranges "
+                    f"from {fin.min():g} to {fin.max():g}. If it holds "
+                    f"the number of PEOPLE in the group, use "
+                    f"treatmode(counts), which is the default.")
+        return
+
+    # Count rule: the group at a point cannot exceed the population at
+    # that point, and without a population there is nothing to compare
+    # it against - N would count ROWS while T summed PEOPLE.
+    if weight is None:
+        for name, arr in treat.items():
+            a = np.asarray(arr, dtype=float)
+            fin = a[np.isfinite(a)]
+            if len(fin) and fin.max() > 1:
+                raise ValueError(
+                    f"'{name}' holds counts of people (it reaches "
+                    f"{fin.max():g}), but no population was given, so "
+                    f"every row would count as one person while the "
+                    f"group summed many. Add pop(varname) or "
+                    f"[fweight=varname]. If '{name}' is really a 0/1 "
+                    f"marker, use treatmode(flags).")
+        return
+
+    w = np.asarray(weight, dtype=float)
+    for name, arr in treat.items():
+        a = np.asarray(arr, dtype=float)
+        # A NEGATIVE count is impossible too, and the check for "bigger
+        # than the population" cannot see it - a sentinel of
+        # -666666666 is comfortably SMALLER than any population. Found
+        # in 1.38 by a test that expected the undeclared Census
+        # sentinel to be refused and watched it sail through.
+        fin = a[np.isfinite(a)]
+        if len(fin) and fin.min() < 0:
+            raise ValueError(
+                f"'{name}' goes down to {fin.min():g}, and a number of "
+                f"people cannot be negative. If that value means NO "
+                f"DATA rather than a count - census extracts use codes "
+                f"like -666666666, -9 or 999 - declare it with "
+                f"missing({fin.min():g}) and it will be excluded "
+                f"properly.")
+        both = np.isfinite(a) & np.isfinite(w)
+        over = int(np.count_nonzero(a[both] > w[both]))
+        if over:
+            worst = float(np.max(a[both] - w[both]))
+            raise ValueError(
+                f"'{name}' is larger than the population at {over} "
+                f"of {int(both.sum())} points - by up to {worst:g} "
+                f"people. A group cannot be bigger than the population "
+                f"containing it. Either the two variables are the wrong "
+                f"way round, or '{name}' is a 0/1 marker and needs "
+                f"treatmode(flags).")
+
+
+def check_results_are_possible(result):
+    """The backstop, on the way OUT.
+
+    Everything above checks the INPUT. This checks the answer: a
+    neighbourhood's group count cannot exceed its population, whatever
+    route produced it. John ruled it in independently of the treatment
+    contract, on the reasoning that no correct run can trip it.
+
+    A guard on the input can be defeated by an engine change; a guard
+    on the output cannot, because it reads the number the user is
+    about to be given.
+    """
+    counts = {n: a for n, a in result.items() if n.startswith("N_")}
+    for name, arr in result.items():
+        if not name.startswith("T_"):
+            continue
+        suffix = name.split("_")[-1]
+        pop = counts.get(f"N_{suffix}")
+        if pop is None:
+            continue
+        t = np.asarray(arr, dtype=float)
+        n = np.asarray(pop, dtype=float)
+        both = np.isfinite(t) & np.isfinite(n)
+        # A hair of tolerance for floating-point summation only.
+        over = int(np.count_nonzero(t[both] > n[both] * (1 + 1e-9) + 1e-6))
+        if over:
+            worst = float(np.max(t[both] - n[both]))
+            raise ValueError(
+                f"{name} exceeds {'N_' + suffix} at {over} places - by "
+                f"up to {worst:g} people. A neighbourhood cannot hold "
+                f"more people of one group than it holds in total, so "
+                f"this result would be impossible. Check whether the "
+                f"treatment variable holds counts of people "
+                f"(treatmode(counts), the default) or a 0/1 marker "
+                f"(treatmode(flags)).")
+
+
+def project_for_stata(x, y, epsg=None):
+    """Project a Stata run's coordinates from degrees to metres.
+
+    Returns (easting, northing, epsg, sentence).
+
+    Projection is NOT a parameter of the counting engine - it is a
+    conversion that happens before the count, on the way in. Keeping it
+    here rather than in the `python:` block means the suite can reach
+    it; keeping it out of knn_to_rows() means the engine still receives
+    plain metric coordinates and knows nothing about degrees.
+
+    John's condition on the feature was that the run must say which
+    projection it used, so the sentence comes back with the numbers
+    rather than being assembled by the caller.
+    """
+    from .utm import to_utm, describe
+
+    east, north, code = to_utm(lat=y, lon=x, epsg=epsg)
+    return east, north, code, describe(code)
+
+
+def degrees_warning(x, y):
+    """A sentence if these coordinates look like unprojected lat/long,
+    otherwise None.
+
+    Warn, never act. Silently projecting data the user did not ask to
+    project would change every number in the output with no record of
+    why; silently counting in degrees - which is what happened before
+    1.37 - gives a wrong answer with no signal at all. A sentence
+    naming the option is the only honest option of the three.
+    """
+    from .utm import looks_like_degrees
+
+    if not looks_like_degrees(x, y):
+        return None
+    return ("WARNING: x() and y() look like longitude and latitude in "
+            "degrees. Distances computed on degrees are not distances: "
+            "a degree of longitude is shorter than a degree of latitude "
+            "everywhere except the equator, so neighbourhoods come out "
+            "stretched and the k nearest neighbours are not the nearest "
+            "k. Add the option -project- to project to UTM first, or "
+            "pass coordinates that are already in metres.")
+
+
+def zone_span_warning(x, y, epsg=None):
+    """A sentence if a Stata run's data is wider than one UTM zone
+    comfortably holds, otherwise None. Never refuses - see
+    equipop.utm.zone_span_note for John's reasoning.
+    """
+    from .utm import zone_span_note
+
+    try:
+        return zone_span_note(lat=y, lon=x, epsg=epsg)
+    except Exception:                       # noqa: BLE001
+        # A note about the data must never be the thing that stops a
+        # run. If it cannot be computed, there is simply no note.
+        return None
+
+
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
                 m_neighbors: int | None = None,
                 decay_eps: float = 1e-6,
                 r_values=None, decay=None,
                 treat_are_counts: bool = False,
+                strict_treatment: bool = True,
+                missing_codes=None,
                 decay_half_life=None, decay_bins: int = 10,
                 self_potential: float = 1.0,
                 overshoot_mode: str | None = None,
@@ -150,6 +372,12 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     w = (np.ones(n_rows) if weight is None
          else np.asarray(weight, dtype=float))
 
+    # BACKLOG 168. Blank the declared codes FIRST, before anything
+    # looks at the numbers - otherwise a sentinel like -666666666 is
+    # judged by validate_treatment() as a group count, and refused for
+    # being negative rather than recognised as absent.
+    treat, _blanked = blank_missing_codes(treat, missing_codes)
+
     df = pd.DataFrame({"_x": x, "_y": y, "_w": w})
     for name, arr in treat.items():
         df[name] = np.asarray(arr, dtype=float)
@@ -158,6 +386,10 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     # FLAG on a weighted row, contribution = flag * weight.
     # treat_are_counts=True (GIS door) -> treat IS the group's person
     # COUNT at the point; weight is the TOTAL count; no multiplication.
+    # Refuse what cannot be true BEFORE doing the work - see
+    # validate_treatment() for the defect this closes.
+    if strict_treatment:
+        validate_treatment(treat, weight, treat_are_counts)
     for name in treat:
         if not treat_are_counts:
             df[name] = df[name] * df["_w"]
@@ -235,15 +467,18 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 + [f"Dist_{k}" for k in k_values]
                 + [f"T_{v}_{k}" for v in treat for k in k_values + labs]
                 + [f"R_{v}_{k}" for v in treat for k in k_values + labs])
-    if decay is not None:                    # unbounded decayed sums
-        out_cols += [c for c in ("ND_inf",)
-                     + tuple(f"TD_{v}_inf" for v in treat)
-                     + tuple(f"RD_{v}_inf" for v in treat)
+    if decay is not None:                    # BACKLOG 185: at k, not
+        out_cols += [c for c in                      # unbounded
+                     tuple(f"ND_{k}" for k in k_values + labs)
+                     + tuple(f"TD_{v}_{k}" for v in treat
+                             for k in k_values + labs)
+                     + tuple(f"RD_{v}_{k}" for v in treat
+                             for k in k_values + labs)
                      if c in res.columns]
     out = {}
     vidx = np.flatnonzero(valid.to_numpy())
     decay_cols = {c for c in out_cols
-                  if c.endswith("_inf") or c == "ND_inf"}
+                  if c.startswith(("ND_", "TD_", "RD_"))}
     for c in out_cols:
         col = np.full(n_rows, np.nan)
         if bin_frames is not None and c in decay_cols:
@@ -265,6 +500,11 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
               f"missing results")
     print(f"[equipop] returning {len(out)} new variables for "
           f"{n_rows} observations")
+    # The backstop, on the way out. A guard on the input can be
+    # defeated by an engine change; this one reads the number the user
+    # is about to be handed.
+    if strict_treatment:
+        check_results_are_possible(out)
     return out
 
 

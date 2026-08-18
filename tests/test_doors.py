@@ -172,7 +172,10 @@ def test_predicted_names_cover_effort_and_decay():
     dec = F.predict_result_fields(
         "counts", "400", "", "", ["A"], [], [],
         decaying=True, efforting=False)
-    assert {"ND_inf", "TD_A_inf", "RD_A_inf"} <= set(dec)
+    # BACKLOG 185: the decayed columns carry the SAME suffixes as the
+    # plain ones, because they describe the same neighbourhood.
+    assert {"ND_400", "TD_A_400", "RD_A_400"} <= set(dec)
+    assert not [c for c in dec if c.endswith("_inf")]
 
 
 def test_shortening_never_merges_two_different_results():

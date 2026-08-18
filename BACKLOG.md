@@ -23,7 +23,7 @@ appeared twice; the weaker copy is gone.*
 2b. ~~**164**~~ — DONE v1.30.1. John's field test: a new feature class received every result ONE ROW EARLY, silently, since v1.20
 3. **161** — Pro will not offer a barrier raster from the map. John field-found it: he had to drag and drop. Small, and it makes the barrier box behave the way the DEM box and all of QGIS already do
 4. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
-4. **128** — `equipop doctor`: one read-only diagnostic, every door. The dependency story is the adoption risk
+4. ~~**128**~~ — STATA HALF DONE v1.37 (`equipop doctor`). Pro and QGIS still to do; the dependency story is the adoption risk
 5. **129** — version the output SEMANTICS, not just the structure. 1.29.5 changed what Dist_k MEANS and said nothing
 6. **117** — one validated run specification, used by the package and every door
 7. **120** — move reference and treatment construction into shared package code
@@ -495,6 +495,317 @@ appeared twice; the weaker copy is gone.*
   6. Fixed variable names - prefix() added.
   Also: treat() is OPTIONAL, rung 0 of the treatment ladder.
 
+- 185 | DONE v1.40 | THE DECAY PRODUCED THE WRONG DECAYED
+  MEASURE. John, on reading 1.39: "The decay uses distances to decay
+  reference and treatment population, it doesn't affect distance. So
+  there is no need for an extra distance measure - what is interesting
+  is ... the decayed sum of reference and treatment populations at k.
+  However - and just to be clear - the k-values should aim for a
+  NON-DECAYED k. i.e. if k=300 is requested, the 300 nearest
+  population is the right call - the decayed populations should be
+  reported and are always (as long as the beta has the right sign) be
+  smaller than k".
+  THE WANTED SEMANTICS ALREADY EXIST, IN THE CLASSIC ENGINE. The
+  docstring of analysis.py states them in the original EquiPop's own
+  words: "the k-thresholds are still defined by the RAW (unweighted)
+  counts - the decayed values are simply recorded at the same moment
+  ... Decayed counts are therefore always <= raw counts." It emits
+  ND_{k}, TD_{k}, RD_{k} (NAMES at analysis.py:45).
+  THE STATA PATH USES THE FAST ENGINE, WHICH DOES SOMETHING ELSE.
+  fastcounts.py:217-235 accumulates over the TRUNCATION radius, not to
+  the k position, and emits ND_inf / TD_<v>_inf / RD_<v>_inf - an
+  unbounded decayed potential over everybody. A legitimate measure,
+  but not this method's, and not what was asked for.
+  THE FIX, and it is contained: the k loop in fastcounts already holds
+  everything needed. Build cumulative DECAYED arrays alongside cp and
+  cgrp - cumsum(pop_sorted * w) with the same selfpot adjustment to
+  dw[0] that BACKLOG 95 requires - and read them at the same `pos` the
+  raw counts use. THE OVERSHOOT RING IS THE CARE POINT: when the ring
+  is split, the decayed sum must take the same per-cell fractions `w`
+  that grp_k[v] takes at fastcounts.py:171-181, or the raw and decayed
+  numbers will describe different neighbourhoods.
+  THE INVARIANT IS THE TEST, and John supplied it: with a decreasing
+  decay, ND_k <= N_k ALWAYS, and TD <= T. That is a guard no correct
+  run can trip - the same shape as 179's.
+  Note that this is an ENGINE change, so it lands at every door, not
+  just Stata. QGIS and Pro get it too.
+
+- 186 | DONE v1.40.1 | THE DOCTOR NOTICES THE TWO-PART UPDATE. The
+  .ado files come from the repository by net install; the engine comes
+  from pip into Stata's Python. Updating one and not the other is the
+  most frequent field failure this project has, and it surfaces as
+  "ImportError: cannot import name ...", which reads as our bug.
+  `equipop doctor` now prints both versions and, when they differ,
+  says which route updates which half and that Stata must be
+  restarted. Silent when they match - a warning that fires on a
+  correct installation teaches people to ignore warnings.
+  COST: the .ado carries its own version string, so a version now
+  lives in SEVEN places. That is guarded, not just documented:
+  test_doctor.py asserts the .ado's local against line 1 of the same
+  file AND against the package, so a half-done bump fails the suite
+  rather than making the doctor report a mismatch on a correct
+  install.
+
+- 185-notes | DONE v1.40 | WHAT THE FIX ACTUALLY TOUCHED. Cumulative
+  DECAYED arrays are built beside cp/cgrp/cok and read at the SAME
+  position, in both the whole-ring and the split-ring branch. The
+  split ring takes the SAME per-cell fractions as the raw count - a
+  deliberate break that dropped them was NOT caught at first, because
+  the test only asserted <= and the broken version passed by being
+  EQUAL. Strengthened to require both raw and decayed to MOVE, and to
+  agree about which origins had a split ring.
+  THE UNBOUNDED SUM IS DELETED, not commented out - John: "it risks
+  becoming an orphan or picked up in a later session with unknown
+  consequences". Dead code rots; git remembers.
+  CONSEQUENCES WORTH KNOWING:
+  - decay ALONE is no longer a valid run. It used to produce ND_inf
+    with no k and no r; now it produces nothing, so it is REFUSED
+    with a message saying why.
+  - `covered < trunc` left the unsatisfied-origin test. Nothing reads
+    past k any more, and requiring truncation coverage forced a decay
+    run to scan the whole map - 283 neighbour cells where 64 would do.
+  - ND_inf WAS SHIPPED AT QGIS AND ARCGIS PRO, not only Stata. Their
+    output columns change to ND_<k>, TD_<v>_<k>, RD_<v>_<k>. The field
+    PREDICTOR in equipop/doors/fields.py had to change with them - it
+    declares output fields before a run, and a predictor that promises
+    a column the engine no longer makes is the same class of fault as
+    a door offering a model the engine lacks (1.39).
+  - test_selfpot's shift assertion had to move from N_local to N_k:
+    for that origin the whole neighbourhood IS its own cell, so under
+    the default overshoot only part of it is taken. The old figure was
+    right when the sum ran to truncation and swallowed the cell whole.
+
+- 42/99/102-stata | DONE v1.39 | THE LAST OF THE ANALYTICAL BOXES
+  REACH STATA: decay with fixed or variable bandwidth, the overshoot
+  mode, and the self-potential ladder. Menu work - the engine has
+  taken all of them for many releases - EXCEPT that writing the tests
+  found two door/engine mismatches:
+  (a) THE DOOR OFFERED A DECAY MODEL THE ENGINE DOES NOT HAVE. It
+  listed negexp, power and "gauss"; equipop.decay.MODELS holds
+  negexp, expnormal, expsqrt, lognormal and power. The door would
+  have accepted gauss and been refused deep inside the engine, while
+  refusing three models that work. The list is duplicated on purpose
+  (78/105 - a door may not import the package to learn its own
+  vocabulary) and is now PINNED against MODELS by a test.
+  (b) DECAY DOES NOT REWEIGHT THE k-COUNTS. Measured: N_k and Dist_k
+  come back identical, and decay ADDS a distance-weighted total in a
+  column beginning ND_. The help said the opposite. The wording was
+  corrected, not the code - and the test that found it was written
+  expecting Dist_k to move, which is why it found anything at all.
+  OVERSHOOT: `sampled` is REFUSED BY NAME, with the reason. John's
+  ruling: it exists only to reproduce old EquiPop versions, so it is
+  not a Stata concern, and refusing it drops the seed option too.
+  SELF-POTENTIAL: three rungs by name - none, median, full - carrying
+  the engine's own 0, 2**-0.5 and 1, pinned against
+  rungs.SELF_POTENTIAL_VALUES. selfpot(#) still takes any number, so
+  nothing already written breaks.
+  The decay help text lives in equipop/doors/help.py as "decaymodel",
+  so QGIS gets the same words when 102 is done rather than a third
+  wording.
+
+- 168-stata | DONE v1.38 | MISSING-VALUE CODES REACH THE STATA DOOR.
+  knn_to_rows() had no missing_codes parameter - only the broader
+  dispatch() route did - so the one engine Stata uses could not
+  exclude a sentinel. blank_missing_codes() now does it in one shared
+  place, and it runs FIRST, before anything looks at the numbers:
+  a sentinel judged as a group count is refused for being negative,
+  and the user is told to check their treatment variable when what
+  they needed was missing().
+  John's ruling holds end to end: a blanked case STILL COUNTS AS
+  PEOPLE towards k and still receives its own row of results - it
+  "could still be the placeholder for results - it just doesn't
+  contribute self" - and the share divides by the OBSERVED part.
+  Measured: six cells of 100 people, 30 of the group each, two cells
+  blanked -> N=600, T=120, R=0.30. That is 120/400, not 120/600.
+  The help text lives in equipop/doors/help.py under "missingcodes",
+  so QGIS and Pro inherit the same words when they get the box.
+
+- 183 | DONE v1.38 | A NEGATIVE GROUP COUNT SLIPPED PAST THE 179
+  GUARD. Found by a test that expected the undeclared Census sentinel
+  to be refused and watched it pass. The check asked whether the group
+  was BIGGER than the population; -666666666 is comfortably smaller
+  than any population, so it sailed through. A count of people cannot
+  be negative on its own terms. The refusal now names missing() as the
+  fix, because the user who trips this is precisely the one who does
+  not know the option exists. A guard written against one impossible
+  case will not catch the others - enumerate them.
+
+- 184 | DONE v1.38 | RESULT NAMES WERE VALIDATED WHILE VARIABLES WERE
+  ALREADY BEING WRITTEN. External review of 1.36, P1. The collision
+  check sat INSIDE the writing loop, so a clash or an over-long name
+  on the tenth variable left nine already in the dataset - a run that
+  stopped with an error and changed the data anyway. prefix() was
+  checked only against "N_1", which proves nothing about
+  T_<longvariablename>_100 against Stata's 32-character limit. Now
+  every intended name is built and checked - length, collision,
+  duplication - BEFORE any variable is created, and all the problems
+  are reported at once rather than one per run.
+
+- 179 | DONE v1.37.1 | treat() HAD TWO INCOMPATIBLE MEANINGS AND THE
+  WRONG ONE WON IN STATA. External review of 1.36, reproduced before
+  fixing. The help and both GIS doors say treat() holds the group's
+  PERSON COUNT; the Stata bridge applied the legacy rule, treat as a
+  0/1 flag multiplied by the population, because equipop.ado never
+  passed treat_are_counts. Population 100, group count 30, k=100 gave
+  N=100, T=3000, R=30.0 - a group three times the neighbourhood
+  containing it, and a share of 3000%. unit() is the CELL SIZE and
+  does not scale R, so there is no reading of those numbers that is
+  correct. It was not confined to weighted runs: counts with no
+  weight gave N=5 rows against T=150 persons, R=30 again.
+  JOHN'S RULING: counts are the default, matching the help and the GIS
+  doors; flags stay available by name via treatmode(flags) so nothing
+  written already breaks; and impossible combinations are REFUSED.
+  validate_treatment() refuses on the way IN - a flag outside 0-1,
+  counts with no population, a group larger than its population, each
+  naming which setting to use. check_results_are_possible() refuses on
+  the way OUT, because a guard on the input can be defeated by an
+  engine change while one on the output reads the number the user is
+  about to be handed.
+  IT IMMEDIATELY FOUND IMPOSSIBLE DATA IN OUR OWN FIXTURES. test_rungs
+  drew Population and LowInc independently, so the group exceeded its
+  own population at 84 of 400 points; test_arcgis_stub did the same
+  with Pop and Grp. Both fixtures were corrected, not the guard. This
+  is the bad-fixture failure again: data that cannot occur in the
+  field proves nothing about the field.
+
+- 180 | DONE v1.37.1 | AN EMPTY treat() BROKE -replace-. Reviewer P1,
+  confirmed. treat() became optional in 1.36 and the replace branch
+  holds `foreach v of varlist `treat''` twice. An empty varlist loop
+  is a SYNTAX ERROR in Stata, not an empty loop, so
+  `equipop, x() y() k(25) replace` failed on exactly the combination
+  that ruling created. A THIRD CLASS OF STATA DEFECT, after 172's
+  arity mismatch and 173's None: the parser test models argument
+  passing, not Stata's runtime grammar, and no amount of parsing the
+  file reveals this. Guarded by reading the guard's scope, not by
+  searching for a string.
+
+- 181 | DONE v1.37.1 | STATA REOPENED THE FRACTIONAL CELL SIZE ALREADY
+  CLOSED AT THE GIS DOORS. Reviewer P1, confirmed. 155 refused
+  fractional cell sizes in QGIS and Pro from 1.29.8; Stata declared
+  unit() a plain real and checked nothing, not even zero or negative.
+  MEASURED: unit 2.5 with points at 0.1, 2.6 and 5.1 gives centres 1,
+  3, 6 - spacings of 2 and 3, neither of them 2.5 - because centres
+  are cast to integers. The test asserts the UNREPRESENTABILITY rather
+  than quoting the rule, so if the core ever changes the rule gets
+  revisited instead of kept from habit.
+
+- 182 | DONE v1.37.1 | SHIPPED INSTRUCTIONS POINTED USERS AT THE
+  CONFIGURATION THAT CLOSES STATA. Reviewer P0. README_STATA.md told
+  users to point Stata at an Anaconda environment - the one setup the
+  handover records as fatal. STATA_GUIDE.md still taught equipop_knn
+  with a mandatory treat() and the removed weight() option;
+  TESTING_STATA.md gave invented Anaconda paths and promised for 1.38
+  things that shipped in 1.36. INSTRUCTIONS ARE PART OF THE RELEASE:
+  this one could break a machine before EquiPop ran. Now ONE current
+  page, the rest moved to stata/historical/ behind a DO NOT FOLLOW
+  banner, and a test refuses "anaconda" outside a prohibition,
+  weight(), and stale release promises in current guidance. Broken on
+  purpose by putting an Anaconda path back into a `python set exec`
+  line - caught.
+
+- 178 | DONE v1.37 | A SINGLE-ZONE PROJECTION OVER WIDE DATA SAYS
+  SO, AND CARRIES ON. John's ruling, and the reasoning is his: "allow
+  the user to proceed regardless - the effects are smaller than
+  expected. This since the bespoke neighbourhood departs from the
+  nearest k-neighbours, it becomes almost impossible to find a
+  situation where an erroneous nearest neighbour is selected before
+  the true nearest, and if that happened it would be in very large k,
+  and at distances that makes very little difference. (i.e. for me it
+  is the risk of counting the wrong cafe in Lyon/France from Oslo)".
+  THE ARGUMENT IS ABOUT ORDER, NOT DISTANCE, and it is the same one
+  that closed 171: a neighbourhood is built from the rank in which
+  neighbours are reached, so a sub-percent stretch changes an answer
+  only by swapping two cells' rank - and two cells that close in true
+  distance, at the k needed to reach across zones, are interchangeable
+  members of the same neighbourhood. So the note is honesty about what
+  was done, not a warning of a defect, and it NEVER refuses.
+  Three zones is the threshold; two is ordinary, since any dataset
+  near a boundary straddles one.
+  THE NOTE CARRIES THE FIGURE FOR THE USER'S OWN EXTENT rather than a
+  generic reassurance - "stretched by at most 0.78% at the far edge of
+  this data" beats "well under one percent", because a reader can
+  weigh 0.78% against their cell size and cannot weigh a platitude.
+  The second-order point-scale formula k = k0(1 + (dlam cos phi)^2/2)
+  is checked against pyproj's geodesic at three longitudes and agrees
+  to within 5e-5; at 9 degrees off the meridian it predicts 0.469%
+  and the measured error is 0.470%.
+  The note is computed on the DEGREES, before the coordinates are
+  replaced, and any failure to compute it yields no note rather than a
+  failed run: a remark about the data must never be the thing that
+  stops the data being analysed.
+
+- 177 | DONE v1.37 | LAT/LONG IS A USAGE BLOCKER, AND THE FIX MUST
+  NOT COST A DEPENDENCY. John's ruling and the whole specification:
+  "for professional spatial analysts, this function is not needed,
+  they will have routines for projecting the data as they need and
+  want - However, for the unexperienced stat and econ people that are
+  not trained to think beyond lat/long, a simple function to generate
+  good-enough projections are what is needed. I think that we should
+  communicate in the output which projection that was used in each
+  case (i.e. EPSG code for UTM would be enough)".
+  WHY NOT pyproj: it is a fourth compiled library, and it would be
+  demanded of exactly the users least able to repair it when it will
+  not load - undoing 176, which had just taken it off the Stata path.
+  So `equipop/utm.py` does transverse Mercator by the Kruger series in
+  numpy alone. CHECKED, NOT CLAIMED: against pyproj over all 120
+  zones, 200 points each, worst disagreement 0.000193 mm. A
+  neighbourhood is hundreds of metres wide, so millimetres are
+  irrelevant - agreement at that level is evidence the implementation
+  is RIGHT, not merely close. Also a round trip independent of pyproj,
+  and one hand-checkable point on the central meridian.
+  THE ZONE IS CHOSEN BY THE MEDIAN, not the mean, so a fringe of
+  far-away points cannot drag the whole dataset into a zone holding
+  none of it. Refuses rather than guesses: coordinates outside the
+  degree envelope, latitudes beyond 84N/80S, an EPSG that is not a
+  WGS84 UTM zone. Single zone throughout - 171's ruling.
+  THE RUN SAYS WHAT IT DID: "equipop: projected to UTM zone 19N
+  (EPSG:32619)", and r(epsg) and r(crs) carry it back.
+  WITHOUT -project-, coordinates that look like degrees now raise a
+  WARNING naming the option. Warn, never act: silently projecting
+  changes every number with no record, and silently counting in
+  degrees - the behaviour before 1.37 - gives a wrong answer with no
+  signal at all. The warning is conservative and does not fire on
+  projected data, so it cannot nag a professional on every run.
+  NOT DONE, deliberately: the Norway and Svalbard zone exceptions. The
+  zone comes from the longitude by the standard formula, so the EPSG
+  reported describes exactly what was done; only the central meridian
+  differs from official UTM there, and the projection is valid either
+  way.
+  FOUND WHILE BREAKING GUARDS: the missing-value mask in to_utm() is
+  redundant - NaN propagates through the whole series, so deleting it
+  breaks no test. Kept as a statement of the contract, and labelled as
+  redundant in the source rather than left looking like coverage.
+
+- 176 | DONE v1.37 | `import equipop` LOADED FIVE COMPILED
+  LIBRARIES FOR A COMMAND THAT NEEDS THREE. Found from Umut's Mac,
+  testing 1.36 for the conference: pandas would not load, because the
+  copy in his user folder was built for Intel and his Stata runs as an
+  Apple-Silicon program. The loader refuses to mix processors. numpy
+  imported fine - it was a different, correct build - which made it
+  read as a pandas fault rather than an installation one.
+  MEASURED BEFORE TOUCHING ANYTHING: `import equipop` took 2.46s and
+  pulled in numpy, pandas, scipy, pyproj and matplotlib, 1226 modules.
+  Machine 1 needs numpy, pandas and scipy. pyproj and matplotlib were
+  loaded on every Stata run by users who never asked to project or to
+  draw, and a fault in either took the whole package down. geopandas
+  and rasterio were already deferred inside the functions that use
+  them - checked, not assumed, and that is why `_EXTRAS` names viz
+  alone. THE FIX is PEP 562: `__init__.py` maps every public name to
+  its module and fetches it on first use. `equipop.run_knn`,
+  `from equipop import run_knn` and `import equipop.analysis` all
+  behave as before; only the timing changes. All 60 public names of
+  1.36 resolve, out of the same modules, asserted against a recording
+  of the 1.36 surface. AFTER: `import equipop` costs 0.00s and 72
+  modules and loads nothing compiled; the Stata path loads numpy,
+  pandas and scipy and stops. A broken pyproj now breaks projection
+  and nothing else, which is the precondition for 1.38 - projection
+  cannot be added while pyproj loads for everybody. Guarded by
+  tests/test_lazy_imports.py, which imports in a clean SUBPROCESS
+  because once pytest has loaded a library an in-process check passes
+  for the wrong reason. Broken on purpose three ways: an eager import
+  added back, a wrong module in the map, and a numpy import added to
+  doctor.py - each caught.
+
 - 175 | DONE v1.36 | THE STATA HELP IS GENERATED, NOT WRITTEN.
   `stata/equipop.sthlp` comes from tools/make_sthlp.py, which reads
   equipop/doors/help.py - the same sentences ArcGIS Pro renders
@@ -798,7 +1109,7 @@ appeared twice; the weaker copy is gone.*
 
 - ~~150~~ | DONE v1.29.8 | Two things, both from John. First, CLAUDE'S ERROR: John was sent to look in the PROCESSING TOOLBOX, where QGIS uses its own generic gear icon for every provider - a plugin's icon.png appears in the PLUGIN MANAGER list and on the repository page, and nowhere else. His "just the traditional looks of the tool" was CORRECT, and so was his install route. The icon was there all along; he found it once he looked in the right place. Second, an ~E~ was drafted at John's suggestion - a condensed capital E in the old EquiPop Flow red with a tilde either side, after the C# release's e-with-waves - AND THEN WITHDRAWN BY JOHN: "there is a risk that the version I proposed may look a bit like a German swastika." He is right - two dark angular forms flanking a hard geometric centre is a bad silhouette to leave on a plugin list, and Claude did not see it. The ring-of-neighbours icon of 79 stands, and has the better claim anyway: it depicts what EquiPop MEASURES rather than spelling its name. Recorded so nobody proposes the ~E~ again.
 
-- 128 | open v1.29.5 | `equipop doctor` - ONE DIAGNOSTIC, EVERY DOOR.
+- 128 | STATA HALF DONE v1.37, Pro and QGIS open | `equipop doctor` - ONE DIAGNOSTIC, EVERY DOOR.
   Proposed by the distribution review and worth taking: the release
   risk is not the mathematics, it is getting a compatible Python
   environment inside four host applications, each of which owns a

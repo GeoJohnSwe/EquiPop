@@ -125,18 +125,31 @@ def test_decay_sum_exact():
     from equipop import selfpot
     cd = _cells(n=80, seed=2)
     dec = Decay(model="negexp", half_life_m=500.0)
-    out = run_knn_counts(cd, decay=dec, decay_eps=1e-9)
+    # BACKLOG 185: the decayed totals are reported AT k now, on the
+    # raw threshold, so the reference sums the cells inside the
+    # radius the run itself reports - which is the property worth
+    # asserting: the decayed total must describe the SAME
+    # neighbourhood as the plain one, not a different reach.
+    k = 40
+    out = run_knn_counts(cd, [k], decay=dec, decay_eps=1e-9,
+                         overshoot_mode="whole")
     pts = np.c_[cd.E, cd.N]
     d_self = selfpot.decay_distance(cd.unit_size, 1.0)
     assert d_self > 0.0                    # the rule is actually on
     for i in [0, 7, 40]:
         d = np.hypot(pts[:, 0] - cd.E[i], pts[:, 1] - cd.N[i])
+        inside = d <= out.loc[i, f"Dist_{k}"] + 1e-9
+        d = d.copy()
         d[i] = d_self                      # your own cell, spread out
         w = dec.weight_vec(d)
-        assert np.isclose(out.loc[i, "ND_inf"], (w * cd.n).sum(),
+        assert np.isclose(out.loc[i, f"ND_{k}"],
+                          (w * cd.n)[inside].sum(), rtol=1e-9)
+        assert np.isclose(out.loc[i, f"TD_t_{k}"],
+                          (w * cd.binary_sums["t"])[inside].sum(),
                           rtol=1e-9)
-        assert np.isclose(out.loc[i, "TD_t_inf"],
-                          (w * cd.binary_sums["t"]).sum(), rtol=1e-9)
+        # and the plain count is the same cells, unweighted
+        assert np.isclose(out.loc[i, f"N_{k}"], cd.n[inside].sum(),
+                          rtol=1e-9)
 
 
 def test_self_potential_zero_reproduces_pre_1_29_4():
@@ -145,14 +158,16 @@ def test_self_potential_zero_reproduces_pre_1_29_4():
     reproduced - so it is asserted, not assumed."""
     cd = _cells(n=80, seed=2)
     dec = Decay(model="negexp", half_life_m=500.0)
-    out = run_knn_counts(cd, decay=dec, decay_eps=1e-9,
-                         self_potential=0.0)
+    k = 40
+    out = run_knn_counts(cd, [k], decay=dec, decay_eps=1e-9,
+                         self_potential=0.0, overshoot_mode="whole")
     pts = np.c_[cd.E, cd.N]
     for i in [0, 7, 40]:
         d = np.hypot(pts[:, 0] - cd.E[i], pts[:, 1] - cd.N[i])
+        inside = d <= out.loc[i, f"Dist_{k}"] + 1e-9
         w = dec.weight_vec(d)              # origin at 0 -> weight 1.0
-        assert np.isclose(out.loc[i, "ND_inf"], (w * cd.n).sum(),
-                          rtol=1e-9)
+        assert np.isclose(out.loc[i, f"ND_{k}"],
+                          (w * cd.n)[inside].sum(), rtol=1e-9)
 
 
 def test_area_stats_known_answer():

@@ -112,12 +112,23 @@ def test_decay_no_longer_gives_your_own_cell_full_weight():
                                  self_potential=0.0))
     on = _origin(run_knn_counts(cd, k_values=[50], decay=dec,
                                 self_potential=1.0))
-    assert on.ND_inf < off.ND_inf          # own cell weighs less now
-    # and by the right amount: the whole cell moves from weight 1 to
-    # weight(0.3826 * unit)
-    shift = off.N_local * (1.0 - dec.weight_vec(
+    assert on.ND_50 < off.ND_50          # own cell weighs less now
+    # And by the right amount: the mass that moves is the mass
+    # actually COUNTED, times the change in its weight - from 1 to
+    # weight(0.3826 * unit).
+    #
+    # It is N_50 rather than N_local, and that is the point. For this
+    # origin the whole neighbourhood is its own cell, which therefore
+    # IS the ring that crosses k - so under the default overshoot only
+    # part of it is taken. Until BACKLOG 185 the decayed sum ran to
+    # the truncation radius and always swallowed the cell entire, so
+    # N_local was right then and is wrong now. The decayed total takes
+    # the same fraction of the ring as the raw count: that is the
+    # property this now checks, on top of the self-potential rule it
+    # was written for.
+    shift = off.N_50 * (1.0 - dec.weight_vec(
         np.array([selfpot.decay_distance(UNIT, 1.0)]))[0])
-    assert off.ND_inf - on.ND_inf == pytest.approx(shift, rel=1e-9)
+    assert off.ND_50 - on.ND_50 == pytest.approx(shift, rel=1e-9)
 
 
 # --- 6 -------------------------------------------------------------

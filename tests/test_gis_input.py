@@ -259,18 +259,18 @@ def test_variable_bandwidth_decay_is_exact_per_row():
     hl = rng.choice([300.0, 1200.0], n)
     got = knn_to_rows(x, y, k_values=[40],
                       decay=Decay(model="negexp", half_life_m=500.0),
-                      decay_half_life=hl, decay_bins=4)["ND_inf"]
+                      decay_half_life=hl, decay_bins=4)["ND_40"]
     for h in (300.0, 1200.0):
         ref = knn_to_rows(x, y, k_values=[40],
                           decay=Decay(model="negexp",
-                                      half_life_m=h))["ND_inf"]
+                                      half_life_m=h))["ND_40"]
         m = hl == h
         assert np.allclose(got[m], ref[m], equal_nan=True)
     # a continuous field goes through the quantile path
     hl2 = rng.uniform(200.0, 2000.0, n)
     got2 = knn_to_rows(x, y, k_values=[40],
                        decay=Decay(model="negexp", half_life_m=500.0),
-                       decay_half_life=hl2, decay_bins=8)["ND_inf"]
+                       decay_half_life=hl2, decay_bins=8)["ND_40"]
     assert np.isfinite(got2).all()
     # wider bandwidth must gather at least as much mass
     assert np.corrcoef(hl2, got2)[0, 1] > 0.5
@@ -290,7 +290,7 @@ def test_self_calibrating_bandwidth_follows_urban_form():
     res = dispatch("counts", x, y, k_values=[40], half_life_m=500.0,
                    decay_model="negexp", half_life_from_dist=40,
                    decay_bins=5)
-    assert "ND_inf" in res and np.isfinite(res["ND_inf"]).all()
+    assert "ND_40" in res and np.isfinite(res["ND_40"]).all()
     dist = res["Dist_40"]
     town = dist < np.nanmedian(dist)
     assert np.nanmean(dist[town]) < np.nanmean(dist[~town])

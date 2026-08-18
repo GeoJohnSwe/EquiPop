@@ -31,10 +31,17 @@ from equipop_qgis.alg_stats import ValueStatistics, MEASURES  # noqa: E402
 
 def _source(n=400, seed=104):
     rng = np.random.default_rng(seed)
+    # LowInc is a SUBSET of Population, and the fixture has to say so.
+    # Until 1.37.1 the two were drawn independently, and the group
+    # exceeded its own population at 84 of 400 points - data that
+    # cannot exist. The treatment guard added in 1.37.1 refused it,
+    # which is how this was found. A fixture that could not occur in
+    # the field proves nothing about the field.
+    pop = rng.integers(1, 20, n).astype(float)
     t = pd.DataFrame({
         "x": rng.uniform(0, 3000, n), "y": rng.uniform(0, 3000, n),
-        "Population": rng.integers(1, 20, n).astype(float),
-        "LowInc": rng.integers(0, 12, n).astype(float),
+        "Population": pop,
+        "LowInc": np.floor(pop * rng.uniform(0, 1, n)),
         "Income": rng.lognormal(10, 0.3, n),
         "PlaceType": rng.choice(["dwelling", "shop", "school"], n)})
     return qgis_stub._Source(t, "EPSG:32633")

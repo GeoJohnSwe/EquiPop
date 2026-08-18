@@ -44,6 +44,16 @@ OPTION_HELP = {
     "pop(varname)": "pop",
     "prefix(string)": None,
     "selfpot(#)": "selfpot",
+    "treatmode(string)": None,
+    "missing(numlist)": "missingcodes",
+    "decay(string)": "decaymodel",
+    "halflife(#)": None,
+    "halflifevar(varname)": None,
+    "bins(#)": None,
+    "selfpotname(string)": None,
+    "overshoot(string)": "overshoot",
+    "project": None,
+    "epsg(#)": None,
     "replace": None,
 }
 
@@ -56,11 +66,66 @@ OPTION_HELP = {
 # shared; door-specific text where pretending otherwise would mislead.
 STATA_ONLY = {
     "x(varname)":
-        "The easting. Must be metric - projected coordinates, not "
-        "degrees. Rows with a missing coordinate receive missing "
+        "The easting, in metres or another metric unit. Longitude in "
+        "degrees is accepted with the -project- option, which converts "
+        "it first. Rows with a missing coordinate receive missing "
         "results rather than stopping the command.",
     "y(varname)":
-        "The northing, on the same metric system as x().",
+        "The northing, on the same system as x(); or latitude in "
+        "degrees, with -project-.",
+    "halflife(#)":
+        "The distance at which a neighbour counts half as much, in the "
+        "same units as your coordinates. Required by decay(), unless "
+        "halflifevar() gives one per place instead.",
+    "halflifevar(varname)":
+        "A variable holding each place's own half-life, so bandwidth "
+        "varies across the map - wide in the countryside, tight in a "
+        "city. Places are grouped into bins() bands of similar "
+        "bandwidth and each band is run once, because running every "
+        "distinct value separately would be needlessly slow.",
+    "bins(#)":
+        "How many bands of similar bandwidth halflifevar() is grouped "
+        "into. More bands follow the variation more closely and take "
+        "longer. Ignored without halflifevar(). Default 10.",
+    "selfpotname(string)":
+        "How far a place is from itself - the same three choices the "
+        "QGIS and ArcGIS versions offer, by name rather than by "
+        "number. none means no distance at all, and Dist_k can then "
+        "come out as zero. median means half of what your own cell "
+        "holds is nearer than this. full is the radius at which the "
+        "cell's own people are reached, and is the default. "
+        "selfpot(#) still takes any number between 0 and 1 if you "
+        "want one.",
+    "treatmode(string)":
+        "What the treat() variables contain. counts (the default) "
+        "means each one holds the NUMBER OF PEOPLE of that group at "
+        "the point, which is how census and register data normally "
+        "arrive, and how the GIS versions of EquiPop read it - it "
+        "needs a population, from pop() or [fweight=]. flags means "
+        "each one holds 0 or 1, a share of the row's own population, "
+        "which is the older Stata convention. "
+        "Getting this wrong cannot pass silently: a group larger than "
+        "the population containing it is refused, with a message "
+        "naming which setting to use.",
+    "project":
+        "Projects x() and y() from longitude and latitude in degrees "
+        "to metres, using the UTM zone the data sits in, before "
+        "anything is counted. The run reports which zone it used and "
+        "returns it in r(epsg) and r(crs). "
+        "Distances computed on unprojected degrees are not distances: "
+        "a degree of longitude is shorter than a degree of latitude "
+        "everywhere except the equator - by a quarter at 41 degrees, "
+        "by half at 60 - so neighbourhoods come out stretched and the "
+        "k nearest neighbours are not the nearest k. Without this "
+        "option, coordinates that look like degrees raise a warning "
+        "and are otherwise left alone. "
+        "One zone is used for the whole dataset. If you already "
+        "project your own data, you do not need this: pass the "
+        "projected coordinates and leave it off.",
+    "epsg(#)":
+        "Chooses the projection -project- uses, instead of letting it "
+        "pick the zone from the data. WGS84 UTM only: 32601-32660 "
+        "north of the equator, 32701-32760 south. Requires -project-.",
     "prefix(string)":
         "Prepends a string to every new variable name, so several "
         "runs can live side by side in one dataset. prefix(a_) turns "
@@ -108,6 +173,7 @@ def build():
     add("{viewerjumpto \"Description\" \"equipop##description\"}{...}")
     add("{viewerjumpto \"Options\" \"equipop##options\"}{...}")
     add("{viewerjumpto \"Stored results\" \"equipop##results\"}{...}")
+    add("{viewerjumpto \"Diagnostics\" \"equipop##diagnostics\"}{...}")
     add("{viewerjumpto \"Examples\" \"equipop##examples\"}{...}")
     add("")
     add("{title:Title}")
@@ -126,6 +192,13 @@ def build():
     add("{cmd:,} {opt x(varname)} {opt y(varname)}")
     add("[{it:options}]")
     add("")
+    add("{pstd}")
+    add("Report on the Python this Stata is using, and on the "
+        "libraries EquiPop needs. Reads nothing and changes nothing.")
+    add("")
+    add("{p 8 17 2}")
+    add("{cmd:equipop doctor}")
+    add("")
     add("{synoptset 24 tabbed}{...}")
     add("{synopthdr}")
     add("{synoptline}")
@@ -137,6 +210,17 @@ def build():
         add("{synopt:{opt %s}}%s{p_end}" % (opt, _first_line(opt)))
     add("{syntab:Population}")
     for opt in ("treat(varlist)", "pop(varname)"):
+        add("{synopt:{opt %s}}%s{p_end}" % (opt, _first_line(opt)))
+    add("{synopt:{opt treatmode(string)}}%s{p_end}"
+        % _first_line("treatmode(string)"))
+    add("{synopt:{opt missing(numlist)}}%s{p_end}"
+        % _first_line("missing(numlist)"))
+    add("{syntab:Distance weighting}")
+    for opt in ("decay(string)", "halflife(#)", "halflifevar(varname)",
+                "bins(#)", "overshoot(string)", "selfpotname(string)"):
+        add("{synopt:{opt %s}}%s{p_end}" % (opt, _first_line(opt)))
+    add("{syntab:Coordinates}")
+    for opt in ("project", "epsg(#)"):
         add("{synopt:{opt %s}}%s{p_end}" % (opt, _first_line(opt)))
     add("{syntab:Output}")
     for opt in ("prefix(string)", "replace"):
@@ -221,9 +305,44 @@ def build():
         "r(varlist) is the useful one: it hands back the names just "
         "created, so a regression or a loop need not repeat them."))
     add("")
+    add("{marker diagnostics}{...}")
+    add("{title:Diagnostics}")
+    add("")
+    add("{pstd}")
+    add(_wrap(
+        "equipop runs its calculations in Python, so it depends on the "
+        "Python that Stata is configured to use and on three libraries "
+        "inside it: numpy, pandas and scipy. When something is wrong "
+        "there, the failure happens before any EquiPop code is reached "
+        "and the error message will not mention EquiPop."))
+    add("")
+    add("{phang}{cmd:. equipop doctor}{p_end}")
+    add("")
+    add("{pstd}")
+    add(_wrap(
+        "prints which Python is in use, which processor it is built "
+        "for, and the state of every library - present, absent, or "
+        "installed but refusing to load. Two cases it names directly: "
+        "a library built for a different processor than the Python "
+        "loading it (common on Apple Silicon, where an Intel package "
+        "sits in the user folder), and a package installed into a "
+        "different Python than the one Stata uses."))
+    add("")
+    add("{pstd}")
+    add(_wrap(
+        "Install into the Python whose path the report prints, and "
+        "restart Stata afterwards: Stata starts Python once per "
+        "session and keeps the packages it first loaded."))
+    add("")
+    add("{pstd}")
+    add(_wrap(
+        "See also {help python}, and {cmd:python query}, which reports "
+        "Stata's own view of the same interpreter."))
+    add("")
     add("{marker examples}{...}")
     add("{title:Examples}")
     add("")
+    add("{phang}{cmd:. equipop doctor}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) "
         "treat(HighEdu) k(25 50 200) unit(100)}{p_end}")

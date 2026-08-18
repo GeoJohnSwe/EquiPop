@@ -402,7 +402,7 @@ def test_pyt_counts_stats_friction_verbatim(tmp_path):
     pyt._run_tool("counts", "people", msg, treat_fields=["HighEdu"],
                   k_text="25", r_text="500", half_life=800.0)
     got = state["table"]
-    assert "R_HighEdu_25" in got and "ND_inf" in got
+    assert "R_HighEdu_25" in got and "ND_25" in got
     assert got.loc[:3, "R_HighEdu_25"].isna().all()
     assert got.loc[4:, "N_25"].notna().all()
 
@@ -431,7 +431,7 @@ def test_pyt_counts_stats_friction_verbatim(tmp_path):
                    t["SHAPE@Y"].to_numpy(), k_values=[25],
                    treat={"HighEdu": t["HighEdu"].to_numpy()},
                    r_values=[500.0], half_life_m=800.0)
-    assert np.allclose(got["ND_inf"].to_numpy(), ref["ND_inf"],
+    assert np.allclose(got["ND_25"].to_numpy(), ref["ND_25"],
                        equal_nan=True)
 
 
@@ -1696,8 +1696,14 @@ def test_the_manifest_records_what_actually_decided_the_numbers(
     n = 200
     tab = pd.DataFrame({"Easting": rng.uniform(0, 900, n),
                         "Northing": rng.uniform(0, 900, n),
-                        "Pop": rng.integers(1, 9, n).astype(float),
-                        "Grp": rng.integers(0, 4, n).astype(float)})
+                        # Grp is a SUBSET of Pop and the fixture has to
+                        # say so. Drawn independently, the group
+                        # outgrew its own population - the same
+                        # bad-fixture fault as test_rungs, found by the
+                        # treatment guard in 1.37.1.
+                        "Pop": (_pop := rng.integers(
+                            1, 9, n).astype(float)),
+                        "Grp": np.floor(_pop * rng.uniform(0, 1, n))})
     t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
                       "SHAPE@Y": [0.0]})
     state = _install_fake_arcpy(t)
@@ -1803,9 +1809,11 @@ def test_pyt_decay_run_with_comma_values():
     pyt._run_tool("counts", "people", msg, k_text="50",
                   half_life=500.0, decay_model="negexp",
                   decay_eps=1e-3, unit=100.0)
-    assert "ND_inf" in state["table"]
+    assert "ND_50" in state["table"]
     log = "\n".join(msg.log)
-    assert "trunc 4,983 m at eps 0.001" in log
+    # BACKLOG 185: the run no longer reports a truncation radius,
+    # because nothing is summed out to one any more.
+    assert "decayed sums at each k" in log
 
 
 
@@ -1944,7 +1952,7 @@ def test_pyt_variable_bandwidth_through_the_dialog():
     pyt._run_tool("counts", "people", msg, k_text="40",
                   decay_model="negexp", half_life_field="MedDist",
                   decay_bins=4)
-    assert "ND_inf" in state["table"]
+    assert "ND_40" in state["table"]
     assert any("Variable bandwidth" in m for m in msg.log)
     from equipop.stata_bridge import knn_to_rows
     from equipop.decay import Decay
@@ -1952,8 +1960,8 @@ def test_pyt_variable_bandwidth_through_the_dialog():
     ref = knn_to_rows(t["SHAPE@X"].to_numpy(), t["SHAPE@Y"].to_numpy(),
                       k_values=[40],
                       decay=Decay(model="negexp", half_life_m=500.0),
-                      decay_half_life=hl, decay_bins=4)["ND_inf"]
-    assert np.allclose(state["table"]["ND_inf"], ref, equal_nan=True)
+                      decay_half_life=hl, decay_bins=4)["ND_40"]
+    assert np.allclose(state["table"]["ND_40"], ref, equal_nan=True)
     msg2 = _Messages()
     pyt._run_tool("counts", "people", msg2, k_text="40",
                   decay_model="negexp", half_life_from_dist=40)

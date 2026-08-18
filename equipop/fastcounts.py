@@ -75,8 +75,13 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     kmax = k_values[-1] if k_values else 0
     rmax = r_values[-1] if r_values else 0.0
     trunc = decay.truncation_radius(decay_eps) if decay is not None else 0.0
-    if not (k_values or r_values or decay):
-        raise ValueError("give k_values, r_values and/or decay")
+    if not (k_values or r_values):
+        raise ValueError(
+            "give k_values and/or r_values"
+            + (". A decay on its own no longer produces anything: "
+               "since BACKLOG 185 the decayed totals are reported AT "
+               "each k or radius, on the raw threshold, so there has "
+               "to be one" if decay is not None else ""))
     bad = [k for k in k_values if k <= 0]
     if bad:
         raise ValueError(
@@ -108,7 +113,7 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     if k_values: modes.append(f"k = {k_values}")
     if r_values: modes.append(f"r = {r_values} m")
     if decay is not None:
-        modes.append(f"decayed sum (trunc {trunc:,.0f} m at eps {decay_eps})")
+        modes.append("decayed sums at each k, on the raw k threshold")
     print(f"[fast] {n_cells} cells, {' | '.join(modes)}, "
           f"fast pass with m = {m} neighbour cells")
     rows_by_oi: dict = {}
@@ -123,9 +128,43 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         cpop = np.cumsum(pop[idx], axis=1)
         cgrp = {v: np.cumsum(grp[v][idx], axis=1) for v in bvars}
         cok = {v: np.cumsum(okp[v][idx], axis=1) for v in bvars}
+
+        # BACKLOG 185. Decay does NOT choose the neighbourhood - the
+        # RAW count does. John's rule, and the original EquiPop's:
+        # "if k=300 is requested, the 300 nearest population is the
+        # right call - the decayed populations should be reported and
+        # are always ... smaller than k".
+        #
+        # So the decayed totals are cumulated exactly like the raw
+        # ones and read at the SAME position. Nothing about which
+        # cells are in the neighbourhood, or how far away its edge is,
+        # depends on the decay.
+        cpopd = cgrpd = cokd = None
+        if decay is not None:
+            dwm = dist.astype(float, copy=True)
+            if sp > 0.0:
+                # Your own cell's people are not standing on you.
+                # Without this they keep weight 1.0 - the largest in
+                # the calculation - on the mass we know least about
+                # (BACKLOG 95). Same adjustment the old unbounded sum
+                # made, kept because the reason has not changed.
+                own = dwm[:, 0] <= 0.0
+                dwm[own, 0] = selfpot.decay_distance(cd.unit_size, sp)
+            wdec = decay.weight_vec(dwm.ravel()).reshape(dwm.shape)
+            cpopd = np.cumsum(pop[idx] * wdec, axis=1)
+            cgrpd = {v: np.cumsum(grp[v][idx] * wdec, axis=1)
+                     for v in bvars}
+            cokd = {v: np.cumsum(okp[v][idx] * wdec, axis=1)
+                    for v in bvars}
         for r, oi in enumerate(oi_range):
             covered = dist[r, -1]
-            if ((cpop[r, -1] < kmax or covered < rmax or covered < trunc)
+            # BACKLOG 185: `covered < trunc` used to be part of this
+            # test, because the unbounded sum genuinely needed every
+            # cell out to the truncation radius. Nothing reads past k
+            # any more, so requiring it only forced a decay run to
+            # scan the whole map - 283 neighbour cells where 64 would
+            # do, on the measurement that found this.
+            if ((cpop[r, -1] < kmax or covered < rmax)
                     and dist.shape[1] < n_cells):
                 unsat.append(oi)
                 continue
@@ -147,11 +186,18 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 else:                          # ring-atomic extension
                     lo, hi = overshoot.ring_bounds(dd, pos)
                     pos = hi
+                nd_k = None
                 if partial or osm == overshoot.WHOLE:
                     n_k = cp[pos]
                     grp_k = {v: cgrp[v][r][pos] for v in bvars}
                     den_k = {v: float(cok[v][r][pos]) for v in bvars}
                     d_k = float(dd[pos])
+                    if decay is not None:
+                        nd_k = float(cpopd[r][pos])
+                        grpd_k = {v: float(cgrpd[v][r][pos])
+                                  for v in bvars}
+                        dend_k = {v: float(cokd[v][r][pos])
+                                  for v in bvars}
                 else:
                     # BACKLOG 99: take only part of the crossing ring.
                     # `lo` is what the atomic-tie rule never needed and
@@ -179,6 +225,22 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                                     if lo > 0 else 0.0)
                         den_k[v] = o_before + float(
                             (okp[v][cells_i] * w).sum())
+                    if decay is not None:
+                        wd_ring = wdec[r, lo:hi + 1]
+                        nd_before = (float(cpopd[r][lo - 1])
+                                     if lo > 0 else 0.0)
+                        nd_k = nd_before + float(
+                            (rpop * wd_ring * w).sum())
+                        grpd_k, dend_k = {}, {}
+                        for v in bvars:
+                            tb = (float(cgrpd[v][r][lo - 1])
+                                  if lo > 0 else 0.0)
+                            grpd_k[v] = tb + float(
+                                (grp[v][cells_i] * wd_ring * w).sum())
+                            ob = (float(cokd[v][r][lo - 1])
+                                  if lo > 0 else 0.0)
+                            dend_k[v] = ob + float(
+                                (okp[v][cells_i] * wd_ring * w).sum())
                     ring_all = float(rpop.sum())
                     f = taken / ring_all if ring_all > 0 else 1.0
                     d_prev = float(dd[lo - 1]) if lo > 0 else 0.0
@@ -188,6 +250,13 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     rec[f"T_{v}_{k}"] = grp_k[v]
                     rec[f"R_{v}_{k}"] = (grp_k[v] / den_k[v]
                                          if den_k[v] > 0 else np.nan)
+                if nd_k is not None:
+                    rec[f"ND_{k}"] = nd_k
+                    for v in bvars:
+                        rec[f"TD_{v}_{k}"] = grpd_k[v]
+                        rec[f"RD_{v}_{k}"] = (grpd_k[v] / dend_k[v]
+                                              if dend_k[v] > 0
+                                              else np.nan)
                 if d_k <= 0.0 and n_k >= k:
                     # the whole neighbourhood IS the origin cell, so
                     # the radius is not zero - it is unmeasured, and
@@ -213,26 +282,26 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     rec[f"R_{v}_r{lab}"] = (cgrp[v][r][pos]
                                             / cok[v][r][pos]
                                             if cp[pos] > 0 else np.nan)
+                if decay is not None:
+                    rec[f"ND_r{lab}"] = float(cpopd[r][pos])
+                    for v in bvars:
+                        td = float(cgrpd[v][r][pos])
+                        od = float(cokd[v][r][pos])
+                        rec[f"TD_{v}_r{lab}"] = td
+                        rec[f"RD_{v}_r{lab}"] = (td / od if od > 0
+                                                 else np.nan)
                 last = max(last, pos)
-            if decay is not None:          # unbounded decayed sum,
-                pos = int(np.searchsorted(dd, trunc, side="right"))
-                dw = dd[:pos]
-                if len(dw) and dw[0] <= 0.0 and sp > 0.0:
-                    # your own cell's people are not standing on you.
-                    # Without this they keep weight 1.0 - the largest
-                    # weight in the calculation - on the mass we know
-                    # least about (BACKLOG 95).
-                    dw = dw.copy()
-                    dw[0] = selfpot.decay_distance(cd.unit_size, sp)
-                w = decay.weight_vec(dw)
-                pw = pop[idx[r, :pos]] * w
-                nd = float(pw.sum())
-                rec["ND_inf"] = nd
-                for v in bvars:
-                    td = float((grp[v][idx[r, :pos]] * w).sum())
-                    rec[f"TD_{v}_inf"] = td
-                    rec[f"RD_{v}_inf"] = td / nd if nd > 0 else np.nan
-                last = max(last, pos - 1)
+            # BACKLOG 185: the UNBOUNDED decayed sum (ND_inf,
+            # TD_<v>_inf, RD_<v>_inf) was removed here in v1.40. It
+            # accumulated out to the truncation radius instead of to
+            # k, so it answered a different question - a decayed
+            # potential over everybody rather than the decayed content
+            # of the k-neighbourhood. John: "it doesn't solve any
+            # problem I know of - and it risks becoming an orphan or
+            # picked up in a later session with unknown consequences."
+            # Deleted rather than commented out: dead code rots, and
+            # git remembers it. The decayed totals are now recorded in
+            # the k and radius branches above, at the raw threshold.
             rec["SumN"] = cp[last]
             rec["MaxDistance"] = float(dd[last])
             rows_by_oi[oi] = rec

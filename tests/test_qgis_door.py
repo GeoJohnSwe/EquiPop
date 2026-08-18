@@ -300,7 +300,7 @@ def test_decay_is_explained_in_plain_numbers():
     # engine's own weight function rather than an assumed shape
     assert "at 500 m 50%" in said
     assert "at 1,000 m 25%" in said
-    assert "ND_inf" in out.columns
+    assert "ND_400" in out.columns
 
 
 def test_every_offered_decay_model_exists_in_the_engine():

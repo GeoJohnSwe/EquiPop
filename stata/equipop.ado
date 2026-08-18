@@ -1,4 +1,4 @@
-*! equipop v1.36  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.40.1  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -8,16 +8,57 @@
 *! Requires Stata 17+, Python configured (python query), and the
 *! Python package installed in THAT Python. See help equipop.
 *!
+*! v1.37 keeps pyproj and matplotlib out of Stata's Python, and adds
+*! -equipop doctor- for when the Python itself is the problem.
 *! v1.36 makes the command behave like a Stata command: [if] [in],
 *! native [fweight=], returned results in r(), and prefix().
 
 program define equipop, rclass
     version 17
+
+    * ---- -equipop doctor- --------------------------------------
+    * BACKLOG 128. A read-only report on the Python Stata is using
+    * and the libraries EquiPop needs. This is the FIRST thing the
+    * program does, for two reasons: it has to work on a machine
+    * where nothing else does, and it must not be made to supply
+    * x() and y(), which the syntax line below makes mandatory.
+    *
+    * The two failures it exists for both happen BEFORE any EquiPop
+    * code is reached, so neither can produce an EquiPop error: a
+    * library built for the wrong processor (Umut's Mac, 1.37) and
+    * two copies of one maths library in a process (Stata plus
+    * Anaconda on Windows, 1.35).
+    gettoken eqp_sub eqp_rest : 0, parse(" ,")
+    if `"`eqp_sub'"' == "doctor" {
+        _equipop_doctor
+        exit
+    }
+
     syntax [fweight] [if] [in], X(varname numeric) Y(varname numeric) ///
            [TREAT(varlist numeric) ///
             K(numlist integer >0) R(numlist >0) ///
             Unit(real 100) POP(varname numeric) PREFIX(string) ///
-            SELFpot(real 1) REPLACE]
+            SELFpot(real 1) PROJect EPSG(integer 0) ///
+            TREATmode(string) MISSing(numlist) ///
+            DECAY(string) HALFlife(real 0) HALFlifevar(varname numeric) ///
+            SELFPOTName(string) ///
+            BINS(integer 10) OVERshoot(string) REPLACE]
+
+    * ---- projection -------------------------------------------
+    * John's ruling, 1.37: a professional spatial analyst has their
+    * own routines and does not need this. It is for the economist or
+    * statistician who has lat/long and has never been asked to think
+    * past it - for whom being forced to project first is a blocker
+    * that stops them using the method at all.
+    *
+    * So: one automatic, defensible choice, and the run SAYS which one
+    * it made. epsg() is the escape hatch for anyone who wants a
+    * particular zone.
+    if `epsg' != 0 & "`project'" == "" {
+        display as error "epsg() sets which projection to use, so it " ///
+            "needs -project- as well"
+        exit 198
+    }
 
     * ---- the sample -------------------------------------------
     * John's ruling, 1.36: [if] and [in] restrict the ROWS THAT GET
@@ -54,6 +95,119 @@ program define equipop, rclass
         local wvar "`pop'"
     }
 
+    * ---- distance decay ----------------------------------------
+    * Words, not numbers, throughout - John's ruling: a do-file read
+    * six months later has to say what it did.
+    if "`decay'" != "" {
+        * The five the engine actually implements. The door may not
+        * import the package to learn its own vocabulary (78/105), so
+        * this list is duplicated on purpose and pinned by
+        * tests/test_stata_boxes.py against equipop.decay.MODELS.
+        if !inlist("`decay'", "negexp", "expnormal", "expsqrt",       ///
+                   "lognormal", "power") {
+            display as error "decay() must be negexp, expnormal, " ///
+                "expsqrt, lognormal or power"
+            exit 198
+        }
+        if `halflife' <= 0 & "`halflifevar'" == "" {
+            display as error "decay() needs a half-life: the distance " ///
+                "at which a neighbour counts half as much"
+            display as text "  halflife(#)      one distance for " ///
+                "everybody, in map units"
+            display as text "  halflifevar(var) a variable, so each " ///
+                "place carries its own bandwidth"
+            exit 198
+        }
+        if `halflife' > 0 & "`halflifevar'" != "" {
+            display as error "give halflife() or halflifevar(), " ///
+                "not both"
+            exit 198
+        }
+    }
+    else if `halflife' > 0 | "`halflifevar'" != "" {
+        display as error "halflife() sets the bandwidth for decay(), " ///
+            "so it needs decay() as well"
+        exit 198
+    }
+
+    * ---- the overshoot: the ring of cells that crosses k ---------
+    * BACKLOG 99. `sampled` is REFUSED BY NAME rather than ignored.
+    * John's reason: it exists only to reproduce old EquiPop versions,
+    * so it is not a Stata concern at all. Refusing it by name also
+    * drops the need for a seed option, since sampled is the one mode
+    * that makes a run irreproducible without one.
+    if "`overshoot'" == "sampled" {
+        display as error "overshoot(sampled) is not available in Stata"
+        display as text "  It exists to reproduce older versions of " ///
+            "EquiPop, and it draws cells in a random order, so a run " ///
+            "cannot be repeated exactly without carrying a seed."
+        display as text "  Use overshoot(proportional) for the " ///
+            "expected value of it, or run it in QGIS or ArcGIS Pro."
+        exit 198
+    }
+    if !inlist("`overshoot'", "", "whole", "proportional") {
+        display as error "overshoot() must be whole or proportional"
+        exit 198
+    }
+
+    * ---- what treat() CONTAINS ---------------------------------
+    * External review of 1.36, confirmed by reproduction: the help and
+    * both GIS doors said treat() holds the group's PERSON COUNT, the
+    * bridge applied the legacy 0/1-flag rule, and a user who followed
+    * the help got a group three times larger than the neighbourhood
+    * containing it. John's ruling, 1.37.1: counts are the default,
+    * matching the help and the GIS doors; flags stay available by
+    * name so nothing already written breaks.
+    if "`treatmode'" == "" local treatmode "counts"
+    if !inlist("`treatmode'", "counts", "flags") {
+        display as error "treatmode() must be counts or flags"
+        display as text "  counts - treat() holds the NUMBER OF " ///
+            "PEOPLE of the group at this point (the default)"
+        display as text "  flags  - treat() holds 0 or 1, a share " ///
+            "of the row's population"
+        exit 198
+    }
+
+    * ---- cell size ---------------------------------------------
+    * BACKLOG 155: fractional cell sizes are REFUSED, because the core
+    * converts cell centres to integers - a requested 2.5 gives centres
+    * 1, 3, 6, so the spacings come out 2 and 3 and neither is 2.5.
+    * QGIS and Pro have refused this since 1.29.8. Stata did not, and
+    * a rule enforced at some doors and not others is how 172 happened.
+    * The rule itself lives in the package, so a fourth door inherits
+    * it rather than reimplementing it.
+    if `unit' <= 0 {
+        display as error "unit() is the cell size and must be " ///
+            "greater than zero"
+        exit 198
+    }
+    if `unit' != int(`unit') {
+        display as error "unit() must be a whole number - the cell " ///
+            "grid is built on integer centres, so a fractional size " ///
+            "would not give evenly spaced cells"
+        exit 198
+    }
+
+    * ---- self-potential: three rungs, or any number between ------
+    * The GIS doors offer three named rungs. Stata kept a bare number,
+    * which is how the doors drifted apart. Both now work: the names
+    * are the ladder, the number is the escape hatch, and the engine
+    * still receives a float either way.
+    if "`selfpotname'" != "" {
+        if "`selfpotname'" == "none"       local selfpot = 0
+        if "`selfpotname'" == "median"     local selfpot = 1/sqrt(2)
+        if "`selfpotname'" == "full"       local selfpot = 1
+        if !inlist("`selfpotname'", "none", "median", "full") {
+            display as error "selfpotname() must be none, median or full"
+            display as text "  none   - no distance at all; Dist_k " ///
+                "can come out as zero"
+            display as text "  median - half of what your cell holds " ///
+                "is nearer than this"
+            display as text "  full   - the radius at which k of it " ///
+                "is reached (the default)"
+            exit 198
+        }
+    }
     if `selfpot' < 0 | `selfpot' > 1 {
         display as error "selfpot() must lie between 0 and 1"
         exit 198
@@ -77,9 +231,15 @@ program define equipop, rclass
             foreach kk of numlist `k' {
                 capture drop `prefix'N_`kk'
                 capture drop `prefix'Dist_`kk'
-                foreach v of varlist `treat' {
-                    capture drop `prefix'T_`v'_`kk'
-                    capture drop `prefix'R_`v'_`kk'
+                * treat() became optional in 1.36, and an empty
+                * -varlist- loop is a syntax error, not an empty loop.
+                * So -equipop, x() y() k(25) replace- failed on exactly
+                * the combination that ruling created.
+                if "`treat'" != "" {
+                    foreach v of varlist `treat' {
+                        capture drop `prefix'T_`v'_`kk'
+                        capture drop `prefix'R_`v'_`kk'
+                    }
                 }
             }
         }
@@ -90,9 +250,11 @@ program define equipop, rclass
                 * a Stata variable name.
                 local rl : subinstr local rr "." "_", all
                 capture drop `prefix'N_r`rl'
-                foreach v of varlist `treat' {
-                    capture drop `prefix'T_`v'_r`rl'
-                    capture drop `prefix'R_`v'_r`rl'
+                if "`treat'" != "" {
+                    foreach v of varlist `treat' {
+                        capture drop `prefix'T_`v'_r`rl'
+                        capture drop `prefix'R_`v'_r`rl'
+                    }
                 }
             }
         }
@@ -106,7 +268,11 @@ program define equipop, rclass
     * ORDER and names a mistake out loud. Same medicine as 169.
     python: _equipop_machine1(x="`x'", y="`y'", treat="`treat'",     ///
         k="`k'", r="`r'", unit=`unit', weight="`wvar'",              ///
-        selfpot=`selfpot', touse="`touse'", prefix="`prefix'")
+        selfpot=`selfpot', touse="`touse'", prefix="`prefix'",       ///
+        project="`project'", epsg=`epsg', treatmode="`treatmode'",  ///
+        missing="`missing'", decay="`decay'", halflife=`halflife',   ///
+        halflifevar="`halflifevar'", bins=`bins',                    ///
+        overshoot="`overshoot'")
 
     * ---- returned results -------------------------------------
     * BACKLOG 174. r(varlist) is the one that changes how the
@@ -136,6 +302,24 @@ program define equipop, rclass
     return scalar selfpot   = `selfpot'
     return scalar N_origins = `n_origins'
     return scalar N_missing = `n_missing'
+    if "`eqp_crs'" != "" {
+        return local crs "`eqp_crs'"
+        return scalar epsg = `eqp_epsg'
+    }
+end
+
+
+* -equipop doctor- lives in its own program so that it carries no
+* syntax of its own and can be called before anything is parsed.
+program define _equipop_doctor
+    version 17
+    * The .ado files' own version, so the doctor can notice when the
+    * commands and the Python engine have drifted apart - the single
+    * most frequent field failure this project has. This is a SEVENTH
+    * place a version string lives; tests/test_stata_ado.py asserts it
+    * against line 1 of this file and against pyproject.toml.
+    local eqp_ado_version "1.40.1"
+    python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
 version 17
@@ -146,7 +330,36 @@ python:
 # and 173 survive. Everything that can live in the package does.
 # What must stay here is READ by tests/test_stata_ado.py.
 from sfi import Data, Macro, SFIToolkit
+import sys
 import numpy as np
+
+
+def _wrap_for_stata(text, width=72):
+    words, line, out = text.split(), "", []
+    for w in words:
+        if len(line) + len(w) + 1 > width:
+            out.append(line)
+            line = w
+        else:
+            line = f"{line} {w}".strip()
+    if line:
+        out.append(line)
+    return out
+
+
+def _decay_spec(model, half_life):
+    """Build the engine's Decay object, or None for no decay.
+
+    A variable bandwidth passes its own half-life per row, so the
+    single number here is only the fixed case; the engine takes the
+    model from this object either way.
+    """
+    if not model:
+        return None
+    from equipop.decay import Decay
+    return Decay(model=model,
+                 half_life_m=(float(half_life) if half_life > 0
+                              else 1.0))
 
 
 def _col(v):
@@ -156,11 +369,17 @@ def _col(v):
 
 
 def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
-                      weight="", selfpot=1.0, touse="", prefix=""):
+                      weight="", selfpot=1.0, touse="", prefix="",
+                      project="", epsg=0, treatmode="counts",
+                      missing="", decay="", halflife=0.0,
+                      halflifevar="", bins=10, overshoot=""):
     # KEYWORD-ONLY on purpose: a positional call raises TypeError
     # rather than quietly meaning something else.
     try:
-        from equipop.stata_bridge import knn_to_rows, to_stata_values
+        from equipop.stata_bridge import (knn_to_rows, to_stata_values,
+                                          project_for_stata,
+                                          degrees_warning,
+                                          zone_span_warning)
     except ImportError:
         SFIToolkit.errprintln(
             "equipop is not installed in Stata's Python. Check which "
@@ -170,27 +389,104 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
         return
 
     xs, ys = _col(x), _col(y)
+
+    # Projection happens HERE, on the way in: the engine below receives
+    # metric coordinates and knows nothing about degrees.
+    if project:
+        try:
+            east, north, code, crs = project_for_stata(
+                xs, ys, epsg=(int(epsg) or None))
+        except Exception as exc:
+            SFIToolkit.errprintln(str(exc).splitlines()[0])
+            SFIToolkit.error(198)
+            return
+        # Computed on the DEGREES, so it must happen before xs and ys
+        # are replaced by the projected values.
+        span_note = zone_span_warning(xs, ys, epsg=code)
+        xs, ys = east, north
+        print(f"equipop: projected to {crs}")
+        if span_note:
+            SFIToolkit.displayln("")
+            for line in _wrap_for_stata(span_note):
+                SFIToolkit.displayln(line)
+            SFIToolkit.displayln("")
+        Macro.setLocal("eqp_epsg", str(code))
+        Macro.setLocal("eqp_crs", crs)
+    else:
+        warning = degrees_warning(xs, ys)
+        if warning:
+            SFIToolkit.displayln("")
+            for line in _wrap_for_stata(warning):
+                SFIToolkit.displayln(line)
+            SFIToolkit.displayln("")
+
     treats = {v: _col(v) for v in treat.split()} if treat.strip() else None
     ks = [int(t) for t in k.split()] or None
     rs = [float(t) for t in r.split()] or None
     w = _col(weight) if weight else None
 
-    res = knn_to_rows(xs, ys, ks, treat=treats, weight=w,
-                      unit_size=float(unit), r_values=rs,
-                      self_potential=float(selfpot))
+    # A refusal from the bridge is a MESSAGE, not a traceback. An
+    # uncaught exception here shows a Python stack to a Stata user,
+    # who cannot act on it and cannot tell our fault from theirs.
+    try:
+        res = knn_to_rows(xs, ys, ks, treat=treats, weight=w,
+                          unit_size=float(unit), r_values=rs,
+                          self_potential=float(selfpot),
+                          treat_are_counts=(treatmode != "flags"),
+                          missing_codes=[float(c)
+                                         for c in missing.split()],
+                          decay=_decay_spec(decay, halflife),
+                          decay_half_life=(_col(halflifevar)
+                                           if halflifevar else None),
+                          decay_bins=int(bins),
+                          overshoot_mode=(overshoot or None))
+    except ValueError as exc:
+        for line in _wrap_for_stata(str(exc)):
+            SFIToolkit.errprintln(line)
+        SFIToolkit.error(198)
+        return
 
     # [if] [in]: computed for everyone, REPORTED for the sample.
     keep = _col(touse) > 0 if touse else None
 
     existing = [Data.getVarName(i) for i in range(Data.getVarCount())]
+
+    # PREFLIGHT, external review of 1.36. Every intended name is
+    # checked BEFORE any variable is created. Until 1.38 the check ran
+    # inside the writing loop, so a collision or an over-long name on
+    # the tenth variable left nine already in the dataset - a run that
+    # stopped with an error and changed the data anyway. prefix() was
+    # only tested against "N_1", which proves nothing about
+    # T_<longvariablename>_100.
+    wanted = [prefix + name for name in res]
+    problems = []
+    for name in wanted:
+        if len(name) > 32:
+            problems.append(
+                f"{name} is {len(name)} characters - Stata allows 32. "
+                f"Use a shorter prefix() or shorter treatment variable "
+                f"names.")
+        elif name in existing:
+            problems.append(
+                f"{name} already exists - use option replace")
+    seen = set()
+    for name in wanted:
+        if name in seen:
+            problems.append(f"{name} would be created twice")
+        seen.add(name)
+    if problems:
+        SFIToolkit.errprintln("no variables were created:")
+        for line in problems[:10]:
+            for part in _wrap_for_stata("  " + line):
+                SFIToolkit.errprintln(part)
+        if len(problems) > 10:
+            SFIToolkit.errprintln(f"  ... and {len(problems) - 10} more")
+        SFIToolkit.error(110)
+        return
+
     made = []
     for name, arr in res.items():
         name = prefix + name
-        if name in existing:
-            SFIToolkit.errprintln(
-                f"variable {name} already exists - use option replace")
-            SFIToolkit.error(110)
-            return
         vals = np.asarray(arr, dtype=float)
         if keep is not None:
             vals = np.where(keep, vals, np.nan)
@@ -199,4 +495,26 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
         made.append(name)
 
     Macro.setLocal("eqp_varlist", " ".join(made))
+
+
+def _equipop_doctor_py(ado_version=""):
+    # The report prints itself, line by line, flushing as it goes.
+    # That is deliberate: if a compiled library takes the whole Stata
+    # process down mid-report - which is what a second copy of the
+    # maths library does on Windows - the lines already on screen are
+    # the only evidence there will be.
+    #
+    # Since 1.37 the package no longer loads numpy, pandas or scipy on
+    # import, so this report can still be produced on a machine where
+    # those three are exactly what is broken. That was not possible
+    # before, and it is the case the doctor was written for.
+    try:
+        from equipop.doctor import run
+    except Exception as exc:
+        print("EquiPop doctor could not load the package:")
+        print("   " + str(exc).splitlines()[0])
+        print("   Python running Stata: " + sys.executable)
+        print("   Install equipop into THAT Python, then restart Stata.")
+        return
+    run(ado_version=ado_version)
 end

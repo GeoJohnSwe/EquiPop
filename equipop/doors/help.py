@@ -18,6 +18,41 @@ Text moved unchanged from arcgis/make_help_xml.py in 1.18.0.
 """
 
 HELP = {
+    # BACKLOG 102/42. Stata reached the decay boxes first (1.39);
+    # QGIS still has none, and Pro's wording should come from here
+    # when 102 is done rather than being written a third time.
+    "decaymodel":
+        "Weights each neighbour by how far away it is, and reports the "
+        "weighted totals alongside the plain ones: ND_ for the "
+        "population, TD_ for each group, RD_ for the share. "
+        "THE NEIGHBOURHOOD ITSELF IS UNCHANGED. k still means the k "
+        "nearest people - ask for 300 and you get the 300 nearest - "
+        "and the radius is still the distance you must travel to "
+        "reach them. Only the contents are re-weighted, so a person "
+        "at the edge counts for less than one standing beside you. "
+        "The decayed totals are therefore always smaller than the "
+        "plain ones. "
+        "negexp halves the weight every half-life and is the usual "
+        "choice. power falls quickly and then very slowly, so distant "
+        "places never quite stop counting. expnormal, expsqrt and "
+        "lognormal shape the curve differently again - see the "
+        "manual.",
+
+    # BACKLOG 168. Written here so every door says the same thing;
+    # Stata reached it first (1.38), QGIS and Pro still to come.
+    "missingcodes":
+        "Values that mean NO DATA rather than a number, listed and "
+        "separated by spaces. Census and register extracts carry "
+        "these: -666666666 for a suppressed median in US ACS data, "
+        "-9 or 999 elsewhere. Left undeclared they are arithmetic - a "
+        "neighbourhood mean lands near minus forty million, and it "
+        "lands there quietly. "
+        "A case whose value is declared missing STILL COUNTS AS "
+        "PEOPLE towards k, and still receives its own results; only "
+        "its value drops out. Shares are then divided by the people "
+        "actually observed, never by everybody present: 400 people "
+        "with 60 of unknown group gives a denominator of 340.",
+
     "layer": "The points to analyse - a point layer (coordinates are "
              "read straight from the geometry) or a plain table with "
              "coordinate columns. Coordinates must be metric; degree "

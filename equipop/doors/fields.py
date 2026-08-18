@@ -55,9 +55,14 @@ def predict_result_fields(engine, k_text, r_text, tau_text,
                 names += [f"T_{f}_{suf}", f"R_{f}_{suf}"]
         names += [f"Dist_{k}" for k in ks]
         if decaying:
-            names.append("ND_inf")
-            for f in treat_names:
-                names += [f"TD_{f}_inf", f"RD_{f}_inf"]
+            # BACKLOG 185: one decayed total per k and per radius, on
+            # the SAME suffixes as the plain counts - not a single
+            # unbounded ND_inf. The decayed neighbourhood is the plain
+            # neighbourhood, so its columns follow the plain ones.
+            for suf in sufs:
+                names.append(f"ND_{suf}")
+                for f in treat_names:
+                    names += [f"TD_{f}_{suf}", f"RD_{f}_{suf}"]
     else:
         sufs = [k for k in ks] + [f"r{r}" for r in rs]
         names += [f"N_{s}" for s in sufs] + ["N_local"]

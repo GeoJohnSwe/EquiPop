@@ -1,3 +1,17 @@
+> **HISTORICAL — DO NOT FOLLOW THIS DOCUMENT.**
+>
+> Retired at v1.37.1. It describes a command and an installation
+> procedure that no longer exist, and following it can put Stata into a
+> Python configuration that closes Stata outright on `import numpy`.
+>
+> **The current instructions are `help equipop` inside Stata, and
+> `stata/README_STATA.md`.** Nothing else in this folder is current.
+>
+> Kept only so that a past field report can be read against what the
+> user was told at the time.
+
+---
+
 # EquiPop from Stata — the guide
 
 *Stata 17+, because that is when Stata learned Python. Your data never
