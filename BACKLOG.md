@@ -530,6 +530,70 @@ appeared twice; the weaker copy is gone.*
   Note that this is an ENGINE change, so it lands at every door, not
   just Stata. QGIS and Pro get it too.
 
+- 188 | DONE v1.40.3 | "varlist not allowed" WAS THE WHOLE ANSWER A
+  USER GOT FOR AN UNKNOWN SUBCOMMAND. Field report: John ran
+  `equipop setup` against an .ado installed from main, which predated
+  the subcommand. With no `setup` branch the word fell through to the
+  syntax line, Stata read it as a variable list, the command declares
+  none, and it said `varlist not allowed`, r(101) - true, and useless.
+  A conference audience typing a subcommand their copy is too old for
+  meets the same wall, and would reasonably conclude the software is
+  broken.
+  Now: the word is named, the real subcommands are listed, the
+  likeliest cause (an out-of-date .ado) is stated with the net install
+  line to fix it, and the second likeliest (variables typed where a
+  subcommand goes) is answered with `equipop, x(X) y(Y) k(25)`.
+  THE TEST IS SAFE BECAUSE EVERY REAL FIRST TOKEN IS PUNCTUATION OR A
+  KEYWORD - a comma, an [fweight=...], `if` or `in`. Only a bare
+  alphabetic word can be a mistaken subcommand, and `if`/`in` are
+  excluded by name. A guard that swallowed a legitimate command line
+  would be far worse than the message it replaces, so that is asserted
+  too.
+  NOTE THE SHAPE OF THIS BUG: the fix cannot help the person who hit
+  it, because they are by definition running the version without it.
+  It is for everyone after.
+
+- 187 | DONE v1.40.2 | INSTALLING IS TWO LINES NOW, ON BOTH
+  PLATFORMS. John asked how hard a Windows and Mac installer would be,
+  since SSC listing will take weeks. ANSWER: an OS installer is the
+  wrong tool. The hard part of installing EquiPop is not moving files
+  - it is targeting the PARTICULAR Python that Stata is configured to
+  use, which varies per machine and is exactly what `python query`
+  exists to discover at run time. An .msi or .pkg would have to guess
+  it, or bundle its own interpreter and risk creating the very
+  two-copies conflict that closes Stata on Windows. It would also need
+  an Apple Developer ID and notarisation, plus a Windows signing
+  certificate, and a rebuild per release per OS per architecture.
+  WHAT WAS BUILT INSTEAD: `equipop setup`. It runs pip from inside
+  Stata against sys.executable, so the interpreter cannot be guessed
+  wrong, and `equipop setup, repair` force-reinstalls numpy, scipy and
+  pandas for the processor mismatch case. Install is now:
+      net install equipop, from(...github.../stata) replace
+      equipop setup
+  identical on Windows and Mac, nothing to sign, nothing to rebuild.
+  TWO DESIGN POINTS: it uses the STANDARD LIBRARY ONLY, because it
+  runs before the package exists and must not need the thing it
+  installs; and it does NOT run the doctor afterwards, because Python
+  starts once per Stata session and after an upgrade the doctor would
+  report the version still in memory - the OLD one - and say
+  everything matched when it did not.
+
+- 43 | DONE v1.40.2 | CITATION.cff SAID 1.0.0 FOR FORTY RELEASES,
+  because nothing checked it. Now 1.40.2 and PINNED by a test against
+  the package - an EIGHTH place a version string lives. Only the
+  `version:` field moves: the preferred-citation is the 2014 report
+  and records where the work was written, so it does not follow the
+  software version or an author's later affiliation.
+
+- 101-remnant | PARTLY DONE v1.40.2 | `tmp/` IS NOW IGNORED. Exactly
+  ONE file is committed under it -
+  tmp/pytest-of-root/pytest-30/.../result_EquiPop_run.csv, a pytest
+  scratch artifact from a 2026 run - and the folder regrows on every
+  test run because conftest's work_outside_the_repository fixture
+  chdirs into a tmp_path. There was no .gitignore rule, which is why
+  the earlier `git rm -r --cached` never made it stay gone. The rule
+  is in now; the `git rm -r --cached tmp` is still John's to run once.
+
 - 186 | DONE v1.40.1 | THE DOCTOR NOTICES THE TWO-PART UPDATE. The
   .ado files come from the repository by net install; the engine comes
   from pip into Stata's Python. Updating one and not the other is the

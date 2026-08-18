@@ -76,13 +76,15 @@ slope, FCA or LISA.
 ### WHAT `equipop` ACCEPTS TODAY — after 1.40.1
 
 ```
+equipop setup [, repair]
+equipop doctor
+
 equipop [fweight] [if] [in], x() y()
         [ treat() treatmode() missing()
           k() r() unit() pop() selfpot() selfpotname()
           decay() halflife() halflifevar() bins() overshoot()
           project epsg() prefix() replace ]
 
-equipop doctor
 ```
 
 `equipop_knn` remains as a forwarding alias so nothing already written
@@ -198,6 +200,8 @@ and a `decay()` run to see `ND_300` beside `N_300`.
 | **1.39** | 42/99/102-stata decay, overshoot, the self-potential ladder |
 | **1.40** | 185 the decayed totals are reported AT k, on the raw threshold — an ENGINE change, so it lands at QGIS and Pro too |
 | **1.40.1** | 186 the doctor compares the `.ado` version against the engine |
+| **1.40.2** | 187 `equipop setup` — installing is two lines on both platforms; 43 CITATION pinned; 101 `tmp/` ignored |
+| **1.40.3** | 188 an unknown subcommand is named, not called a variable list |
 
 1.36 was already on main when the session opened and is not this
 session's work.
@@ -317,7 +321,16 @@ session's work.
 15. **INSTRUCTIONS ARE PART OF THE RELEASE.** 182: the shipped README
     told users to point Stata at Anaconda, the one configuration that
     closes Stata. A document can break a machine before any code runs.
-16. **Breaking a guard on purpose sometimes reveals that the guard is
+16. **A SUBCOMMAND THAT DOES NOT EXIST YET PRODUCES A BAFFLING
+    ERROR, AND THE FIX CANNOT HELP THE PERSON WHO FOUND IT.** 188:
+    `equipop setup` on an .ado that predated the subcommand fell
+    through to the `syntax` line, Stata read the word as a variable
+    list, and said `varlist not allowed`. Whenever a subcommand is
+    ADDED, remember that everyone on an older copy gets that wall.
+    The general lesson: **a Stata command's first token is the one
+    place a user can put something the parser has no vocabulary for**,
+    so it needs its own error, not `syntax`'s.
+17. **Breaking a guard on purpose sometimes reveals that the guard is
     REDUNDANT, and that is worth saying out loud.** The missing-value
     mask in `to_utm()` cannot be caught by any test, because NaN
     already propagates. It was kept and LABELLED as redundant rather
@@ -325,9 +338,13 @@ session's work.
 
 ### Still John's to do
 
-- **Item 43** — `CITATION.cff` still says 1.0.0.
-- **BACKLOG 101 remnant** — `git rm -r --cached tmp`.
-- PyPI upload of each release.
+- **BACKLOG 101 remnant** — `git rm -r --cached tmp` ONCE. The
+  `.gitignore` rule went in at 1.40.2, which is what was missing
+  before; without it the earlier removal never stayed done. Exactly
+  one file is tracked under `tmp/`.
+- PyPI upload of each release. **`equipop setup` depends on this** —
+  it runs `pip install equipop`, so a release that is not on PyPI
+  cannot be installed the easy way.
 - Commit the handovers to the repo root so they travel with the code.
 - Field-test 1.40.1.
 
@@ -484,7 +501,10 @@ Nothing in pytest can reach it, ever.** Therefore:
   whether the guard or the test is the problem.
 - **Unpack the archive into an EMPTY directory and run the suite from
   inside it.**
-- **Version strings live in SEVEN places**: `pyproject.toml`,
+- **Version strings live in EIGHT places** — the eighth is
+  `CITATION.cff`, pinned since 1.40.2 after sitting at 1.0.0 for forty
+  releases. Only its `version:` field moves; the preferred-citation is
+  the 2014 report and does not follow the software. The other seven: `pyproject.toml`,
   `equipop/__init__.py`, `qgis/equipop_qgis/__init__.py`,
   `qgis/equipop_qgis/metadata.txt`, `stata/equipop.ado` **line 1 AND
   the `local eqp_ado_version` inside `_equipop_doctor`**, and
@@ -645,4 +665,22 @@ For a fresh session that needs to answer a user question quickly.
 | `prefix()` | a prefix on every new variable; all names checked before any is created |
 | `if` / `in` | restrict the OUTPUT ROWS; excluded rows still count as neighbours |
 | `replace` | overwrite existing result variables |
-| `equipop doctor` | the environment report |
+| `equipop doctor` | the environment report, including the `.ado` version against the engine version |
+| `equipop setup` | installs the engine into the Python Stata is using; `setup, repair` reinstalls numpy, scipy and pandas for a wrong-processor mismatch |
+
+**Any other bare word after `equipop` is refused by name**, with the
+subcommands listed and the `net install` line — because the likeliest
+cause is an .ado older than the subcommand being typed.
+
+### WHY THERE IS NO .msi OR .pkg — asked and answered, v1.40.2
+
+The hard part of installing EquiPop is not moving files. It is
+targeting the PARTICULAR Python that Stata is configured to use, which
+differs per machine and is what `python query` exists to discover at
+run time. An OS installer would have to guess it, or bundle its own
+interpreter and risk creating the two-copies-of-one-maths-library
+conflict that closes Stata on Windows. It would also need an Apple
+Developer ID and notarisation, a Windows signing certificate, and a
+rebuild per release, per OS, per processor. `equipop setup` does the
+job in two lines, identically on both platforms, with nothing to sign.
+Do not reopen this without a new reason.

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.40.1}{...}
+{* *! version 1.40.3}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.40.1)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.40.3)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -28,6 +28,12 @@ Report on the Python this Stata is using, and on the libraries EquiPop needs. Re
 
 {p 8 17 2}
 {cmd:equipop doctor}
+
+{pstd}
+Install or update the calculating engine, into the Python this Stata is using. Add {cmd:repair} when a library is present but will not load.
+
+{p 8 17 2}
+{cmd:equipop setup} [{cmd:, repair}]
 
 {synoptset 24 tabbed}{...}
 {synopthdr}
@@ -211,6 +217,16 @@ pandas and scipy. When something is wrong there, the failure happens
 before any EquiPop code is reached and the error message will not
 mention EquiPop.
 
+{phang}{cmd:. equipop setup}{p_end}
+
+{pstd}
+installs the engine into the Python Stata is using, so it cannot land in
+a different one. Add {c -({c )-}cmd:repair{c )-} - {c -({c
+)-}cmd:equipop setup, repair{c )-} - to reinstall numpy, scipy and
+pandas as well, which is the fix when a library is installed but refuses
+to load. Restart Stata afterwards: Stata starts Python once per session
+and keeps what it first loaded.
+
 {phang}{cmd:. equipop doctor}{p_end}
 
 {pstd}
@@ -233,6 +249,7 @@ See also {c -({c )-}help python{c )-}, and {c -({c )-}cmd:python query{c
 {marker examples}{...}
 {title:Examples}
 
+{phang}{cmd:. equipop setup}{p_end}
 {phang}{cmd:. equipop doctor}{p_end}
 {phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}
 {phang}{cmd:. equipop, x(X_local) y(Y_local) treat(HighEdu) k(25 50 200) unit(100)}{p_end}

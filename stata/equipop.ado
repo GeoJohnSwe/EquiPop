@@ -1,4 +1,4 @@
-*! equipop v1.40.1  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.40.3  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -32,6 +32,40 @@ program define equipop, rclass
     if `"`eqp_sub'"' == "doctor" {
         _equipop_doctor
         exit
+    }
+    if `"`eqp_sub'"' == "setup" {
+        _equipop_setup `eqp_rest'
+        exit
+    }
+
+    * A bare word that is not a subcommand. Without this it falls
+    * through to the syntax line below, Stata reads it as a variable
+    * list, and the user is told "varlist not allowed" - which is true
+    * and useless. John hit this in the field running -equipop setup-
+    * against an .ado that predated the subcommand.
+    *
+    * The test is safe because every REAL first token is punctuation
+    * or a Stata keyword: a comma, an [fweight=...], -if- or -in-.
+    * A bare alphabetic word can only be a mistaken subcommand.
+    if regexm(`"`eqp_sub'"', "^[a-zA-Z][a-zA-Z0-9_]*$")               ///
+       & !inlist(`"`eqp_sub'"', "if", "in") {
+        display as error `"unknown subcommand: `eqp_sub'"'
+        display as text "  equipop doctor  - report on the Python " ///
+            "this Stata is using"
+        display as text "  equipop setup   - install or update the " ///
+            "calculating engine"
+        display as text ""
+        display as text "  If you typed one of those and Stata does " ///
+            "not know it, the"
+        display as text "  command files here are older than the " ///
+            "subcommand. Update them:"
+        display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace"'
+        display as text "  and then restart Stata."
+        display as text ""
+        display as text "  To analyse data, the variables go in " ///
+            "options, after a comma:"
+        display as text "     equipop, x(X) y(Y) k(25)"
+        exit 198
     }
 
     syntax [fweight] [if] [in], X(varname numeric) Y(varname numeric) ///
@@ -311,6 +345,17 @@ end
 
 * -equipop doctor- lives in its own program so that it carries no
 * syntax of its own and can be called before anything is parsed.
+* -equipop setup- installs the calculating engine into the Python
+* Stata is using. The .ado files arrive by net install; the engine
+* only ever arrives by pip, and getting it into the RIGHT Python is
+* the step that goes wrong. This does it from inside Stata, so the
+* interpreter cannot be guessed at.
+program define _equipop_setup
+    version 17
+    syntax [, REPAIR]
+    python: _equipop_setup_py("`repair'")
+end
+
 program define _equipop_doctor
     version 17
     * The .ado files' own version, so the doctor can notice when the
@@ -318,7 +363,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.40.1"
+    local eqp_ado_version "1.40.3"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -495,6 +540,65 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
         made.append(name)
 
     Macro.setLocal("eqp_varlist", " ".join(made))
+
+
+def _equipop_setup_py(repair=""):
+    # Standard library ONLY, and deliberately so: this runs BEFORE the
+    # package exists, on a machine where the whole point is that
+    # nothing is installed yet. It must not import the thing it is
+    # about to install.
+    import subprocess
+    import sys
+
+    args = ["--user", "--upgrade"]
+    if repair:
+        # The Mac case, and the Anaconda case: the libraries are
+        # present but built for the wrong processor, or shadowed by
+        # another copy. --no-cache-dir is not decoration - without it
+        # pip reuses the wrong wheel it already downloaded and the
+        # repair appears not to work.
+        args += ["--force-reinstall", "--no-cache-dir",
+                 "--only-binary=:all:", "numpy", "scipy", "pandas"]
+    args.append("equipop")
+    cmd = [sys.executable, "-m", "pip", "install"] + args
+
+    print("EquiPop setup")
+    print("  installing into the Python Stata is using:")
+    print("     " + sys.executable)
+    print("  command:")
+    print("     " + " ".join(cmd))
+    print("")
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True)
+    except Exception as exc:
+        print("  could not run pip at all: " + str(exc).splitlines()[0])
+        return
+    tail = (p.stdout or "").strip().splitlines()[-12:]
+    for line in tail:
+        print("  " + line)
+    if p.returncode != 0:
+        print("")
+        print("  PIP FAILED. The message above is pip's own:")
+        for line in (p.stderr or "").strip().splitlines()[-8:]:
+            print("     " + line)
+        print("  If it mentions an externally managed environment, "
+              "this is")
+        print("  Apple's or the system's own Python and is not ours to "
+              "change.")
+        print("  Install a plain Python from python.org, point Stata at "
+              "it with")
+        print("     python set exec \"THE_PATH_TO_THAT_PYTHON\", "
+              "permanently")
+        print("  restart Stata, and run -equipop setup- again.")
+        return
+
+    print("")
+    print("  Done. Now QUIT STATA COMPLETELY, start it again, and run:")
+    print("     equipop doctor")
+    # NOT run here on purpose. Python starts once per Stata session and
+    # keeps whatever it loaded first, so after an upgrade the doctor
+    # would report the version that is still in memory - the OLD one -
+    # and say everything matches when it does not.
 
 
 def _equipop_doctor_py(ado_version=""):

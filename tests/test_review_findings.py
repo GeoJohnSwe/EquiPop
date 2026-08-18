@@ -196,3 +196,102 @@ def test_the_current_page_teaches_the_treatment_contract():
                 encoding="utf-8").read()
     assert "treatmode(flags)" in text
     assert "number of people" in text.lower()
+
+
+# --------------------------------------------------------------------
+# equipop setup - v1.40.2
+# --------------------------------------------------------------------
+
+def test_setup_is_a_subcommand_like_doctor():
+    t = _text()
+    assert '"setup"' in t, "no setup subcommand"
+    assert "program define _equipop_setup" in t
+
+
+def test_setup_installs_into_the_interpreter_it_is_running_in():
+    """The whole reason it exists. A user typing pip in a terminal has
+    no way of knowing which Python Stata uses; asking Python where it
+    lives cannot be got wrong."""
+    t = _text()
+    block = t[t.index("def _equipop_setup_py"):]
+    block = block[:block.index("def _equipop_doctor_py")]
+    assert "sys.executable" in block
+    assert '"-m", "pip", "install"' in block
+
+
+def test_setup_uses_only_the_standard_library():
+    """It runs BEFORE the package exists. Importing equipop here would
+    make the installer need the thing it installs."""
+    t = _text()
+    block = t[t.index("def _equipop_setup_py"):]
+    block = block[:block.index("def _equipop_doctor_py")]
+    assert "import equipop" not in block
+    assert "from equipop" not in block
+
+
+def test_repair_forces_the_processor_specific_reinstall():
+    t = _text()
+    block = t[t.index("def _equipop_setup_py"):]
+    block = block[:block.index("def _equipop_doctor_py")]
+    assert "--force-reinstall" in block
+    assert "--no-cache-dir" in block, (
+        "without it pip reuses the wrong-processor wheel it already "
+        "downloaded and the repair appears not to work")
+    for lib in ("numpy", "scipy", "pandas"):
+        assert f'"{lib}"' in block
+
+
+def test_setup_does_not_run_the_doctor_in_the_same_session():
+    """Python starts once per Stata session. After an upgrade the
+    doctor would report the version still in memory - the old one -
+    and say everything matches when it does not."""
+    t = _text()
+    block = t[t.index("def _equipop_setup_py"):]
+    block = block[:block.index("def _equipop_doctor_py")]
+    assert "_equipop_doctor_py(" not in block
+    assert "QUIT STATA COMPLETELY" in block
+
+
+def test_a_pip_failure_explains_the_externally_managed_case():
+    t = _text()
+    assert "externally managed" in t
+    assert "python.org" in t
+
+
+def test_an_unknown_subcommand_is_named_rather_than_called_a_varlist():
+    """Field report, v1.40.3.
+
+    John ran -equipop setup- against an .ado that predated the
+    subcommand. It fell through to the syntax line, Stata read the word
+    as a variable list, and said "varlist not allowed" - true, and
+    useless. Anyone in a conference audience typing a subcommand their
+    copy is too old for meets the same wall.
+    """
+    body = _program_body()
+    assert "unknown subcommand" in body
+    hit = body[body.index("unknown subcommand"):][:1400]
+    assert "equipop doctor" in hit and "equipop setup" in hit, (
+        "the message should list the subcommands that do exist")
+    assert "net install" in hit, (
+        "an out-of-date .ado is the likeliest cause, so say how to "
+        "update")
+    assert "x(X) y(Y)" in hit, (
+        "the other likely cause is a user putting variables where a "
+        "subcommand goes")
+
+
+def test_the_subcommand_test_cannot_swallow_a_real_run():
+    """if, in, a comma and [fweight=...] must all still reach syntax.
+
+    A guard that ate a legitimate command line would be far worse than
+    the message it replaces.
+    """
+    body = _program_body()
+    hit = body[body.index("unknown subcommand") - 700:
+               body.index("unknown subcommand")]
+    assert 'inlist(`"`eqp_sub\'"\', "if", "in")' in hit, (
+        "-if- and -in- are not excluded, so `equipop if x==1, ...` "
+        "would be refused as an unknown subcommand")
+    assert "^[a-zA-Z][a-zA-Z0-9_]*$" in hit, (
+        "the test is not anchored to a bare word, so a comma or an "
+        "[fweight=...] could match")

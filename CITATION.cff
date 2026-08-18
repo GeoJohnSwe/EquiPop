@@ -15,7 +15,12 @@ authors:
     email: "johnosth@oslomet.no"
 license: MIT
 repository-code: "https://github.com/GeoJohnSwe/EquiPop"
-version: 1.0.0
+# BACKLOG 43. This sat at 1.0.0 for forty releases because nothing
+# checked it. It is an EIGHTH place a version string lives, and
+# tests/test_doctor.py now asserts it against the package. The
+# preferred-citation below is the 2014 report and does NOT move with
+# the software version.
+version: 1.40.3
 preferred-citation:
   type: report
   title: "Introducing the EquiPop software: An application for the calculation of k-nearest neighbour contexts/neighbourhoods"

@@ -1,5 +1,5 @@
 v 3
-d EquiPop 1.40.1 - k-nearest neighbour context variables
+d EquiPop 1.40.3 - k-nearest neighbour context variables
 d
 d equipop builds, for every observation, the neighbourhood of its k
 d nearest neighbours measured in people, and reports what that

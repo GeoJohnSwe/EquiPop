@@ -199,6 +199,14 @@ def build():
     add("{p 8 17 2}")
     add("{cmd:equipop doctor}")
     add("")
+    add("{pstd}")
+    add("Install or update the calculating engine, into the Python "
+        "this Stata is using. Add {cmd:repair} when a library is "
+        "present but will not load.")
+    add("")
+    add("{p 8 17 2}")
+    add("{cmd:equipop setup} [{cmd:, repair}]")
+    add("")
     add("{synoptset 24 tabbed}{...}")
     add("{synopthdr}")
     add("{synoptline}")
@@ -316,6 +324,17 @@ def build():
         "there, the failure happens before any EquiPop code is reached "
         "and the error message will not mention EquiPop."))
     add("")
+    add("{phang}{cmd:. equipop setup}{p_end}")
+    add("")
+    add("{pstd}")
+    add(_wrap(
+        "installs the engine into the Python Stata is using, so it "
+        "cannot land in a different one. Add {cmd:repair} - "
+        "{cmd:equipop setup, repair} - to reinstall numpy, scipy and "
+        "pandas as well, which is the fix when a library is installed "
+        "but refuses to load. Restart Stata afterwards: Stata starts "
+        "Python once per session and keeps what it first loaded."))
+    add("")
     add("{phang}{cmd:. equipop doctor}{p_end}")
     add("")
     add("{pstd}")
@@ -342,6 +361,7 @@ def build():
     add("{marker examples}{...}")
     add("{title:Examples}")
     add("")
+    add("{phang}{cmd:. equipop setup}{p_end}")
     add("{phang}{cmd:. equipop doctor}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) "

@@ -26,7 +26,7 @@ net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/
 
 **[Stata]** — the engine, into the Python that Stata is actually using
 ```stata
-python: import subprocess, sys; print(subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--upgrade", "equipop"], capture_output=True, text=True).stdout[-2000:])
+equipop setup
 ```
 
 Then **quit Stata completely and start it again.** Python starts once
@@ -62,8 +62,15 @@ python set exec "PASTE_THE_REAL_PATH_HERE", permanently
 **A library will not load, and the message mentions an incompatible
 architecture.** The package was built for a different processor than
 your Python — common on Apple Silicon Macs, where an Intel build sits
-in the user folder. `equipop doctor` names this case and prints the
-repair line for your machine.
+in the user folder. `equipop doctor` names this case, and the repair
+is one line:
+
+**[Stata]**
+```stata
+equipop setup, repair
+```
+
+then quit Stata and start it again.
 
 ## 3. A first run
 

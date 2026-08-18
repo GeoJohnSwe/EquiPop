@@ -205,3 +205,29 @@ def test_the_seventh_version_string_agrees_with_the_other_six():
     header = re.search(r"^\*! equipop v(\S+)", ado, re.M)
     assert header and header.group(1) == equipop.__version__, (
         "line 1 of the .ado disagrees with the package version")
+
+
+def test_the_citation_version_matches_the_package():
+    """BACKLOG 43. CITATION.cff sat at 1.0.0 for forty releases
+    because nothing checked it - an eighth place a version lives.
+
+    Only the `version:` field moves. The preferred-citation is the 2014
+    report and records where the work was written; it is not updated
+    when the software changes or when an author moves institution.
+    """
+    import os
+    import re
+
+    import equipop
+
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cff = open(os.path.join(here, "CITATION.cff"), encoding="utf-8").read()
+
+    m = re.search(r"^version: (\S+)", cff, re.M)
+    assert m, "CITATION.cff no longer declares a version"
+    assert m.group(1) == equipop.__version__, (
+        f"CITATION.cff says {m.group(1)}, the package says "
+        f"{equipop.__version__}")
+    assert "year: 2014" in cff, (
+        "the preferred citation is the 2014 report and must not be "
+        "moved to the software's release year")
