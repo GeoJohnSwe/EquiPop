@@ -530,6 +530,261 @@ appeared twice; the weaker copy is gone.*
   Note that this is an ENGINE change, so it lands at every door, not
   just Stata. QGIS and Pro get it too.
 
+- 198 | OPEN | A QGIS INSTALLER, THE SAME TWO STEPS AS STATA. John,
+  after the Stata installer worked: can we do this for QGIS on
+  Windows and Mac? Yes, and better than Install-from-ZIP.
+  HALF ONE, the `net install` equivalent: a PLUGIN REPOSITORY. QGIS
+  reads a plugins.xml from any URL added under Plugins > Manage and
+  Install Plugins > Settings > Add repository. Host it on GitHub
+  pointing at the plugin zip and EquiPop appears in the Plugin
+  Manager like any official plugin - INCLUDING UPDATE NOTICES, which
+  Install-from-ZIP never gives. One URL paste, once.
+  HALF TWO, the `equipop setup` equivalent: a Processing algorithm or
+  menu action inside the plugin that runs pip against sys.executable
+  from inside QGIS, so it cannot target the wrong Python. The plugin
+  is installed first, so the chicken-and-egg resolves exactly as it
+  does in Stata.
+  --no-deps IS NOT OPTIONAL HERE, and this is the part that could
+  break somebody's QGIS. QGIS's Python is a MANAGED scientific stack -
+  OSGeo4W on Windows, the app bundle on macOS - and letting pip
+  upgrade numpy inside it can break QGIS itself. Install equipop
+  alone and leave the stack untouched. Also --user for write
+  permission, and a restart, since QGIS caches imports too.
+  FIX THE CONTRADICTION WHILE THERE: qgis/README_QGIS.md still
+  recommends an ordinary dependency-resolving pip upgrade while the
+  testing guide correctly says --no-deps matters. Same class as 182 -
+  instructions are part of the release.
+
+- 199 | OPEN, AFTER THE CONFERENCE | ARCGIS PRO CANNOT HAVE AN
+  INSTALLER, AND THAT IS ESRI'S DESIGN, NOT OURS. The .pyt toolbox is
+  one file and trivial to distribute. The ENGINE cannot be installed,
+  because Pro's `arcgispro-py3` conda environment is READ-ONLY until
+  the user clones it in the Package Manager. No installer can get
+  round that. The best available is the Pro half of BACKLOG 128:
+  a doctor that DETECTS the default un-cloned environment and says
+  "clone it in Package Manager, then run this again". Detect and
+  instruct rather than install. --no-deps applies there too, since
+  the conda env already carries numpy, pandas and scipy.
+
+- 200 | OPEN, SCOPED | AN R VERSION OF MACHINE 1. John asked how much
+  effort. MEASURED, not guessed - machine 1 is NOT the 9,674-line
+  package:
+      fastcounts.py  400   the engine
+      overshoot.py   436
+      cells.py       225
+      decay.py       145
+      selfpot.py     110
+      utm.py         377   projection, already dependency-free
+      ---------------------
+      core         ~1,700 lines
+  Every piece maps onto something R does well. Cell building is
+  data.table. The k-nearest search is RANN::nn2 or dbscan::kNN, and
+  the fast engine's own approach - m nearest cells, cumulative sums,
+  widened retry - translates almost line for line. The overshoot
+  ring, self-potential, decay and missing codes are pure arithmetic.
+  utm.py ports as transcription, not research, precisely because we
+  wrote it ourselves rather than calling pyproj.
+  NATIVE R, NOT reticulate. A wrapper would inherit every
+  Python-environment problem of this session, and the audience least
+  able to repair a broken interpreter is exactly the audience for a
+  stats-package port. Same argument that produced utm.py.
+  THE CODE IS NOT THE COST; PROVING IT AGREES IS. tests/
+  test_conformance.py already exists and exists for this: "a student
+  in QGIS and a student in ArcGIS Pro should get the same numbers out
+  of the same town, and small disagreements are exactly the kind
+  neither would notice." An R port validated against that stored
+  reference is an afternoon of checking.
+  ESTIMATE, AND IT IS CONDITIONAL: after BACKLOG 195 (Stata into
+  parity, with a shared conformance route), roughly a FORTNIGHT of
+  focused work for machine 1 - engine, projection, conformance.
+  Attempted BEFORE that, do not estimate: the expensive part would be
+  establishing what "correct" means for a fourth door.
+  CRAN is its own Kit Baum with its own weeks; remotes::
+  install_github() works the day it is pushed, exactly like
+  net install.
+
+- 193 | OPEN, FIRST | THE FIELD PASS STATES ITS INVARIANTS BUT DOES
+  NOT ENFORCE THEM. External review of 1.40.4. equipop_test_pass.do
+  has no assert and no exit: a failed property prints a number and the
+  run continues. The distance-order count can be non-zero, a refusal
+  can silently fail to happen, and the pass still reaches its final
+  line. It found 191 only because a human read the number.
+  ALSO: block 20 is invalid and HALTS the pass - ValFloat is
+  continuous, so after missing(0) 5,645 of 5,838 values exceed their
+  population and the treatment guard refuses, correctly. A continuous
+  measure belongs in machine 2, not treat(). Build a synthetic COUNT
+  column with a -999 sentinel.
+  ALSO: the header says 1.40.3 and "Twenty runs" for a 22-block
+  1.40.4 delivery, and the data path is hard-coded.
+  FIX: assert r(N) == 0 after each count; capture _rc immediately
+  after each expected refusal and fail if it did not occur; a checked
+  configuration line for the path; pin the version and run count; and
+  SAVE THE STATA LOG AS A RELEASE ARTIFACT so "field-tested" has
+  durable evidence.
+
+- 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
+  WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
+  neither would have raised an error.
+  (a) CATEGORY SYNTAX. The handover proposed
+  treatspec("A: 5 6 7; B: 1 2"). parse_treat_spec splits groups on
+  ';' and values on ','. That string parses to {'A': ['5 6 7'],
+  'B': ['1 2']} and matches ZERO ROWS. Verified. The working form is
+  treatspec("A: 5, 6, 7; B: 1, 2"). Keep commas - whitespace makes a
+  label containing a space ambiguous.
+  (b) outside(zero) SEMANTICS. The handover called it post-processing
+  that should "blank the results of excluded rows, or zero them".
+  THAT IS THE WRONG GEOGRAPHY. John's rule, already in
+  doors/help.py and implemented in alg_counts.py as
+  `weight = base * pop_mask`: an outside row contributes ZERO to the
+  reference population and is nobody's neighbour, but it REMAINS AN
+  ORIGIN and receives real results for what surrounds it. A library
+  outside an eating-place reference population still has eating
+  places around it. It is INPUT SHAPING before dispatch, not output
+  editing.
+  THE LESSON: a handover can carry a wrong instruction forward and
+  nothing catches it. Run the example against the parser and read the
+  existing implementation before building from a plan.
+
+- 195 | OPEN | STATA PARITY MOVES AHEAD OF THE CATEGORY RUNG. The
+  reviewer's argument beats the previous ordering: the category work
+  touches the exact seam where door drift has happened before -
+  reference membership, treatment membership, units, outside rows,
+  group names, generated outputs. A third implementation added before
+  Stata is in the answer key invites another plausible-but-different
+  result. Extend tests/door_parity.py first, extract ONE shared
+  category/reference preparation helper from the GIS doors, then
+  implement Stata through it.
+
+- 196 | OPEN, SMALL | `equipop setup` IS NOT VERSION-PINNED AND
+  RETURNS SUCCESS ON A PIP FAILURE. It runs `pip install --upgrade
+  equipop`, so a 1.40.4 command file can pull a newer engine after a
+  later PyPI release - doctor detects the mismatch afterwards, but
+  setup created it. And it prints "PIP FAILED" then returns normally,
+  so a scripted install has no failure code. FIX: pass the .ado
+  version in and install equipop==<that version>; return non-zero on
+  pip failure.
+
+- 197 | OPEN, HOUSEKEEPING | THE COMPLETE ZIP CARRIES CACHE
+  DIRECTORIES AND A STALE HANDOVER. .pytest_cache and seven
+  __pycache__ folders survive into the complete zip (the wheel, sdist
+  and QGIS zip are clean), the inner HANDOVER_11 is older than the
+  delivered one, and equipop_test_pass.do ships only outside the zip
+  and identifies itself as 1.40.3. FIX: make the release builder copy
+  the FINAL handover and field pass in after their last edit, assert
+  their version strings, and filter cache directories.
+  ALSO: comments in stata_bridge.py still call treat_are_counts=False
+  "legacy, Stata" and True "the GIS doors", although Stata has
+  deliberately used True since 1.37.1. Behaviour correct, comment
+  stale, and it could mislead the next change.
+
+- 191 | DONE v1.40.4 | Dist_k FELL AS k ROSE. Found in the FIELD, by
+  a line in the test pass that said "if any row breaks that ordering,
+  something is wrong" - and returned 198 on John's 10,892-row set.
+      Dist_50 = 51.1 m, Dist_100 = 35.8 m, same origin.
+  Up to 18 m, 1.8% of rows, all sub-cell. It touches Dist_k only: not
+  N_k, not T_, not R_, not any decayed column.
+  THE CAUSE was two distance conventions meeting at a discontinuity.
+  Inside the origin cell, Dist is the equal-area radius
+  s*sqrt(unit^2*k/(n*pi)), correctly rising with k. The moment k needs
+  the first ring OUTSIDE, `proportional` interpolates area-linearly
+  from the previous radius - and took that to be ZERO rather than the
+  cell's own radius. Stepping outside reset the baseline to the cell
+  CENTRE, so the answer could land below where it already was.
+  IT NEEDED BOTH proportional AND a self-potential above zero. Either
+  alone hides it, which is why eleven releases never saw it - and why
+  the guard now runs over every combination of the two.
+  THE FIX starts the interpolation at s*unit/sqrt(pi), the value the
+  in-cell formula reaches at k = n, so the conventions meet
+  continuously.
+  IT HAD TO LAND IN BOTH ENGINES. Fixing only the fast one broke
+  test_fast_engine_identical and test_both_engines_apply_the_same_rule
+  immediately - the parity tests doing exactly their job.
+  AND THE FIRST CLASSIC FIX WAS WRONG: raising `dist_m` at
+  initialisation destroyed a SENTINEL, because dist_m == 0.0 also
+  means "the neighbourhood is still inside the origin cell" and
+  selects the k-scaled in-cell estimate. Two engines then disagreed by
+  40 m on two rows. The value must be substituted AT THE INTERPOLATION
+  CALL, never by raising the running distance. A VARIABLE DOING DOUBLE
+  DUTY AS A MEASUREMENT AND AS A FLAG IS A TRAP; documented in
+  _interp_base().
+
+- 192 | DONE v1.40.4 | [fweight=] SILENTLY DROPPED PLACES WITH NO
+  PEOPLE, pop() DID NOT. Field report: 109 of John's 10,892 rows have
+  ValCount == 0, and marksample marks out zero weights by default, so
+  those places received no results under [fweight=] while pop() gave
+  them results - two routes into the same idea disagreeing at the
+  boundary, and a silent 1% difference in the sample.
+  John's ruling: "they shall have results". `marksample touse,
+  novarlist zeroweight`. Same principle as a case blanked by
+  missing(): still the placeholder for results, contributing nothing
+  itself. Both marksample options are counter-intuitive and each was
+  added to close a field report, so a test asserts the reason for each
+  is written down beside it.
+
+- 189 | OPEN, NEXT CODING ROUND | arcpy.da.ExtendTable FAILS ON A
+  `memory` TARGET ABOVE ONE FIELD, AND OUR ERROR HANDLING INVENTED A
+  DIFFERENT STORY. Two field reports from John, then six diagnostic
+  snippets in the Pro Python window. THE MEASUREMENT, on a 682-row
+  memory feature class:
+      1 field  -> no error, VALUES OK
+      2 fields -> SystemError, 2 created, ALL NULL
+      3 fields -> SystemError, 3 created, ALL NULL
+      4 fields -> SystemError, 4 created, ALL NULL
+      8 fields -> SystemError, 8 created, ALL NULL
+  The threshold is exactly TWO. The fields are created and left empty,
+  and `arcpy.GetMessages(2)` is EMPTY, so there is no hidden diagnosis
+  to recover. A real run writes a dozen or more columns, so `memory`
+  is simply unusable for the bulk write and no setting avoids it.
+  WHAT THE USER SAW WAS OUR OWN DOING. Attempt 1 fails with
+  SystemError, whose text carries nothing; _is_field_refusal() reads
+  str(exc) and cannot classify it; the code concludes the target is
+  busy and RETRIES WITHOUT UNDOING FIRST; attempt 2 now meets the
+  fields attempt 1 created and says "field 'N_1432' exist"; that
+  exception overwrites `first`; and _write_failure() tests for
+  "already exist" - which this message does not contain - so it fell
+  through to a generic lock explanation. Wrong cause, wrong remedy,
+  and the real error discarded.
+  THE FIX:
+   1. VERIFY AFTER EVERY BULK WRITE, raised or not - read one row
+      back. Fields present and populated is success however the call
+      reported itself; present and null is failure however quietly.
+      This is the item worth having regardless of `memory`.
+   2. On a verified failure, undo and go ROW BY ROW. That path
+      already exists and is tested. Not a retry - the bulk write is
+      unavailable, not busy.
+   3. Skip the bulk attempt entirely for `memory\` and `in_memory\`
+      targets, and say so ONCE - John's ruling: a run that takes
+      noticeably longer with no explanation reads as a fault.
+   4. Never let a retry's exception replace the original, and undo
+      BEFORE each retry rather than only after the last.
+   5. One shared vocabulary between _is_field_refusal() and
+      _write_failure(); they currently disagree about the same
+      message.
+  NOT A DATA-LOSS BUG: the fields came back all None, so
+  _undo_partial has only ever deleted empty shells. Checked, because
+  the alternative would have been serious.
+  DROPPED FROM THE FIX LIST: reading arcpy.GetMessages(2) as a second
+  source. The queue is empty in exactly the case that matters.
+
+- 190 | OPEN, SMALL | THE QGIS DOOR REPORTS A ROW COUNT IT NEVER
+  CHECKED. base.py writes results with `sink.addFeature(nf)` and
+  DISCARDS THE RETURN VALUE. QgsFeatureSink.addFeature() returns a
+  bool and does NOT raise, so a refused feature is silently skipped
+  and the run still reports "Wrote N rows with M new columns" - a
+  figure that is asserted rather than measured. Same shape as 189: the
+  report of success does not come from checking the result.
+  SMALLER THAN 189, and John agreed it is not a big thing: QGIS builds
+  a NEW sink with the fields declared up front, so there is no
+  bulk-extend call, no partial-write state and no in-memory target to
+  trip over - none of 189 applies. And a lost FEATURE makes the output
+  visibly short rather than quietly wrong.
+  FIX: count the True returns, compare against the feature count, and
+  say plainly if they differ instead of reporting the intended figure.
+  Fold into any run that touches base.py.
+  CHECKED WHILE LOOKING AND FOUND SOUND: the NaN-to-None conversion on
+  the way out, including the isinstance(v, float) guard ordering, so a
+  None never reaches np.isnan.
+
 - 188 | DONE v1.40.3 | "varlist not allowed" WAS THE WHOLE ANSWER A
   USER GOT FOR AN UNKNOWN SUBCOMMAND. Field report: John ran
   `equipop setup` against an .ado installed from main, which predated

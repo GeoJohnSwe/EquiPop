@@ -202,6 +202,7 @@ and a `decay()` run to see `ND_300` beside `N_300`.
 | **1.40.1** | 186 the doctor compares the `.ado` version against the engine |
 | **1.40.2** | 187 `equipop setup` — installing is two lines on both platforms; 43 CITATION pinned; 101 `tmp/` ignored |
 | **1.40.3** | 188 an unknown subcommand is named, not called a variable list |
+| **1.40.4** | 191 Dist_k FELL AS k ROSE - both engines; 192 places with no people now get results |
 
 1.36 was already on main when the session opened and is not this
 session's work.
@@ -330,7 +331,50 @@ session's work.
     The general lesson: **a Stata command's first token is the one
     place a user can put something the parser has no vocabulary for**,
     so it needs its own error, not `syntax`'s.
-17. **Breaking a guard on purpose sometimes reveals that the guard is
+17. **THE ONLY TRUSTWORTHY TEST OF A WRITE IS READING IT BACK.** 189:
+    `arcpy.da.ExtendTable` RAISES on a `memory` layer having created
+    the fields, and elsewhere could return cleanly having written
+    nothing. Neither the return value nor the exception is evidence.
+    The same assumption is in the QGIS door (190), which discards a
+    boolean. **Applies to every door and every write.**
+18. **DIAGNOSE BY BISECTION, AND VERIFY THE PROBE ITSELF.** 189 took
+    six snippets and THREE wrong hypotheses from Claude - a stale
+    field, a `memory` limitation, then NaN - because the early probes
+    only checked that no exception was raised, never that values
+    arrived. A probe that does not verify its own success is worth
+    nothing. Also: a "contiguous OIDs" check compared cursor ORDER
+    against 1,2,3 and reported False on a complete 1-682 set; say so
+    when a probe was the thing that was wrong.
+19. **A VARIABLE DOING DOUBLE DUTY AS A MEASUREMENT AND AS A FLAG IS
+    A TRAP.** 191: `dist_m == 0.0` meant both "no distance covered
+    yet" AND "the neighbourhood is still inside the origin cell,
+    so use the in-cell estimate". Raising it to fix the first
+    destroyed the second, and two engines disagreed by 40 m. The
+    correction had to be substituted AT THE INTERPOLATION CALL. When a
+    sentinel value is also a real measurement, say so where it is set.
+20. **A FIX TO ONE ENGINE MUST LAND IN BOTH.** 191 was fixed in
+    `fastcounts.py` and `test_fast_engine_identical` plus
+    `test_both_engines_apply_the_same_rule` failed within the minute.
+    Those two tests are the reason the engines have not drifted; treat
+    a failure in them as information, not as an obstacle.
+21. **THE FIELD TEST PASS IS A GUARD.** 191 was found by a line in
+    `equipop_test_pass.do` that said "if any row breaks that
+    ordering, something is wrong" and returned 198. Property checks
+    written INTO the do-file catch things the suite cannot, because
+    they run on real data at real size. Keep adding them.
+22. **A HANDOVER CAN CARRY A WRONG INSTRUCTION FORWARD, AND NOTHING
+    WILL CATCH IT.** The 1.40.4 external review found TWO in this
+    file's own 1.41 plan: a category syntax that parses to zero
+    matches, and an `outside(zero)` description with the geography
+    backwards. Both would have been built straight from the note, and
+    neither would have raised an error. **Before implementing
+    anything a handover proposes, run the example against the parser
+    and read the existing implementation.** A plan is not evidence.
+23. **THE EXTERNAL REVIEW IS THE THIRD SOURCE OF REAL DEFECTS, AND IT
+    IS THE ONLY ONE THAT READS THE PLAN.** The field finds wrong
+    numbers; the suite finds regressions; the reviewer finds wrong
+    intentions. Send each release out for one.
+24. **Breaking a guard on purpose sometimes reveals that the guard is
     REDUNDANT, and that is worth saying out loud.** The missing-value
     mask in `to_utm()` cannot be caught by any test, because NaN
     already propagates. It was kept and LABELLED as redundant rather
@@ -338,6 +382,16 @@ session's work.
 
 ### Still John's to do
 
+- **The QGIS plugin ZIP is built by `tools/make_plugin_zip.py`**, not
+  by the release-zip tool. QGIS's Install from ZIP needs ONE
+  top-level folder named `equipop_qgis/` with `metadata.txt` inside
+  it; a zip of the folder's CONTENTS installs as a plugin that loads
+  once and then cannot be found. The tool asserts the shape and
+  reuses the release zip's `__pycache__`/`.pyc`/bad-name filters.
+- **The author line is already correct** — John Östh, OsloMet first,
+  then Lund and Uppsala — in `metadata.txt`, `CITATION.cff` and
+  `pyproject.toml`. A QGIS install showing "John Osth, Uppsala
+  University" is an OLD PLUGIN, not a stale string.
 - **BACKLOG 101 remnant** — `git rm -r --cached tmp` ONCE. The
   `.gitignore` rule went in at 1.40.2, which is what was missing
   before; without it the earlier removal never stayed done. Exactly
@@ -353,41 +407,132 @@ session's work.
 ## 4. WHAT IS NEXT
 
 ```
-1. 1.41  THE LAST TWO BOXES, AND THEY ARE ONE PIECE OF WORK
-         - the ladders' rung 2: selection by a category field. The
-           machinery is equipop/categorical.py -
-           parse_treat_spec(spec) and categories_to_binary(...),
-           which expand a type column into one column per type BEFORE
-           the engine sees anything. Mirror what QGIS passes.
-           Stata shape, words not numbers:
-             treatcat(varname) treatspec("A: 5 6 7; B: 1 2")
-             refcat(varname)   reftypes("...")
-         - outside(zero|null) TRAVELS WITH IT and cannot be built
-           first. "Outside" means a point whose type is not in the
-           reference selection, so the idea does not exist until
-           refcat() does. CHECKED: there is no keep_outside parameter
-           anywhere in fastcounts.py, cells.py or doors/reference.py,
-           so this is door-level post-processing - blank the results
-           of excluded rows, or zero them - not an engine flag.
-           Claude's choice, delegated by John: outside(zero|null)
-           rather than a bare keepoutside flag, because a flag is
-           silent about which of the two things it does.
+1. FIELD GUARD FIRST - the external review of 1.40.4 is right that
+         no feature should go in ahead of this.
+         - equipop_test_pass.do STATES its invariants but does not
+           ENFORCE them: no assert, no exit. A failed property prints
+           a number and the run carries on. Turn each `count if` into
+           `assert r(N) == 0`, capture `_rc` straight after each
+           expected refusal and fail if it did not happen, make the
+           data path a checked configuration line, and pin the
+           version and run count.
+         - BLOCK 20 IS STILL WRONG and halts the pass before the end.
+           ValFloat is CONTINUOUS: after missing(0), 5,645 of 5,838
+           values exceed their population and the treatment guard
+           refuses - correctly. A continuous measure belongs in
+           machine 2, not treat(). Build a small synthetic COUNT
+           column with a -999 sentinel instead.
+         - Save the Stata log as a release artifact, so
+           "field-tested" has durable evidence.
 
-2. STATA INTO door_parity.py - or it drifts again. HANDOVER 8, 9 and
+2. 189/190 THE TWO WRITE RISKS, before any new analytical box. An
+         analytical feature is not delivered if the door can report
+         success with empty result columns. The read-back must
+         compare against the values about to be written, not merely
+         check that the fields exist.
+
+3. STATA INTO door_parity.py - BEFORE the category rung, not after.
+         The reviewer's argument beats this handover's earlier
+         ordering: the category work touches the exact seam where
+         door drift has happened before - reference membership,
+         treatment membership, units, outside rows, group names,
+         generated outputs. Adding a THIRD implementation before
+         Stata is in the answer key invites another
+         plausible-but-different result.
+
+4. 1.41  THE LAST TWO BOXES - through a SHARED helper, not a third
+         hand-written copy.
+         - CATEGORY VALUES ARE COMMA-SEPARATED. parse_treat_spec
+           splits groups on ';' and values on ','. An earlier version
+           of this handover proposed treatspec("A: 5 6 7; B: 1 2"),
+           which parses to {'A': ['5 6 7'], 'B': ['1 2']} and matches
+           ZERO ROWS, silently. The working form is:
+             treatcat(varname) treatspec("A: 5, 6, 7; B: 1, 2")
+             refcat(varname)   reftypes("...")
+           Keep commas: whitespace as a delimiter makes a category
+           label containing a space ambiguous.
+         - outside(zero|null) IS INPUT SHAPING, NOT POST-PROCESSING.
+           An earlier version of this handover said it should "blank
+           the results of excluded rows, or zero them". THAT IS THE
+           WRONG GEOGRAPHY, and it would have been built from this
+           note. John's rule, already in equipop/doors/help.py and in
+           the QGIS code:
+             zero - the row contributes ZERO to the reference
+                    population and is nobody's neighbour, but it
+                    REMAINS AN ORIGIN and receives the real results
+                    for what surrounds it. A library outside an
+                    eating-place reference population still has
+                    eating places around it.
+             null - contributes nothing AND receives no results.
+           So: build the membership mask, multiply the reference
+           count by it - QGIS does exactly `weight = base * pop_mask`
+           in alg_counts.py - keep the coordinates for zero, mask the
+           origin for null, THEN run the engine.
+         - Three rules the GIS doors already have and Stata must not
+           lose: read STRING categories without forcing them through
+           the numeric _col(); multiply a category's 0/1 membership
+           by the count field so treatment and reference share units;
+           and preflight empty group names, case-clashing output
+           names, and groups that match zero rows.
+
+   Alongside 2, and small: 198 A QGIS INSTALLER, the same two steps
+         as Stata - a plugins.xml repository hosted on GitHub (which
+         also gives update notices, unlike Install-from-ZIP) plus an
+         in-plugin action running pip against sys.executable. NOTE:
+         --no-deps is NOT optional inside QGIS's managed scientific
+         stack; upgrading numpy there can break QGIS itself. Fix
+         README_QGIS.md's contradicting advice in the same edit.
+
+--- after the conference ---
+   199   ArcGIS Pro CANNOT have an engine installer - `arcgispro-py3`
+         is read-only until the user clones it in Package Manager,
+         which is Esri's design. Detect and instruct instead: the Pro
+         half of 128.
+   200   AN R VERSION OF MACHINE 1, scoped. ~1,700 lines of core, all
+         of it mapping onto data.table plus RANN/dbscan. NATIVE, not
+         reticulate - a wrapper inherits every Python-environment
+         problem, and the port's audience is exactly the people least
+         able to repair one. The cost is not the code, it is proving
+         agreement: after 195 (Stata parity + a shared conformance
+         route) it is roughly a fortnight, validated against
+         tests/test_conformance.py. Before 195, do not estimate.
+
+5. 189   THE PRO DOOR CANNOT WRITE TO A `memory` LAYER, AND SAID SO
+         WRONGLY. Measured with six snippets in the Pro Python
+         window, on a 682-row memory feature class:
+             1 field  -> no error, VALUES OK
+             2 fields -> SystemError, created, ALL NULL
+             8 fields -> SystemError, created, ALL NULL
+         The threshold is exactly TWO, and arcpy.GetMessages(2) is
+         EMPTY, so there is nothing to recover from the queue. A real
+         run writes a dozen columns, so `memory` is unusable for the
+         bulk write and no setting avoids it.
+         The "field 'N_1432' exist" the user saw was OUR OWN retry
+         meeting the fields the first attempt had created. See
+         BACKLOG 189 for the five-part fix. The first item -
+         VERIFY EVERY BULK WRITE BY READING A ROW BACK - is worth
+         having whatever ArcGIS does, because neither the return
+         value nor the exception is evidence.
+         NOT data loss: the fields came back all None.
+6. 190   the QGIS door discards `sink.addFeature()`'s return value
+         and reports a row count it never checked. Small - a lost
+         FEATURE is visibly short rather than quietly wrong - and it
+         can travel with any run that touches base.py.
+   STATA PARITY is item 3 above. It has been deferred by HANDOVER 8, 9 and
    10 all said this and it still has not happened; 172 is the bill.
 
 --- after the conference ---
-3. 128-doors  equipop doctor in Pro and QGIS
-4. 168-doors  the missing-code box in Pro and QGIS
-5. 161        Pro will not offer a barrier raster from the map.
+5. 128-doors  equipop doctor in Pro and QGIS
+6. 168-doors  the missing-code box in Pro and QGIS
+7. 161        Pro will not offer a barrier raster from the map.
               NOTE THE TRAP: adding GPRasterLayer alone produces a
               dropdown that then FAILS, and the simulator cannot see
               it - test_arcgis_stub models valueAsText as str(value)
               and has no notion of multiValue, .values or quoting
-6. 102        QGIS has no bandwidth boxes. Travels with 42
-7. 118-rest   the expansion UPSTREAM, where counts become persons.
+8. 102        QGIS has no bandwidth boxes. Travels with 42
+9. 118-rest   the expansion UPSTREAM, where counts become persons.
               This is what unblocks 38, and it is a pipeline change
-8. 38         CONTINENTAL RUNS - John's destination
+10. 38        CONTINENTAL RUNS - John's destination
 ```
 
 ### THE LADDERS ARE MOSTLY ALREADY THERE, IN STATA'S OWN GRAMMAR

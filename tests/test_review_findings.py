@@ -295,3 +295,30 @@ def test_the_subcommand_test_cannot_swallow_a_real_run():
     assert "^[a-zA-Z][a-zA-Z0-9_]*$" in hit, (
         "the test is not anchored to a bare word, so a comma or an "
         "[fweight=...] could match")
+
+
+def test_a_place_with_no_people_still_gets_results():
+    """BACKLOG 192, from the field.
+
+    marksample drops zero weights by default, so 109 places with no
+    residents got no results under [fweight=] while pop() gave them
+    results - two routes into the same idea disagreeing at the
+    boundary. John's ruling: "they shall have results".
+
+    It is the same principle as a case blanked by missing(): still the
+    placeholder for results, contributing nothing itself.
+    """
+    body = _program_body()
+    assert "marksample touse, novarlist zeroweight" in body, (
+        "zeroweight is missing, so [fweight=] silently drops places "
+        "with no population")
+
+
+def test_the_reason_for_zeroweight_is_written_down():
+    """Both marksample options are counter-intuitive and were each
+    added to fix a field report. A future edit that drops one should
+    have to read why first."""
+    body = _program_body()
+    hit = body[:body.index("marksample touse")]
+    assert "novarlist matters" in hit
+    assert "zeroweight matters" in hit

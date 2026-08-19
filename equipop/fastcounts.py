@@ -244,6 +244,27 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     ring_all = float(rpop.sum())
                     f = taken / ring_all if ring_all > 0 else 1.0
                     d_prev = float(dd[lo - 1]) if lo > 0 else 0.0
+                    if lo > 0 and d_prev <= 0.0 and sp > 0.0:
+                        # BACKLOG 191. Everything counted so far is the
+                        # origin's OWN cell, and its people are not
+                        # standing at distance zero - they are spread
+                        # through the cell, reached by the equal-area
+                        # radius s*unit/sqrt(pi). Starting the
+                        # interpolation from 0 instead made Dist_k fall
+                        # as k ROSE: on John's field data, Dist_50 came
+                        # back as 51.1 m and Dist_100 as 35.8 m for the
+                        # same origin, because the second one was
+                        # measured 36% of the way out from the cell
+                        # CENTRE while the first was a real radius
+                        # inside the cell.
+                        #
+                        # This is the value the in-cell formula reaches
+                        # at k = n, so the two conventions now meet
+                        # continuously at the cell boundary instead of
+                        # stepping back to zero.
+                        d_prev = min(
+                            selfpot.radius_for_k(cd.unit_size, 1.0, 1.0, sp),
+                            float(dd[hi]))
                     d_k = float(overshoot.radius(d_prev, float(dd[hi]), f))
                 rec[f"N_{k}"] = n_k
                 for v in bvars:

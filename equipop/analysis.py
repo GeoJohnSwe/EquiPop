@@ -77,6 +77,29 @@ def build_distance_rings(max_radius_units: int):
             for dist, grp in groupby(offsets, key=lambda t: t[0])]
 
 
+def _interp_base(dist_m, unit_size, sp, ring_dist_m):
+    """Where a crossing ring's area-linear interpolation STARTS.
+
+    BACKLOG 191. dist_m is the distance out to everything already
+    counted. When that is still zero the mass counted so far is the
+    origin's OWN cell - and its people are not standing on the origin.
+    They are spread through the cell and reached by the equal-area
+    radius s*unit/sqrt(pi), which is exactly what the in-cell formula
+    returns at k = n. Interpolating from 0 instead made Dist_k FALL as
+    k rose, by up to 18 m on John's field data.
+
+    It must be applied HERE and not by raising dist_m itself: a
+    dist_m of 0.0 is also the SENTINEL meaning "the neighbourhood is
+    still inside the origin cell", which selects the k-scaled in-cell
+    estimate. Raising it destroyed that signal and made two engines
+    disagree - caught by the parity test, which is what it is for.
+    """
+    if dist_m > 0.0 or sp <= 0.0:
+        return dist_m
+    return min(selfpot.radius_for_k(unit_size, 1.0, 1.0, sp),
+               float(ring_dist_m))
+
+
 def run_knn(
     cells: pd.DataFrame,
     k_values: list[int],
@@ -292,8 +315,10 @@ def run_knn(
                         record(k,
                                n=sum_all + taken,
                                t=sum_grp + float((r_grp_a * wt).sum()),
-                               d=float(overshoot.radius(dist_m,
-                                                        ring_dist_m, f)))
+                               d=float(overshoot.radius(
+                                   _interp_base(dist_m, unit_size, sp,
+                                                ring_dist_m),
+                                   ring_dist_m, f)))
                 sum_all += ring_all
                 sum_grp += ring_grp
                 d_all += ring_all * w
@@ -624,7 +649,9 @@ def run_knn_stats(
                             cd.binary_sums[v][ci] * w
                             for ci, w in zip(ring, wt)))
                             for v in bin_vars},
-                        "d": float(overshoot.radius(dist_m, float(d), f)),
+                        "d": float(overshoot.radius(
+                            _interp_base(dist_m, cd.unit_size, sp,
+                                         float(d)), float(d), f)),
                         "cellpop": sum_n + ring_n,
                         "ok": {v: bin_ok[v] + float(sum(
                             cd.valid_for(v)[ci] * w

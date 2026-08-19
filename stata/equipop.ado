@@ -1,4 +1,4 @@
-*! equipop v1.40.3  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.40.4  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -107,7 +107,16 @@ program define equipop, rclass
     * (BACKLOG 168) and the two must not fight. His rule was: use
     * Stata's own commands where we can, not where it jeopardises
     * our code - this is the seam between the two.
-    marksample touse, novarlist
+    * zeroweight matters for the same reason. Without it, marksample
+    * drops every row whose [fweight=] is 0 - and in John's field data
+    * that was 109 places with no residents, which then received no
+    * results at all while pop() gave them results. A place with no
+    * people still HAS a neighbourhood around it, and the two routes
+    * into the same idea must not disagree at the boundary. John's
+    * ruling, 1.40.4: "they shall have results". It is the same
+    * principle as a case blanked by missing() - it is still the
+    * placeholder for results, it just contributes nothing itself.
+    marksample touse, novarlist zeroweight
 
     * ---- weights ----------------------------------------------
     * fweight is the honest Stata reading of an EquiPop weight:
@@ -363,7 +372,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.40.3"
+    local eqp_ado_version "1.40.4"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
