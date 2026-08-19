@@ -187,3 +187,63 @@ def test_the_corrected_decay_claim_does_not_come_back(phrase):
     the neighbourhood sits, and on this data it sits inside.
     """
     assert phrase not in _text()
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 204. The same guard, widened to every .do file we ship.
+#
+# equipop_showcase.do stored None into Stata at TWO places and had done
+# since before 1.29. Stata's Data.store refuses None for a numeric and
+# raises "the specified value should be a numeric value", so the script
+# died at section 6 and sections 7 and 8 had never run at all. The fix
+# - to_stata_values() - has existed in equipop_run.ado since 1.40.1;
+# this file simply never adopted it. Nothing tested it, because nothing
+# READ it.
+# ---------------------------------------------------------------------
+
+DO_FILES = sorted(ROOT.glob("*.do")) + sorted((ROOT / "stata").glob("*.do"))
+
+
+def test_we_actually_found_the_do_files():
+    assert len(DO_FILES) >= 3, (
+        f"expected several shipped .do files, found {len(DO_FILES)}. "
+        "Fix this locator before trusting the checks below.")
+
+
+@pytest.mark.parametrize("path", DO_FILES, ids=lambda p: p.name)
+def test_no_do_file_stores_none_into_stata(path):
+    text = path.read_text(encoding="utf-8")
+    offenders = [
+        (i, ln.strip()) for i, ln in enumerate(text.splitlines(), 1)
+        if "Data.store" in ln and "None," in ln.split("Data.store", 1)[1]
+        and "else None" in ln
+    ]
+    assert not offenders, (
+        f"{path.name} stores None for a missing number: {offenders}. "
+        "Stata refuses it. Use to_stata_values() from equipop.stata_bridge.")
+
+
+@pytest.mark.parametrize("path", DO_FILES, ids=lambda p: p.name)
+def test_python_blocks_in_do_files_compile(path):
+    """Extract each `python:` ... `end` block and compile it.
+
+    Not a substitute for running Stata, but it turns a whole class of
+    silent breakage into a test failure without leaving the container.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    blocks, current = [], None
+    for ln in lines:
+        if re.match(r"^\s*python:\s*$", ln):
+            current = []
+            continue
+        if current is not None and re.match(r"^\s*end\s*$", ln):
+            blocks.append("\n".join(current))
+            current = None
+            continue
+        if current is not None:
+            current.append(ln)
+    for i, block in enumerate(blocks, 1):
+        try:
+            compile(block, f"{path.name}:python-block-{i}", "exec")
+        except SyntaxError as exc:
+            pytest.fail(f"{path.name} python block {i} does not compile: {exc}")

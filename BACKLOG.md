@@ -707,6 +707,37 @@ appeared twice; the weaker copy is gone.*
   urgent - a method question, and John's to rule on. Do not build
   before he does.
 
+- ~~204~~ | DONE v1.40.7 | equipop_showcase.do CRASHED AT SECTION 6 AND
+  HAD DONE FOR MANY RELEASES. Found because John ran the wrong file by
+  accident. `Data.store(c, None, [v if isfinite(v) else None ...])` -
+  Stata refuses None for a numeric and raises "the specified value
+  should be a numeric value". THIS IS BACKLOG 173, whose fix,
+  to_stata_values(), has been in equipop_run.ado since 1.40.1; the
+  showcase simply never adopted it. TWO crash sites, not one, so
+  sections 7 AND 8 had never run in Stata at all - which means their
+  EXPECT numbers had never been compared against anything. All of them
+  are now measured. Also fixed: section 4 demonstrated pop() with a
+  0/1 marker and NO treatmode(flags), so it produced .0044 where its
+  own comment expected .2076 - a live instance of the 47x trap sitting
+  in the file we hand to new users. Every other EXPECT was stale too,
+  mostly because the default overshoot changed from whole to
+  proportional: N_200 read 228.88 and is 200. The file called itself
+  "EquiPop 1.1". LESSON: nothing tested this file because nothing READ
+  it. tests/test_field_pass.py now walks EVERY shipped .do file,
+  refuses the None-store pattern, and compiles every `python:` block;
+  both guards were broken on purpose and both caught it.
+
+- 205 | OPEN, REAL GAP | THE STATA COMMAND CANNOT REACH MACHINE 2 AT
+  ALL. There is no stats() or values() option in equipop.ado's syntax
+  line - mean, median, quantiles and Gini over a neighbourhood are
+  unreachable from Stata except by hand-written python: blocks, which
+  is exactly why section 6 of the showcase exists and exactly why it
+  was able to rot unnoticed. THIS ALSO EXPLAINS BLOCK 20 OF THE FIELD
+  PASS: whoever wrote treat(ValFloat) missing(0) was not being
+  careless, they were reaching for the only handle the door offers. A
+  user with a continuous variable has nowhere correct to put it. QGIS
+  and Pro both expose machine 2. Sizeable, and NOT for this week.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

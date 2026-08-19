@@ -1,5 +1,5 @@
 # EquiPop — HANDOVER 12
-### written in the 1.40.5/1.40.6 session, SEVEN DAYS before the presentation
+### written in the 1.40.5/6/7 session, SEVEN DAYS before the presentation
 
 **Supersedes HANDOVER_11.md.** 11 is kept for its history and its
 long findings list, which is NOT repeated here — read section 5 of 11
@@ -150,6 +150,34 @@ thresholds, which is worth knowing before the next field script.
 file, block 4's `confirm` would have raised an error and stopped the
 pass, hiding the eighteen blocks after it. Trapped, it cost one line
 and the other 55 checks still ran.
+
+### THE SECOND FIELD RUN — THE WRONG FILE, AND THE BEST FIND OF THE DAY
+
+John ran `stata/equipop_showcase.do` from his dev folder by mistake.
+**It crashed at section 6 and had been crashing for many releases.**
+
+`Data.store(c, None, [v if isfinite(v) else None ...])` — Stata
+refuses `None` for a numeric. That is BACKLOG 173, whose fix
+`to_stata_values()` has been in `equipop_run.ado` since 1.40.1. The
+showcase never adopted it. **Two** crash sites, so sections 7 and 8
+had never run in Stata at all, and their EXPECT numbers had never in
+the file's life been compared with anything. Section 4 was also
+demonstrating the 47x `treatmode` trap instead of the `pop()` feature.
+The file called itself "EquiPop 1.1".
+
+**NOTHING TESTED IT BECAUSE NOTHING READ IT.** That is the whole
+lesson, and it is not about Stata. `tests/test_field_pass.py` now
+walks EVERY shipped `.do` file, refuses the `None`-store pattern, and
+compiles every `python:` block.
+
+**And it exposed a real gap — BACKLOG 205.** The `equipop` command has
+no `stats()` option: machine 2 is unreachable from Stata except by
+hand-written `python:` blocks. That is why section 6 exists at all,
+and **it also explains block 20 of the field pass** — whoever wrote
+`treat(ValFloat) missing(0)` was not being careless, they were
+reaching for the only handle the door offers. A Stata user with a
+continuous variable has nowhere correct to put it. Sizeable, and not
+for this week.
 
 ## 3. FINDINGS ADDED THIS SESSION
 

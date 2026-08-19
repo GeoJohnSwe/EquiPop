@@ -1,5 +1,5 @@
 * ============================================================================
-* equipop_showcase.do - EquiPop 1.1 from Stata: every function, one script
+* equipop_showcase.do - EquiPop 1.40.7 from Stata: every function, one script
 * ----------------------------------------------------------------------------
 * Requires: Stata 17+, Python visible to Stata (help python), and the
 * package installed in THAT Python:  pip install equipop
@@ -51,7 +51,11 @@ count if missing(X_local) | missing(Y_local)
 * ---------------------------------------------------------------------------
 * For every individual: among the k nearest persons (grid-cell based,
 * 100 m cells), how many belong to the group?
-*   N_<k>         actual count reached (>= k: whole cells are added)
+*   N_<k>         people reached - EXACTLY k by default. (It read
+*                 ">= k, whole cells are added" until 1.40.7; the
+*                 default overshoot is now proportional, which
+*                 interpolates inside the ring that crosses k. Ask for
+*                 overshoot(whole) to get the old >= k behaviour.)
 *   Dist_<k>      radius needed to reach k
 *   T_<v>_<k>     group members among them
 *   R_<v>_<k>     the ratio T/N - the individualised context share
@@ -59,8 +63,8 @@ count if missing(X_local) | missing(Y_local)
 equipop, x(X_local) y(Y_local) treat(HighEdu) k(50 200 800) unit(100)
 
 summarize N_200 Dist_200 R_HighEdu_*
-* EXPECT (means): N_200 228.88 | Dist_200 1155.06 | R_HighEdu_50 .1872 |
-*                 R_HighEdu_200 .1840 | R_HighEdu_800 .1866
+* EXPECT (means): N_200 200.00 | Dist_200 1142.40 | R_HighEdu_50 .1882 |
+*                 R_HighEdu_200 .1849 | R_HighEdu_800 .1871
 
 * The scale story in one picture: context share is noisy at k=50,
 * smooth at k=800 - aggregation as a dial, not a fixed choice.
@@ -88,9 +92,17 @@ summarize R_*_200
 * ValCount is such a population weight, purely to demonstrate the option.
 preserve
 equipop, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(100) ///
-             pop(ValCount) replace
+             pop(ValCount) treatmode(flags) replace
 summarize R_HighEdu_200
-* EXPECT: mean approx .2076 (differs from .1840 - the weighting matters)
+* EXPECT: mean approx .2089 (differs from .1849 - the weighting matters)
+* treatmode(flags) IS REQUIRED HERE and was missing until 1.40.7.
+* HighEdu is a 0/1 MARKER. Once pop() supplies a population, the
+* default treatmode(counts) reads that marker as a number of PEOPLE,
+* so the numerator counts POINTS while the denominator counts PEOPLE
+* and the share comes back about 47 times too small - .0044 instead
+* of .2089. Nothing refuses it, because 0 and 1 are perfectly
+* possible person counts. See block 7 of equipop_test_pass.do, which
+* runs both settings side by side and measures the ratio.
 restore
 
 * ---------------------------------------------------------------------------
@@ -102,7 +114,7 @@ equipop, x(X_local) y(Y_local) treat(HighEdu) k(200) unit(400) replace
 rename R_HighEdu_200 R_u400_200
 
 correlate R_u100_200 R_u400_200
-* EXPECT: r approx 0.889 - high but not 1. The grid size is part of the
+* EXPECT: r approx 0.912 - high but not 1. The grid size is part of the
 * measurement. (Same phenomenon we quantified on Malta POI data: the
 * correlation climbs towards 1 as k grows.)
 rename R_u400_200 R_HighEdu_200   // keep names tidy for what follows
@@ -119,6 +131,11 @@ regress ValFloat R_HighEdu_200 ValCount
 * ---------------------------------------------------------------------------
 * SECTION 6 - value STATISTICS among the k nearest (stats engine)
 * ---------------------------------------------------------------------------
+* WHY THIS ONE NEEDS PYTHON AT ALL: the equipop command has no stats()
+* option, so mean, median and Gini over a neighbourhood cannot be
+* reached from Stata any other way. treat() is NOT the way round it -
+* it holds a COUNT OF PEOPLE, and a continuous magnitude divided by a
+* headcount is not a share. See BACKLOG 204.
 * Not just counts: mean, median and Gini of a continuous variable
 * (ValFloat) among each person's 200 nearest neighbours. ValFloat has
 * missings: those persons still count towards k, but not towards the
@@ -132,6 +149,7 @@ import numpy as np
 import pandas as pd
 from equipop.cells import build_cells
 from equipop.analysis import run_knn_stats
+from equipop.stata_bridge import to_stata_values
 
 def _col(v):
     a = np.array(Data.get(v), dtype=float)
@@ -160,12 +178,20 @@ for cname in [f"Nv_ValFloat_{K}", f"Mean_ValFloat_{K}",
     out = np.full(len(x), np.nan)
     out[vidx] = st.loc[keys, cname].to_numpy(dtype=float)
     Data.addVarDouble(cname)
-    Data.store(cname, None, [v if np.isfinite(v) else None for v in out])
+    # to_stata_values, NOT a None: Stata's Data.store refuses None for
+    # a numeric and raises "the specified value should be a numeric
+    # value". This is BACKLOG 173, fixed in equipop_run.ado in 1.40.1;
+    # this file kept the old pattern and so has crashed here ever
+    # since ValFloat's missings started reaching the output.
+    Data.store(cname, None, to_stata_values(out))
 print("stats engine: 4 variables stored")
 end
 
 summarize Mean_ValFloat_200 Med_ValFloat_200 Gini_ValFloat_200
-* EXPECT (means): Mean 1805.03 | Med 1230.88 | Gini .5830
+* EXPECT (means): Nv 167.30 | Mean 1815.23 | Med 1248.10 | Gini .5806
+* MEASURED FOR THE FIRST TIME IN 1.40.7. This section had never run
+* to completion in Stata - it died at the Data.store above - so its
+* old expectations had never been compared with anything.
 * Median < mean and Gini approx .58: a right-skewed, unequal variable -
 * and now you have LOCAL inequality per individual, ready to regress.
 
@@ -188,6 +214,7 @@ import pandas as pd
 from equipop.cells import build_cells
 from equipop.analysis import run_knn
 from equipop.decay import Decay
+from equipop.stata_bridge import to_stata_values
 
 def _col(v):
     a = np.array(Data.get(v), dtype=float)
@@ -219,13 +246,18 @@ for src, dst in [(f"ND_{K}", f"ND_{K}"), (f"RD_{K}", f"RD_HighEdu_{K}")]:
     out = np.full(len(x), np.nan)
     out[vidx] = r.loc[keys, src].to_numpy(dtype=float)
     Data.addVarDouble(dst)
-    Data.store(dst, None, [v if np.isfinite(v) else None for v in out])
+    Data.store(dst, None, to_stata_values(out))   # see section 6
 print("decay: ND_200 and RD_HighEdu_200 stored (negexp, half-life 1000 m)")
 end
 
 summarize R_HighEdu_200 RD_HighEdu_200 N_200 ND_200
-* EXPECT (means): RD_HighEdu_200 .1844 vs raw R .1840 | ND_200 171.52
-* vs N_200 228.88. Note the lesson: decay barely moves the AVERAGE
+* EXPECT (means): RD_HighEdu_200 .1860 vs raw R .1849 | ND_200 126.01
+* vs N_200 200.00. Also measured for the first time in 1.40.7.
+* SINCE 1.40 YOU DO NOT NEED THIS PYTHON BLOCK for decay: the command
+* takes decay(negexp) halflife(1000) directly, and that is the
+* supported route. It is kept here because seeing the same answer
+* arrive by both paths is the point of the deeper shelf.
+* Note the lesson: decay barely moves the AVERAGE
 * ratio (numerator and denominator reweight alike) - it moves the
 * INDIVIDUALS whose nearby context differs from their far context:
 gen ctx_gradient = RD_HighEdu_200 - R_HighEdu_200
@@ -266,11 +298,14 @@ prof.to_csv("segregation_profile_HighEdu.csv", index=False)
 print("saved: segregation_profile_HighEdu.csv")
 end
 
-* EXPECT (SI column): local .4036 | k=50 .2167 | k=200 .1989 | k=800 .1924
+* EXPECT (SI column): local .4036 | k=50 .2216 | k=200 .2002 | k=800 .1930
+* Also measured for the first time in 1.40.7 - section 8 sits after
+* two blocks that used to halt the script, so it had never been
+* reached either.
 * The classic declining profile: micro-scale sorting fades as the
 * neighbourhood definition widens - the scale IS the finding.
 
 * ---------------------------------------------------------------------------
 * Done. Everything above is now ordinary Stata: regress, margins, graph.
 * ============================================================================
-display as result "equipop_showcase.do completed - EquiPop 1.1 full tour"
+display as result "equipop_showcase.do completed - EquiPop 1.40.7 full tour"
