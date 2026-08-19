@@ -137,6 +137,13 @@ appeared twice; the weaker copy is gone.*
   weighted sd and se need an honest denominator, which is the
   EFFECTIVE SAMPLE SIZE of 97. So 106 and 97 are one job.
 
+- ~~107~~ | DONE v1.40.5 | MANIFEST.in now lists the demo scripts, and
+  the FIELD PASS with them. Found by the archive check rather than by
+  looking: the unpacked 1.40.5 .tar.gz failed 11 tests because
+  tests/test_field_pass.py reads equipop_test_pass.do and the archive
+  did not carry it. The instrument the whole release is about had
+  never travelled in a source archive. The test is now also the guard
+  - an archive missing the do-file cannot pass its own suite.
 - 107 | open v1.29.5 | MANIFEST.in OMITS THE DEMO SCRIPTS.
   demo_berlin.py, demo_malta_worldpop.py and demo_stats_sweden.py
   sit at the repository root; MANIFEST.in grafts examples/ and
@@ -603,7 +610,28 @@ appeared twice; the weaker copy is gone.*
   install_github() works the day it is pushed, exactly like
   net install.
 
-- 193 | OPEN, FIRST | THE FIELD PASS STATES ITS INVARIANTS BUT DOES
+- ~~193~~ | DONE v1.40.5 | THE FIELD PASS NOW ENFORCES ITS
+  INVARIANTS. Every stated property is a check with an [ok]/[FAIL]
+  verdict; 57 of them, and the count is PINNED, so a block that dies
+  before reaching its checks is caught by the tally even when nothing
+  raised an error. Each block is wrapped so one failure cannot hide the
+  other twenty-two - a field round trip costs a day, and a run must
+  therefore return the complete picture, not the first problem. Every
+  expected refusal reads its own return code. The pass exits 9 on any
+  failure. The data path ships EMPTY with a fallback to the working
+  directory and a confirm-file check, so a Mac is not blocked by
+  somebody else's C: drive. tests/test_field_pass.py parses the
+  do-file and refuses a block with no check, a refusal whose _rc is
+  never read, a stale pinned count, a returned hard-coded path, and a
+  version stamp that has drifted; all six guards were broken on
+  purpose and all six caught it. Block 20 rebuilt on a synthetic count
+  column with a -999 sentinel on every twelfth row - deliberate, not
+  random, so the count is 907 on every machine. Blocks 11 and 12
+  merged so the free self-potential number is compared against the
+  rungs in the same dataset rather than across a block boundary.
+  STILL JOHN'S: save the Stata log as a release artifact.
+  (superseded detail below)
+- 193-original | THE FIELD PASS STATES ITS INVARIANTS BUT DOES
   NOT ENFORCE THEM. External review of 1.40.4. equipop_test_pass.do
   has no assert and no exit: a failed property prints a number and the
   run continues. The distance-order count can be non-zero, a refusal
@@ -621,6 +649,34 @@ appeared twice; the weaker copy is gone.*
   configuration line for the path; pin the version and run count; and
   SAVE THE STATA LOG AS A RELEASE ARTIFACT so "field-tested" has
   durable evidence.
+
+- ~~201~~ | DONE v1.40.5 | BLOCK 17 ASSERTED THE DECAY MODELS IN THE
+  WRONG ORDER, AND NOBODY HAD EVER COMPUTED IT. The block said that at
+  the same half-life `power` keeps MORE mass than `negexp`, so its
+  ND_300 would be the larger. Measured on stata_test_data.dta at
+  half-life 800 m: negexp ND_300 averages 283.6 and power 199.9, and
+  power is the smaller on 10,839 of 10,883 rows. The reasoning error
+  is worth recording because the shipped help text is CORRECT and was
+  not the source: "power falls quickly and then very slowly, so
+  distant places never quite stop counting" describes the TAIL. Both
+  models are 0.5 at the half-life by construction, so that distance is
+  where they CROSS - power is the harsher curve inside the bandwidth
+  and the gentler one outside it. At half-life 800 m, negexp gives
+  0.958 at 50 m and 0.063 at 3,200 m; power gives 0.665 and 0.433.
+  Which model keeps more mass therefore depends on where the
+  NEIGHBOURHOOD sits relative to the bandwidth, and here a k=300
+  neighbourhood has a median radius of 48 m against a half-life of
+  800 m, so it lies almost entirely on the side where power cuts
+  harder. The block now asserts the one-sided rule that is
+  exceptionless - inside the half-life, power keeps less - and says
+  in the text why the reverse is NOT asserted: Dist is the distance to
+  the FURTHEST neighbour, so a row can reach past the bandwidth while
+  most of its 300 people are still well inside it. Only 44 of the 140
+  rows reaching past 800 m have power above negexp, which is why the
+  reverse would have been a flaky check. LESSON, and it is finding 14
+  again: a stated invariant nobody has computed is a belief, not a
+  guard. Both engines agree, so this was never a code defect - the
+  expectation was wrong.
 
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,

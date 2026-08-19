@@ -36,6 +36,19 @@ graft tests/data
 # this file was written for.
 include tests/*.py
 
+# THE FIELD PASS. It is not a demo: it is the instrument John and
+# Umut run on real data on real machines, and tests/test_field_pass.py
+# READS it - so an archive without it cannot pass its own suite. The
+# 1.40.5 archive check found exactly that: 11 failures in an unpacked
+# .tar.gz, because the file had never been listed here. Same class of
+# miss as tests/qgis_stub.py above, and the third time this check has
+# earned itself.
+include equipop_test_pass.do
+
+# The demo scripts (BACKLOG 107). Listed at last: they sit in the repo
+# root, nothing grafted them, and they had never entered an archive.
+include demo_*.py
+
 # Worked examples, and the Book's sources.
 graft examples
 graft docs
