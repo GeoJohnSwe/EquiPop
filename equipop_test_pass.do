@@ -1,4 +1,4 @@
-*! EquiPop 1.40.5 - a test pass over stata_test_data.dta
+*! EquiPop 1.40.6 - a test pass over stata_test_data.dta
 *!
 *! WHAT CHANGED IN 1.40.5, and why it matters:
 *!   Until now this file STATED its invariants and did not ENFORCE
@@ -54,7 +54,7 @@ global EQP_DATA ""
 * updated by two different mechanisms, and a half-update is the most
 * common support problem this project has.
 
-global EQP_EXPECT "1.40.5"
+global EQP_EXPECT "1.40.6"
 
 * ------------------------------------------------------------------
 * Nothing below here needs editing.
@@ -212,17 +212,45 @@ if `rc' eqpcheck 0 "block 3 stopped with Stata error r(`rc')"
 
 * ==================================================================
 * 4. Both at once - k and r in the same run.
-*    EXPECT: four new columns, N_200 exact, and N_r2000 far more
-*    variable than N_200, which is fixed by construction.
+*     EXPECT THREE new columns, not four. CORRECTED IN 1.40.6, after
+*     the 1.40.5 field run failed this check on John's machine.
+*
+*     The reason is the whole shape of the method. The two machines
+*     are INVERSES of one another:
+*        k asks for a number of PEOPLE, and the distance you must
+*          travel to reach them is the ANSWER - so Dist_200 exists;
+*        r gives the DISTANCE, and the number of people inside it is
+*          the answer - so there is nothing left for a Dist_r2000 to
+*          report. It could only ever hold 2000, the number you
+*          typed in yourself.
+*     So k(200) r(2000) yields N_200, Dist_200 and N_r2000. The
+*     contract is stated at equipop/stata_bridge.py line 355:
+*     r_values -> N_r<r>, T_<v>_r<r>, R_<v>_r<r>.
+*
+*     The 1.40.5 check asked for a fourth column because the wording
+*     "four new columns" was carried across from an older version of
+*     this file and never measured - the exact fault this file's own
+*     header warns about. The engine was right; the pass was wrong.
+*     ALSO EXPECT: N_r2000 far more variable than N_200, which is
+*     fixed by construction.
 * ==================================================================
 capture noisily {
     use "$EQP_DATA", clear
     equipop, x(X_local) y(Y_local) k(200) r(2000)
     summarize N_200 N_r2000
 
-    capture confirm variable N_200 Dist_200 N_r2000 Dist_r2000
+    capture confirm variable N_200 Dist_200 N_r2000
     local ok = (_rc == 0)
-    eqpcheck `ok' "block 4: k and r together produce all four columns"
+    eqpcheck `ok' "block 4: k and r together produce N_200, Dist_200 and N_r2000"
+
+    capture confirm variable Dist_r2000
+    if _rc {
+        display "   no Dist_r2000, as designed - a radius is an input, not an answer"
+    }
+    else {
+        display "   NOTE: Dist_r2000 now exists. That is a change of contract,"
+        display "   not a failure. Tell Claude, and see BACKLOG 203."
+    }
 
     summarize N_200
     local sdk = r(sd)

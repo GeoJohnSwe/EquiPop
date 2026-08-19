@@ -1,5 +1,5 @@
 # EquiPop — HANDOVER 12
-### written in the 1.40.5 session, SEVEN DAYS before the presentation
+### written in the 1.40.5/1.40.6 session, SEVEN DAYS before the presentation
 
 **Supersedes HANDOVER_11.md.** 11 is kept for its history and its
 long findings list, which is NOT repeated here — read section 5 of 11
@@ -124,6 +124,32 @@ Stata option; quantiles interpolated; a share divides by the OBSERVED
 part; `if`/`in` restrict output rows only.
 
 ---
+
+### THE FIRST REAL STATA RUN SINCE 1.36 — 1.40.5 ON WINDOWS
+
+John ran it the same day. **All 57 checks executed; the pinned tally
+matched exactly; two failed.**
+
+- **Block 0, engine 1.40.4 against commands 1.40.5.** Not a defect:
+  the `.ado` files came from the zip and the engine from PyPI, which
+  still held 1.40.4. **The doctor caught it and explained it.** 1.40.5
+  changed no engine code at all, so every number in that log is valid
+  evidence for the engine — **this run retired the seven-release
+  unverified-in-Stata risk for 1.37 through 1.40.4.**
+- **Block 4 asked for a column that has never existed** (202). Fixed
+  in 1.40.6, do-file only, so the freeze holds.
+
+**Every measured threshold matched the Python probe to the decimal**
+— ratio 47.03, `w_N_200` mean 999.08, `R_Grp_200` mean 0.4939, 907
+sentinels, 10,743 inside-bandwidth rows and zero exceptions on the
+corrected block 17. Reproducing the door's call through
+`stata_bridge.py` is therefore a trustworthy oracle for writing
+thresholds, which is worth knowing before the next field script.
+
+**And the design earned itself on its first outing.** Under the old
+file, block 4's `confirm` would have raised an error and stopped the
+pass, hiding the eighteen blocks after it. Trapped, it cost one line
+and the other 55 checks still ran.
 
 ## 3. FINDINGS ADDED THIS SESSION
 

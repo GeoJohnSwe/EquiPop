@@ -1,4 +1,4 @@
-*! equipop v1.40.5  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.40.6  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -372,7 +372,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.40.5"
+    local eqp_ado_version "1.40.6"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 

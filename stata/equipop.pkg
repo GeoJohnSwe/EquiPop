@@ -1,5 +1,5 @@
 v 3
-d EquiPop 1.40.5 - k-nearest neighbour context variables
+d EquiPop 1.40.6 - k-nearest neighbour context variables
 d
 d equipop builds, for every observation, the neighbourhood of its k
 d nearest neighbours measured in people, and reports what that
@@ -14,7 +14,7 @@ d
 d Author: John Osth, OsloMet
 d Support: https://github.com/GeoJohnSwe/EquiPop
 d
-d Distribution-Date: 20260819
+d Distribution-Date: 20260820
 f equipop.ado
 f equipop.sthlp
 f equipop_knn.ado

@@ -678,6 +678,35 @@ appeared twice; the weaker copy is gone.*
   guard. Both engines agree, so this was never a code defect - the
   expectation was wrong.
 
+- ~~202~~ | DONE v1.40.6 | BLOCK 4 ASKED FOR A COLUMN THAT HAS NEVER
+  EXISTED. Found by John's 1.40.5 field run on Windows - the first
+  time this pass has ever been able to fail. `k(200) r(2000)` returns
+  THREE columns, not four: N_200, Dist_200, N_r2000. There is no
+  Dist_r2000 and there should not be. The two machines are inverses:
+  k asks for PEOPLE and the distance is the answer; r gives the
+  DISTANCE and the people are the answer, so a Dist_r could only hold
+  the number the user typed. The contract is stated at
+  equipop/stata_bridge.py line 355 and the engine has always honoured
+  it. The wording "four new columns" was carried across from the
+  pre-1.40.5 file and turned into an assertion without being measured
+  - the exact fault the rebuilt file's own header warns about, three
+  paragraphs above the block that committed it. THE MECHANISM WORKED
+  EXACTLY AS DESIGNED: the block was trapped, so the failure did not
+  stop the run; 57 of 57 checks still executed; the tally proved
+  nothing had been skipped; and the verdict named the count. A
+  do-file-only fix, so the Stata freeze holds.
+
+- 203 | OPEN, QUESTION FOR JOHN | SHOULD A RADIUS RUN REPORT A
+  DISTANCE AT ALL? 202 establishes that Dist_r would be the constant
+  the user typed, which is useless. But two OTHER distances inside a
+  fixed radius are not constant and are not currently offered:
+  the MEAN distance to the N_r people found, and the distance to the
+  FURTHEST one actually included, which is <= r and varies. Both are
+  real descriptions of how the population sits inside the circle, and
+  the second is the natural companion to Dist_k. Not a defect and not
+  urgent - a method question, and John's to rule on. Do not build
+  before he does.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.
