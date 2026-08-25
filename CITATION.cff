@@ -96,3 +96,29 @@ references:
     identifiers:
       - type: other
         value: "100239"
+  - type: Presentation
+    title: "Scaling spatial econometrics: From explicit W to EquiPop index structures"
+    authors:
+      - family-names: "Türk"
+        given-names: "Umut"
+      - family-names: "Östh"
+        given-names: "John"
+      - family-names: "Toger"
+        given-names: "Marina"
+    conference: "Urban Lab meeting, IBF, Uppsala University"
+    location: Uppsala
+    year: 2025  
+
+- type: Conference presentation - EquiPop Py release
+    title: "Operator-Based Spatial Econometrics with EquiPop:
+A Validated Prototype for SLX, SAR and SDM"
+    authors:
+      - family-names: "Türk"
+        given-names: "Umut"
+      - family-names: "Östh"
+        given-names: "John"
+      - family-names: "Toger"
+        given-names: "Marina"
+    conference: "ERSA - European Regional Science Association"
+    location: Sofia/Bulgaria
+    year: 2026
