@@ -92,7 +92,16 @@ def rasters_to_points(variables: dict[str, str],
     if keep_zero:
         rows, cols = np.nonzero(np.isfinite(first))
     else:
-        rows, cols = np.nonzero(first > 0)
+        # BACKLOG 206, John: KEEP THE ZEROS. This used to read
+        # `first > 0` - the point set was decided by whichever
+        # variable happened to be listed FIRST, so a pixel with no
+        # women aged 15-19 but three men vanished, and took the men
+        # with it. The point set is the UNION over every variable;
+        # a layer with nothing there contributes a real 0.0.
+        any_pos = np.zeros(first.shape, dtype=bool)
+        for _g in grids.values():
+            any_pos |= (_g > 0)
+        rows, cols = np.nonzero(any_pos)
     from affine import Affine
     T = Affine(*meta["transform"][:6])
     lon, lat = _xy(T, rows, cols)

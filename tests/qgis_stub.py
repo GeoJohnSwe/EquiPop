@@ -308,7 +308,12 @@ class _Source:
         return self._crs
 
     def wkbType(self):
-        return 1 if self._geometry else 100      # Point / NoGeometry
+        # A REAL LAYER RETURNS A Qgis.WkbType, and base.py rightly
+        # passes it straight to parameterAsSink. Returning a bare int
+        # here made the stub reject its own correct callers the moment
+        # the sink was tightened - the simulator being wrong in the
+        # opposite direction. NoGeometry is 100 in PyQGIS.
+        return QgsWkbTypes.Point if self._geometry else _WkbType(100)
 
     def featureCount(self):
         return len(self._t)
@@ -329,7 +334,15 @@ class _Sink:
     """Collects what the door writes, so a test can read it back."""
 
     def __init__(self, fields, wkb=None, crs=None):
+        # KEEP THE CRS AND THE GEOMETRY TYPE. They used to be accepted
+        # and dropped, so no test could check which projection a door
+        # stamped on its output - and a layer written with the wrong
+        # one lands in the wrong part of the world while looking
+        # perfectly healthy. John found exactly that: a Burundi result
+        # rendered north of Sweden.
         self._fields = fields
+        self.wkb = wkb
+        self.crs = crs
         self.features = []
 
     def addFeature(self, feature, flags=None):
@@ -435,9 +448,50 @@ class QgsProcessingParameterRasterLayer(_Param):
     pass
 
 
+# BACKLOG 38: the continental door asks for a FOLDER of rasters, its
+# own projection, and a folder to write tiles into. These behave like
+# every other parameter here - the simulator's job is to let the door
+# be constructed and read, not to reproduce QGIS.
+class QgsProcessingParameterFile(_Param):
+    File, Folder = 0, 1
+
+
+class QgsProcessingParameterCrs(_Param):
+    pass
+
+
+class QgsProcessingParameterFolderDestination(_Param):
+    pass
+
+
+class _WkbType(int):
+    """A WKB type, distinguishable from a bare int.
+
+    Real PyQGIS hands parameterAsSink a Qgis.WkbType enum and REFUSES
+    an int - "argument 5 has unexpected type 'int'". This simulator
+    used to accept anything, so both continental doors passed their
+    tests while carrying a call QGIS rejects, and John found it after
+    a 10.8 second continental run had already succeeded. A simulator
+    that is MORE PERMISSIVE than the thing it simulates certifies the
+    wrong code.
+    """
+
+    __slots__ = ()
+
+
 class QgsWkbTypes:
-    """Point = 0, Line = 1, Polygon = 2, as in PyQGIS."""
+    """Two different numberings live here, which is the trap.
+
+    GEOMETRY types:  Point = 0, Line = 1, Polygon = 2
+    WKB types:       Point = 1, LineString = 2, Polygon = 3
+
+    parameterAsSink wants the WKB one. Passing 2 meaning "point"
+    silently means POLYGON.
+    """
     PointGeometry, LineGeometry, PolygonGeometry = 0, 1, 2
+    Point = _WkbType(1)
+    LineString = _WkbType(2)
+    Polygon = _WkbType(3)
 
     @staticmethod
     def geometryType(wkb):
@@ -545,6 +599,19 @@ class QgsProcessingAlgorithm:
     def parameterAsBool(self, parameters, name, context):
         return bool(parameters.get(name, False))
 
+    def parameterAsFile(self, parameters, name, context):
+        """BACKLOG 38. A path, handed back as the string it is."""
+        v = parameters.get(name)
+        return "" if v is None else str(v)
+
+    def parameterAsCrs(self, parameters, name, context):
+        """None when the box is empty, which is the common case - the
+        continental door then lets suggest_projection choose."""
+        v = parameters.get(name)
+        if v in (None, ""):
+            return None
+        return v if hasattr(v, "authid") else QgsCoordinateReferenceSystem(v)
+
     def parameterAsStrings(self, parameters, name, context):
         """v1.29.3: the replacement for parameterAsFields, which QGIS
         deprecated in 3.40. The old name is deliberately NOT defined
@@ -562,6 +629,18 @@ class QgsProcessingAlgorithm:
     def parameterAsRasterLayer(self, parameters, name, context):
         return parameters.get(name)
 
+    def parameterAsEnum(self, parameters, name, context):
+        """The SINGULAR form. Real PyQGIS has both - parameterAsEnum
+        for a single choice and parameterAsEnums for allowMultiple -
+        and this simulator had only the plural, so a door using the
+        ordinary single-choice reader failed here while being correct
+        in QGIS. The same incompleteness as the sink's CRS.
+        """
+        v = parameters.get(name, 0)
+        if isinstance(v, (list, tuple)):
+            return int(v[0]) if v else 0
+        return int(v or 0)
+
     def parameterAsEnums(self, parameters, name, context):
         v = parameters.get(name)
         return list(v) if isinstance(v, (list, tuple)) else (
@@ -569,6 +648,12 @@ class QgsProcessingAlgorithm:
 
     def parameterAsSink(self, parameters, name, context, fields,
                         wkb=None, crs=None):
+        # Mirror PyQGIS, which refuses a bare int here. See _WkbType.
+        if wkb is not None and not isinstance(wkb, _WkbType):
+            raise TypeError(
+                "QgsProcessingAlgorithm.parameterAsSink(): argument 5 "
+                f"has unexpected type '{type(wkb).__name__}' - pass "
+                "QgsWkbTypes.Point, not a number.")
         sink = _Sink(fields, wkb, crs)
         parameters.setdefault("_sinks", {})[name] = sink
         return sink, f"memory:{name}"
@@ -602,6 +687,8 @@ _NAMES = [
     "QgsProcessingParameterFeatureSink",
     "QgsProcessingParameterDefinition",
     "QgsProcessingParameterRasterLayer", "QgsWkbTypes",
+    "QgsProcessingParameterFile", "QgsProcessingParameterCrs",
+    "QgsProcessingParameterFolderDestination",
 ]
 
 

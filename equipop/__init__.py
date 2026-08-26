@@ -50,7 +50,7 @@ and fails if any of the optional libraries arrive uninvited.
 
 from importlib import import_module as _import_module
 
-__version__ = "1.40.7"
+__version__ = "1.41.0"
 
 # name -> the module it lives in. This is the whole public surface;
 # adding a name here is how a new export is published.
@@ -104,7 +104,7 @@ _SUBMODULES = frozenset({
     "cells", "datasets", "decay", "doctor", "doors", "fastcounts",
     "fca", "fetch", "friction", "gridby", "hex", "io", "meta",
     "overshoot", "projection", "raster", "segregation", "selfpot",
-    "slope", "stata_bridge", "stats", "transform", "viz", "wstats",
+    "latticejoin", "rasterfolder", "slope", "stata_bridge", "stats", "transform", "viz", "wstats",
 })
 
 # Modules that cannot even be IMPORTED without an optional library,

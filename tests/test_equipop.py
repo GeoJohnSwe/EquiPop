@@ -183,6 +183,12 @@ def test_projection_and_snap_berlin():
     # The Book's datasets moved into the package in 1.19.0 so that a
     # pip install can reach them; tests follow the package, not a path.
     from equipop.datasets import _DATA
+    # The Book's Berlin sheet is .xlsx, so pandas needs openpyxl. It is
+    # an OPTIONAL extra, not a requirement of the engine, so its absence
+    # must SKIP rather than fail - John's clean install hit this and got
+    # a red suite for a library EquiPop does not need.
+    pytest.importorskip("openpyxl",
+                        reason="reading the Book's .xlsx needs openpyxl")
     df = pd.read_excel(os.path.join(_DATA, "berlin_example.xlsx"),
                        sheet_name="Indata_and_generated_data", header=1)
     p = snap_to_grid(project_to_metric(df, target_epsg=25832),

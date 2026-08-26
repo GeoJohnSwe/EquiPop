@@ -479,13 +479,25 @@ def run_knn_stats(
     val_pairs = {}
     for v in val_vars:
         per_cell = []
-        for a in cd.value_arrays[v]:
+        wt_cells = cd.value_weights.get(v)          # BACKLOG 118
+        for i, a in enumerate(cd.value_arrays[v]):
             if a is None or len(a) == 0:
                 per_cell.append((np.empty(0), np.empty(0)))
-            else:
+            elif wt_cells is None:
+                # no weights given: each entry is one person, which is
+                # what every caller before v1.41 meant.
                 u, c = np.unique(np.asarray(a, dtype=float),
                                  return_counts=True)
                 per_cell.append((u, c.astype(float)))
+            else:
+                # FRACTIONAL weights. Sum the weight of each distinct
+                # value rather than counting rows, so 0.4 of a person
+                # stays 0.4 of a person instead of rounding to nobody.
+                av = np.asarray(a, dtype=float)
+                aw = np.asarray(wt_cells[i], dtype=float)
+                u, inv = np.unique(av, return_inverse=True)
+                per_cell.append((u, np.bincount(inv, weights=aw,
+                                                minlength=u.size)))
         val_pairs[v] = per_cell
 
     tally = {"selfpot": {}, "over": {}, "origins": 0}

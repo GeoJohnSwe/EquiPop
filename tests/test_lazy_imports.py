@@ -114,12 +114,38 @@ def test_every_public_name_still_resolves():
     import equipop
 
     for name in equipop.__all__:
+        # An ABSENT OPTIONAL LIBRARY IS NOT A TYPO. _EXTRAS exists so
+        # that equipop.map_output without matplotlib raises a helpful
+        # ImportError naming the extra - that is the designed
+        # behaviour, and test_names_resolve_even_when_an_optional_
+        # library_is_absent pins it. What this test is for is a WRONG
+        # MODULE NAME in _LAZY, which surfaces as AttributeError. So
+        # accept the helpful ImportError and keep failing on the typo.
+        try:
+            getattr(equipop, name)
+            continue
+        except ImportError as exc:
+            assert "not installed here" in str(exc), (
+                f"{name} raised an ImportError that does not name the "
+                f"missing extra: {exc}")
+            continue
+        except AttributeError:
+            pass
         assert hasattr(equipop, name), (
             f"{name} is in __all__ but does not resolve - check its "
             f"entry in _LAZY")
 
     for name, where in equipop._LAZY.items():
-        obj = getattr(equipop, name)
+        # Same rule as the loop above: an absent optional library is the
+        # designed ImportError, not a broken _LAZY entry. This second
+        # loop was missed when the first was fixed in 1.40.7 - a partial
+        # repair that left the suite red for the same reason.
+        try:
+            obj = getattr(equipop, name)
+        except ImportError as exc:
+            assert "not installed here" in str(exc), (
+                f"{name}: ImportError without the extra named: {exc}")
+            continue
         assert obj is not None
         home = getattr(obj, "__module__", "")
         if home:
@@ -130,7 +156,12 @@ def test_every_public_name_still_resolves():
 
 def test_star_import_gives_what_it_used_to():
     ns = {}
-    exec("from equipop import *", ns)          # noqa: S102 - the test
+    try:
+        exec("from equipop import *", ns)      # noqa: S102 - the test
+    except ImportError as exc:                 # an optional extra is absent
+        if "not installed here" not in str(exc):
+            raise
+        pytest.skip(f"a star import needs an optional library: {exc}")
     import equipop
     for name in equipop.__all__:
         assert name in ns, f"from equipop import * lost {name}"

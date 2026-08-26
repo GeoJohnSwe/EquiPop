@@ -64,6 +64,21 @@ def _install_fake_arcpy(table: pd.DataFrame):
             return k[len("memory/"):]
         return k
 
+    def _fallback_catalog_path(key):
+        """'memory/' is the ArcGIS in-memory workspace, so it belongs
+        on a bare LAYER NAME and never on something that is already a
+        path. Prefixing it onto an absolute path invented a shape real
+        arcpy cannot return - 'memory/C:\\...\\proj.gdb\\result' -
+        which Windows rejects outright (WinError 123) while POSIX
+        accepts it as a relative path and writes litter. That is why
+        test_the_manifest_of_a_geodatabase_run_is_findable failed on
+        John's Windows machine and passed here. BACKLOG 208.
+        """
+        k = str(key)
+        looks_like_a_path = ("/" in k or "\\" in k
+                             or (len(k) > 1 and k[1] == ":"))
+        return k if looks_like_a_path else f"memory/{k}"
+
     def Describe(_layer):
         # v1.22.1: describing a CATALOG PATH must describe the layer
         # it belongs to - the door now resolves layers through
@@ -78,7 +93,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
                                                         "OBJECTID"),
             dataType="FeatureLayer",
             catalogPath=state.get("catalog_paths", {}).get(
-                key, f"memory/{key}"),
+                key, _fallback_catalog_path(key)),
             spatialReference=_SR(type=state.get("crs_types", {})
                                  .get(key, "Projected"),
                                  name="SWEREF99 TM"))
@@ -611,6 +626,43 @@ def test_sidecars_never_land_inside_a_geodatabase(tmp_path, target,
     assert path.endswith("_EquiPop_run.csv")
 
 
+def test_the_sidecar_folder_keeps_the_root_it_was_given():
+    """BACKLOG 208, and the reason Linux passed while Windows failed.
+
+    _sidecar_path used to rebuild the folder with
+    os.sep.join(parts[:holder]) - fragments rejoined - which drops
+    whatever came before the first fragment. On POSIX that turned an
+    ABSOLUTE path into a RELATIVE one, so the manifest went into a junk
+    tree under the working directory and every assertion still held. A
+    Windows drive letter survived only because 'C:' carries its own
+    root; put anything in front of it and Windows refuses the path
+    outright (WinError 123).
+
+    So: whatever root goes in must come out.
+    """
+    pyt = _load_pyt()
+    posix, _ = pyt._sidecar_path("/srv/data/proj.gdb/result",
+                                 "_EquiPop_run.csv")
+    assert posix.startswith("/srv/data"), (
+        f"the leading root was lost: {posix}")
+    assert "EquiPop_runs" in posix and ".gdb" not in posix
+
+    win, _ = pyt._sidecar_path(r"C:\Data\EQP\proj.gdb\result",
+                               "_EquiPop_run.csv")
+    assert win.lower().startswith("c:"), f"the drive was lost: {win}"
+    assert "EquiPop_runs" in win and ".gdb" not in win.lower()
+
+
+def test_a_plain_file_target_is_left_exactly_where_it_was():
+    """The other half of the contract: a shapefile or CSV target keeps
+    its sidecar beside it, which is where John already finds them."""
+    pyt = _load_pyt()
+    got, moved = pyt._sidecar_path("/srv/data/points.shp",
+                                   "_EquiPop_run.csv")
+    assert moved is False
+    assert got == "/srv/data/points_EquiPop_run.csv"
+
+
 def test_the_manifest_of_a_geodatabase_run_is_findable(tmp_path):
     """End to end, through the route John actually used: a point
     layer written to a NEW feature class inside a .gdb.
@@ -638,7 +690,17 @@ def test_the_manifest_of_a_geodatabase_run_is_findable(tmp_path):
                   out_fc=str(gdb / "result"))
 
     said = [m for m in msg.log if "Run manifest written to" in m]
-    assert said, "the run never said where the manifest went"
+    # WHEN THIS FAILS, SAY WHY. _write_manifest wraps everything in
+    # `except Exception` and turns the real cause into a warning, so a
+    # bare assertion reports the symptom and hides the diagnosis. John
+    # hit this on Windows in 1.40.7 while it passed on Linux - and the
+    # message told us nothing. Print the whole log instead.
+    assert said, (
+        "the run never said where the manifest went.\n"
+        "  target asked for : " + str(gdb / "result") + "\n"
+        "  os.sep here      : " + repr(os.sep) + "\n"
+        "  messages logged  :\n    "
+        + "\n    ".join(msg.log if msg.log else ["(nothing at all)"]))
     assert "beside the geodatabase" in said[0]
     path = said[0].split("Run manifest written to ", 1)[1].split(" - ")[0]
 
