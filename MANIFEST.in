@@ -45,6 +45,18 @@ include tests/*.py
 # earned itself.
 include equipop_test_pass.do
 
+# The Bristol County presentation run.
+include equipop_demo_bristol.do
+
+# The QGIS install guide travels with the plugin it describes.
+include qgis/INSTALL_QGIS_CONTINENTAL.md
+
+# The continental fixture: three clipped WorldPop windows, one lattice.
+# Burundi and Rwanda meet at a border here - their bounding boxes overlap
+# and not one pixel carries data in both, which is the case that breaks a
+# naive extent-based merge. Denmark carries the latitude contrast.
+recursive-include tests/fixtures *.tif
+
 # The demo scripts (BACKLOG 107). Listed at last: they sit in the repo
 # root, nothing grafted them, and they had never entered an archive.
 include demo_*.py

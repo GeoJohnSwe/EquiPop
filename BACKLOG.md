@@ -738,6 +738,686 @@ appeared twice; the weaker copy is gone.*
   user with a continuous variable has nowhere correct to put it. QGIS
   and Pro both expose machine 2. Sizeable, and NOT for this week.
 
+- ~~118~~ | HALF DONE, engine side | FRACTIONAL WEIGHTS NO LONGER
+  ROUND. build_cells(weights=...) carries a weight column into
+  CellData.value_weights, and run_knn_stats sums weights per distinct
+  value instead of counting rows. Empty by default, so nothing moves
+  for any existing caller. MEASURED ON JOHN'S WORLDPOP RASTERS, and
+  three DIFFERENT quantities were being conflated - the first version
+  of the test asserted the wrong one and failed, correctly:
+      places lost   people in them   net mass
+      Burundi 85.0%      52.9%         40.1%
+      Rwanda  78.2%      39.3%         28.5%
+      Austria 98.3%      66.5%         60.1%
+      Denmark 98.1%      69.1%         58.6%
+  THE FIRST COLUMN IS THE ONE THAT MATTERS and it is the worst: a
+  pixel rounding to zero stops being an origin AND stops being
+  anybody's neighbour, so the map loses the location, not just the
+  headcount. In Denmark that is 98% of occupied pixels. Net mass
+  UNDERSTATES the damage because round-ups compensate. And every
+  measure worsens with latitude, so Europe-against-Africa was biased
+  by construction. STILL OPEN: stata_bridge.py:738 still expands rows
+  into persons. That is the Stata door only - the continental path
+  goes through build_cells and run_knn_stats directly and is now
+  unblocked. Rewiring the door changes behaviour for existing Stata
+  users, so it wants its own session and its own release.
+
+- ~~206~~ | DONE, engine side | A FOLDER OF RASTERS, MERGED BY
+  GEOMETRY RATHER THAN BY NAME. equipop/rasterfolder.py. John's rule:
+  different ground does not overlap and becomes ROWS; the same ground
+  does overlap and becomes COLUMNS. That is measurable, so the merge
+  survives WorldPop renaming everything, and filenames only LABEL the
+  columns - a wrong label is cosmetic and visible, a wrong merge is
+  silent. THE TEST IS DATA OVERLAP, NOT EXTENT: Burundi and Rwanda
+  share a bounding box over 1.4M cells and not ONE pixel carrying data
+  in both. Naming degrades in three tiers - a registry of known
+  conventions, then a user regex or explicit dict, then the filename
+  stem - and says out loud when it fell through. Verified on all four
+  real rasters: 11,562,095 points, one column f_15_2020, latitude
+  -4.469 to 57.750, mass conserved exactly at 1,721,880.
+  ZEROS ARE KEPT (John): the point set is the UNION over every layer,
+  so a pixel with no women aged 15-19 but three men survives with a
+  real 0.0. raster.py had the same defect - it chose the point set
+  from whichever variable was listed FIRST - and is fixed too.
+  Age bands are NOT all five years: 0 is under-one alone, 1 covers
+  1-4, then fives, then an open 90+. band_width() returns None for the
+  open band, so cohorts can be summed but never averaged across bands
+  without the widths. REMAINING: the GUI on top, in the Q and Pro
+  doors, over this one function.
+
+- ~~207~~ | DONE | A CROSSING RING CUT BY THE WINDOW EDGE WAS TREATED
+  AS A COMPLETE RING. Not a distance defect - a NEIGHBOURHOOD
+  COMPOSITION defect, which showed in the radius AND in every group
+  share built from that ring.
+  MECHANISM, one line: overshoot.ring_bounds() walks forward with
+  `while hi + 1 < n`, where n is the size of the FETCHED WINDOW, not
+  the size of the ring. A ring running off the edge stopped there and
+  was believed.
+  WHY NOTHING NOTICED: under proportional overshoot the walk takes
+  exactly enough of the ring to reach k, so N_k is EXACTLY k however
+  much of the ring is present. The count guard cannot see it. The
+  v1.16.4 ladder cannot either - it re-solves origins that FAIL TO
+  REACH k, and these reached it.
+  MEASURED, before the fix:
+    lattice, 1 person per cell, 4-cell ring at 200 m -
+      window 11 -> Dist_11 200.00 (2 of 4 cells seen)
+      window 12 -> 182.57 (3 of 4)
+      window 13 -> 173.21 (complete). N_11 exactly 11 throughout.
+    Burundi + Rwanda, 1 km, k=1000 - 249 of 46,317 origins moved,
+      max 168.79 m.
+    Burundi + Rwanda fixture, 500 m, cross-border share - 16 origins
+      moved, worst 0.043 against a converged 0.065, a THIRD of the
+      value, with N_500 exact.
+  NOT MONOTONE IN m: 34 rows moved at m=32, 426 at 64, 33 at 128. What
+  matters is whether the window edge happens to fall inside a ring, not
+  how wide it is - so there is no safe constant and a bigger default
+  would not have fixed it. Detection was the only route.
+  THE FIX: if the ring crossing any requested k reaches the last
+  fetched cell, hand the origin to the ladder, which already exists for
+  the other reason. After it, every window from 32 to 2048 agrees
+  exactly on both radius and share. Cost is visible and self-limiting:
+  8,745 of 8,798 origins widened at m=32, 291 at m=128, none at 512.
+  John's ruling - continental and possibly global, so correctness over
+  speed.
+  WHY THE FIRST REPRODUCTION FAILED: it used RANDOM POINTS, which never
+  tie, so every "ring" was one cell and could not be cut. WorldPop is a
+  LATTICE. Reading the mechanism first and then building the case
+  deliberately took one attempt; guessing at data took none anywhere.
+  Pinned by tests/test_window_sensitivity.py - 11 tests, 4 of which
+  fail on the old code naming the exact drift.
+
+- ~~207b~~ | DONE | THE SUITE DEMANDED OPTIONAL LIBRARIES AND FAILED
+  RATHER THAN SKIPPING. John installed the working tree on a clean
+  Windows venv - the exact instruction Claude gave him - and got four
+  reds. THREE were Claude's incomplete install line: the suite needs
+  openpyxl to read the Book's Berlin .xlsx and matplotlib for
+  map_output, and neither is a requirement of the engine.
+  equipop/__init__.py already has _EXTRAS precisely so an absent
+  optional library raises a NAMED, helpful ImportError, and
+  test_names_resolve_even_when_an_optional_library_is_absent pins that
+  behaviour - but two tests treated the designed ImportError as a
+  failure. They now accept it and keep failing on the real target, a
+  WRONG MODULE NAME in _LAZY, which surfaces as AttributeError. The
+  Berlin test uses pytest.importorskip.
+  AND THE FIX WAS PARTIAL AT FIRST: test_every_public_name_still_
+  resolves has TWO loops over _LAZY and only the first was repaired, so
+  the suite came back red for the identical reason. Finding 27 again -
+  fix the whole file, not the first hit.
+  Verified in a clean venv WITHOUT either library: 654 passed, 13
+  skipped, nothing failed; and 656 passed, 11 skipped where both are
+  present.
+
+- ~~208~~ | DONE | THE ARCGIS RUN MANIFEST WAS NOT WRITTEN ON WINDOWS,
+  AND WAS WRITTEN TO THE WRONG PLACE ON LINUX. Diagnosed from John's
+  machine once the test was made to print its own message log:
+     Could not write the run manifest ([WinError 123] Felaktig syntax
+     for filnamn...: 'memory\\C:')
+  TWO faults, and the second is the one that matters.
+  (1) SIMULATOR. tests/test_arcgis_stub.py's Describe() fell back to
+  f"memory/{key}" for anything not in catalog_paths. 'memory/' is the
+  ArcGIS in-memory workspace and belongs on a bare LAYER NAME; put in
+  front of an absolute path it invents a shape real arcpy cannot
+  return. Now only applied to names that are not already paths.
+  (2) PRODUCT, and it was silent. _sidecar_path rebuilt the output
+  folder with os.sep.join(parts[:holder]) - fragments rejoined - which
+  drops whatever preceded the first fragment. On POSIX a leading '/'
+  VANISHED and an absolute path quietly became a relative one, so the
+  manifest landed in a junk tree under the working directory and every
+  assertion in the test still held. A Windows drive letter survived
+  only by luck, because 'C:' carries its own root. It now SLICES THE
+  ORIGINAL STRING, keeping root, drive and separators exactly.
+  THE LESSON: the Linux run was not passing, it was failing quietly in
+  a way the assertions could not see. Finding 33 the other way up - a
+  green test can be as wrong as a red one, and the platform difference
+  was the only thing that made it visible.
+  Pinned by test_the_sidecar_folder_keeps_the_root_it_was_given, which
+  was reverted against the old code and caught it.
+
+- ~~38~~ | HALF DONE | THE CONTINENTAL PATH HAS A DOOR. bigrun had
+  been built and regression-tested since v1.16.8 and was reachable
+  only by hand-assembling a CellData.
+  THE SPINE: equipop/doors/continental.py, run_folder(). Every
+  decision a door would otherwise make lives here - which column holds
+  the people, whether the extent wants tiling, what to refuse, what to
+  say. John's ruling: "one ring to rule them all, and different doors
+  that can use it". The doors have drifted three times in this
+  project and every time a rule lived in two places. 15 tests, none
+  needing QGIS or arcpy.
+  QGIS: DONE AND REGISTERED. qgis/equipop_qgis/alg_continental.py,
+  third tool in the provider. The stub gained
+  QgsProcessingParameterFile/Crs/FolderDestination and the two readers
+  they need. Shared help written under "ContinentalRasters" in
+  doors/help.py, so both doors describe it in identical words.
+  PRO: WRITTEN, NOT REGISTERED. The class sits in EquiPop.pyt on the
+  same run_folder with the same arguments, but self.tools does NOT
+  list it, and the reason is in a comment there: the arcpy simulator
+  cannot exercise a DEFolder box or NumPyArrayToFeatureClass, so
+  NOTHING IN THIS REPOSITORY HAS EVER RUN IT. Registering it would put
+  an untested tool in front of users on the strength of a reading, and
+  a reading is what has been wrong repeatedly this week - 207 twice,
+  208, the manifest, the partial _LAZY repair. Extend
+  tests/test_arcgis_stub.py first, THEN add it to self.tools.
+  A COUNTRY-PER-FOLDER TREE WORKS AS IT ARRIVES (John's question).
+  _tif_paths already recurses; verified against the same files laid
+  out flat - 267,632 points either way, identical to the row, and the
+  countries read from the filenames. AND IT CORRECTS AN EARLIER
+  SUGGESTION OF CLAUDE'S: the proposed tier-3 fallback "subfolder name
+  becomes the group" would have broken exactly this layout, turning
+  bdi/ and rwa/ into two columns when they are one cohort on different
+  ground. Not built. Do not build it.
+
+- ~~209~~ | DONE | THE QGIS CONTINENTAL DOOR SHIPPED WITH THREE
+  WIRING FAULTS AND NOTHING IN THE SUITE COULD SEE ANY OF THEM,
+  BECAUSE NOTHING EVER RAN IT. John found the first on his first
+  click, in QGIS 3.42.1 / Python 3.12.9.
+  (1) `self.check_versions(ch)` -> AttributeError. It is a MODULE
+      function in base.py, not a method. alg_counts.py has the right
+      form four lines into its own processAlgorithm; Claude wrote the
+      call from a reading instead of from the working example.
+  (2) `tiles` arrived as the literal string "TEMPORARY_OUTPUT". An
+      optional FolderDestination left untouched does not come through
+      empty, so a blank box would have written tiles into a folder of
+      that name, silently. Visible in John's own log line and missed.
+  (3) `QMetaType.Double` -> AttributeError. QGIS 3.38 moved field
+      types into QMetaType::Type; base.py:450 already had
+      QMetaType.Type.Double and Claude dropped the '.Type'.
+  THE REAL DEFECT IS THE SECOND SENTENCE. The spine's 15 tests call
+  run_folder directly and the provider tests only CONSTRUCT the
+  algorithm, so the whole of processAlgorithm was unexercised. Faults
+  1 and 3 are one-line typos that any execution would have caught.
+  tests/test_qgis_continental.py now EXECUTES processAlgorithm against
+  the simulator - 9 tests, and it found fault 3 before John did.
+  Finding 28 again: prefer a test that RUNS the thing to one that
+  asserts about it. And the doctrine at the top of test_qgis_door.py
+  said it already - "this proves LOGIC. Only QGIS on a real machine
+  proves behaviour, and the gap between those two is where all the
+  interesting bugs live."
+
+- 210 | OPEN, SMALL | READ RASTERS FROM INSIDE A ZIP. John asked; GDAL
+  /vsizip/ does it and rasterio inherits it. MEASURED on the fixture:
+  byte-identical data (57,666.8 people both ways) at about 3.5x the
+  time, and the cost is DECOMPRESSION not opening - five opens without
+  reading pixels cost 0.002 s, with reading 0.021 s. So it does not
+  amortise: a one-off continental pass is worth it, repeated runs over
+  the same folder are not. ~15 lines in _tif_paths, enumerating
+  members and handing back /vsizip/ paths; everything downstream is
+  unchanged. DEFERRED by Claude until John's QGIS test is finished -
+  changing the engine underneath a test in progress muddies what the
+  test says. Ask John whether zip or loose wins when a folder holds
+  both.
+
+- ~~211~~ | DONE | A REGISTRY BUILT FROM ONE SAMPLE IS NOT A REGISTRY.
+  John pointed the QGIS door at his real Burundi + Rwanda download -
+  120 rasters - and ALL 120 NAMES FELL THROUGH the "known convention".
+  Claude wrote that pattern against the four sample files he happened
+  to have, every one of them `..._CN_100m_R2025A_v1`. The real bulk
+  download is `..._CN_1km_R2025A_UA_v1`: the pattern demanded `\d+m`
+  where the file says `1km`, and had no slot at all for `UA`.
+  THE CONSEQUENCE WAS NOT COSMETIC. With no parse, each file was
+  labelled from its own filename INCLUDING THE COUNTRY, so bdi_f_15
+  and rwa_f_15 became TWO columns instead of one - the country leaking
+  into the label is exactly what the design forbids - and 60 cohorts
+  became 120 columns. folder_to_cells then refused, correctly, because
+  it could not tell which of 120 columns held the people.
+  FIX: only the four LABEL fields are pinned - iso3, sex, age, year.
+  Everything after the year is provenance and WorldPop varies it
+  freely. A file differing only in that tail now takes the SAME label,
+  overlaps on the same ground and is refused by the existing guard,
+  which is right: constrained and UN-adjusted are two estimates of the
+  same people and must not be mixed.
+  Tested against John's ACTUAL filenames, copied verbatim from his log.
+
+- ~~212~~ | DONE | WORLDPOP SHIPS TOTALS ALONGSIDE THEIR PARTS, AND
+  SUMMING THEM COUNTED EVERYBODY TWICE. From John's own log: bdi age
+  00 has f 224,972 and m 229,148, and t is EXACTLY 454,120. His folder
+  holds f, m AND t for every age. sum_cohorts=True would have added
+  all three, and nothing about the result would have looked wrong -
+  the map would simply have been twice as populous.
+  totals_overlap_parts() now finds every t_ label whose f_ and m_ are
+  both present, and summing such a folder is REFUSED by name, telling
+  the user to keep one set or the other. Loading them as separate
+  columns is still fine, because as columns they are three honest
+  measurements.
+
+- ~~213~~ | DONE | A LOADER REFUSAL REACHED THE USER AS A TRACEBACK.
+  The QGIS door caught ContinentalError only; rasterfolder refuses
+  with ValueError, so John got a Python stack where a sentence
+  belonged. Now caught too.
+
+- ~~214~~ | DONE | "IT ASKS FOR THE POPULATION, BUT ALL ARE
+  POPULATIONS" - John, on his real 120-raster download. THE TOOL WAS
+  IMPOSING A SHAPE HIS DATA DOES NOT HAVE. folder_to_cells demanded a
+  single `weight` column before it would do anything, and his folder
+  holds SIXTY population columns of which none is "the" one.
+  TWO THINGS WERE CONFLATED, and John separated them: "what are we
+  generating - if the answer is a point-file with the coordinates and
+  values listed we are at a good place for a start".
+    A. THE POINT TABLE. 53,636 points, 60 fields, two countries on one
+       lattice, zeros kept. Needs NO k and NO weight, because nothing
+       is being counted yet. Useful on its own and the natural thing
+       to look at before deciding anything. It was IMPOSSIBLE before.
+       A blank k box now produces exactly this.
+    B. THE NEIGHBOURHOOD RUN. This genuinely needs a weight, because k
+       is a number of PEOPLE and something must say which.
+  AND THE WEIGHT IS USUALLY NOT A COLUMN. With sixty cohorts the
+  population is their SUM. weight now accepts a WORD:
+    'total' - sum the t_ columns. Ages are disjoint, so everybody once.
+    'sexes' - sum f_ and m_. The same people by the other route.
+    or a column name, to make one cohort the population.
+  The refusal now names those three choices instead of listing sixty
+  column names and no way forward.
+  METHOD NOTE for the doors: the natural EquiPop shape here is WEIGHT
+  = EVERYBODY, GROUPS = THE COHORTS - "of the 1000 nearest people, how
+  many are women aged 15-19". The weight is not one of the sixty.
+  LESSON: the refusal was correct and useless. It said what was
+  missing and nothing about what to do, and it took the user asking
+  "what are we generating?" to show that the question itself was
+  wrong.
+
+- ~~215~~ | DONE | THE COUNTRY NEVER REACHED THE POINT TABLE. John:
+  "the iso/country identifier should be ROW and not column ... the user
+  can choose to load one country or load several to treat as one
+  geography (Iso can then be a matter for selection in Q and eventually
+  Pro)". He was half right and the half he spotted was the useful one:
+  countries were ALREADY rows - 120 rasters gave 60 columns - but the
+  manifest knew iso3 per FILE and the points carried none, so it could
+  not be selected on in QGIS at all.
+  Now a categorical `iso3` field, well defined per point because the
+  countries share no data pixel. Categorical because a continental run
+  is tens of millions of rows.
+  THREE PLACES ASSUMED EVERY NON-COORDINATE COLUMN IS A MEASUREMENT,
+  and each surfaced only when tested:
+    the keep-zero filter tried to SUM it        -> TypeError
+    a merge silently dropped the categorical    -> back to str, undoing
+        the whole point; caught by the test that measures the dtype
+    the QGIS writer cast every field to float   -> "could not convert
+        string to float: dnk"
+  That is the shape to remember, not the individual fixes: adding one
+  LABEL column to a table of measurements breaks every loop that
+  selected columns by what they are NOT.
+
+- 216 | OPEN, RESEARCHED | VITAL-EVENT RASTERS EXIST AND SIT ON THE
+  SAME LATTICE - AND THERE IS A CIRCULARITY TRAP. WorldPop publishes
+  Births and Pregnancies at 0.000833333 decimal degrees, WGS84 - the
+  same grid family as the age-sex rasters - so they would load as
+  COLUMNS with no new machinery. Two practical notes: their filenames
+  are a different convention entirely (AZE2010adjustedBirths.tif,
+  BEN2010pregnancies.tif - upper-case ISO3, no separators), one cheap
+  registry entry; and the Africa/LAC birth archive is 30 arc seconds
+  (~1 km), so resolution varies by product and region and the lattice
+  check will catch a mismatch.
+  THE TRAP, and it is the important part: WorldPop DERIVES births from
+  the population surfaces using age-specific fertility rates from
+  surveys and UN statistics. So births / women-15-49 partly reproduces
+  the ASFRs used to build the births. The national total is right
+  (UN-adjusted); the SPATIAL variation would largely be the
+  distribution of women of childbearing age, not fertility behaviour.
+  Fine for service planning - how many births near this clinic, which
+  is what the product is for. Close to circular for inferring where
+  fertility is higher.
+  JOHN'S TWO-YEAR COHORT ROUTE IS STRONGER and ALREADY WORKS: the year
+  is part of the label, so f_15_2020 and f_15_2026 are two columns on
+  the same points and cohort change is arithmetic on the table.
+  Verified.
+
+- ~~217~~ | DONE, QGIS | MACHINE 4: SPATIAL DEMOGRAPHY.
+  John's ruling that it is its own machine - machine 3 turns rasters
+  into points, machine 4 asks a demographic question of them.
+  equipop/doors/demography.py. Four indices, all of them a RATIO OF
+  TWO GROUPS over the same neighbourhood:
+    child-woman ratio   under-5 / women 15-49
+    dependency ratio    (under-15 + 65+) / 15-64
+    ageing index        65+ / under-15
+    sex ratio           men / women
+  NOT WHAT WORLDPOP ALREADY PUBLISHES. Their gridded Dependency Ratio
+  is computed from EACH CELL'S OWN age structure; this is over the k
+  nearest thousand people. Theirs describes a cell, ours describes the
+  population a person is among - and a ratio over a bespoke
+  neighbourhood inherits nothing from an administrative unit, which is
+  the whole argument.
+  THE IRREGULAR BANDS ARE THE TRAP AND ARE TESTED AS SUCH. 0 is
+  under-one alone, 1 covers 1-4, then fives, 90 is open. Every
+  selector works in BAND STARTS, never arithmetic on the age number:
+  15-49 gives 15,20,...,45 and must not slide into 50; under-five is
+  TWO bands and taking only '0' would miss four fifths of the
+  children; 15-64 must not collect the open 90+.
+  f/m/t IS HANDLED: t is exactly f+m, so the parts are used when
+  present and the totals only when they are not.
+  THE CONVERSION THAT NEARLY WENT WRONG: build_cells MULTIPLIES a
+  group column by the weight, because a group is normally a 0/1
+  marker. A COMPOSED group is already a headcount, so passing it
+  unconverted would have multiplied children by the total population -
+  roughly 500x too large and entirely plausible-looking. folder_to_
+  cells now converts a composed group to the share of the weight,
+  which the multiplication turns back into the count. Pinned by
+  test_the_halves_are_HEADCOUNTS_not_shares.
+  VERIFIED END TO END on a two-country pyramid: of 500 people, 94.5
+  children under five and 110.2 women 15-49, ratio 0.86, N exactly
+  500.
+  REMAINING: the QGIS tool. plan() is deliberately separable from
+  run_index() so a door can show the suggested columns and let the
+  user add or remove them - John's design.
+  RATE MEASURES STAY OUT. TFR, ASFR, CBR, CDR, LE need vital events;
+  an age-sex folder carries stock. Tested by absence.
+
+- ~~218~~ | DONE | MACHINE 4'S QGIS DOOR - and it broke the PLUGIN
+  before it broke itself. initAlgorithm() imported the package to
+  build its tick-box list. That runs while QGIS constructs the dialog,
+  so with equipop absent the whole plugin died at startup - turning
+  "install equipop" from a sentence into a traceback, which
+  test_the_plugin_still_loads_when_the_package_is_missing exists to
+  prevent and which the other three tools survive. The list is now
+  written down in the door, and a test pins it against the package's
+  own so the two cannot drift.
+  SEVERAL INDICES IN ONE PASS (John's preference). At continental
+  scale the cost is loading the rasters, projecting the points and
+  building the tree, and that is identical whichever index is wanted -
+  so four indices one at a time is four of those. run_indices()
+  composes every numerator and denominator, carries them all as
+  groups, and divides pairwise afterwards. Verified: four indices, one
+  [cells] line, one fast pass.
+  TWO MORE FOUND BY EXECUTING IT rather than constructing it:
+    a pointless `from qgis.core import QgsProcessingContext` inside a
+      helper - refused by the simulator, dead weight in QGIS;
+    MACHINE 4 BYPASSED THE SPINE'S FOLDER CHECK, because it reads the
+      labels BEFORE running in order to show which columns an index
+      will use. A bare FileNotFoundError escaped past every door's
+      handler. check_folders() is now shared and called first.
+  AND ONE OF CLAUDE'S TESTS WAS WRONG AGAIN: the one-pass test counted
+  a phrase printed by BOTH the loader and the spine, and failed on a
+  run that was perfectly correct. It counts "[cells]" now.
+
+- 219 | OPEN, JOHN'S RULING RECORDED | NO RESTRICTION ON WHAT MAY BE A
+  WEIGHT. Claude proposed refusing a weight column that is not a
+  headcount - k is a number of PEOPLE, so weighting by elevation gives
+  "the 1000 nearest metres of altitude", which runs and produces a
+  plausible meaningless map. JOHN RULED AGAINST: "there might be
+  rasters that have an odd composition that still are valid to run -
+  users of EquiPop are mostly academics, and would understand the
+  problems". Recorded rather than built. The run already SAYS which
+  column it used as the population, which is the provenance without
+  the paternalism. Revisit only if a real user is bitten.
+
+- ~~220~~ | DONE, engine side | THE LATTICE JOIN. John's idea, and Claude's
+  narrowing of it. QGIS already counts points in cells and does it
+  well; rebuilding that would duplicate mature tooling. THE HARD PART
+  IS THE LATTICE: EquiPop knows the exact grid the demographic points
+  sit on and QGIS does not, so a join done outside is approximate at
+  cell boundaries. The sharp capability is "snap this layer to MY
+  lattice and count or sum it" - one operation, using the grid we
+  already own.
+  AND THE REFRAMING THAT MATTERS: once supermarkets are on the
+  lattice, "how many in this cell" is almost always zero and almost
+  never the question. The question is how many among the k nearest
+  people - which is 2SFCA, and equipop/fca.py ALREADY HAS IT: fca(),
+  fca_segments(), fca_propensity(), tested. Demographics are the
+  demand side, POIs the supply side, same k in both. So this is not a
+  new machine; it is the missing INPUT to one already built and never
+  driven at continental scale.
+  John: "the lattice join solution is well suggested - and yes I would
+  like to integrate it".
+
+- ~~220b~~ | DONE, engine | equipop/latticejoin.py.
+  snap_to_lattice() counts or sums a point layer onto the grid the
+  rasters define; join_to_points() puts it on a machine 3 table by the
+  INTEGER LATTICE INDICES, never by distance. load_folder gained
+  keep_index= to carry those indices out. Verified: 40 real cell
+  centres snapped and every one returned to its OWN cell; totals
+  preserved; untouched cells a real 0.0 rather than an absence, the
+  same rule the raster loader uses.
+  ONLY OCCUPIED CELLS ARE RETURNED. A supermarket layer touches a
+  vanishing fraction of a continent; a row of zeros for every other
+  cell would be tens of millions of rows saying nothing.
+  THE HONEST LIMIT, found by a test of Claude's that failed and was
+  right to: a coordinate built as origin + 100*pixel divides back to
+  99.999999999999, because adding a small offset to a number near 29
+  degrees and subtracting it again loses bits. So a point within one
+  floating-point ULP OF A CELL EDGE may fall either side, whatever
+  rounding rule is used, and NO ROUNDING CHOICE REMOVES IT. What IS
+  guaranteed and tested: points anywhere inside a cell land together,
+  and adjacent cells stay distinct. Real coordinates are never on an
+  edge. A test now pins the caveat so nobody later "fixes" it and
+  believes they have.
+  SHAPED FOR fca(): the output renames to x, y, <supply> and goes
+  straight in. Demographics are the demand side, this is the supply
+  side, same k in both.
+  REMAINING: the QGIS door - reading a vector layer, reprojecting it
+  to the raster CRS, and handing over coordinates. And fca() itself
+  has never been driven at continental scale.
+
+- ~~221~~ | DONE | THE SIMULATOR WAS MORE PERMISSIVE THAN THE THING IT
+  SIMULATES, AND SO CERTIFIED A CALL QGIS REJECTS. John's run computed
+  46,071 origins and TWO indices in 10.8 s and then died on the last
+  line before the layer was written:
+     TypeError: parameterAsSink(): argument 5 has unexpected type 'int'
+  BOTH continental doors passed a literal `2` as the geometry. Two
+  numberings live in QgsWkbTypes - GEOMETRY types (Point=0, Line=1,
+  Polygon=2) and WKB types (Point=1, LineString=2, Polygon=3) - so the
+  2 meant POLYGON in the numbering that matters, and PyQGIS refuses a
+  bare int regardless. base.py had it right all along by passing
+  source.wkbType(); the new doors had no source layer and Claude wrote
+  a number instead of finding the constant.
+  THE DEFECT WAS THE STUB. tests/qgis_stub.py accepted anything, so 12
+  door tests passed against a call that cannot work. Tightening it to
+  refuse a bare int reproduced John's failure immediately.
+  AND TIGHTENING IT EXPOSED THE STUB'S OPPOSITE ERROR: its fake layer
+  returned a plain int from wkbType(), so the new check rejected
+  base.py's CORRECT call - 44 tests red. The simulator was wrong in
+  both directions at once, permissive where it should refuse and
+  unrealistic where it should be faithful.
+  LESSON, and it is the sharpest form of finding 33: a simulator that
+  is more forgiving than reality does not merely fail to catch bugs -
+  it ACTIVELY CERTIFIES them. Every green test against it was a lie
+  about this call. When a door works under the stub and fails in QGIS,
+  suspect the stub before the door.
+
+- ~~222~~ | DONE | THE OUTPUT DID NOT EXPLAIN ITSELF. John, on his
+  first real result: "I have no explanation to what the field names
+  are representing". Quite right - T_age_num_1000, R_age_den_1000,
+  SumN and MaxDistance are unreadable unless you wrote the code.
+  explain_fields() now prints one line per field at the end of every
+  machine 4 run, including which cohorts each half added up, which
+  column IS the answer (marked >>>), and which two are diagnostics of
+  the SEARCH rather than results - SumN is the population of the whole
+  fetched window and MaxDistance the distance to its furthest cell;
+  neither is an answer and both had been sitting in the table looking
+  like one.
+
+- ~~223~~ | DONE, and the STUB was blind to it | THE SINK'S CRS WAS
+  ACCEPTED AND THROWN AWAY. tests/qgis_stub.py's _Sink took `crs` and
+  stored nothing, so NO TEST HAD EVER CHECKED which projection a door
+  stamps on its output - and a layer with the wrong one lands in the
+  wrong part of the world while looking perfectly healthy. John's
+  Burundi result drew north of Sweden.
+  The sink now keeps crs and wkb, and two tests check that the layer
+  carries the projection the run chose and that the coordinates are
+  metres in it. Verified on a Burundi-shaped folder: EPSG:32736,
+  coordinates 166,500 / 9,778,500 - correct for UTM 36S at 2 S.
+  SO THE ENGINE WAS RIGHT. The remaining suspect is the QGIS PROJECT
+  CRS: a layer in UTM 36S drawn in a project set to SWEREF 99 (EPSG
+  3009, from John's Swedish work) is reprojected into a transverse
+  Mercator far outside its zone of validity, which puts it nowhere
+  sensible and can distort it out of existence when zoomed. The run
+  now states the layer's EPSG in words and says where to check.
+  THIS IS 221 AGAIN, SAME FILE, SAME WEEK: the simulator was not
+  merely permissive, it was INCOMPLETE - it discarded the very
+  argument whose misuse causes the most visible failure a GIS tool
+  can have.
+
+- 224 | OPEN, WATCHING | N_1000 READ 2000 in John's attribute
+  table. It should be exactly k by construction. Could NOT be
+  reproduced here on a folder shaped like his - f, m AND t, two
+  countries, 1 km - where N_1000 comes out 1000.0 on every row. The
+  screenshot is from a run whose log Claude has not seen, and the
+  GeoPackage has held at least four differently-named tables across
+  sessions. JOHN, LATER: "in the latter versions, it correctly
+  assigns N - I will keep it under observation". So it is not
+  reproducible on either machine now. LEFT OPEN DELIBERATELY rather
+  than closed: an intermittent wrong N is worse than a repeatable
+  one, and 225 was found in the SAME DATA, where cells holding TWO
+  source pixels behave unlike their neighbours. If it returns, look
+  there first. Do not change arithmetic on the strength of a
+  screenshot.
+
+- ~~225~~ | DONE | THE ANALYSIS GRID BEAT AGAINST THE SOURCE LATTICE
+  AND STRIPED A CONTINENT. John mapped Dist_k at k=1000, 2000 and 4000
+  and every map carried regular bands. Neither a data fault nor an
+  arithmetic one - the RE-BINNING between them.
+  WorldPop "1 km" is 30 ARC-SECONDS: at 2 S that is 927.7 m tall and
+  927.1 m wide, NOT 1000. Binned onto a 1000 m grid the ratio is
+  1.079, so most cells take ONE source pixel and every ~13th takes
+  TWO. Those cells hold twice the population; Dist_k follows local
+  density; the doubles band every 11.8 km - which is the stripe
+  spacing in his images.
+  WORST WHEN unit IS JUST ABOVE THE SOURCE SPACING, because the count
+  alternates 1 and 2 - a 100% density swing. At ten times the source
+  it is 10 or 11, a 10% swing, invisible. He landed on very nearly the
+  worst possible value.
+  AND CLAUDE'S OWN GUIDE TOLD HIM TO: "1000 m is a sensible
+  continental start" - true for the 100 m rasters Claude built and
+  tested against, actively harmful for his 1 km ones. Written from one
+  dataset, exactly like the naming registry in 211. A REGISTRY, A
+  DEFAULT AND A THRESHOLD ARE THE SAME MISTAKE WHEN THEY COME FROM ONE
+  SAMPLE. The guide is corrected.
+  _warn_aliasing() measures the source spacing from the points
+  themselves at the data's own latitude, and names the density swing
+  and the beat period in KILOMETRES - the thing he actually saw.
+  Quiet at or below the source spacing, at exact multiples, and where
+  the swing is under 25%.
+
+- ~~226~~ | DONE | THE TOOLS ARE NAMED FOR THEIR OUTPUT NOW, NOT THEIR
+  INPUT. John: "Machines 3 and 4 are too similar - I do not really
+  follow - now we do all in machine 4, why do we need machine 3?".
+  Both were called "from a folder of rasters" - the INPUT, identical -
+  so the toolbox gave no way to choose between them.
+    3. Raster Data Curation
+    4. Spatial Demographic Analysis
+  The k box in 3 defaults to BLANK, so its default behaviour really is
+  curation; the neighbourhood run is a shortcut so a continental job
+  need not write eleven million points to disk and read them back for
+  Dist_k.
+  AND THE ANSWER TO "why do we need 3": its output is an ORDINARY
+  EQUIPOP POINT LAYER, so it feeds machines 1 and 2. Machine 4 gives
+  four ratios; machine 3 gives WorldPop data the rest of the software.
+
+- ~~227~~ | DONE | THE OUTPUT IS WRITTEN IN THE RASTERS' OWN
+  PROJECTION NOW. John: "the crs is odd nonetheless - new map (with no
+  history) suggests this placement (west of Norway) ... perhaps we
+  should depict in the same format? I can reproject so it works, but
+  this is a nuisance."
+  AND CLAUDE'S EARLIER DIAGNOSIS WAS WRONG. He said "set the QGIS
+  project CRS to the layer's" - John's screenshot then showed the
+  project ALREADY at EPSG:32735, the layer's own, and it still drew
+  west of Norway. The real cause: UTM SOUTHERN ZONES CARRY A FALSE
+  NORTHING OF 10,000,000 m, so Burundi comes out at northing
+  ~9,779,000, which on a European basemap reads as the far north, and
+  the extent sits outside zone 35's valid range so everything
+  distorts. Nothing about the project CRS could have fixed that.
+  The analysis still runs in METRES - k is people and a radius is a
+  distance - but the OUTPUT need not, and now defaults to the CRS the
+  rasters were in. Box 3b/2e overrides it for anyone who wants metres.
+  EastWest/NorthSouth stay as the ANALYSIS coordinates; only the
+  geometry moves.
+  LESSON: Claude gave confident diagnostic advice from a plausible
+  story and John's own screenshot refuted it. The false northing was
+  discoverable from the numbers in hand - 9,778,500 is not a latitude
+  anyone in Africa should see - and was not looked at.
+
+- ~~228~~ | DONE | A MEASURE CAN BE EDITED IN ITS OWN TERMS. John: "we
+  should allow for alterations of the measurement settings - please
+  make it possible to accept or edit the measures (for instance the
+  age settings)". The column-list boxes technically allowed it, but
+  moving a boundary five years meant typing eleven column names -
+  transcription, not editing.
+  parse_spec() now reads a half of an index the way it is spoken:
+    '0-4'      ages 0 to 4, whichever sexes the index uses
+    'f:15-49'  women only
+    '65-'      open ended
+    'fm:20-39' both sexes, a closed range
+  THE IRREGULAR BANDS STILL HOLD: 'f:15-44' stops at band 40 and does
+  not reach into 45-49, because the selection works in band starts.
+  Malformed input is refused by name and the refusal SHOWS THE FORM
+  THAT WORKS. The outright column-list boxes remain underneath, for
+  anything a range cannot express.
+
+- ~~229~~ | DONE | EACH MEASURE CAN NOW BE ALTERED SEPARATELY, IN ONE
+  RUN. John: "yes, they work BUT it also means I cannot run different
+  demographic indicators at the same time, since restricting to women
+  in fertile ages will not fly in the other measures". Exactly right,
+  and it defeated the point of the tool - several indices in ONE
+  traverse was the reason to build it, and the edit boxes forced you
+  back to one at a time.
+  HIS OWN SUGGESTED SOLUTION was the right one: the "creation options"
+  widget from an unrelated QGIS tool - a Name/Value table. QGIS has
+  it as QgsProcessingParameterMatrix and alg_counts.py already used
+  it, so there was a working pattern to copy rather than invent.
+  Box 2c is now a table: one row per index, with numerator and
+  denominator ages. Blank cells and absent indices keep the measure's
+  own definition. Verified: ageing index at '70-' and child-woman
+  ratio at 'f:15-44' in the SAME run, each honoured, neither leaking
+  into the other. A row naming an unticked index, an unknown index, a
+  malformed range or a ragged table is refused by name.
+
+- ~~230~~ | DONE | WIDE OR LONG. John: "I would assume we should have
+  one column for the population, and possibly indicators of iso-code
+  and treatment belonging - and not a wide dataset ... it would be
+  good to have the option". to_long() gives lon, lat, iso3, cohort,
+  population.
+  OFFERED, NOT IMPOSED, and the reason is scale: 11.5 million points
+  by 60 cohorts is 690 MILLION rows long, which is why the analysis
+  runs on the wide table. Box 3c, wide by default.
+
+- ~~231~~ | DONE | THE SIMULATOR LACKED parameterAsEnum. It had only
+  the PLURAL parameterAsEnums, for allowMultiple, so a door using the
+  ordinary single-choice reader failed under test while being correct
+  in QGIS. THE SAME INCOMPLETENESS AS THE SINK'S CRS (223) and the
+  bare-int sink (221) - three in one file in one week. THE STUB IS NOW
+  THE MOST DANGEROUS FILE IN THE REPOSITORY: every door test is only
+  as true as its imitation, and it has been wrong in both directions -
+  too permissive, too incomplete, and unfaithful.
+
+- 232 | OPEN, NEEDS THE LOG | TICKING "add all cohorts" GAVE NULLS.
+  John, on machine 3 box 2c: "I get null values in all but one value
+  containing field - and I don't see the point of this". His image
+  shows one populated column NAMED AFTER A FULL RASTER FILENAME
+  (bdi_f_00_2026_CN_1km_R2025A_UA_v1) and the rest NULL.
+  THAT NAME IS THE CLUE AND IT DOES NOT MATCH THIS ENGINE: since 211
+  the columns are labels like f_00_2026, and sum_cohorts collapses
+  them to a single 'pop'. A full filename means either an older engine
+  or - more likely - A REUSED GEOPACKAGE TABLE, whose schema is the
+  union of every run ever written to it, with old columns surviving as
+  NULL. He has written at least six differently-named tables into
+  bingobango.gpkg across these sessions.
+  ALSO UNEXPLAINED: his folder holds f, m AND t, so sum_cohorts should
+  have been REFUSED outright by 212's double-count guard. It was not.
+  NEXT STEP IS THE LOG for that specific run, and a write to a FRESH
+  table name. Do not change the summing on the strength of a
+  screenshot - 224 is still open for the same reason.
+
+- ~~233~~ | DONE | CITATION.cff PARSED AS YAML AND WAS INVALID CFF.
+  John added two conference presentations through the GitHub browser -
+  the right way to do it, needing no tools - and the result was
+  well-formed YAML that the CFF schema rejects in two places:
+    type: presentation   NOT in the CFF 1.2.0 enum. 'slides' and
+                         'conference-paper' are; 'presentation' is the
+                         natural English word and is not.
+    conference: "..."    conference is an ENTITY, like location and
+                         institution, and cannot be a bare string.
+  NEITHER SHOWS UP AS AN ERROR ANYWHERE. GitHub simply stops
+  rendering the "Cite this repository" button and nobody notices until
+  somebody tries to cite the software. Confirmed with cffconvert, the
+  reference implementation, before and after.
+  tests/test_citation.py now checks the SCHEMA and not just the
+  syntax: the type enum and the entity-shaped fields are checked
+  WITHOUT cffconvert, so a bare install is still protected, and the
+  full validator runs when it is present. All three failure modes -
+  bad type, string conference, hand-edited version - were
+  reintroduced deliberately and all three were caught.
+  THE SHAPE OF THIS IS FAMILIAR: a file that only fails SOMEWHERE
+  ELSE, silently. Same family as the run manifest (208), the sink CRS
+  (223) and the aliasing (225). If nothing in the repository reads a
+  file, nothing in the repository defends it.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

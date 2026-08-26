@@ -168,6 +168,46 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     and dist.shape[1] < n_cells):
                 unsat.append(oi)
                 continue
+
+            # BACKLOG 207. A RING CUT BY THE WINDOW EDGE IS NOT A RING.
+            # The test above defers an origin that failed to REACH k.
+            # It does not notice one that reached k through a crossing
+            # ring the window sliced in half - and ring_bounds() cannot
+            # notice either, because it walks `while hi + 1 < n` where
+            # n is the WINDOW, not the ring. The ring is then treated
+            # as complete, its share is measured against the part that
+            # happened to fit, and the radius and every group share
+            # come out wrong while N_k stays exactly k - so no guard
+            # fires and nothing looks amiss.
+            #
+            # Measured before this was written: on a lattice of one
+            # person per cell, a four-cell ring seen two cells wide put
+            # Dist_11 at 200.0 m against a true 173.2; on Burundi +
+            # Rwanda at 1 km, 249 of 46,317 origins moved by up to
+            # 168.8 m, and a cross-border share read 0.043 where it
+            # should read 0.065.
+            #
+            # So: if the ring that crosses ANY requested k reaches the
+            # last fetched cell, the ring may continue past it. Hand
+            # the origin to the ladder, which already exists for the
+            # other reason. Cost is a wider retry for those origins;
+            # John's ruling for the continental run was correctness
+            # over speed.
+            if dist.shape[1] < n_cells:
+                edge = dist.shape[1] - 1
+                cut = False
+                for k in k_values:
+                    pos_k = int(np.searchsorted(cpop[r], k))
+                    if pos_k >= dist.shape[1]:
+                        continue                  # partial: handled above
+                    _, hi_k = overshoot.ring_bounds(dist[r], pos_k)
+                    if hi_k >= edge:
+                        cut = True
+                        break
+                if cut:
+                    tally["ring_cut"] = tally.get("ring_cut", 0) + 1
+                    unsat.append(oi)
+                    continue
             rec = {"CellId": cd.labels[oi] if cd.labels else oi,
                    "EastWest": round(float(cd.E[oi]), 2),
                    "NorthSouth": round(float(cd.N[oi]), 2),

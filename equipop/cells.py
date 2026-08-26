@@ -39,6 +39,20 @@ class CellData:
     # group.
     binary_valid: dict = field(default_factory=dict)  # var -> array (m,)
     value_arrays: dict = field(default_factory=dict)  # var -> list of arrays
+    # BACKLOG 118, v1.41. Optional per-entry WEIGHTS alongside
+    # value_arrays: var -> list of arrays, one weight per value.
+    # EMPTY unless build_cells(weights=...) was given something, so
+    # every existing caller is untouched and every existing answer is
+    # unchanged - when it is empty the engine counts entries, exactly
+    # as it always has.
+    # It exists because WorldPop counts are FRACTIONAL. The old route
+    # into a weighted statistic was to REPEAT each row `weight` times,
+    # and you cannot repeat somebody 0.4 times: np.round() sent that
+    # cell to zero and dropped it from the population. Measured on
+    # John's rasters, that deleted 50.5% of the people - 39% in
+    # Rwanda, 69% in Denmark, so the loss grew with latitude and any
+    # Europe-against-Africa comparison was biased by construction.
+    value_weights: dict = field(default_factory=dict)  # var -> list of arrays
     unit_size: float = 100.0
     labels: list | None = None    # optional per-cell ID/label (e.g. place, year)
 
@@ -67,6 +81,7 @@ def build_cells(
     snap: bool = True,
     label_col: str | None = None,
     missing_codes=None,
+    weights: str | None = None,
 ) -> CellData:
     """
     Aggregate an individual-level DataFrame into CellData.
@@ -156,18 +171,27 @@ def build_cells(
     bsums = {v: [] for v in binary_vars}
     bvalid = {v: [] for v in binary_vars}
     varrs = {v: [] for v in value_vars}
+    vwts = {v: [] for v in value_vars} if weights is not None else {}
     labels = [] if label_col else None
     mixed = 0
 
     for (e, nn), g in groups:
         E.append(e)
         N.append(nn)
-        n.append(len(g))
+        n.append(float(g[weights].sum()) if weights is not None else len(g))
         for v in binary_vars:
-            bsums[v].append(g[v].sum())
-            bvalid[v].append(int(g[v].notna().sum()))
+            if weights is None:
+                bsums[v].append(g[v].sum())
+                bvalid[v].append(int(g[v].notna().sum()))
+            else:
+                w = g[weights]
+                bsums[v].append(float((g[v].fillna(0) * w).sum()))
+                bvalid[v].append(float(w[g[v].notna()].sum()))
         for v in value_vars:
-            varrs[v].append(g[v].dropna().to_numpy(dtype=float))
+            keep = g[v].notna()
+            varrs[v].append(g.loc[keep, v].to_numpy(dtype=float))
+            if weights is not None:
+                vwts[v].append(g.loc[keep, weights].to_numpy(dtype=float))
         if label_col:
             uniq = g[label_col].astype(str).unique()
             if len(uniq) > 1:
@@ -182,11 +206,12 @@ def build_cells(
     cd = CellData(
         E=np.array(E, dtype=np.int64),
         N=np.array(N, dtype=np.int64),
-        n=np.array(n, dtype=np.int64),
+        n=np.array(n, dtype=float if weights is not None else np.int64),
         binary_sums={v: np.array(a, dtype=float) for v, a in bsums.items()},
         binary_valid={v: np.array(a, dtype=float)
                       for v, a in bvalid.items()},
         value_arrays=varrs,
+        value_weights=vwts,
         unit_size=unit_size,
         labels=labels,
     )

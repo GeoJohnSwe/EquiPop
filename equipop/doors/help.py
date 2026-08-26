@@ -367,9 +367,52 @@ SUMMARY = {
         "median, the Gini and every percentile. Nv_<field>_k reports "
         "how many neighbours had a usable value, so thin coverage is "
         "visible rather than hidden.",
+    "SpatialDemography":
+        "Demographic indices computed over the k NEAREST PEOPLE rather "
+        "than over an administrative unit. WorldPop publishes a "
+        "gridded dependency ratio built from each cell's own age "
+        "structure; this describes the population a person is actually "
+        "among, and inherits nothing from any boundary. Every index is "
+        "a ratio of two groups counted over the same neighbourhood, so "
+        "several cost one pass over the data rather than one each. "
+        "Rate measures - TFR, ASFR, birth and death rates, life "
+        "expectancy - are deliberately absent: they need vital events, "
+        "and an age-sex folder carries stock, not flow.",
+    "ContinentalRasters":
+        "Builds k-neighbourhoods straight from a FOLDER of population "
+        "rasters, at the scale of a continent. Subfolders are "
+        "searched, so a download that arrives one folder per country "
+        "can stay exactly as it is. Filenames are read for the cohort "
+        "- sex, age, year - and the COUNTRY is deliberately ignored, "
+        "because different countries are different GROUND and stack "
+        "as rows, while different cohorts are different COLUMNS on "
+        "the same ground. Which is which is decided by measuring "
+        "where the rasters actually hold data, never by their names, "
+        "so the rule survives any renaming. Population counts are "
+        "kept as FRACTIONS: a cell holding 0.4 people stays 0.4, "
+        "because rounding them away deleted half the population and "
+        "more of it the further north you went.",
 }
 
 USAGE = {
+    "SpatialDemography":
+        "Point it at the same folder machine 3 uses and tick the "
+        "indices you want. The suggested columns are shown in the log "
+        "before anything is computed, so you can see exactly which "
+        "cohorts are being added up; boxes 2c and 2d replace them for "
+        "a single ticked index. WorldPop's age bands are not all five "
+        "years wide - 0 is under-one alone, 1 covers 1-4, and 90 is "
+        "open-ended - and the selection accounts for that, so 15-49 "
+        "means 15 to 49 and not 15 to 54.",
+    "ContinentalRasters":
+        "Start with one folder and one k. Leave the projection blank "
+        "and a fitting one is suggested from the data. Cell size is "
+        "the analysis grid, not the raster's own resolution - 1000 m "
+        "is a sensible continental start and 100 m is a very large "
+        "run. For anything bigger than a few hundred thousand cells, "
+        "give a tiles folder: the answers are identical, they are "
+        "written out as the run goes, and it resumes where it stopped "
+        "if it is interrupted.",
     "CountsShares":
         "Start simple: input layer, one k, nothing else. Add group "
         "fields for shares. Add a barrier layer only when barriers "

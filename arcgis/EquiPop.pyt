@@ -1745,7 +1745,22 @@ def _sidecar_path(target, suffix):
     # 1.30.2 release zip refused, because the test suite called it
     # thousands of times and left directories behind (BACKLOG 101).
     # The caller creates it, once, when it really is about to write.
-    folder = os.path.join(os.sep.join(parts[:holder]), "EquiPop_runs")
+    # SLICE THE ORIGINAL STRING, do not rejoin the split pieces.
+    # os.sep.join(parts[:holder]) rebuilt the path from fragments and
+    # so lost whatever preceded the first fragment: on POSIX a leading
+    # '/' vanished and an absolute path silently became a relative one,
+    # which is why this wrote its manifest into a junk tree under the
+    # working directory on Linux while LOOKING correct. A drive letter
+    # survived only by luck, because 'C:' carries its own root.
+    # Slicing keeps the root, the drive and the separators exactly as
+    # the caller wrote them (BACKLOG 208).
+    spans, pos = [], 0
+    for q in parts:
+        i = base.index(q, pos)
+        spans.append(i)
+        pos = i + len(q)
+    stem = base[:spans[holder]].rstrip("\\/")
+    folder = os.path.join(stem, "EquiPop_runs")
     return os.path.join(folder, parts[-1] + suffix), True
 
 
@@ -2344,10 +2359,138 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
                         "Pick the Y field (northing).")
 
 
+def _epsg_of(param):
+    """The EPSG code behind a GPCoordinateSystem box, or None."""
+    if param is None or not getattr(param, "value", None):
+        return None
+    try:
+        code = int(getattr(param.value, "factoryCode", 0) or 0)
+    except Exception:
+        return None
+    return code or None
+
+
+def _write_points(table, man, target, messages):
+    """The results table as a point feature class in the working CRS.
+
+    NumPyArrayToFeatureClass is arcpy's one call for exactly this, and
+    it wants a structured array with an (x, y) field pair.
+    """
+    import numpy as np
+    cols = [c for c in table.columns
+            if c not in ("EastWest", "NorthSouth", "CellId")]
+    names = _short_names(cols) if "_short_names" in globals() else {
+        c: c[:31] for c in cols}
+    dt = [("EastWest", "<f8"), ("NorthSouth", "<f8")]
+    dt += [(names[c], "<f8") for c in cols]
+    arr = np.empty(len(table), dtype=dt)
+    arr["EastWest"] = table["EastWest"].to_numpy(dtype=float)
+    arr["NorthSouth"] = table["NorthSouth"].to_numpy(dtype=float)
+    for c in cols:
+        arr[names[c]] = table[c].to_numpy(dtype=float)
+
+    epsg = (man.get("projection") or {}).get("epsg")
+    sr = arcpy.SpatialReference(int(epsg)) if epsg else None
+    if arcpy.Exists(target):
+        arcpy.management.Delete(target)
+    arcpy.da.NumPyArrayToFeatureClass(
+        arr, target, ("EastWest", "NorthSouth"), sr)
+    messages.addMessage(
+        f"{len(table):,} rows written to {target}.")
+
+
+class ContinentalRasters:
+    """BACKLOG 38. A folder of population rasters, at continental scale.
+
+    DELIBERATELY THIN, exactly as the QGIS tool is. Every decision
+    about what a continental run means lives in
+    equipop.doors.continental.run_folder, which the QGIS tool calls
+    with the same arguments - John's ruling, "one ring to rule them
+    all, and different doors that can use it". What is genuinely Pro's
+    own here is reading boxes and writing a feature class.
+    """
+
+    def __init__(self):
+        self.label = "3. Continental run from a folder of rasters"
+        from equipop.doors.help import SUMMARY
+        self.description = SUMMARY["ContinentalRasters"]
+
+    def getParameterInfo(self):
+        ps = [_p("folder", "Folder of population rasters (.tif) - "
+                 "subfolders are searched, so a country-per-folder "
+                 "download can stay as it is", "DEFolder"),
+              _p("k", "Neighbourhood sizes, in PEOPLE (e.g. 1000)",
+                 "GPString"),
+              _p("unit", "Analysis cell size, in metres", "GPDouble",
+                 required=False),
+              _p("crs", "Projection to work in (blank = suggested "
+                 "from the data)", "GPCoordinateSystem",
+                 required=False, category="Advanced"),
+              _p("weight", "Which column holds the people (blank = "
+                 "the only one)", "GPString", required=False,
+                 category="Advanced"),
+              _p("sumcohorts", "Add all cohorts into one population",
+                 "GPBoolean", required=False, category="Advanced"),
+              _p("pattern", "Your own filename pattern (blank = the "
+                 "known conventions)", "GPString", required=False,
+                 category="Advanced"),
+              _p("tiles", "Folder for a TILED, resumable run (blank "
+                 "= run in memory)", "DEFolder", required=False,
+                 category="Advanced"),
+              _p("out", "Output feature class", "DEFeatureClass",
+                 direction="Output")]
+        ps[2].value = 1000.0
+        return ps
+
+    def execute(self, parameters, messages):
+        from equipop.doors.continental import (ContinentalError,
+                                               run_folder)
+        pm = _byname(parameters)
+        ch = _channel(messages)
+
+        ks = []
+        for piece in _txt(pm, "k").replace(",", " ").split():
+            try:
+                ks.append(int(float(piece)))
+            except ValueError:
+                raise arcpy.ExecuteError(
+                    f"'{piece}' is not a number. Give one or more "
+                    "whole numbers of people, separated by spaces.")
+
+        epsg = _epsg_of(pm.get("crs"))
+        try:
+            man = run_folder(
+                _txt(pm, "folder"), k_values=ks,
+                unit_size=_num(pm, "unit", 1000.0) or 1000.0,
+                epsg=epsg, weight=_txt(pm, "weight") or None,
+                sum_cohorts=bool(pm["sumcohorts"].value),
+                pattern=_txt(pm, "pattern") or None,
+                out_dir=_txt(pm, "tiles") or None, channel=ch)
+        except ContinentalError as exc:
+            # The spine refuses in plain words. Do not add to them.
+            raise arcpy.ExecuteError(str(exc))
+
+        if _txt(pm, "tiles"):
+            from equipop.bigrun import load_tiled
+            table = load_tiled(_txt(pm, "tiles"))
+        else:
+            table = man["results"]
+        _write_points(table, man, pm["out"].valueAsText, messages)
+
+
 class Toolbox:
     def __init__(self):
         self.label = "EquiPop"
         self.alias = "equipop"
+        # BACKLOG 38. ContinentalRasters is written and sits below,
+        # on the same equipop.doors.continental.run_folder the QGIS
+        # tool uses - but it is NOT LISTED HERE YET. The arcpy
+        # simulator cannot exercise a DEFolder box or
+        # NumPyArrayToFeatureClass, so nothing in this repository has
+        # ever run it. Registering an untested tool would put it in
+        # front of users on the strength of a reading, and reading is
+        # what has been wrong all week. Extend tests/test_arcgis_stub.py
+        # first, then add it here.
         self.tools = [CountsShares, ValueStatistics]
         # two machines, one shared loader (v1.16). Friction/slope
         # stay DISTANCE INGREDIENTS on machine 1, not tools.
