@@ -29,6 +29,10 @@ import pytest
 HEAVY = ["numpy", "pandas", "scipy", "pyproj", "matplotlib",
          "rasterio", "geopandas"]
 
+from pathlib import Path  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+
 # What the Stata command genuinely needs. Machine 1 counts people and
 # does statistics on them; it neither projects nor draws.
 STATA_PATH_ALLOWS = {"numpy", "pandas", "scipy"}
@@ -236,3 +240,89 @@ def test_an_unlisted_module_failure_is_not_disguised(monkeypatch):
     with pytest.raises(ImportError) as exc:
         equipop._probe_name2
     assert "equipop[" not in str(exc.value)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 234. rasterfolder imported rasterio AT MODULE LEVEL, so
+# merely importing it failed where rasterio is absent - and the verify
+# line in INSTALL.md does exactly that, so John's Stata install
+# reported a traceback when it was perfectly correct.
+# raster.py, slope.py and latticejoin.py all defer it into the
+# function that reads a file. This module alone did not.
+# ---------------------------------------------------------------------
+class _Hide:
+    """A meta_path finder that hides a module.
+
+    Uses find_spec. An earlier attempt used find_module, REMOVED in
+    Python 3.12, so it silently hid nothing and 'proved' a fix that
+    had not been applied.
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == self.name or fullname.startswith(self.name + "."):
+            raise ImportError(f"{self.name} is hidden for this test")
+        return None
+
+
+def _import_without(module, hidden):
+    import subprocess
+    import sys
+    import textwrap
+    code = textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {str(ROOT)!r})
+        from tests.test_lazy_imports import _Hide
+        sys.meta_path.insert(0, _Hide({hidden!r}))
+        for name in [n for n in sys.modules if n.startswith({hidden!r})]:
+            del sys.modules[name]
+        import {module}
+        print("IMPORTED OK")
+    """)
+    return subprocess.run([sys.executable, "-c", code],
+                          capture_output=True, text=True, cwd=str(ROOT))
+
+
+def test_the_hiding_hook_really_hides():
+    """If this fails, every test below proves nothing."""
+    r = _import_without("rasterio", "rasterio")
+    assert "IMPORTED OK" not in r.stdout, (
+        "the hook did not hide rasterio - the tests below are worthless")
+
+
+@pytest.mark.parametrize("module", [
+    "equipop.rasterfolder", "equipop.raster", "equipop.slope",
+    "equipop.latticejoin",
+])
+def test_a_raster_module_imports_without_rasterio(module):
+    r = _import_without(module, "rasterio")
+    assert "IMPORTED OK" in r.stdout, (
+        f"{module} needs rasterio just to be imported.\n"
+        f"{r.stderr[-600:]}")
+
+
+def test_the_helpful_message_still_arrives_when_it_is_USED():
+    """Deferring must not mean losing the sentence that tells the user
+    what to install."""
+    import subprocess
+    import sys
+    import textwrap
+    code = textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {str(ROOT)!r})
+        from tests.test_lazy_imports import _Hide
+        sys.meta_path.insert(0, _Hide("rasterio"))
+        for n in [m for m in sys.modules if m.startswith("rasterio")]:
+            del sys.modules[n]
+        from equipop.rasterfolder import load_folder
+        try:
+            load_folder({str(ROOT / "tests" / "fixtures" / "worldpop")!r})
+        except ImportError as e:
+            print("SAID:", e)
+    """)
+    out = subprocess.run([sys.executable, "-c", code],
+                         capture_output=True, text=True, cwd=str(ROOT)).stdout
+    assert "SAID:" in out, out
+    assert "rasterio" in out and "pip install" in out

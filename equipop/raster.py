@@ -27,12 +27,21 @@ import re
 import numpy as np
 import pandas as pd
 
-try:
-    import rasterio
-    from rasterio.transform import xy as _xy
-except ImportError as e:                              # helpful message
-    raise ImportError("The raster module needs rasterio: "
-                      "pip install rasterio") from e
+def _need_rasterio():
+    """BACKLOG 234. Imported where it is USED, not at module level.
+
+    A module-level import means the module cannot even be IMPORTED
+    without the library, which turns a missing optional extra into a
+    traceback during an install check. rasterfolder had the same
+    fault; this one predates it.
+    """
+    try:
+        import rasterio
+        from rasterio.transform import xy
+        return rasterio, xy
+    except ImportError as e:                        # pragma: no cover
+        raise ImportError("The raster module needs rasterio: "
+                          "pip install rasterio") from e
 
 
 def _expand(pattern: str) -> list[str]:
@@ -48,6 +57,7 @@ def _expand(pattern: str) -> list[str]:
 
 def _read_sum(paths: list[str], ref_meta: dict | None):
     total = None
+    rasterio, _ = _need_rasterio()
     for p in paths:
         with rasterio.open(p) as r:
             meta = dict(crs=str(r.crs), transform=tuple(r.transform),
@@ -104,6 +114,7 @@ def rasters_to_points(variables: dict[str, str],
         rows, cols = np.nonzero(any_pos)
     from affine import Affine
     T = Affine(*meta["transform"][:6])
+    _, _xy = _need_rasterio()
     lon, lat = _xy(T, rows, cols)
     out = pd.DataFrame({"lon": lon, "lat": lat})
     for name, g in grids.items():

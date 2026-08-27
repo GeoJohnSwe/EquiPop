@@ -1418,6 +1418,29 @@ appeared twice; the weaker copy is gone.*
   (223) and the aliasing (225). If nothing in the repository reads a
   file, nothing in the repository defends it.
 
+- ~~234~~ | DONE | A MODULE-LEVEL rasterio IMPORT MADE A CORRECT
+  INSTALL LOOK BROKEN. John installed 1.41.1 into Stata's Python -
+  successfully, as the traceback's own path shows - and the verify
+  line returned an ImportError, because rasterfolder imported rasterio
+  AT MODULE LEVEL and the verify line imports rasterfolder.
+  raster.py, slope.py and latticejoin.py all defer it into the
+  function that reads a file. rasterfolder did not; raster.py did not
+  either, and that one predates this session. Both now defer.
+  THE VERIFY LINE IN INSTALL.md WAS ALSO WRONG: it used rasterfolder
+  precisely BECAUSE it is new, but that made it depend on an optional
+  library. It now uses doors.demography, equally new and pure Python.
+  AND THE TEST THAT PROVED THE FIX PROVED NOTHING AT FIRST. Claude's
+  first hook used find_module, REMOVED IN PYTHON 3.12, so it hid
+  nothing, rasterio imported normally, and the check reported success
+  on a file that had not even been written. There is now a
+  test_the_hiding_hook_really_hides guarding the other four, because a
+  test harness that silently does nothing is worse than no test.
+  FOUR FAILED EDITS BEFORE THE FIFTH LANDED, all from asserting on
+  text Claude had not read: wrong indentation, wrong line numbers, an
+  over-clever guard that tripped on an unrelated except clause, and an
+  anchor string that did not exist. The file was read properly only
+  after the fourth. READ THE LINES, THEN EDIT THEM.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

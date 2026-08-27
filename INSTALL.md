@@ -28,16 +28,18 @@ from those, never from a folder and never from PyPI while testing.
 Every host has a "Python prompt" that may be either a **shell** or the
 **Python interpreter**, and they look similar.
 
-| prompt | what it is |
-|---|---|
-| `C:\Something>` | a SHELL — pip commands go here |
-| `>>>` | PYTHON — pip commands give `SyntaxError` |
+| prompt | what it is | a wrong command gives |
+|---|---|---|
+| `C:\Something>` | a **shell** — pip goes here | `'x' is not recognized...` |
+| `>>>` | **Python** | `SyntaxError` |
+| `.` at the left edge | **Stata** | `command C is unrecognized` |
 
-If you see `>>>`, type `exit()` and press Enter. You are then in the
-shell.
+**None of those three errors means anything is wrong with the wheel.**
+Each means the command went to the wrong program. Both hosts that
+failed — Pro and Stata — failed this way, not on the package.
 
-**A `SyntaxError` mentioning your pip command means you are in Python,
-not that anything is wrong with the wheel.**
+If you see `>>>`, type `exit()`. If you are in Stata, see the `shell`
+route in section 2.
 
 ---
 
@@ -66,13 +68,28 @@ numpy into your user folder that shadows QGIS's own and breaks scipy.
 
 ## 2. Stata — verified working
 
-1. In Stata: `python query` — note the **Python executable** path.
-2. **Close Stata.** Open an ordinary **Command Prompt**.
-3. Install, using that exact path in quotes:
-   ```
-   "C:\...\python.exe" -m pip install --no-deps --force-reinstall "C:\path\to\equipop-1.41.1-py3-none-any.whl"
-   ```
-4. Verify, then reopen Stata.
+1. In Stata: `python query`. Note the **Python executable** path, and
+   check **`initialized`**.
+
+**If `initialized: no` — stay in Stata, no prompt switching.** Python
+is not loaded, so nothing is memory-mapped. Prefix with `shell`:
+
+```
+shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.41.1-py3-none-any.whl
+```
+
+**No quotes** if the paths have no spaces — Stata mangles them. If a
+path does contain a space, close Stata and use a Command Prompt
+instead.
+
+Verify, still in Stata:
+```
+python: import equipop, equipop.rasterfolder as r; print(equipop.__version__, r.__file__)
+```
+
+**If `initialized: yes`** — Python is loaded and the DLL is
+memory-mapped. Close Stata, open a **Command Prompt**, and run the
+same command there without the `shell` prefix, quoting the paths.
 
 ## 3. ArcGIS Pro — NOT VERIFIED BY CLAUDE
 
@@ -131,10 +148,16 @@ depends on whether Pro was installed for all users or one user.
 ## Verify — the same line in every host
 
 ```
-python -c "import equipop, equipop.rasterfolder as r; print(equipop.__version__, r.__file__)"
+python -c "import equipop, equipop.doors.demography as d; print(equipop.__version__, d.__file__)"
 ```
 
 Want the **version** *and* a **path**.
+
+`doors.demography` is used on purpose: it is new in 1.41 and needs no
+optional library, so it proves the local build arrived without
+demanding rasterio. The earlier version of this line used
+`rasterfolder`, which DID need rasterio — so a correct Stata install
+reported a traceback and looked broken.
 
 **The version alone proves nothing.** PyPI's 1.40.7 and the working
 tree's 1.40.7 were different code, which cost a full round trip.

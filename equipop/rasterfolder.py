@@ -39,11 +39,6 @@ import glob as _glob
 import numpy as np
 import pandas as pd
 
-try:
-    import rasterio
-except ImportError as e:
-    raise ImportError("The raster folder loader needs rasterio: "
-                      "pip install rasterio") from e
 
 
 # --------------------------------------------------------------- names
@@ -187,6 +182,20 @@ def load_folder(folders, compose: dict | None = None,
     Returns (points, manifest). points has lon, lat and one column per
     label; a layer with no data at a pixel contributes 0.0 there.
     """
+    # RASTERIO IS IMPORTED HERE, NOT AT THE TOP OF THE FILE.
+    # BACKLOG 234. It was a module-level import, so merely IMPORTING
+    # equipop.rasterfolder failed without it - and the verify line in
+    # INSTALL.md does exactly that, so John's Stata install reported a
+    # traceback when the install was perfectly correct. raster.py,
+    # slope.py and latticejoin.py all defer it into the function that
+    # reads a file; this module alone did not.
+    try:
+        import rasterio
+    except ImportError as e:                        # pragma: no cover
+        raise ImportError(
+            "Reading a folder of rasters needs rasterio: "
+            "pip install rasterio") from e
+
     paths = _tif_paths(folders)
     if not paths:
         raise FileNotFoundError(f"No rasters found under {folders}")
