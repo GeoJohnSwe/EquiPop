@@ -1441,6 +1441,51 @@ appeared twice; the weaker copy is gone.*
   anchor string that did not exist. The file was read properly only
   after the fourth. READ THE LINES, THEN EDIT THEM.
 
+- ~~235~~ | DONE | MACHINES 3 AND 4 ARE IN ARCGIS PRO. They had been
+  written and left OUT of self.tools because the arcpy simulator could
+  not exercise a DEFolder box or NumPyArrayToFeatureClass, so nothing
+  had ever run them. The simulator now covers both, plus
+  GPCoordinateSystem, arcpy.Exists and management.Delete, and
+  tests/test_arcgis_continental.py EXECUTES both tools - 13 tests.
+  MACHINE 4 HAD NO PRO TOOL AT ALL. Claude registered
+  SpatialDemography before checking, and the class did not exist; only
+  ContinentalRasters had ever been written. It exists now, on the same
+  run_indices() the QGIS door calls.
+  AND THE TWO DOORS HAD DRIFTED, which is the finding. The
+  false-northing fix (227) went into the QGIS writer and was never
+  carried to Pro, so machine 3 in Pro would have written METRIC
+  coordinates - and a UTM southern zone carries a false northing of
+  10,000,000 m, which lands the layer off the top of a European
+  basemap. THAT IS EXACTLY THE FAILURE JOHN REPORTED IN QGIS, waiting
+  to happen again in the other door. Both now share to_output_crs().
+  The whole reason for the shared spine is that a rule in two places
+  drifts; this was a rule that had escaped INTO the doors.
+  Four faults found by executing: the fake arcpy must be installed
+  BEFORE the .pyt loads; valueAsText is a read-only property and a
+  dialog sets `value`; Claude's own Exists() assumed a state key that
+  is not always created; and the machine 3 test omitted the weight box
+  and was correctly refused by the tool.
+
+- ~~236~~ | DONE | JOHN'S ARCGIS PRO INSTALL METHOD, and it is better
+  than four sets of instructions Claude gave from documentation. Run
+  in PRO'S OWN PYTHON WINDOW - no shell, so it cannot be the wrong
+  interpreter:
+      import sys, os, subprocess
+      py  = os.path.join(sys.exec_prefix, "python.exe")
+      env = dict(os.environ, PYTHONNOUSERSITE="1")
+      subprocess.run([py, "-m", "pip", "install", ...], env=env)
+  PYTHONNOUSERSITE="1" IS THE CRUCIAL PART: without it pip may install
+  into %APPDATA%\Python, which PRO DOES NOT READ, so the install
+  succeeds and Pro still cannot see the package. That was the
+  hypothesis Claude could not act on and John simply solved.
+  sys.exec_prefix finds the interpreter without anyone knowing the
+  path. INSTALL.md now carries this as the Pro method and the
+  shell-based instructions are gone.
+  GENERAL LESSON: THE HOST'S OWN PYTHON WINDOW BEATS ANY EXTERNAL
+  SHELL, because it cannot be the wrong interpreter - and choosing the
+  wrong prompt caused every install failure in this project's history,
+  in all three hosts.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

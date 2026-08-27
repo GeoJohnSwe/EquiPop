@@ -91,59 +91,48 @@ python: import equipop, equipop.rasterfolder as r; print(equipop.__version__, r.
 memory-mapped. Close Stata, open a **Command Prompt**, and run the
 same command there without the `shell` prefix, quoting the paths.
 
-## 3. ArcGIS Pro — NOT VERIFIED BY CLAUDE
+## 3. ArcGIS Pro — JOHN'S METHOD, verified on his machine
 
-**Nothing in this repository has ever run against real ArcGIS Pro.**
-There is no arcpy in the development environment, so every instruction
-below is read from documentation rather than tested. Treat it as a
-hypothesis. If it fails, that is expected, and the failure is
-information — send it rather than persevering.
+**No shell at all.** Use Pro's own Python window, which is docked in
+Pro: **View → Python** (or the Python pane at the bottom of the
+Geoprocessing view).
 
-Pro's default environment (`arcgispro-py3`) is **read-only on most
-installs**. That is the usual reason a pip install appears to succeed
-and Pro then cannot see the package.
+Paste these four lines, one at a time:
 
-**Step 1 — clone the environment (all GUI, no typing).**
-
-1. Open ArcGIS Pro
-2. **Project** tab → **Package Manager**
-3. Click the **gear icon** beside "Active Environment"
-4. Click **Clone** on `arcgispro-py3`, name it `arcgispro-py3-equipop`
-5. Wait — it takes several minutes
-6. Select the clone → **Activate**
-7. **Close and reopen Pro**
-
-**Step 2 — install into the clone.**
-
-Start menu → ArcGIS → **Python Command Prompt**. Check what you got:
-
-```
-python -c "import sys; print(sys.executable)"
+```python
+import sys, os, subprocess
+py = os.path.join(sys.exec_prefix, "python.exe")
+env = dict(os.environ, PYTHONNOUSERSITE="1")
+subprocess.run([py, "-m", "pip", "install", "--no-deps",
+                "--force-reinstall",
+                r"C:\path\to\equipop-1.42.0-py3-none-any.whl"], env=env)
 ```
 
-- `SyntaxError` → you are in Python. Type `exit()` and try again.
-- A path containing **`arcgispro-py3-equipop`** → correct, continue.
-- A path containing plain **`arcgispro-py3`** → the clone is not
-  active. Go back to step 1.6.
+Then **restart Pro** and check, in the same window:
 
-Then:
-```
-python -m pip install --no-deps --force-reinstall "C:\path\to\equipop-1.41.1-py3-none-any.whl"
+```python
+import equipop; print(equipop.__version__)
 ```
 
-Note: **no `--user` here.** Once the environment is a clone it is
-writable, and `--user` puts the package somewhere Pro may not look.
+**Why this works where a shell did not**, and it is worth knowing:
 
-**Step 3 — toolbox.** Copy `EquiPop.pyt` anywhere, then in Pro's
-Catalog pane: right-click **Toolboxes → Add Toolbox** and select it.
+- **Pro's Python window cannot be the wrong interpreter.** Every shell
+  route depends on finding the right one, and that is what failed
+  repeatedly.
+- **`sys.exec_prefix`** locates the interpreter without anyone having
+  to know the path, so it survives any install layout.
+- **`PYTHONNOUSERSITE="1"`** is the crucial one. Without it pip may
+  install into `%APPDATA%\Python\...`, which **Pro does not read** —
+  so the install succeeds and Pro still cannot see the package.
+- `subprocess.run` spawns a child process, so the running interpreter
+  is not writing over its own loaded DLLs.
 
-**If the Python Command Prompt cannot be found**, the fallback is
-`proenv.bat`, which activates the environment and leaves you in a
-shell. Look for it under
-`...\ArcGIS\Pro\bin\Python\Scripts\proenv.bat` — the exact path
-depends on whether Pro was installed for all users or one user.
+To take a release from PyPI instead of a local wheel, replace the path
+with `"equipop==1.42.0"` and drop `--no-deps --force-reinstall`.
 
----
+**If Pro still cannot see it**, the environment is read-only: Project
+→ Package Manager → gear → **Clone**, activate the clone, restart Pro,
+and repeat. Cloning is entirely GUI.
 
 ## Verify — the same line in every host
 

@@ -216,7 +216,13 @@ def _install_fake_arcpy(table: pd.DataFrame):
     _DATATYPES = {"GPFeatureLayer", "GPTableView", "DERasterDataset",
                   "GPRasterLayer", "GPString", "GPDouble", "GPBoolean",
                   "GPLong", "Field", "DEFile", "DEFeatureClass",
-                  "GPValueTable"}
+                  "GPValueTable",
+                  # BACKLOG 235: machines 3 and 4 in Pro. A folder of
+                  # rasters, and a projection box. Both are ordinary
+                  # Pro datatypes; the simulator simply had never
+                  # needed them, which is why the two tools could not
+                  # be exercised and so were left unregistered.
+                  "DEFolder", "GPCoordinateSystem"}
 
     class Parameter:
         def __init__(self, **kw):
@@ -370,12 +376,47 @@ def _install_fake_arcpy(table: pd.DataFrame):
             name=c, type=("Double" if pd.api.types.is_numeric_dtype(
                 t[c]) else "String")) for c in t.columns]
 
+    def NumPyArrayToFeatureClass(arr, out, xy, sr=None):
+        """Write a structured array as a point feature class.
+
+        BACKLOG 235. Records what the door asked for so a test can
+        read it back - including the SPATIAL REFERENCE, which the QGIS
+        simulator used to accept and discard, and a layer with the
+        wrong one lands in the wrong part of the world while looking
+        perfectly healthy (223).
+        """
+        import pandas as _pd
+        names = list(arr.dtype.names or [])
+        for c in xy:
+            if c not in names:
+                raise RuntimeError(
+                    f"NumPyArrayToFeatureClass: no field {c!r} in the "
+                    f"array; it has {names}")
+        df = _pd.DataFrame({n: arr[n] for n in names})
+        state.setdefault("written", {})[str(out)] = {
+            "table": df, "xy": tuple(xy), "sr": sr}
+        state.setdefault("tables", {})[str(out)] = df
+        return out
+
+    da.NumPyArrayToFeatureClass = NumPyArrayToFeatureClass
     da.TableToNumPyArray = TableToNumPyArray
     da.FeatureClassToNumPyArray = FeatureClassToNumPyArray
     da.ExtendTable = ExtendTable
     da.SearchCursor = SearchCursor
     da.UpdateCursor = UpdateCursor
     arcpy.da = da
+    def Exists(target):
+        s = str(target)
+        return s in state.get("tables", {}) or s in state.get("written", {})
+
+    class _Mgmt:
+        @staticmethod
+        def Delete(target):
+            for key in ("tables", "written"):
+                state.get(key, {}).pop(str(target), None)
+
+    arcpy.Exists = Exists
+    arcpy.management = _Mgmt
     arcpy.Describe = Describe
     arcpy.ListFields = ListFieldsAny
     arcpy.management = mgmt

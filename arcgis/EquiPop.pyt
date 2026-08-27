@@ -2383,13 +2383,27 @@ def _write_points(table, man, target, messages):
         c: c[:31] for c in cols}
     dt = [("EastWest", "<f8"), ("NorthSouth", "<f8")]
     dt += [(names[c], "<f8") for c in cols]
+    # WRITE IN THE RASTERS' OWN PROJECTION, as the QGIS door does.
+    # BACKLOG 235: the two doors had DRIFTED. The false-northing fix
+    # (227) went into the QGIS writer and was never carried here, so
+    # Pro would have written metric coordinates - and a UTM southern
+    # zone carries a false northing of 10,000,000 m, which lands the
+    # layer off the top of a European basemap. That is precisely the
+    # failure John reported in QGIS, waiting to happen again in Pro.
+    from equipop.doors.continental import to_output_crs
+
+    work = (man.get("projection") or {}).get("epsg")
+    src = str(man.get("crs") or "")
+    epsg = (int(src.split(":", 1)[1])
+            if src.upper().startswith("EPSG:") else work)
+    gx, gy = to_output_crs(table, work, epsg)
+
     arr = np.empty(len(table), dtype=dt)
-    arr["EastWest"] = table["EastWest"].to_numpy(dtype=float)
-    arr["NorthSouth"] = table["NorthSouth"].to_numpy(dtype=float)
+    arr["EastWest"] = np.asarray(gx, dtype=float)
+    arr["NorthSouth"] = np.asarray(gy, dtype=float)
     for c in cols:
         arr[names[c]] = table[c].to_numpy(dtype=float)
 
-    epsg = (man.get("projection") or {}).get("epsg")
     sr = arcpy.SpatialReference(int(epsg)) if epsg else None
     if arcpy.Exists(target):
         arcpy.management.Delete(target)
@@ -2478,20 +2492,105 @@ class ContinentalRasters:
         _write_points(table, man, pm["out"].valueAsText, messages)
 
 
+class SpatialDemography:
+    """MACHINE 4 for Pro. BACKLOG 235.
+
+    Thin, like the QGIS tool it mirrors: every decision about what an
+    index means lives in equipop.doors.demography, which both doors
+    call with the same arguments. What is Pro's own here is reading
+    boxes and writing a feature class.
+    """
+
+    def __init__(self):
+        self.label = "4. Spatial Demographic Analysis"
+        from equipop.doors.help import SUMMARY
+        self.description = SUMMARY["SpatialDemography"]
+
+    def getParameterInfo(self):
+        # The tick-box list is WRITTEN DOWN, not read from the
+        # package: getParameterInfo runs while Pro builds the dialog,
+        # and the toolbox must still OPEN when equipop is absent. The
+        # QGIS door broke exactly this way (BACKLOG 218), and a test
+        # pins this list against the package's own.
+        names = ["Ageing index", "Child-woman ratio",
+                 "Dependency ratio", "Sex ratio"]
+        ps = [_p("folder", "Folder of population rasters (.tif) - "
+                 "subfolders are searched", "DEFolder"),
+              _p("indices", "Which indices (tick several - they cost "
+                 "one pass, not one each)", "GPString"),
+              _p("k", "Neighbourhood sizes, in PEOPLE (e.g. 1000)",
+                 "GPString"),
+              _p("unit", "Analysis cell size, in metres", "GPDouble",
+                 required=False),
+              _p("year", "Which year (blank = the only one present)",
+                 "GPString", required=False, category="Advanced"),
+              _p("crs", "Projection to work in (blank = suggested)",
+                 "GPCoordinateSystem", required=False,
+                 category="Advanced"),
+              _p("out", "Output feature class", "DEFeatureClass",
+                 direction="Output")]
+        ps[1].filter.type = "ValueList"
+        ps[1].filter.list = names
+        ps[1].multiValue = True
+        ps[1].value = "Child-woman ratio"
+        ps[3].value = 1000.0
+        return ps
+
+    def execute(self, parameters, messages):
+        from equipop.doors.continental import ContinentalError
+        from equipop.doors.demography import (INDICES, DemographyError,
+                                              run_indices)
+        pm = _byname(parameters)
+        ch = _channel(messages)
+
+        by_label = {v["label"]: k for k, v in INDICES.items()}
+        picked, raw = [], _txt(pm, "indices")
+        for piece in raw.replace(";", ",").split(","):
+            piece = piece.strip().strip("'\"")
+            if not piece:
+                continue
+            if piece not in by_label:
+                raise arcpy.ExecuteError(
+                    f"No such index: {piece!r}. Use one of: "
+                    + "; ".join(sorted(by_label)))
+            picked.append(by_label[piece])
+        if not picked:
+            raise arcpy.ExecuteError("Tick at least one index.")
+
+        ks = []
+        for piece in _txt(pm, "k").replace(",", " ").split():
+            try:
+                ks.append(int(float(piece)))
+            except ValueError:
+                raise arcpy.ExecuteError(
+                    f"'{piece}' is not a number. Give one or more "
+                    "whole numbers of people, separated by spaces.")
+
+        try:
+            man = run_indices(
+                _txt(pm, "folder"), picked, k_values=ks,
+                unit_size=_num(pm, "unit", 1000.0) or 1000.0,
+                year=_txt(pm, "year") or None,
+                epsg=_epsg_of(pm.get("crs")), channel=ch)
+        except (DemographyError, ContinentalError, ValueError) as exc:
+            raise arcpy.ExecuteError(str(exc))
+
+        _write_points(man["results"], man, pm["out"].valueAsText,
+                      messages)
+
+
 class Toolbox:
     def __init__(self):
         self.label = "EquiPop"
         self.alias = "equipop"
-        # BACKLOG 38. ContinentalRasters is written and sits below,
-        # on the same equipop.doors.continental.run_folder the QGIS
-        # tool uses - but it is NOT LISTED HERE YET. The arcpy
-        # simulator cannot exercise a DEFolder box or
-        # NumPyArrayToFeatureClass, so nothing in this repository has
-        # ever run it. Registering an untested tool would put it in
-        # front of users on the strength of a reading, and reading is
-        # what has been wrong all week. Extend tests/test_arcgis_stub.py
-        # first, then add it here.
-        self.tools = [CountsShares, ValueStatistics]
+        # BACKLOG 235. Registered at last. They were held back
+        # because the arcpy simulator could not exercise a DEFolder
+        # box or NumPyArrayToFeatureClass, so NOTHING had ever run
+        # them - and registering an untested tool puts it in front of
+        # users on the strength of a reading. The simulator now covers
+        # both, and tests/test_arcgis_continental.py EXECUTES them.
+        self.tools = [CountsShares, ValueStatistics,
+                      ContinentalRasters, SpatialDemography]
         # two machines, one shared loader (v1.16). Friction/slope
         # stay DISTANCE INGREDIENTS on machine 1, not tools.
 
