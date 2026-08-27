@@ -187,6 +187,44 @@ and could not be cut. WorldPop is a LATTICE. Reading the mechanism in
 `ring_bounds` first and then building the case deliberately took one
 attempt.
 
+## 3b. HOW WORK IS DELIVERED — A STANDING RULE
+
+**JOHN'S RULING, after an afternoon lost to an ArcGIS Pro install:**
+"I wish that we can use one general method for uploading and running
+and stick to it through the sessions."
+
+**EVERY SESSION THAT CHANGES CODE ENDS WITH FOUR FILES, BUILT AND
+VERIFIED, NAMED BY VERSION:**
+
+    equipop-<ver>-py3-none-any.whl     the engine
+    equipop-<ver>.tar.gz               source, for PyPI
+    equipop_qgis-<ver>.zip             the QGIS plugin
+    EquiPop.pyt                        the ArcGIS Pro toolbox
+
+plus the working-tree zip for the repository. Git carries the history
+— John runs `git add -A`, commit, push, and that works. **Git is not
+the install route.** Building a wheel from a clone is another
+Python-shell operation, and the Python shell is exactly what keeps
+failing.
+
+**NEVER ASK HIM TO INSTALL FROM A FOLDER OR FROM PyPI WHILE TESTING.**
+A folder install needs a shell to be in the right place; a PyPI
+install cannot be distinguished from the local build by version number
+alone — that ambiguity has now cost two full round trips.
+
+**INSTALL.md IS THE ONE DOCUMENT.** Three hosts, one verify line, and
+the shell-versus-Python check at the top, because a `SyntaxError` on a
+pip command means the user is typing into Python and NOT that anything
+is wrong with the package. That is what happened in Pro, five times in
+one log.
+
+**AND SAY WHAT IS UNTESTED, IN BOLD.** There is no arcpy in this
+environment, so no Pro instruction has EVER been executed here. Claude
+gave Pro steps four times in numbered form, reading as though
+verified. They were read from documentation. The honest label is
+"hypothesis", and the cost of omitting it fell entirely on John, who
+is not a programmer and had no way to know.
+
 ## 4. FINDINGS ADDED
 
 All of HANDOVER 11 §5 and HANDOVER 12 §3 still hold. These are new.
