@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pathlib import Path  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 sys.path.insert(0, os.path.join(ROOT, "qgis"))
@@ -1169,3 +1171,51 @@ def test_self_potential_is_honoured_by_the_qgis_door():
     far = ~((on["x"] < 100) & (on["y"] < 100))
     assert np.allclose(off.loc[far, "Dist_100"],
                        on.loc[far, "Dist_100"], rtol=1e-12)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 237. The two doors had DRIFTED on three of four tool names -
+# Pro still said "3. Continental run from a folder of rasters" long
+# after QGIS was renamed, and machines 1 and 2 differed in their
+# parenthetical. door_parity.py checked parameter NAMES but never
+# LABELS, so nothing noticed. A name in two places drifts exactly like
+# a rule in two places.
+# ---------------------------------------------------------------------
+def test_the_two_doors_call_every_tool_the_same_thing():
+    from equipop.doors.help import LABELS
+    from equipop_qgis.alg_continental import ContinentalRasters
+    from equipop_qgis.alg_counts import CountsAndShares
+    from equipop_qgis.alg_demography import SpatialDemography
+    from equipop_qgis.alg_stats import ValueStatistics
+
+    qgis = {"CountsShares": CountsAndShares().displayName(),
+            "ValueStatistics": ValueStatistics().displayName(),
+            "ContinentalRasters": ContinentalRasters().displayName(),
+            "SpatialDemography": SpatialDemography().displayName()}
+    for key, name in qgis.items():
+        assert name == LABELS[key], (
+            f"QGIS calls it {name!r}, the shared list says "
+            f"{LABELS[key]!r}")
+
+    pyt = (Path(ROOT) / "arcgis" / "EquiPop.pyt").read_text(encoding="utf-8")
+    for key, name in LABELS.items():
+        assert f'self.label = "{name}"' in pyt, (
+            f"ArcGIS Pro does not call {key} {name!r}")
+
+
+def test_the_label_is_written_down_and_not_imported():
+    """displayName runs while QGIS BUILDS THE TOOLBOX, so importing the
+    package there kills the plugin when equipop is absent - BACKLOG
+    218, reintroduced while fixing 237 and caught the same day. The
+    test above pins the written-down value against the package, which
+    is how it can be both safe and correct.
+    """
+    import re
+    for f in ("alg_counts.py", "alg_stats.py", "alg_continental.py",
+              "alg_demography.py"):
+        src = (Path(ROOT) / "qgis" / "equipop_qgis" / f).read_text(
+            encoding="utf-8")
+        m = re.search(r"def displayName\(self\):\n(?:.*\n)*?        return .*",
+                      src)
+        assert m and "import" not in m.group(0), (
+            f"{f}: displayName must not import anything")

@@ -47,8 +47,15 @@ class ValueStatistics(EquipopAlgorithm):
     def name(self):
         return "valuestatistics"
 
+    # WRITTEN DOWN, NOT IMPORTED. displayName runs while QGIS
+    # builds the toolbox, so importing the package here would
+    # kill the whole plugin when equipop is missing - BACKLOG
+    # 218, reintroduced and caught the same day. A test pins
+    # this against doors/help.LABELS so it cannot drift.
+    EQP_LABEL = "2. Value Statistics (numeric fields among the k nearest)"
+
     def displayName(self):
-        return "2. Value Statistics (k / radius)"
+        return self.EQP_LABEL
 
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterFeatureSource(

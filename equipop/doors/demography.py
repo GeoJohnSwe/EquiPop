@@ -210,6 +210,23 @@ def parse_spec(text):
         raw = raw.strip()
     if not raw:
         return {"sexes": sexes, "ages": (0, None)}
+    # TWO RANGES, comma separated: the dependency ratio's numerator is
+    # "0-14,65-" - both ends of the pyramid. INDICES expresses that as
+    # ages + plus, and a user editing the table must be able to write
+    # the same thing.
+    if "," in raw:
+        chunks = [c.strip() for c in raw.split(",") if c.strip()]
+        if len(chunks) != 2:
+            raise DemographyError(
+                f"{text!r}: give one age range, or two separated by a "
+                "comma, as in '0-14,65-'.")
+        first = parse_spec((f"{'/'.join(sexes)}:" if sexes else "")
+                           + chunks[0])
+        second = parse_spec((f"{'/'.join(sexes)}:" if sexes else "")
+                            + chunks[1])
+        return {"sexes": sexes, "ages": first["ages"],
+                "plus": second["ages"]}
+
     parts = [q.strip() for q in raw.split("-")]
     if len(parts) > 2 or not parts[0]:
         raise DemographyError(

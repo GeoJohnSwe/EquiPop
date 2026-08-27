@@ -1486,6 +1486,59 @@ appeared twice; the weaker copy is gone.*
   wrong prompt caused every install failure in this project's history,
   in all three hosts.
 
+- ~~237~~ | DONE | THE TWO DOORS HAD DRIFTED ON THREE OF FOUR TOOL
+  NAMES. Pro still said "3. Continental run from a folder of rasters"
+  long after QGIS was renamed, and machines 1 and 2 differed in their
+  parenthetical. door_parity.py checked parameter NAMES but never
+  LABELS, so nothing noticed. A NAME IN TWO PLACES DRIFTS EXACTLY LIKE
+  A RULE IN TWO PLACES.
+  doors/help.LABELS is now the one list; both doors are pinned against
+  it by test_the_two_doors_call_every_tool_the_same_thing.
+  AND FIXING IT REINTRODUCED BACKLOG 218 WITHIN THE HOUR. Claude made
+  displayName() import the package - and displayName runs while QGIS
+  BUILDS THE TOOLBOX, so the plugin would die at startup with equipop
+  absent. The existing test passed only because NOTHING CALLS
+  displayName. The label is written down in each door and pinned
+  against the package instead, and a second test forbids any import in
+  displayName.
+
+- ~~238~~ | DONE | BOX 2c OPENS SHOWING THE TRUTH. John: "the design
+  choices are hard - should be based on factual values, not user
+  entered". The settings table was free text, so an index name and an
+  age range both had to be typed from memory.
+  It now opens PRE-FILLED, one row per index, with that index's OWN
+  ages - '65-' / '0-14' for the ageing index, '0-4' / 'f:15-49' for
+  the child-woman ratio. You edit a value that is already correct.
+  test_the_table_opens_showing_the_REAL_measures proves every shown
+  cell REPRODUCES the built-in definition, so the display cannot
+  quietly disagree with what the tool computes.
+  Two gaps surfaced: parse_spec could not read TWO ranges, which the
+  dependency ratio's numerator needs ("0-14,65-"); and a table that is
+  always populated must IGNORE rows for unticked indices rather than
+  refuse them - it says so only when such a row was actually edited.
+  PRO HAS THE SAME TABLE, from the same written-down rows, pinned
+  across the two doors by reading the QGIS source rather than
+  importing it.
+
+- ~~239~~ | DONE | MACHINE 3 JOINS A POINT LAYER ONTO THE RASTER
+  LATTICE. John: "facilitate for the integration of shapefiles - i.e.
+  points can have values that can populate raster grids > merges to
+  the generated points". The engine existed since 220 and had no door.
+  Boxes 2e/2f/2g: a point layer, an optional field to SUM (blank
+  counts the points), and a column name. The door reprojects the layer
+  into the lattice's CRS - only the door knows what the layer was in -
+  and the join is on the INTEGER LATTICE INDEX, never by distance, so
+  a feature is either in a cell or it is not. Cells the layer never
+  touched carry a real 0.0, the same rule the rasters follow.
+  It needs the POINT TABLE, so box 1b must be empty; asking for it
+  during a k-run is refused with that fix named. load_folder's points
+  path now carries keep_index=True for this.
+  TWO MORE SIMULATOR GAPS: QgsGeometry had no centroid() and no
+  isEmpty(), both of which real PyQGIS has - so a door taking the
+  centroid of an input feature, which is how a POLYGON layer would
+  join, failed under test while being correct in QGIS. That file has
+  now been wrong in this way five times.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

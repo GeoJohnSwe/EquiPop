@@ -196,13 +196,26 @@ def test_an_empty_table_changes_nothing(folder):
     assert "ERROR" not in " ".join(fb.lines)
 
 
-def test_a_row_naming_an_unticked_index_is_refused(folder):
-    from qgis.core import QgsProcessingException
+def test_an_untouched_row_for_an_unticked_index_is_ignored(folder):
+    """The table now opens PRE-FILLED with every index, so rows for
+    unticked ones are normal and must not be an error."""
     alg, fb = _alg(), _Feedback()
-    with pytest.raises(QgsProcessingException, match="not ticked"):
-        alg.processAlgorithm(_params(
-            folder, indices=[1],
-            settings=["Ageing index", "70-", ""]), {}, fb)
+    from equipop_qgis.alg_demography import INDEX_ROWS
+    alg.processAlgorithm(_params(folder, indices=[1],
+                                 settings=list(INDEX_ROWS)), {}, fb)
+    assert "ERROR" not in " ".join(fb.lines)
+
+
+def test_an_EDITED_row_for_an_unticked_index_is_reported(folder):
+    """Ignoring it silently would lose the user's edit without a word."""
+    alg, fb = _alg(), _Feedback()
+    from equipop_qgis.alg_demography import INDEX_ROWS
+    rows = list(INDEX_ROWS)
+    rows[1] = "70-"                       # ageing index, not ticked
+    alg.processAlgorithm(_params(folder, indices=[1], settings=rows),
+                         {}, fb)
+    said = " ".join(fb.lines)
+    assert "not ticked" in said and "ignored" in said
 
 
 def test_a_row_naming_no_such_index_lists_the_real_ones(folder):
@@ -362,3 +375,34 @@ def test_the_projection_is_stated_in_words_not_just_stamped(folder):
     assert "THE LAYER IS IN EPSG:" in said
     assert "Layer Properties" in said, (
         "tell the user where to check when it draws in the wrong place")
+
+
+def test_the_table_opens_showing_the_REAL_measures():
+    """John: "the design choices are hard - should be based on factual
+    values, not user entered".
+
+    Every pre-filled cell must reproduce the index's own definition,
+    so the table opens showing the truth and the user EDITS a correct
+    value rather than typing one from memory. Written down in the door
+    because initAlgorithm runs while QGIS builds the dialog; pinned
+    here against the package so it cannot drift.
+    """
+    from equipop.doors.demography import (INDICES, BAND_STARTS, plan,
+                                          parse_spec)
+    from equipop_qgis.alg_demography import INDEX_NAMES, INDEX_ROWS
+
+    labels = [f"{s}_{a:02d}_2026" for s in "fm" for a in BAND_STARTS]
+    rows = [INDEX_ROWS[i:i + 3] for i in range(0, len(INDEX_ROWS), 3)]
+    assert len(rows) == len(INDEX_NAMES)
+
+    for name, (shown, nages, dages) in zip(INDEX_NAMES, rows):
+        assert shown == INDICES[name]["label"], shown
+        built_in = plan(name, labels)
+        edited = plan(name, labels, num_spec=parse_spec(nages),
+                      den_spec=parse_spec(dages))
+        assert edited["numerator"] == built_in["numerator"], (
+            f"{shown}: the shown numerator {nages!r} does not "
+            "reproduce the measure's own")
+        assert edited["denominator"] == built_in["denominator"], (
+            f"{shown}: the shown denominator {dages!r} does not "
+            "reproduce the measure's own")

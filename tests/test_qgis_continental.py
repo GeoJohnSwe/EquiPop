@@ -22,6 +22,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +70,8 @@ class _Feedback:
 
 def _params(**over):
     p = {"folder": str(FIX), "k": "500", "unit": 1000.0, "crs": None,
-         "outcrs": None, "shape": 0,
+         "outcrs": None, "shape": 0, "joinlayer": None,
+         "joinfield": "", "joinname": "joined",
          "weight": "", "sumcohorts": False, "pattern": "",
          "tiles": "TEMPORARY_OUTPUT", "OUTPUT": "memory:"}
     p.update(over)
@@ -221,3 +223,95 @@ def test_wide_is_still_the_default():
     names = [f.name() for f in params["_sinks"]["OUTPUT"]._fields]
     assert any(n.startswith("f_") for n in names)
     assert "cohort" not in names
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 238, John: "Machine 3 - Raster Data curation -> facilitate
+# for the integration of shapefiles > i.e. points can have values that
+# can populate raster grids > merges to the generated points."
+#
+# QGIS already counts points in cells and does it well. THE HARD PART
+# IS THE LATTICE: EquiPop knows the exact grid the raster points sit
+# on and QGIS does not, so a join done outside is approximate at cell
+# boundaries. Here it is exact, because the grid is ours.
+# ---------------------------------------------------------------------
+def _shops(n=12, field=None):
+    """A point layer sitting exactly on cells the rasters occupy."""
+    import contextlib
+    import io
+    import pandas as pd
+    from equipop.rasterfolder import load_folder
+    from qgis_stub import _Source
+    with contextlib.redirect_stdout(io.StringIO()):
+        pts, _ = load_folder(str(FIX), keep_index=True)
+    take = pts.sample(n, random_state=9)
+    t = pd.DataFrame({"x": take["lon"].to_numpy(),
+                      "y": take["lat"].to_numpy()})
+    if field:
+        t[field] = np.arange(1.0, n + 1.0)
+    return _Source(t, crs="EPSG:4326"), take
+
+
+def test_a_point_layer_becomes_a_column_on_the_raster_points():
+    src, take = _shops()
+    alg, fb = _alg(), _Feedback()
+    params = _params(k="", joinlayer=src, joinfield="", joinname="shops")
+    alg.processAlgorithm(params, {}, fb)
+    names = [f.name() for f in params["_sinks"]["OUTPUT"]._fields]
+    assert "shops" in names, names
+    said = " ".join(fb.lines)
+    assert "LATTICE INDEX" in said and "not by" in said
+
+
+def test_the_join_is_exact_not_approximate():
+    """Every shop must land on the cell it was taken from."""
+    src, take = _shops(n=15)
+    alg, fb = _alg(), _Feedback()
+    params = _params(k="", joinlayer=src, joinfield="", joinname="shops")
+    alg.processAlgorithm(params, {}, fb)
+    feats = params["_sinks"]["OUTPUT"].features
+    i = [f.name() for f in params["_sinks"]["OUTPUT"]._fields].index("shops")
+    hit = sum(1 for f in feats if float(f.attributes()[i]) > 0)
+    assert hit == len(take), f"{hit} cells hold a shop, expected {len(take)}"
+
+
+def test_cells_the_layer_never_touched_carry_a_real_zero():
+    src, take = _shops(n=6)
+    alg, fb = _alg(), _Feedback()
+    params = _params(k="", joinlayer=src, joinfield="", joinname="shops")
+    alg.processAlgorithm(params, {}, fb)
+    sink = params["_sinks"]["OUTPUT"]
+    i = [f.name() for f in sink._fields].index("shops")
+    vals = [float(f.attributes()[i]) for f in sink.features]
+    assert min(vals) == 0.0 and sum(vals) == 6.0
+    assert all(v is not None for v in vals), "0.0, not an absence"
+
+
+def test_a_field_is_SUMMED_rather_than_counted():
+    src, take = _shops(n=8, field="beds")
+    alg, fb = _alg(), _Feedback()
+    params = _params(k="", joinlayer=src, joinfield="beds",
+                     joinname="beds")
+    alg.processAlgorithm(params, {}, fb)
+    sink = params["_sinks"]["OUTPUT"]
+    i = [f.name() for f in sink._fields].index("beds")
+    assert sum(float(f.attributes()[i]) for f in sink.features) == \
+        pytest.approx(sum(range(1, 9)))
+
+
+def test_no_layer_means_no_extra_column():
+    alg, fb = _alg(), _Feedback()
+    params = _params(k="")
+    alg.processAlgorithm(params, {}, fb)
+    names = [f.name() for f in params["_sinks"]["OUTPUT"]._fields]
+    assert "joined" not in names
+
+
+def test_joining_during_a_NEIGHBOURHOOD_run_is_refused_with_the_fix():
+    """The join needs the point table, which a k-run does not produce."""
+    from qgis.core import QgsProcessingException
+    src, _ = _shops(n=4)
+    alg, fb = _alg(), _Feedback()
+    with pytest.raises(QgsProcessingException, match="leave box"):
+        alg.processAlgorithm(_params(k="500", joinlayer=src,
+                                     joinfield="", joinname="s"), {}, fb)

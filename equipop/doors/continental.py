@@ -155,9 +155,14 @@ def run_folder(folders, *, k_values=None, r_values=None,
     if points_only:
         from ..rasterfolder import load_folder
         with (speaking(channel) if channel is not None else _null()):
+            # keep_index=True so the LATTICE JOIN can attach a point
+            # layer exactly (BACKLOG 238). The indices are machinery,
+            # but the points path is the one a join consumes and they
+            # cost two integer columns.
             pts, man = load_folder(
                 folders, sum_cohorts=sum_cohorts, keep_zero=keep_zero,
-                convention=convention, labels=labels, pattern=pattern)
+                keep_index=True, convention=convention, labels=labels,
+                pattern=pattern)
         man["points_table"] = pts
         man["seconds_loading"] = round(time.time() - t0, 1)
         cols = [c for c in pts.columns if c not in ("lon", "lat")]

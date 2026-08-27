@@ -221,3 +221,57 @@ def test_a_folder_that_is_not_there_is_refused_in_plain_words(tmp_path):
                              unit=1000.0, weight="sexes",
                              out=str(tmp_path / "x.shp")),
                      _Messages())
+
+
+def test_pro_offers_the_same_pre_filled_measure_table_as_qgis():
+    """John: "In Pro, these options are not available > they should".
+
+    Same table, same cells, same meaning - and every cell reproduces
+    the measure's own definition, so it opens showing the truth rather
+    than asking the user to type from memory.
+    """
+    # Read the QGIS door as TEXT - importing it would need the QGIS
+    # simulator, and this test lives on the arcpy side.
+    import ast
+    qsrc = (ROOT / "qgis" / "equipop_qgis"
+            / "alg_demography.py").read_text(encoding="utf-8")
+    qrows = next(ast.literal_eval(n.value)
+                 for n in ast.parse(qsrc).body
+                 if isinstance(n, ast.Assign)
+                 and getattr(n.targets[0], "id", "") == "INDEX_ROWS")
+    pyt = _pyt()
+    assert list(pyt.INDEX_ROWS) == list(qrows), (
+        "the two doors show different measure tables")
+
+    ps = pyt.SpatialDemography().getParameterInfo()
+    tab = [p for p in ps if p.name == "settings"][0]
+    assert [c[1] for c in tab.columns] == ["Index", "Numerator ages",
+                                           "Denominator ages"]
+    assert len(tab.value) == 4
+
+
+def test_pro_honours_an_edited_measure(folder, tmp_path):
+    pyt, tool, state = _tool("SpatialDemography")
+    ps = _params(tool, folder=folder, indices="Child-woman ratio",
+                 k="500", unit=1000.0, out=str(tmp_path / "e.shp"))
+    by = {p.name: p for p in ps}
+    rows = [list(r) for r in (pyt.INDEX_ROWS[i:i + 3]
+                              for i in range(0, len(pyt.INDEX_ROWS), 3))]
+    rows[1][2] = "f:15-44"                      # child-woman, edited
+    by["settings"].value = rows
+    msg = _Messages()
+    tool.execute(ps, msg)
+    said = " ".join(msg.log)
+    plan_lines = [l for l in msg.log if l.startswith("   divided by")]
+    assert plan_lines and "f_40_2026" in plan_lines[-1]
+    assert "f_45_2026" not in plan_lines[-1], plan_lines[-1]
+
+
+def test_the_two_doors_agree_on_every_tool_name():
+    """BACKLOG 237 - they had drifted on three of four."""
+    from equipop.doors.help import LABELS
+    pyt = _pyt()
+    for cls in pyt.Toolbox().tools:
+        label = cls().label
+        assert label in LABELS.values(), (
+            f"Pro calls a tool {label!r}, which is not in the shared list")

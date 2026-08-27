@@ -343,6 +343,21 @@ HELP = {
             "P10_<field>_k and so on.",
 }
 
+# THE TOOL NAMES, in one place. BACKLOG 237: the two doors had drifted
+# on three of four - Pro still said "3. Continental run from a folder
+# of rasters" after QGIS was renamed, and machines 1 and 2 differed in
+# their parenthetical. door_parity.py checked parameter NAMES but not
+# LABELS, so nothing noticed. A name in two places drifts, exactly like
+# a rule in two places.
+LABELS = {
+    "CountsShares": "1. Counts and Shares (k / radius / decay)",
+    "ValueStatistics": "2. Value Statistics (numeric fields among the "
+                       "k nearest)",
+    "ContinentalRasters": "3. Raster Data Curation",
+    "SpatialDemography": "4. Spatial Demographic Analysis",
+}
+
+
 SUMMARY = {
     "CountsShares":
         "Builds an egocentric neighbourhood around EVERY point and "

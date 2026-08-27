@@ -23,6 +23,8 @@ from qgis.core import (QgsCoordinateReferenceSystem, QgsFeature, QgsField,
                        QgsProcessingParameterCrs,
                        QgsProcessingParameterEnum,
                        QgsProcessingParameterFeatureSink,
+                       QgsProcessingParameterFeatureSource,
+                       QgsProcessingParameterField,
                        QgsProcessingParameterFile,
                        QgsProcessingParameterFolderDestination,
                        QgsProcessingParameterNumber,
@@ -42,14 +44,15 @@ class ContinentalRasters(EquipopAlgorithm):
     def name(self):
         return "continentalrasters"
 
+    # WRITTEN DOWN, NOT IMPORTED. displayName runs while QGIS
+    # builds the toolbox, so importing the package here would
+    # kill the whole plugin when equipop is missing - BACKLOG
+    # 218, reintroduced and caught the same day. A test pins
+    # this against doors/help.LABELS so it cannot drift.
+    EQP_LABEL = "3. Raster Data Curation"
+
     def displayName(self):
-        # John's rename. The k box defaults to BLANK, so the tool's default
-        # behaviour IS curation - rasters in, points out. The
-        # neighbourhood run is a shortcut so a continental job need not
-        # write eleven million points to disk and read them back to get
-        # Dist_k. The name describes what it does unless you ask for
-        # more, which is the right way round.
-        return "3. Raster Data Curation"
+        return self.EQP_LABEL
 
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterFile(
@@ -85,6 +88,26 @@ class ContinentalRasters(EquipopAlgorithm):
         # what scales - 11.5 million points x 60 cohorts would be 690
         # MILLION rows long. Long is the tidier shape to read, so it
         # is offered, not imposed.
+        # BACKLOG 220/238 (John): "facilitate for the integration of
+        # shapefiles - i.e. points can have values that can populate
+        # raster grids > merges to the generated points."
+        # QGIS already counts points in cells and does it well. THE
+        # HARD PART IS THE LATTICE: EquiPop knows the exact grid the
+        # raster points sit on and QGIS does not, so a join done
+        # outside is approximate at cell boundaries. Here it is exact,
+        # because the grid is ours.
+        self.add(QgsProcessingParameterFeatureSource(
+            "joinlayer", "2e. A point layer to put on the same grid "
+                         "(shops, clinics, stops...)",
+            types=[0], optional=True), advanced=True)
+        self.add(QgsProcessingParameterField(
+            "joinfield", "2f. Which field to add up (blank = count "
+                         "the points)",
+            parentLayerParameterName="joinlayer", optional=True),
+            advanced=True)
+        self.add(QgsProcessingParameterString(
+            "joinname", "2g. Name for the new column",
+            defaultValue="joined", optional=True), advanced=True)
         self.add(QgsProcessingParameterEnum(
             "shape", "3c. Table shape",
             options=["Wide - one column per cohort",
@@ -158,6 +181,8 @@ class ContinentalRasters(EquipopAlgorithm):
             # Python traceback where a sentence belonged.
             raise QgsProcessingException(str(exc))
 
+        man = self._join(parameters, context, man, ch)
+
         if "points_table" in man:
             if self.parameterAsEnum(parameters, "shape", context) == 1:
                 from equipop.rasterfolder import to_long
@@ -177,6 +202,65 @@ class ContinentalRasters(EquipopAlgorithm):
                                       feedback)}
 
     # -----------------------------------------------------------------
+    def _join(self, parameters, context, man, ch):
+        """Snap an optional point layer onto the raster lattice."""
+        src = self.parameterAsSource(parameters, "joinlayer", context)
+        if src is None:
+            return man
+        from equipop.latticejoin import (join_to_points, lattice_of,
+                                         snap_to_lattice)
+
+        table = man.get("points_table")
+        if table is None or "gx" not in table.columns:
+            raise QgsProcessingException(
+                "The lattice join needs the point table, so leave box "
+                "1b (neighbourhood sizes) empty. Run the join first, "
+                "then feed the result to machine 1.")
+
+        field = (self.parameterAsString(parameters, "joinfield",
+                                        context) or "").strip()
+        name = (self.parameterAsString(parameters, "joinname",
+                                       context) or "joined").strip()
+        lat = lattice_of(self.parameterAsFile(parameters, "folder",
+                                              context))
+        # THE LAYER MUST BE IN THE LATTICE'S OWN CRS. Reprojecting is
+        # the door's job - only the door knows what the layer was in.
+        from qgis.core import (QgsCoordinateReferenceSystem,
+                               QgsCoordinateTransform, QgsProject)
+        want = QgsCoordinateReferenceSystem(lat["crs"])
+        tr = (QgsCoordinateTransform(src.sourceCrs(), want,
+                                     QgsProject.instance())
+              if src.sourceCrs() != want else None)
+
+        xs, ys, vals = [], [], []
+        for f in src.getFeatures():
+            g = f.geometry()
+            if g is None or g.isEmpty():
+                continue
+            pt = g.centroid().asPoint()
+            if tr is not None:
+                pt = tr.transform(pt)
+            xs.append(pt.x())
+            ys.append(pt.y())
+            if field:
+                v = f[field]
+                vals.append(float(v) if v is not None else 0.0)
+        if not xs:
+            raise QgsProcessingException(
+                "That layer has no usable point geometry.")
+
+        snapped = snap_to_lattice(
+            xs, ys, lattice=lat, name=name,
+            values=vals if field else None,
+            how="sum" if field else "count")
+        man["points_table"] = join_to_points(table, snapped, name)
+        ch.info(f"{len(xs):,} features -> {len(snapped):,} cells, "
+                f"column {name!r}. Joined on the LATTICE INDEX, not by "
+                "distance, so a feature is either in a cell or it is "
+                "not - and cells the layer never touched carry a real "
+                "0.0, the same rule the rasters follow.")
+        return man
+
     @staticmethod
     def _numbers(text, box):
         """'100 1000' or '100, 1000' -> [100, 1000], or refuse by name."""

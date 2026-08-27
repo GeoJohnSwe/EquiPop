@@ -45,6 +45,21 @@ INDEX_NAMES = ["ageing_index", "child_woman_ratio", "dependency_ratio",
 INDEX_LABELS = ["Ageing index", "Child-woman ratio",
                 "Dependency ratio", "Sex ratio"]
 
+# THE TABLE OPENS SHOWING THE TRUTH (John: "the design choices are
+# hard - should be based on factual values, not user entered"). One
+# row per index, pre-filled with that index's OWN ages, so nothing has
+# to be typed or remembered: you edit a value that is already correct.
+# Written down rather than read from the package, for the same reason
+# as INDEX_NAMES - initAlgorithm runs while QGIS builds the dialog and
+# the plugin must load without equipop. A test pins every cell against
+# the package's own definitions.
+INDEX_ROWS = [
+    "Ageing index",      "65-",      "0-14",
+    "Child-woman ratio", "0-4",      "f:15-49",
+    "Dependency ratio",  "0-14,65-", "15-64",
+    "Sex ratio",         "m:",       "f:",
+]
+
 
 def _index_names():
     """Sorted so the tick-box order is stable between QGIS sessions."""
@@ -59,8 +74,15 @@ class SpatialDemography(EquipopAlgorithm):
     def name(self):
         return "spatialdemography"
 
+    # WRITTEN DOWN, NOT IMPORTED. displayName runs while QGIS
+    # builds the toolbox, so importing the package here would
+    # kill the whole plugin when equipop is missing - BACKLOG
+    # 218, reintroduced and caught the same day. A test pins
+    # this against doors/help.LABELS so it cannot drift.
+    EQP_LABEL = "4. Spatial Demographic Analysis"
+
     def displayName(self):
-        return "4. Spatial Demographic Analysis"
+        return self.EQP_LABEL
 
     def initAlgorithm(self, config=None):
         names = _index_names()
@@ -101,6 +123,8 @@ class SpatialDemography(EquipopAlgorithm):
             "alter. Ages as '0-4', '65-', or 'f:15-49'. Leave a cell "
             "empty to keep that half as it is.",
             headers=["Index", "Numerator ages", "Denominator ages"],
+            defaultValue=list(INDEX_ROWS),
+            numberRows=len(INDEX_NAMES), hasFixedNumberRows=True,
             optional=True), advanced=True)
         self.add(QgsProcessingParameterCrs(
             "outcrs", "2e. Write the output in (blank = the same "
@@ -135,7 +159,7 @@ class SpatialDemography(EquipopAlgorithm):
 
         # Editing the columns only makes sense for ONE index - with
         # several ticked there is no way to say which they belong to.
-        over = self._settings(parameters, context, picked)
+        over = self._settings(parameters, context, picked, ch)
 
         epsg = None
         crs = self.parameterAsCrs(parameters, "crs", context)
@@ -161,7 +185,7 @@ class SpatialDemography(EquipopAlgorithm):
                                       context, feedback)}
 
     # -----------------------------------------------------------------
-    def _settings(self, parameters, context, picked):
+    def _settings(self, parameters, context, picked, ch=None):
         """The per-index table -> {index: {"numerator_ages": ...}}.
 
         Rows come back flat, three cells at a time, because that is
@@ -195,10 +219,18 @@ class SpatialDemography(EquipopAlgorithm):
                     + "; ".join(INDICES[k]["label"] for k in
                                 sorted(INDICES)))
             if key not in picked:
-                raise QgsProcessingException(
-                    f"Box 2c changes {INDICES[key]['label']!r}, but it "
-                    "is not ticked in box 1b. Tick it, or take the row "
-                    "out.")
+                # The table now opens PRE-FILLED with every index, so
+                # rows for unticked ones are normal and must not be an
+                # error. Say so only if the row was actually edited.
+                default = dict(zip(INDEX_NAMES,
+                                   [INDEX_ROWS[i:i + 3]
+                                    for i in range(0, len(INDEX_ROWS), 3)]
+                                   ))[key][1:]
+                if [nages, dages] != list(default) and ch:
+                    ch.warning(
+                        f"Box 2c changes {INDICES[key]['label']}, which "
+                        "is not ticked in box 1b - the row was ignored.")
+                continue
             row = {}
             for cell, half in ((nages, "numerator_ages"),
                                (dages, "denominator_ages")):

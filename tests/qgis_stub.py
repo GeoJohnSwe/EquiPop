@@ -52,6 +52,20 @@ class QgsGeometry:
             raise ValueError("geometry is empty")
         return self._pt
 
+    def centroid(self):
+        """Real PyQGIS has this on every geometry; the simulator did
+        not, so a door taking the centroid of an input feature - which
+        is how a POLYGON layer joins to a point lattice - failed here
+        while being correct in QGIS. Another gap of the same family as
+        the discarded sink CRS.
+        """
+        if self._pt is None:
+            raise ValueError("geometry is empty")
+        return QgsGeometry(self._pt)
+
+    def isEmpty(self):
+        return self._pt is None and not self._parts
+
     def isEmpty(self):
         return self._pt is None and not self._parts
 

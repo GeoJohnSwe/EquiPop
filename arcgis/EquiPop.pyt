@@ -2425,7 +2425,7 @@ class ContinentalRasters:
     """
 
     def __init__(self):
-        self.label = "3. Continental run from a folder of rasters"
+        self.label = "3. Raster Data Curation"
         from equipop.doors.help import SUMMARY
         self.description = SUMMARY["ContinentalRasters"]
 
@@ -2492,6 +2492,18 @@ class ContinentalRasters:
         _write_points(table, man, pm["out"].valueAsText, messages)
 
 
+# The tick-box list and the pre-filled measure table, WRITTEN DOWN.
+# getParameterInfo runs while Pro builds the dialog and the toolbox
+# must still open when equipop is absent. A test pins both against the
+# package's own definitions.
+INDEX_ROWS = [
+    "Ageing index",      "65-",      "0-14",
+    "Child-woman ratio", "0-4",      "f:15-49",
+    "Dependency ratio",  "0-14,65-", "15-64",
+    "Sex ratio",         "m:",       "f:",
+]
+
+
 class SpatialDemography:
     """MACHINE 4 for Pro. BACKLOG 235.
 
@@ -2527,8 +2539,22 @@ class SpatialDemography:
               _p("crs", "Projection to work in (blank = suggested)",
                  "GPCoordinateSystem", required=False,
                  category="Advanced"),
+              _p("settings", "Change a measure - one row per index. "
+                 "Ages as '0-4', '65-', 'f:15-49', or two ranges "
+                 "'0-14,65-'. Edit a cell to alter that half.",
+                 "GPValueTable", required=False, category="Advanced"),
               _p("out", "Output feature class", "DEFeatureClass",
                  direction="Output")]
+        # PARITY WITH QGIS (John: "In Pro, these options are not
+        # available > they should"). Same table, same pre-filled
+        # values, same meaning - and the values are the measures' own,
+        # so the table opens showing the truth.
+        ps[-2].columns = [["GPString", "Index"],
+                          ["GPString", "Numerator ages"],
+                          ["GPString", "Denominator ages"]]
+        ps[-2].value = [list(r) for r in
+                        (INDEX_ROWS[i:i + 3]
+                         for i in range(0, len(INDEX_ROWS), 3))]
         ps[1].filter.type = "ValueList"
         ps[1].filter.list = names
         ps[1].multiValue = True
@@ -2566,12 +2592,38 @@ class SpatialDemography:
                     f"'{piece}' is not a number. Give one or more "
                     "whole numbers of people, separated by spaces.")
 
+        over = {}
+        rows = pm["settings"].value or []
+        by_label = {v["label"]: k for k, v in INDICES.items()}
+        default = {r[0]: r[1:] for r in
+                   (INDEX_ROWS[i:i + 3]
+                    for i in range(0, len(INDEX_ROWS), 3))}
+        for row in rows:
+            row = [str(c or "").strip() for c in row]
+            if len(row) < 3 or row[0] not in by_label:
+                continue
+            key = by_label[row[0]]
+            if key not in picked:
+                if row[1:3] != list(default[row[0]]):
+                    messages.addWarningMessage(
+                        f"{row[0]} was changed but is not ticked - the "
+                        "row was ignored.")
+                continue
+            edit = {}
+            if row[1]:
+                edit["numerator_ages"] = row[1]
+            if row[2]:
+                edit["denominator_ages"] = row[2]
+            if edit:
+                over[key] = edit
+
         try:
             man = run_indices(
                 _txt(pm, "folder"), picked, k_values=ks,
                 unit_size=_num(pm, "unit", 1000.0) or 1000.0,
                 year=_txt(pm, "year") or None,
-                epsg=_epsg_of(pm.get("crs")), channel=ch)
+                epsg=_epsg_of(pm.get("crs")),
+                overrides=over or None, channel=ch)
         except (DemographyError, ContinentalError, ValueError) as exc:
             raise arcpy.ExecuteError(str(exc))
 
