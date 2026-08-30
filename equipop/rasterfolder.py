@@ -217,7 +217,26 @@ def load_folder(folders, compose: dict | None = None,
             t, nod = r.transform, r.nodata
             if ref is None:
                 ref = {"a": t.a, "e": t.e, "c": t.c, "f": t.f,
-                       "crs": str(r.crs)}
+                       "crs": str(r.crs), "first": stem}
+            elif str(r.crs) != ref["crs"]:
+                # BACKLOG 239, external review of 1.43, and a RELEASE
+                # BLOCKER for worldwide work. The lattice check below
+                # compares pixel size and origin - both PURE NUMBERS -
+                # and says nothing about which world those numbers
+                # describe. Two rasters whose transforms agree
+                # numerically were merged as if they occupied the same
+                # ground, and the manifest then reported ONE crs, so
+                # the run's own provenance record hid it.
+                # 30.0 in EPSG:4326 is a longitude in Burundi; 30.0 in
+                # EPSG:3857 is thirty METRES from Greenwich. Roughly
+                # 3,300 km apart, stacked into one cell, silently.
+                raise ValueError(
+                    f"{stem} is in {r.crs}, but the first raster read "
+                    f"({ref['first']}) is in {ref['crs']}. Their pixel "
+                    "coordinates are numbers in DIFFERENT WORLDS and "
+                    "cannot be combined - a longitude and a Mercator "
+                    "metre are not the same 30.0. Reproject them to a "
+                    "common CRS first, or load them as separate runs.")
             elif abs(t.a - ref["a"]) > 1e-12 or abs(t.e - ref["e"]) > 1e-12:
                 raise ValueError(
                     f"{stem}: pixel size {t.a} does not match the first "

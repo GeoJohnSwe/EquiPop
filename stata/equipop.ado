@@ -1,4 +1,4 @@
-*! equipop v1.43.0  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.43.1  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -8,16 +8,15 @@
 *! Requires Stata 17+, Python configured (python query), and the
 *! Python package installed in THAT Python. See help equipop.
 *!
-*! v1.37 keeps pyproj and matplotlib out of Stata's Python, and adds
-*! -equipop doctor- for when the Python itself is the problem.
-*! v1.36 makes the command behave like a Stata command: [if] [in],
-*! native [fweight=], returned results in r(), and prefix().
+*! Behaves like a Stata command: [if] [in], native [fweight=],
+*! returned results in r(), and prefix(). -equipop doctor- reports on
+*! the Python itself; -equipop setup- installs or updates the engine.
 
 program define equipop, rclass
     version 17
 
     * ---- -equipop doctor- --------------------------------------
-    * BACKLOG 128. A read-only report on the Python Stata is using
+    * A read-only report on the Python Stata is using
     * and the libraries EquiPop needs. This is the FIRST thing the
     * program does, for two reasons: it has to work on a machine
     * where nothing else does, and it must not be made to supply
@@ -25,7 +24,7 @@ program define equipop, rclass
     *
     * The two failures it exists for both happen BEFORE any EquiPop
     * code is reached, so neither can produce an EquiPop error: a
-    * library built for the wrong processor (Umut's Mac, 1.37) and
+    * library built for the wrong processor, and
     * two copies of one maths library in a process (Stata plus
     * Anaconda on Windows, 1.35).
     gettoken eqp_sub eqp_rest : 0, parse(" ,")
@@ -79,7 +78,7 @@ program define equipop, rclass
             BINS(integer 10) OVERshoot(string) REPLACE]
 
     * ---- projection -------------------------------------------
-    * John's ruling, 1.37: a professional spatial analyst has their
+    * Design rule: a professional spatial analyst has their
     * own routines and does not need this. It is for the economist or
     * statistician who has lat/long and has never been asked to think
     * past it - for whom being forced to project first is a blocker
@@ -95,7 +94,7 @@ program define equipop, rclass
     }
 
     * ---- the sample -------------------------------------------
-    * John's ruling, 1.36: [if] and [in] restrict the ROWS THAT GET
+    * Design rule: [if] and [in] restrict the ROWS THAT GET
     * RESULTS. They do NOT restrict who counts as a neighbour - that
     * is the reference-population ladder's job and it is a different
     * question. `equipop if urban==1` computes for urban origins,
@@ -104,7 +103,7 @@ program define equipop, rclass
     * novarlist matters: without it marksample also drops any row
     * with a missing value among the variables, which would quietly
     * shrink the population. Missing handling is EquiPop's own
-    * (BACKLOG 168) and the two must not fight. His rule was: use
+    * and the two must not fight. The rule is: use
     * Stata's own commands where we can, not where it jeopardises
     * our code - this is the seam between the two.
     * zeroweight matters for the same reason. Without it, marksample
@@ -139,7 +138,7 @@ program define equipop, rclass
     }
 
     * ---- distance decay ----------------------------------------
-    * Words, not numbers, throughout - John's ruling: a do-file read
+    * Words, not numbers, throughout: a do-file read
     * six months later has to say what it did.
     if "`decay'" != "" {
         * The five the engine actually implements. The door may not
@@ -174,7 +173,7 @@ program define equipop, rclass
     }
 
     * ---- the overshoot: the ring of cells that crosses k ---------
-    * BACKLOG 99. `sampled` is REFUSED BY NAME rather than ignored.
+    * `sampled` is REFUSED BY NAME rather than ignored.
     * John's reason: it exists only to reproduce old EquiPop versions,
     * so it is not a Stata concern at all. Refusing it by name also
     * drops the need for a seed option, since sampled is the one mode
@@ -194,11 +193,10 @@ program define equipop, rclass
     }
 
     * ---- what treat() CONTAINS ---------------------------------
-    * External review of 1.36, confirmed by reproduction: the help and
-    * both GIS doors said treat() holds the group's PERSON COUNT, the
-    * bridge applied the legacy 0/1-flag rule, and a user who followed
-    * the help got a group three times larger than the neighbourhood
-    * containing it. John's ruling, 1.37.1: counts are the default,
+    * The help and both GIS doors said treat() holds the group's
+    * PERSON COUNT, while the bridge applied the legacy 0/1-flag rule.
+    * A user who followed the help got a group three times larger than
+    * the neighbourhood containing it. Counts are the default now,
     * matching the help and the GIS doors; flags stay available by
     * name so nothing already written breaks.
     if "`treatmode'" == "" local treatmode "counts"
@@ -212,7 +210,7 @@ program define equipop, rclass
     }
 
     * ---- cell size ---------------------------------------------
-    * BACKLOG 155: fractional cell sizes are REFUSED, because the core
+    * Fractional cell sizes are REFUSED, because the core
     * converts cell centres to integers - a requested 2.5 gives centres
     * 1, 3, 6, so the spacings come out 2 and 3 and neither is 2.5.
     * QGIS and Pro have refused this since 1.29.8. Stata did not, and
@@ -288,7 +286,7 @@ program define equipop, rclass
         }
         if "`r'" != "" {
             foreach rr of numlist `r' {
-                * BACKLOG 113: `rl' is the underscore-safe name -
+                * `rl' is the underscore-safe name -
                 * r=1.5 becomes r1_5, because a dot cannot appear in
                 * a Stata variable name.
                 local rl : subinstr local rr "." "_", all
@@ -303,7 +301,7 @@ program define equipop, rclass
         }
     }
 
-    * BACKLOG 172. Every option is passed BY NAME, and the receiving
+    * Every option is passed BY NAME, and the receiving
     * function is keyword-only. Up to v1.34 this was a positional
     * call, and that is how the door broke for eleven releases: an
     * option was added to the syntax line and to the call, and the
@@ -318,7 +316,7 @@ program define equipop, rclass
         overshoot="`overshoot'")
 
     * ---- returned results -------------------------------------
-    * BACKLOG 174. r(varlist) is the one that changes how the
+    * r(varlist) is the one that changes how the
     * command can be used: -regress y `r(varlist)'- and loops over
     * several k stop needing hand-written variable names.
     local created "`eqp_varlist'"
@@ -372,7 +370,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.43.0"
+    local eqp_ado_version "1.43.1"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -380,7 +378,7 @@ version 17
 python:
 # --- thin sfi glue; all computation lives in equipop.stata_bridge ----
 # Keep this block as SMALL as possible. Code in here can only be run
-# by Stata, so pytest cannot reach it - that is what let BACKLOG 172
+# by Stata, so the Python test suite cannot reach it - which is how
 # and 173 survive. Everything that can live in the package does.
 # What must stay here is READ by tests/test_stata_ado.py.
 from sfi import Data, Macro, SFIToolkit
@@ -505,7 +503,7 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
 
     existing = [Data.getVarName(i) for i in range(Data.getVarCount())]
 
-    # PREFLIGHT, external review of 1.36. Every intended name is
+    # PREFLIGHT. Every intended name is
     # checked BEFORE any variable is created. Until 1.38 the check ran
     # inside the writing loop, so a collision or an over-long name on
     # the tenth variable left nine already in the dataset - a run that

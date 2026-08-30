@@ -225,6 +225,44 @@ verified. They were read from documentation. The honest label is
 "hypothesis", and the cost of omitting it fell entirely on John, who
 is not a programmer and had no way to know.
 
+## 3c. ANYTHING THAT TOUCHES THE NETWORK PRODUCES FILES AND STOPS
+
+**JOHN'S RULING**, on whether a WorldPop API connector would make the
+toolbox inconsistent: **it would, unless the network is kept out of
+every analysis tool.**
+
+Machines 1 to 4 share a property that matters more than being
+source-independent: **given the same inputs they produce the same
+outputs, offline, forever.** A downloader does not. The same call next
+year may return revised estimates; the service may be down; WorldPop's
+ordinary API is rate-limited to 1,000 calls a day; and the API changes
+on their schedule, not ours.
+
+Put a Download button inside machine 4 and the whole tool loses that
+property. **A published result becomes unreproducible without the
+network and without the provider serving identical bytes.** That is a
+serious thing to give up in a research instrument.
+
+**THE RULE:** a fetching tool downloads into a folder, writes a
+MANIFEST recording exactly what was fetched, when, from which product
+version, with which citation - and then ENDS. Machine 3 reads that
+folder exactly as it reads any other. Machines 1, 2 and 4 never learn
+that WorldPop exists.
+
+Two details make it honest rather than merely tidy:
+
+- **NAME IT FOR WHAT IT IS.** "Get WorldPop data" is truthfully
+  source-specific. The inconsistency John feared would come from a
+  GENERAL-LOOKING tool that secretly required one provider.
+- **THE MANIFEST IS THE DELIVERABLE, not the files.** Without a record
+  of product version and fetch date, a downloaded raster is LESS
+  reproducible than one a colleague emailed.
+
+This is the same separation the project already uses everywhere: doors
+do not compute, the spine does not draw, machine 3 curates and machine
+4 analyses. **A fetcher is a fifth kind of responsibility, not a
+feature of a fourth.**
+
 ## 4. FINDINGS ADDED
 
 All of HANDOVER 11 §5 and HANDOVER 12 §3 still hold. These are new.

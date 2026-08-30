@@ -217,3 +217,37 @@ def test_the_output_is_what_fca_wants_as_supply(points):
     supply = got.rename(columns={"lon": "x", "lat": "y"})
     assert {"x", "y", "shops"} <= set(supply.columns)
     assert len(supply) == 8
+
+
+def test_the_lattice_reports_the_crs_the_caller_must_honour():
+    """BACKLOG 239, one level up: a coordinate is a pair of numbers and
+    carries no world with it. Passing metres to a degree lattice puts
+    everything in one cell near the origin without complaint, so the
+    CRS has to be available for the caller to check."""
+    L = lattice_of(FIX)
+    assert L["crs"] == "EPSG:4326"
+    assert "from" in L, "say WHICH raster defined the grid"
+
+
+def test_metres_against_a_degree_lattice_give_absurd_indices():
+    """The failure this cannot prevent, pinned so it is documented.
+
+    Nothing here can know what the caller's numbers mean. What it CAN
+    do is report its own CRS, which it does.
+
+    Claude PREDICTED these would collapse into one cell. They do not -
+    they produce lattice indices in the hundreds of millions, because
+    166,500 metres read as degrees is 166,500 degrees. That is the
+    LOUDER failure and the better one, but the prediction was wrong
+    and the test now records what actually happens.
+    """
+    L = lattice_of(FIX)
+    got = _snap(np.array([166500.0, 166600.0, 166700.0]),
+                np.array([9778500.0, 9778600.0, 9778700.0]),
+                like=FIX, name="n")
+    assert len(got) == 3
+    assert got["gx"].abs().min() > 1_000_000, (
+        "indices this large mean the coordinates were not in the "
+        "lattice's CRS - a sanity check a caller can apply")
+    assert abs(got["lon"]).max() > 180, (
+        "and the resulting 'longitude' is off the planet")

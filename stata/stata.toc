@@ -5,6 +5,6 @@ d Individual, overlapping neighbourhoods measured in PEOPLE rather
 d than in rows, so they cut across administrative boundaries instead
 d of being bound by them.
 d
-d John Osth, OsloMet
+d John Östh, OsloMet
 d https://github.com/GeoJohnSwe/EquiPop
 p equipop

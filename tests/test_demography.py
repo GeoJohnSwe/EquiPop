@@ -342,3 +342,52 @@ def test_the_refusal_shows_the_form_that_works():
     with pytest.raises(DemographyError) as e:
         parse_spec("fifteen to forty-nine")
     assert "'15-49'" in str(e.value)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 238. External review of 1.43: "a small Machine 4 age-setting
+# parser defect affecting a combined-sex, two-range expression such as
+# fm:0-14,65-".
+#
+# Correct. The recursion that re-parses each half rebuilt the sex
+# prefix with '/'.join(sexes), producing 'f/m:0-14' - and '/' is not a
+# sex, so the user was refused with a message naming a character they
+# never typed. A comma range worked WITHOUT a sex and failed WITH one.
+# ---------------------------------------------------------------------
+@pytest.mark.parametrize("spec,sexes", [
+    ("0-14,65-", None),
+    ("f:0-14,65-", ("f",)),
+    ("m:0-14,65-", ("m",)),
+    ("fm:0-14,65-", ("f", "m")),
+    ("t:0-14,65-", ("t",)),
+])
+def test_two_ranges_work_with_and_without_a_sex(spec, sexes):
+    got = parse_spec(spec)
+    assert got["sexes"] == sexes
+    assert got["ages"] == (0, 14) and got["plus"] == (65, None)
+
+
+def test_a_two_range_edit_selects_both_ends_of_the_pyramid():
+    got = plan("dependency_ratio", _labels(),
+               num_spec=parse_spec("fm:0-14,65-"))
+    ages = sorted({int(c.split("_")[1]) for c in got["numerator"]})
+    assert ages == [0, 1, 5, 10, 65, 70, 75, 80, 85, 90], ages
+
+
+def test_a_refusal_never_names_a_character_the_user_did_not_type():
+    """The shape of the defect, not just the instance. A message that
+    quotes something absent from the input sends the reader hunting
+    for a typo they did not make."""
+    for spec in ("fm:0-14,65-", "f:0-4", "65-", "0-14,65-"):
+        try:
+            parse_spec(spec)
+        except DemographyError as e:
+            for ch in str(e):
+                if ch in "'\"":
+                    continue
+            assert "/" not in str(e), (f"{spec}: {e}")
+
+
+def test_three_ranges_are_refused_with_the_form_that_works():
+    with pytest.raises(DemographyError, match="two separated by a comma"):
+        parse_spec("0-4,15-49,65-")

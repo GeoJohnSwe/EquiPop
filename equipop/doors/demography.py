@@ -220,10 +220,14 @@ def parse_spec(text):
             raise DemographyError(
                 f"{text!r}: give one age range, or two separated by a "
                 "comma, as in '0-14,65-'.")
-        first = parse_spec((f"{'/'.join(sexes)}:" if sexes else "")
-                           + chunks[0])
-        second = parse_spec((f"{'/'.join(sexes)}:" if sexes else "")
-                            + chunks[1])
+        # JOIN WITH NOTHING, not with '/'. The recursion rebuilds the
+        # sex prefix to re-parse each half, and 'f/m:0-14' is not the
+        # syntax this function accepts - so 'fm:0-14,65-' was refused
+        # with a message naming a '/' the user never typed. Found by
+        # the external review of 1.43.
+        head = ("".join(sexes) + ":") if sexes else ""
+        first = parse_spec(head + chunks[0])
+        second = parse_spec(head + chunks[1])
         return {"sexes": sexes, "ages": first["ages"],
                 "plus": second["ages"]}
 

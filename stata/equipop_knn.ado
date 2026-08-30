@@ -2,7 +2,7 @@
 *!
 *! Kept working so that do-files written against v1.0-v1.34 keep
 *! running unchanged. It forwards everything, untouched, to equipop.
-*! John's ruling, 1.34 session: the name changed because radius runs
+*! The name changed because radius runs
 *! exist, and asking for a radius under a _knn name reads oddly.
 *!
 *! Everything - syntax, options, output columns - is documented in

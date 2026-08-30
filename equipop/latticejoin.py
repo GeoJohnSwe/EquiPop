@@ -67,10 +67,16 @@ def snap_to_lattice(x, y, *, like=None, lattice=None, values=None,
                     name="count", how="count"):
     """Count or sum a set of points onto the raster lattice.
 
-    x, y    : coordinates IN THE LATTICE'S OWN CRS - degrees for
+    x, y     : coordinates IN THE LATTICE'S OWN CRS - degrees for
               WorldPop. Reprojecting is the door's job, not this
               function's, because only the door knows what the layer
-              was in.
+              was in. THE CRS IS RETURNED BY lattice_of() AND MUST BE
+              CHECKED: a coordinate is a pair of numbers and carries
+              no world with it, so passing metres to a degree lattice
+              lands everything in one cell near the origin without a
+              word of complaint. BACKLOG 239 was the same mistake one
+              level up, where two rasters with numerically identical
+              transforms were merged across 3,300 km.
     like    : the raster folder whose grid to use; or pass `lattice`.
     values  : a value per point, when how='sum'. Ignored for 'count'.
     how     : 'count' - how many points fell in the cell

@@ -29,7 +29,7 @@ program define equipop_run
          KFCA(real 0) RFCA(real 0) WPERM(real 199) ///
          SELFpot(real 1) REPLACE]
 
-    * BACKLOG 113: see equipop_knn.ado. selfpot(0) reproduces
+    * See equipop_knn.ado. selfpot(0) reproduces
     * pre-1.29.5 numbers exactly, in every engine.
     if `selfpot' < 0 | `selfpot' > 1 {
         display as error "selfpot() must lie between 0 and 1"
@@ -109,7 +109,7 @@ def _equipop_run(engine, xv, yv, treatv, valuesv, statss, ks, rs,
         if rep:
             SFIToolkit.stata(f"capture drop {safe}")
         Data.addVarDouble(safe)
-        # BACKLOG 173: same fault as machine 1 had - Stata refuses
+        # Stata refuses
         # None for a missing number. It had simply never been reached
         # here either, because it needs a missing RESULT to appear.
         Data.store(safe, None, to_stata_values(arr))

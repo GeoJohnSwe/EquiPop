@@ -424,3 +424,76 @@ def test_the_warning_survives_a_single_point():
     with contextlib.redirect_stdout(b):
         _warn_aliasing(pd.DataFrame({"lon": [30.0], "lat": [-2.0]}), 1000.0)
     assert b.getvalue() == "", "one point has no spacing to measure"
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 239 - RELEASE BLOCKER, found by the external review of 1.43.
+#
+# The lattice check compares pixel size and origin. Both are PURE
+# NUMBERS and say nothing about which world those numbers describe.
+# Two rasters whose transforms agree numerically were merged as if they
+# occupied the same ground - and the manifest then reported ONE crs, so
+# the run's own provenance record hid it.
+#
+# 30.0 in EPSG:4326 is a longitude in Burundi. 30.0 in EPSG:3857 is
+# thirty METRES from Greenwich. About 3,300 km apart, stacked into one
+# cell, silently.
+# ---------------------------------------------------------------------
+def _one(tmp, name, crs, off=0.0, px=1.0 / 1200):
+    import rasterio
+    from rasterio.transform import from_origin
+    with rasterio.open(str(tmp / (name + ".tif")), "w", driver="GTiff",
+                       height=10, width=10, count=1, dtype="float32",
+                       crs=crs, nodata=-99999.0,
+                       transform=from_origin(30.0 + off, -2.0 + 10 * px,
+                                             px, px)) as o:
+        o.write(np.full((10, 10), 5.0, dtype="float32"), 1)
+
+
+def test_two_crs_in_one_folder_are_refused(tmp_path):
+    _one(tmp_path, "bdi_f_15_2026_CN_1km_R2025A_UA_v1", "EPSG:4326")
+    _one(tmp_path, "bdi_m_15_2026_CN_1km_R2025A_UA_v1", "EPSG:3857", 0.05)
+    with pytest.raises(ValueError, match="DIFFERENT WORLDS"):
+        load_folder(tmp_path)
+
+
+def test_the_refusal_names_BOTH_files_and_BOTH_systems(tmp_path):
+    """A user with 120 rasters needs to know WHICH one is the odd
+    one out, and what it is against."""
+    _one(tmp_path, "bdi_f_15_2026_CN_1km_R2025A_UA_v1", "EPSG:4326")
+    _one(tmp_path, "bdi_m_15_2026_CN_1km_R2025A_UA_v1", "EPSG:3857", 0.05)
+    with pytest.raises(ValueError) as e:
+        load_folder(tmp_path)
+    msg = str(e.value)
+    assert "bdi_m_15_2026" in msg and "bdi_f_15_2026" in msg
+    assert "EPSG:3857" in msg and "EPSG:4326" in msg
+    assert "Reproject" in msg, "say what to do, not only what is wrong"
+
+
+def test_the_check_fires_BEFORE_the_lattice_check(tmp_path):
+    """A different CRS AND a different pixel size must report the CRS.
+
+    Pixel size is the symptom; the coordinate system is the cause, and
+    a user told only about pixel size will resample and make it worse.
+    """
+    _one(tmp_path, "bdi_f_15_2026_CN_1km_R2025A_UA_v1", "EPSG:4326")
+    _one(tmp_path, "bdi_m_15_2026_CN_1km_R2025A_UA_v1", "EPSG:3857",
+         0.05, px=1.0 / 600)
+    with pytest.raises(ValueError, match="DIFFERENT WORLDS"):
+        load_folder(tmp_path)
+
+
+def test_one_crs_throughout_still_loads(tmp_path):
+    _one(tmp_path, "bdi_f_15_2026_CN_1km_R2025A_UA_v1", "EPSG:4326")
+    _one(tmp_path, "bdi_m_15_2026_CN_1km_R2025A_UA_v1", "EPSG:4326", 0.05)
+    pts, man = load_folder(tmp_path)
+    assert len(pts) == 200
+    assert man["crs"] == "EPSG:4326"
+
+
+def test_a_projected_folder_is_fine_as_long_as_it_agrees(tmp_path):
+    """The rule is CONSISTENCY, not geographic coordinates."""
+    _one(tmp_path, "bdi_f_15_2026_CN_1km_R2025A_UA_v1", "EPSG:32735")
+    _one(tmp_path, "bdi_m_15_2026_CN_1km_R2025A_UA_v1", "EPSG:32735", 0.05)
+    pts, man = load_folder(tmp_path)
+    assert man["crs"] == "EPSG:32735"

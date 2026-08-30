@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.43.0}{...}
+{* *! version 1.43.1}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.43.0)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.43.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -260,4 +260,4 @@ See also {c -({c )-}help python{c )-}, and {c -({c )-}cmd:python query{c
 {marker author}{...}
 {title:Author}
 
-{pstd}John Osth, OsloMet. {browse "https://github.com/GeoJohnSwe/EquiPop"}{p_end}
+{pstd}John Östh, OsloMet. {browse "https://github.com/GeoJohnSwe/EquiPop"}{p_end}

@@ -375,7 +375,7 @@ def build():
     add("{marker author}{...}")
     add("{title:Author}")
     add("")
-    add("{pstd}John Osth, OsloMet. {browse "
+    add("{pstd}John Östh, OsloMet. {browse "
         "\"https://github.com/GeoJohnSwe/EquiPop\"}{p_end}")
     return "\n".join(L) + "\n"
 

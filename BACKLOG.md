@@ -1539,6 +1539,69 @@ appeared twice; the weaker copy is gone.*
   join, failed under test while being correct in QGIS. That file has
   now been wrong in this way five times.
 
+- 237 | OPEN, MINOR, NEXT RELEASE | stata_test_data.dta HAS TWO
+  MISLEADING VARIABLE NAMES. John, from the field: ValFloat is not
+  float and should be; ValCount holds counts.
+  The names teach the wrong thing. The showcase and the field pass
+  both use ValFloat to demonstrate a CONTINUOUS measure - that is the
+  whole point of Block 20, which was corrected in 1.40.5 because a
+  continuous measure had been put through treat() - so a variable
+  called ValFloat that is not stored as float undercuts the lesson
+  every time somebody inspects the data.
+  NOT URGENT AND NOT A CORRECTNESS FAULT: the arithmetic reads the
+  values, not the storage type. Do it with the next dataset
+  regeneration rather than on its own, because the file is a fixture
+  and touching it invalidates pinned EXPECT numbers in
+  equipop_test_pass.do - check those in the same pass.
+
+- ~~238~~ | DONE | A REFUSAL NAMED A CHARACTER THE USER NEVER TYPED.
+  External review of 1.43: 'fm:0-14,65-' was refused. Correct, and the
+  cause is one character. parse_spec re-parses each half of a comma
+  range by REBUILDING the sex prefix, and it joined the sexes with
+  '/', producing 'f/m:0-14'. '/' is not a sex, so the message said
+  "'/' is not a sex" about an input containing no slash.
+  A comma range therefore worked WITHOUT a sex and failed WITH one -
+  which is why nothing caught it: the dependency ratio's own default
+  needs no sex prefix.
+  A test now asserts the SHAPE of the fault, not only the instance: a
+  refusal must never quote a character absent from the input, because
+  that sends the reader hunting for a typo they did not make.
+  AND THE TEMPLATE CLAUDE GAVE JOHN WAS WRONG. MEASURES_TEMPLATE.md
+  said to write '0-14 plus 65-'. That syntax was never supported; the
+  comma form always was. Corrected, with a note saying so - the
+  document was written from intention rather than from the code.
+
+- ~~239~~ | DONE, WAS A RELEASE BLOCKER | RASTERS IN DIFFERENT
+  COORDINATE SYSTEMS WERE MERGED SILENTLY. Found by the external
+  review of 1.43, reproduced here, and WORSE THAN REPORTED.
+  The lattice check compared pixel size and origin. Both are PURE
+  NUMBERS and say nothing about which world those numbers describe.
+  `ref` even STORED the first raster's crs and never compared it.
+  30.0 in EPSG:4326 is a longitude in Burundi; 30.0 in EPSG:3857 is
+  thirty METRES from Greenwich. About 3,300 km apart, stacked into one
+  cell, without a word.
+  WORSE THAN REPORTED: the manifest then reported ONE crs - the first
+  raster's - so the run's own provenance record HID the mixture. A
+  reader had no way to discover it afterwards.
+  AND THE EXISTING OVERLAP GUARD MADE IT LOOK LIKE SOMETHING ELSE.
+  With the same label on both files it fired and complained about
+  labels overlapping "on the same ground" - which is precisely the
+  confusion, stated as a fact. With different labels nothing fired at
+  all.
+  Now refused, naming BOTH files and BOTH systems and saying what to
+  do. The check runs BEFORE the lattice check on purpose: pixel size
+  is the symptom and the coordinate system is the cause, and a user
+  told only about pixel size will resample and make it worse.
+  latticejoin has the same exposure one level up - a coordinate is a
+  pair of numbers and carries no world with it - and cannot detect it,
+  so lattice_of() reports its CRS for the caller to check and a test
+  records what metres-against-degrees actually does.
+  CLAUDE PREDICTED THAT WOULD COLLAPSE EVERYTHING INTO ONE CELL. It
+  does not: it gives lattice indices in the hundreds of millions and
+  longitudes off the planet, which is the LOUDER failure and the
+  better one. The prediction was wrong and the test records the
+  observed behaviour, not the guess.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.
