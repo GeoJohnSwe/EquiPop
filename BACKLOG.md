@@ -1602,6 +1602,108 @@ appeared twice; the weaker copy is gone.*
   better one. The prediction was wrong and the test records the
   observed behaviour, not the guess.
 
+- 240 | HALF DONE, engine + runner | MACHINE 5: FETCHING. Built to
+  John's ruling and the standing rule in HANDOVER 13 section 3c -
+  download into a folder, write a MANIFEST, and STOP. A test asserts
+  the module never imports the engine, because the moment it does the
+  rule is broken and reproducibility goes with it.
+  THE PUBLISHED WORLDPOP DOCS ARE STALE AND BUILDING FROM THEM WOULD
+  HAVE FAILED ON JOHN'S MACHINE. The 2022 pages list FOUR projects;
+  the live API returns EIGHTEEN, and age_structures - the one this
+  project needs - is not in the docs at all. The docs show
+  ftp://ftp.worldpop.org.uk download URLs; the live API returns
+  https://data.worldpop.org, and JOHN'S FTP IS BLOCKED. Both were
+  caught only because he pasted two real responses, which are now
+  committed as fixtures and are what the tests run against.
+  PROVENANCE COMES FROM THE PROVIDER: the API returns doi, citation
+  and licence per record, so the manifest states what WorldPop says
+  rather than what EquiPop assumed.
+  REFUSES TO OVERWRITE, and distinguishes two cases: a file already
+  present whose checksum MATCHES is reused and reported; one whose
+  checksum DIFFERS stops the run and is named, because whatever was
+  computed from it was computed from THAT file.
+  verify_folder() re-checks a folder against its manifest, which is
+  the point of recording checksums - a year later it answers "is this
+  the same data the paper used" without trusting a filename.
+  CLAUDE CANNOT TEST THE DOWNLOAD LEG. Every WorldPop host is 403 from
+  the sandbox - hub, data and www, all verified. So the transport is
+  two small functions, everything else is tested with John's captured
+  JSON, and the runner ASKS FIRST: it lists what it would fetch and
+  stops unless --go is passed.
+  AND CLAUDE'S OWN STAND-IN WAS TOO LOOSE AT FIRST: it matched URLs by
+  fragment and ignored ?iso3=, so a request for a nonexistent country
+  returned Burundi's records and a correct refusal looked like a bug.
+  Same fault as the QGIS simulator accepting a bare int for a WKB type
+  (221) - a stand-in looser than the real thing certifies the wrong
+  behaviour.
+  REMAINING: the QGIS door (John: QGIS first, Pro later), and the
+  first real fetch, which only John can run.
+
+- ~~241~~ | DONE | A RUNNER WAS SHIPPED WITHOUT THE MODULE IT DRIVES.
+  run_fetch.py was delivered importing equipop.doors.fetching, which
+  existed in the working tree and in NO WHEEL - 1.43.1 was built
+  before it. John's first command was ModuleNotFoundError.
+  "It works in my tree" IS NOT SHIPPING. The standing delivery rule
+  (HANDOVER 13 section 3b) says four artefacts every session and it
+  was followed - but the artefacts were built BEFORE the new module,
+  and nothing checked that the loose files handed over alongside them
+  could actually run against what was built.
+  test_every_module_a_shipped_runner_imports_is_in_the_wheel now walks
+  every top-level run_*.py, extracts its equipop imports, and checks
+  the package provides each one. Verified by hiding fetching.py, which
+  makes it fail, and restoring it, which makes it pass.
+  AND THE TEST ITSELF FAILED FIRST, on ROOT.glob - ROOT is a str in
+  test_packaging.py, not a Path. Claude assumed the type instead of
+  reading the file. Fourth time this session that an edit was written
+  against unread text.
+
+- ~~242~~ | DONE | A CATEGORY LIST OFFERED A CHOICE THAT CANNOT BE
+  MADE. John ran `--project pop` and the refusal correctly listed 17
+  categories - constrained against unconstrained, 100 m against 1 km,
+  three release generations - which is exactly right, because they are
+  DIFFERENT DATASETS and picking one silently would have been the
+  wrong kindness.
+  But the first line was BLANK: a catalogue entry whose alias is empty
+  and whose name is a bare DOI stub, WP00643. It cannot be passed to
+  --category, so listing it is worse than a shorter list. Entries
+  without a usable alias are now dropped.
+  WORTH REMEMBERING FOR OTHER PROVIDERS: a public catalogue contains
+  rows that are not offers. The adapter's job is to present only what
+  the user can act on.
+
+- ~~243~~ | DONE | THE TOOL CONTRADICTED ITSELF IN TWO CONSECUTIVE
+  LINES. A --go run printed "NOTHING HAS BEEN DOWNLOADED. Pass this
+  plan to run_fetch..." and then downloaded on the next line, because
+  plan_fetch said it unconditionally and the runner called plan then
+  run. Visible in John's own output.
+  Harmless to the data and corrosive to trust: a reader who sees a
+  tool say something false about itself stops reading its output, and
+  this project's tools say a great deal that matters - the aliasing
+  warning, the Dist_k sentence, the field guide.
+  plan_fetch now takes will_download and says "Downloading now"
+  instead.
+
+- ~~244~~ | DONE, IT WORKS END TO END | MACHINE 5 PROVEN ON REAL DATA.
+  John fetched 60 age-sex rasters for Burundi 2026 and the SHA-256 of
+  a fetched file matched his hand-downloaded copy EXACTLY:
+  54c1f80d6de2c6c484db4d8a3f438fe3dc18a0f0a0e809e421096d4c0bfad111.
+  Not "looks right" - the same bytes.
+  THE VERIFIER WAS SEEN TO FIRE. He appended a byte to one file and
+  --verify reported 59 unchanged, 1 CHANGED, naming it. A guard that
+  has only ever said "fine" is not a guard.
+  THE REUSE PATH WORKS: deleting one file and re-running gave "1
+  downloaded, 59 already present" - recognised by checksum, not
+  re-downloaded.
+  CATEGORY NAMING IS REGULAR: G2_{CN|UC|MOS}_Age_{R25A|R24B}_{100m|1km}.
+  A friendlier shorthand is possible later. NOTE THAT THE ALIAS IS
+  MORE TRUSTWORTHY THAN THE NAME: G2_CN_Age_R25A_100m is described as
+  "Individual countries" while G2_UC_Age_R24B_100m says
+  "Unconstrained" - the CN prefix survived into R2025A but the word
+  dropped out of the description. The manifest records both.
+  AND THE YEAR FILTER MATTERS MORE THAN IT LOOKS: R2025A spans
+  2015-2030, so without --year one country would have offered ~960
+  files instead of 60.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

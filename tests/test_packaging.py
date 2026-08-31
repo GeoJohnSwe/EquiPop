@@ -253,3 +253,35 @@ def test_the_release_zip_builder_refuses_unextractable_names():
         with pytest.raises(SystemExit) as e:
             mk.check(good + [bad])
         assert "REFUSING" in str(e.value), bad
+
+
+def test_every_module_a_shipped_runner_imports_is_in_the_wheel():
+    """BACKLOG 241. run_fetch.py was delivered importing
+    equipop.doors.fetching, which existed in the working tree and in
+    NO WHEEL - so John got ModuleNotFoundError on his first command.
+
+    A runner is useless without the module it drives, and 'it works in
+    my tree' is not shipping. This walks every top-level runner's
+    imports and checks the package really provides them.
+    """
+    import ast
+    import importlib.util
+
+    from pathlib import Path as _P
+    runners = sorted(_P(ROOT).glob("run_*.py"))
+    assert runners, "no runners found - has the naming changed?"
+    for r in runners:
+        tree = ast.parse(r.read_text(encoding="utf-8"))
+        wanted = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.startswith("equipop"):
+                    wanted.add(node.module)
+            elif isinstance(node, ast.Import):
+                for n in node.names:
+                    if n.name.startswith("equipop"):
+                        wanted.add(n.name)
+        for mod in sorted(wanted):
+            assert importlib.util.find_spec(mod) is not None, (
+                f"{r.name} imports {mod}, which the package does not "
+                "provide")
