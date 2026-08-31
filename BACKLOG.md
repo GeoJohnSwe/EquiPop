@@ -1704,6 +1704,26 @@ appeared twice; the weaker copy is gone.*
   2015-2030, so without --year one country would have offered ~960
   files instead of 60.
 
+- ~~245~~ | DONE | "HOW TO OPEN IN Q?" - a fair question with no good
+  answer. A tiled run writes PARQUET TILES, which are TABLES, not a
+  spatial format: QGIS reads them only through the GDAL Parquet driver
+  and even then they carry no geometry, so a user must build points
+  from columns by hand. The runner said "read it back with
+  load_tiled(...)", which is advice for a programmer.
+  run_raster_folder.py now takes --csv FILE and prints the three
+  things QGIS asks for: X field, Y field, and THE CRS. The CRS line
+  matters more than it looks - the coordinates are METRES in the
+  working projection and a UTM southern zone carries a false northing
+  of 10,000,000 m, so read as anything else the layer lands off the
+  top of the world, which is exactly what happened to John's first
+  machine 4 result (227).
+  TWO OF CLAUDE'S OWN TEST ERRORS, both familiar: ROOT assumed to
+  exist in a file that only defines FIX - THIRD time this session an
+  edit was written against unread text - and exact float equality
+  asserted on a CSV, where one row of 3,162 returns 5.7e-14 from 500
+  after a round trip through text. The values were right and the test
+  was wrong.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

@@ -21,6 +21,34 @@ import sys
 import time
 
 
+def _write_csv(df, path, man):
+    """A CSV QGIS opens as points, and the CRS it must be told.
+
+    The parquet tiles are TABLES. QGIS reads them only through the
+    GDAL Parquet driver, and even then they carry no geometry, so a
+    user has to build points from columns by hand. A CSV plus the
+    right EPSG is two clicks.
+
+    THE CRS LINE MATTERS MORE THAN IT LOOKS. These coordinates are
+    METRES in the working projection, and a UTM southern zone carries
+    a false northing of 10,000,000 m - so read as anything else the
+    layer lands off the top of the world. That is exactly what
+    happened to John's first machine 4 result.
+    """
+    import os
+
+    epsg = (man.get("projection") or {}).get("epsg")
+    df.to_csv(path, index=False)
+    print(f"\n    CSV written: {path}  ({len(df):,} rows)")
+    print("    In QGIS: Layer > Add Layer > Add Delimited Text Layer")
+    print(f"        X field   : EastWest")
+    print(f"        Y field   : NorthSouth")
+    print(f"        Geometry CRS: EPSG:{epsg}"
+          if epsg else "        Geometry CRS: the working projection")
+    print("    Set the PROJECT crs to the same, or the points will "
+          "draw in the wrong part of the world.")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Load a folder of rasters into EquiPop.",
@@ -47,6 +75,11 @@ def main() -> int:
     p.add_argument("--out", default=None,
                    help="folder for a TILED run. Needs --k. Resumable: "
                         "run it again on the same folder to continue.")
+    p.add_argument("--csv", default=None, metavar="FILE",
+                   help="also write a CSV that QGIS can open as points "
+                        "(Layer > Add Delimited Text Layer). Parquet "
+                        "tiles are TABLES, not a spatial format - QGIS "
+                        "cannot draw them directly.")
     p.add_argument("--tile-m", type=float, default=50000.0,
                    help="tile size in metres for --out (default 50000)")
     a = p.parse_args()
@@ -96,6 +129,9 @@ def main() -> int:
         print("    read it back with:")
         print("        from equipop.bigrun import load_tiled")
         print(f"        df = load_tiled({a.out!r})")
+        if a.csv:
+            from equipop.bigrun import load_tiled
+            _write_csv(load_tiled(a.out), a.csv, man)
     else:
         from equipop.fastcounts import run_knn_counts
         t1 = time.time()
@@ -105,8 +141,12 @@ def main() -> int:
                 if c.startswith(("N_", "Dist_", "T_", "R_"))]
         print(res[cols].describe().T[["count", "mean", "min", "max"]]
               .to_string())
-        print("\nNothing was written. Pass --out FOLDER for a tiled, "
-              "resumable run that saves its results.")
+        if a.csv:
+            _write_csv(res, a.csv, man)
+        else:
+            print("\nNothing was written. Pass --out FOLDER for a "
+                  "tiled, resumable run, or --csv FILE for something "
+                  "QGIS can open.")
     return 0
 
 

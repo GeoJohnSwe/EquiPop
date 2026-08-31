@@ -18,6 +18,7 @@ from equipop.doors.continental import (  # noqa: E402
     ContinentalError, run_folder, TILE_ADVISED_CELLS)
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "worldpop"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class _Channel:
@@ -223,3 +224,59 @@ def test_the_advice_is_quiet_when_the_run_is_small():
                channel=ch)
     assert not any("large untiled" in w for w in ch.warnings)
     assert TILE_ADVISED_CELLS > 1000
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 245. John ran a tiled job and asked "how to open in Q?".
+# Fair question: the output is PARQUET TILES, which are tables, not a
+# spatial format. QGIS reads them only through the GDAL Parquet driver
+# and even then they carry no geometry, so points must be built from
+# columns by hand.
+# ---------------------------------------------------------------------
+def test_the_runner_offers_a_csv_qgis_can_open():
+    import subprocess
+    import sys
+    src = (ROOT / "run_raster_folder.py").read_text(encoding="utf-8")
+    assert "--csv" in src
+    out = subprocess.run([sys.executable, str(ROOT / "run_raster_folder.py"),
+                          "--help"], capture_output=True, text=True).stdout
+    assert "--csv" in out
+
+
+def test_the_csv_advice_names_the_projection_and_the_trap(tmp_path):
+    """The CRS line matters more than it looks: the coordinates are
+    METRES in the working projection, and a UTM southern zone carries
+    a false northing of 10,000,000 m - so read as anything else the
+    layer lands off the top of the world. That is exactly what
+    happened to John's first machine 4 result."""
+    import subprocess
+    import sys
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "run_raster_folder.py"),
+         str(FIX), "--unit", "1000", "--k", "500", "--epsg", "32735",
+         "--csv", str(tmp_path / "o.csv")],
+        capture_output=True, text=True, cwd=str(ROOT))
+    assert (tmp_path / "o.csv").exists(), r.stderr[-500:]
+    said = r.stdout
+    assert "EastWest" in said and "NorthSouth" in said
+    assert "EPSG:32735" in said
+    assert "wrong part of the world" in said
+
+
+def test_the_csv_carries_the_columns_a_map_needs(tmp_path):
+    import subprocess
+    import sys
+    import pandas as pd
+    subprocess.run(
+        [sys.executable, str(ROOT / "run_raster_folder.py"),
+         str(FIX), "--unit", "1000", "--k", "500", "--epsg", "32735",
+         "--csv", str(tmp_path / "o.csv")],
+        capture_output=True, text=True, cwd=str(ROOT))
+    df = pd.read_csv(tmp_path / "o.csv")
+    for c in ("EastWest", "NorthSouth", "N_500", "Dist_500"):
+        assert c in df.columns, list(df.columns)
+    # NOT exact equality. One row of 3,162 comes back 5.7e-14 from 500
+    # after a round trip through text - the values are right and the
+    # TEST was wrong. Asserting exact float equality on a CSV is a
+    # test that fails for a reason unrelated to what it checks.
+    assert (abs(df["N_500"] - 500) < 1e-9).all(), "k fixes the population"

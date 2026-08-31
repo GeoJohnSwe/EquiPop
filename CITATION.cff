@@ -20,7 +20,7 @@ repository-code: "https://github.com/GeoJohnSwe/EquiPop"
 # tests/test_doctor.py now asserts it against the package. The
 # preferred-citation below is the 2014 report and does NOT move with
 # the software version.
-version: 1.43.3
+version: 1.43.4
 preferred-citation:
   type: report
   title: "Introducing the EquiPop software: An application for the calculation of k-nearest neighbour contexts/neighbourhoods"

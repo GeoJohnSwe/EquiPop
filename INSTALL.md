@@ -105,7 +105,7 @@ py = os.path.join(sys.exec_prefix, "python.exe")
 env = dict(os.environ, PYTHONNOUSERSITE="1")
 subprocess.run([py, "-m", "pip", "install", "--no-deps",
                 "--force-reinstall",
-                r"C:\path\to\equipop-1.43.3-py3-none-any.whl"], env=env)
+                r"C:\path\to\equipop-1.43.4-py3-none-any.whl"], env=env)
 ```
 
 Then **restart Pro** and check, in the same window:
@@ -128,7 +128,7 @@ import equipop; print(equipop.__version__)
   is not writing over its own loaded DLLs.
 
 To take a release from PyPI instead of a local wheel, replace the path
-with `"equipop==1.43.3"` and drop `--no-deps --force-reinstall`.
+with `"equipop==1.43.4"` and drop `--no-deps --force-reinstall`.
 
 **If Pro still cannot see it**, the environment is read-only: Project
 → Package Manager → gear → **Clone**, activate the clone, restart Pro,
