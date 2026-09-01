@@ -152,15 +152,32 @@ def test_the_dry_run_says_what_it_would_take(api, tmp_path):
 
 
 # ------------------------------------------------------- refusals
-def test_no_dataset_lists_them_rather_than_dying(api, tmp_path):
-    from qgis.core import QgsProcessingException
+def test_a_blank_dataset_box_LISTS_and_SUCCEEDS(api, tmp_path):
+    """BACKLOG 248. It used to print the list and then RAISE, so QGIS
+    painted the run red and said "Execution failed" - after doing
+    exactly what the box label invited. Asking what is available is
+    not a failure."""
     alg, fb = _alg(), _Feedback()
-    with pytest.raises(QgsProcessingException, match="name a dataset"):
-        alg.processAlgorithm(_params(project="", FOLDER=str(tmp_path)),
-                             {}, fb)
+    out = alg.processAlgorithm(_params(project="",
+                                       FOLDER=str(tmp_path)), {}, fb)
+    assert out == {"FOLDER": str(tmp_path)}, "it must finish cleanly"
     said = " ".join(fb.lines)
-    assert "age_structures" in said, (
-        "an empty box should be a question, not a dead end")
+    assert "age_structures" in said and "pop " in said
+    assert "Nothing was fetched" in said
+    assert "ERROR" not in said
+
+
+def test_a_blank_version_box_LISTS_and_SUCCEEDS(api, tmp_path):
+    alg, fb = _alg(), _Feedback()
+    out = alg.processAlgorithm(_params(category="",
+                                       FOLDER=str(tmp_path)), {}, fb)
+    assert out == {"FOLDER": str(tmp_path)}
+    said = " ".join(fb.lines)
+    assert "wpgp" in said
+    assert "DIFFERENT DATASETS" in said, (
+        "say WHY there is no default - they differ by constraint, "
+        "resolution and release")
+    assert "ERROR" not in said
 
 
 def test_no_country_is_refused_by_name(api, tmp_path):

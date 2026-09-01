@@ -94,11 +94,30 @@ class SpatialDataFetch(EquipopAlgorithm):
         download = self.parameterAsBool(parameters, "download", context)
         folder = self.parameterAsString(parameters, "FOLDER", context)
 
+        # ASKING WHAT IS AVAILABLE IS NOT A FAILURE. This used to
+        # print the list and then RAISE, so QGIS painted the whole run
+        # red and said "Execution failed" - after doing exactly what
+        # the box label invited. A blank box is a question; answer it
+        # and finish cleanly.
         if not project:
+            ch.info("The datasets this provider offers:")
             self._show_datasets(provider, ch)
-            raise QgsProcessingException(
-                "Box 1b: name a dataset. The available ones are listed "
-                "in the log above.")
+            ch.info("")
+            ch.info("Put one of those in box 1b and run again. Nothing "
+                    "was fetched - you asked what was available.")
+            return {"FOLDER": folder}
+
+        if not category:
+            names = self._show_categories(provider, project, ch)
+            if names:
+                ch.info("")
+                ch.info(f"Put one of those in box 1c. They are "
+                        "DIFFERENT DATASETS - constrained or not, "
+                        "100 m or 1 km, different release years - so "
+                        "there is no sensible default. Nothing was "
+                        "fetched.")
+                return {"FOLDER": folder}
+
         if not iso3:
             raise QgsProcessingException(
                 "Box 1d: give at least one country code, such as BDI.")
@@ -143,6 +162,21 @@ class SpatialDataFetch(EquipopAlgorithm):
         return {"FOLDER": folder}
 
     # -----------------------------------------------------------------
+    def _show_categories(self, provider, project, ch):
+        """List a dataset's versions. Returns them, or None if the
+        provider could not be reached."""
+        try:
+            from equipop.doors.fetching import PROVIDERS
+            cats = PROVIDERS[provider].categories(project)
+        except Exception as exc:
+            ch.warning(f"Could not list the versions of {project!r}: "
+                       f"{exc}")
+            return None
+        ch.info(f"The versions of {project!r}:")
+        for k, v in sorted(cats.items()):
+            ch.info(f"   {k:28s} {v}")
+        return cats
+
     def _show_datasets(self, provider, ch):
         """List what is on offer, so an empty box is a question rather
         than a dead end."""

@@ -1754,6 +1754,46 @@ appeared twice; the weaker copy is gone.*
   10,000,000 m then puts the layer off the top of the world, which is
   what happened in 227. A GeoPackage cannot be misread that way.
 
+- ~~248~~ | DONE | ASKING WHAT IS AVAILABLE WAS TREATED AS A FAILURE.
+  Machine 5's box says "leave blank to list them". John left it blank,
+  the list printed correctly - all 18 datasets - and then the tool
+  RAISED, so QGIS painted the run red and reported "Execution failed
+  after 0.29 seconds" after doing exactly what the label invited.
+  A blank box is a QUESTION. Both the dataset and the version box now
+  answer it and finish cleanly. The version listing also says WHY
+  there is no default: they are different datasets - constrained or
+  not, 100 m or 1 km, different releases - not different formats.
+
+- ~~249~~ | DONE | THE VERSION WARNING GAVE ADVICE THAT CANNOT WORK,
+  THREE TIMES. It always said "run: python -m pip install --upgrade
+  equipop". That is useless when the PLUGIN is the newer half, which
+  it normally is during development: a plugin installed from a zip is
+  ahead of anything published, and PIP ONLY SEES PUBLISHED RELEASES.
+  John followed it across 1.42, 1.43.2 and 1.44 - pip correctly
+  fetched the newest release each time, which was never the one he
+  had, and he reported it three times as "I don't seem to get a new
+  version".
+  CLAUDE'S FIRST FIX WAS ALSO WRONG, AND WRONG ON THE VERY CASE THAT
+  PROMPTED IT. He made the message say "install the wheel" whenever
+  the plugin was ahead, ASSUMING a newer plugin means an unpublished
+  build - and asserted to John that "1.44.0 is not on PyPI" without
+  checking. IT WAS. John said so, and PyPI confirmed it.
+  JOHN'S ACTUAL PROBLEM WAS SIMPLER and visible in his own screenshot:
+  he ran `python -m pip install equipop` WITHOUT --upgrade, and pip
+  replied "Requirement already satisfied ... (1.43.4)". Plain pip
+  install does nothing when any version is present.
+  THE MESSAGE CANNOT KNOW WHAT IS PUBLISHED, so it now offers BOTH
+  routes and names the real cause first: --upgrade for a published
+  release, saying explicitly that plain install does nothing; the
+  wheel for a local build; and a closing line for the case where pip
+  says it is already up to date.
+  THE LESSON IS THE ASSERTION, NOT THE MESSAGE. Checking PyPI takes
+  one call and Claude had done exactly that check twice before in
+  this same session.
+  AND THE COMPARISON IS NUMERIC, NOT TEXTUAL. As strings "1.44.0" <
+  "1.5.0", so a string compare would have given exactly the wrong
+  advice at the next minor bump - a bug scheduled for a future date.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

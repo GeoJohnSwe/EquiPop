@@ -82,6 +82,24 @@ def _doors():
     return D
 
 
+def _newer(a, b):
+    """Is version a newer than b? Numeric compare, not string.
+
+    "1.44.0" < "1.5.0" as text, which would give exactly the wrong
+    advice at the next minor bump.
+    """
+    def parts(v):
+        out = []
+        for piece in str(v).split("."):
+            digits = "".join(c for c in piece if c.isdigit())
+            out.append(int(digits) if digits else 0)
+        return out
+    try:
+        return parts(a) > parts(b)
+    except Exception:                               # pragma: no cover
+        return False
+
+
 def check_versions(channel):
     """Say when the two halves are from different releases.
 
@@ -96,12 +114,30 @@ def check_versions(channel):
         from . import __version__ as plugin_version
         pkg = getattr(equipop, "__version__", "unknown")
         if pkg != plugin_version:
+            # THE MESSAGE CANNOT KNOW WHETHER A VERSION IS
+            # PUBLISHED, so it must offer both routes. Claude first
+            # made this say "install the wheel" whenever the plugin
+            # was ahead, on the assumption that a newer plugin means
+            # an unpublished build - and was WRONG on the very case
+            # that prompted it: 1.44.0 was on PyPI all along.
+            # John's actual problem was simpler and is now named
+            # first: `pip install equipop` does NOTHING when any
+            # version is already present. It needs --upgrade.
+            newer = "plugin" if _newer(plugin_version, pkg) else "package"
             channel.warning(
-                f"The EquiPop plugin is version {plugin_version} but "
-                f"the equipop package in QGIS's Python is {pkg}. They "
-                "usually ship together - if something behaves as it "
-                "did before an update, run:  python -m pip install "
-                "--upgrade equipop  and restart QGIS.")
+                f"The EquiPop plugin is {plugin_version} but the "
+                f"equipop package in QGIS's Python is {pkg} - the "
+                f"{newer} is ahead. Two ways to match them:\n"
+                "  published release:  python -m pip install --upgrade "
+                "equipop\n"
+                "      (--upgrade is required; plain `pip install` "
+                "does nothing when a version is already there)\n"
+                "  local build:  python -m pip install --no-deps "
+                f"--force-reinstall equipop-{plugin_version}"
+                "-py3-none-any.whl\n"
+                "Then restart QGIS. If the plugin is the newer half "
+                "and pip says it is already up to date, that release "
+                "is not published yet - use the wheel.")
     except Exception:
         pass
 

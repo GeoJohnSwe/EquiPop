@@ -783,7 +783,14 @@ def test_a_version_mismatch_is_mentioned_once():
     finally:
         equipop_qgis.__version__ = real
     said = " ".join(fb.warnings)
-    assert "9.9.9" in said and "pip install --upgrade equipop" in said
+    # 9.9.9 makes the PLUGIN the newer half, so the advice is to
+    # install the matching WHEEL. It used to say "pip install
+    # --upgrade equipop" whichever half was ahead, which is useless
+    # when the plugin came from a zip: pip only sees published
+    # releases (BACKLOG 249).
+    assert "9.9.9" in said
+    # BOTH routes, because the message cannot know what is published.
+    assert ".whl" in said and "--upgrade" in said
 
 
 def test_the_barrier_block_lives_under_advanced():
@@ -1220,3 +1227,59 @@ def test_the_label_is_written_down_and_not_imported():
                       src)
         assert m and "import" not in m.group(0), (
             f"{f}: displayName must not import anything")
+
+
+def test_the_version_advice_depends_on_WHICH_half_is_newer():
+    """BACKLOG 249. The message always said "pip install --upgrade
+    equipop", which is useless when the PLUGIN is ahead: pip only sees
+    PUBLISHED releases, and a plugin installed from a zip is normally
+    newer than anything on PyPI. John followed that advice across
+    three versions and pip correctly fetched the newest release each
+    time - never the one he had.
+    """
+    from equipop_qgis.base import _newer
+    assert _newer("1.44.0", "1.43.4")
+    assert not _newer("1.43.4", "1.44.0")
+    # and NUMERICALLY, not as text: "1.44.0" < "1.5.0" as strings,
+    # which would give exactly the wrong advice at the next bump
+    assert _newer("1.44.0", "1.5.0")
+    assert not _newer("1.5.0", "1.44.0")
+
+
+def test_the_mismatch_message_offers_BOTH_routes():
+    """BACKLOG 249, corrected. Claude first made this say "install the
+    wheel" whenever the plugin was ahead, assuming a newer plugin
+    meant an unpublished build - and was WRONG on the very case that
+    prompted it: 1.44.0 was on PyPI all along.
+
+    The message cannot know what is published, so it offers both and
+    names John's ACTUAL problem first: `pip install equipop` does
+    nothing when any version is already present.
+    """
+    from equipop_qgis.base import check_versions
+
+    class Ch:
+        def __init__(self):
+            self.said = []
+
+        def info(self, m):
+            self.said.append(str(m))
+
+        def warning(self, m):
+            self.said.append(str(m))
+
+    import equipop
+    import equipop_qgis
+    was = (equipop.__version__, equipop_qgis.__version__)
+    try:
+        equipop.__version__, equipop_qgis.__version__ = "1.43.4", "1.44.0"
+        ch = Ch()
+        check_versions(ch)
+        said = " ".join(ch.said)
+        assert "--upgrade" in said, "the published route"
+        assert ".whl" in said, "the local-build route"
+        assert "plain `pip install` does nothing" in said, (
+            "name the thing that actually happened")
+        assert "plugin is ahead" in said
+    finally:
+        equipop.__version__, equipop_qgis.__version__ = was
