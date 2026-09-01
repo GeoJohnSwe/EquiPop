@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.43.4}{...}
+{* *! version 1.44.0}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.43.4)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.44.0)
 
 {marker syntax}{...}
 {title:Syntax}

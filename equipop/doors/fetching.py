@@ -100,11 +100,13 @@ class WorldPop:
     name = "worldpop"
     root = "https://www.worldpop.org/rest/data"
 
-    def projects(self, get_json=_get_json):
+    def projects(self, get_json=None):
+        get_json = get_json or _get_json
         return {d["alias"]: d.get("name", "")
                 for d in get_json(self.root)["data"]}
 
-    def categories(self, project, get_json=_get_json):
+    def categories(self, project, get_json=None):
+        get_json = get_json or _get_json
         """Selectable categories only.
 
         The catalogue contains entries with an EMPTY alias - John's
@@ -119,7 +121,8 @@ class WorldPop:
                 out[alias] = d.get("name", "")
         return out
 
-    def records(self, project, category, iso3, get_json=_get_json):
+    def records(self, project, category, iso3, get_json=None):
+        get_json = get_json or _get_json
         url = f"{self.root}/{project}/{category}?iso3={iso3}"
         return get_json(url).get("data", [])
 
@@ -160,8 +163,13 @@ PROVIDERS = {"worldpop": WorldPop()}
 
 # ------------------------------------------------------- ask, then act
 def plan_fetch(provider="worldpop", *, project, iso3, year=None,
-               category=None, get_json=_get_json, say=print,
+               category=None, get_json=None, say=print,
                will_download=False):
+    # LATE-BOUND ON PURPOSE. As a default argument the transport is
+    # captured when the function is DEFINED, so patching the module
+    # attribute afterwards changes nothing - a test that thought it
+    # had replaced the network went to the real network instead.
+    get_json = get_json or _get_json
     """Work out what WOULD be fetched. DOWNLOADS NOTHING.
 
     This exists because the download leg has never been exercised in
@@ -248,7 +256,7 @@ def plan_fetch(provider="worldpop", *, project, iso3, year=None,
     return plan
 
 
-def run_fetch(plan, folder, *, get_file=_get_file, say=print,
+def run_fetch(plan, folder, *, get_file=None, say=print,
               skip_existing=True):
     """Download the planned files and write the manifest.
 
@@ -257,6 +265,7 @@ def run_fetch(plan, folder, *, get_file=_get_file, say=print,
     DIFFERS stops the run and is named, because silently replacing it
     is how a reproducible result stops being reproducible.
     """
+    get_file = get_file or _get_file          # late-bound, see above
     if not plan.get("entries"):
         raise FetchError("An empty plan. Call plan_fetch first.")
     os.makedirs(folder, exist_ok=True)

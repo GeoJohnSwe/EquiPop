@@ -60,8 +60,8 @@ def test_the_provider_offers_both_tools():
     # BACKLOG 38 added the third tool. Sorted, because the order the
     # provider happens to register them in is not the contract.
     assert sorted(a.name() for a in prov.algorithms()) == [
-        "continentalrasters", "countsandshares", "spatialdemography",
-        "valuestatistics"]
+        "continentalrasters", "countsandshares", "spatialdatafetch",
+        "spatialdemography", "valuestatistics"]
     assert prov.id() == "equipop"
 
 
@@ -840,7 +840,8 @@ prov = EquipopProvider()
 prov.loadAlgorithms()
 names = sorted(a.name() for a in prov._algs)
 assert sorted(names) == ["continentalrasters", "countsandshares",
-                         "spatialdemography", "valuestatistics"], names
+                         "spatialdatafetch", "spatialdemography",
+                         "valuestatistics"], names
 for alg in prov._algs:
     alg.initAlgorithm()
     assert alg.parameterDefinitions(), "no boxes built"
@@ -901,7 +902,7 @@ sys.meta_path.insert(0, _Old())
 from equipop_qgis.provider import EquipopProvider
 prov = EquipopProvider()
 prov.loadAlgorithms()
-assert len(prov._algs) == 4, prov._algs
+assert len(prov._algs) == 5, prov._algs
 for alg in prov._algs:
     alg.initAlgorithm()
     assert alg.parameterDefinitions(), "no boxes built"

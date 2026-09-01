@@ -1724,6 +1724,36 @@ appeared twice; the weaker copy is gone.*
   after a round trip through text. The values were right and the test
   was wrong.
 
+- ~~246~~ | DONE | MACHINE 5 HAS A QGIS DOOR, and it is the first
+  tool in the toolbox that produces NO LAYER. That is the standing
+  rule made visible: it writes a FOLDER, because a tool that both
+  downloads and analyses makes every result taken through it
+  unreproducible offline. A test forbids the module from referencing
+  the engine or a FeatureSink at all.
+  DOWNLOAD IS OFF BY DEFAULT. Run it once to see what would be
+  fetched; tick the box to fetch. An empty dataset box LISTS the
+  datasets rather than refusing - an empty box should be a question,
+  not a dead end. A temporary output folder is refused for a real
+  download, because it would be deleted and the manifest with it, and
+  the manifest is what makes the download citable.
+  FOUND BY EXECUTING IT: run_fetch bound its transport as a DEFAULT
+  ARGUMENT, captured when the function is defined - so a test that
+  believed it had replaced the network went to the REAL network and
+  got a 403. The transport is now late-bound everywhere, which is
+  also what a future provider adapter will need.
+
+- ~~247~~ | DONE | GEOPACKAGE FROM THE COMMAND LINE, and QGIS already
+  had it. John asked for a csv/GeoPackage choice in the doors - but
+  machines 3 and 4 write to a QgsProcessingParameterFeatureSink, whose
+  [...] button already offers GeoPackage, Shapefile, GeoJSON, CSV or a
+  temporary layer, chosen per run; Pro's DEFeatureClass does the same.
+  The gap was the RUNNER, which only wrote CSV. --gpkg added.
+  THE REAL ADVANTAGE IS NOT FILE SIZE: a GeoPackage CARRIES ITS OWN
+  CRS. A CSV is numbers, so QGIS must be TOLD the projection and can
+  be told wrongly - and a UTM southern zone's false northing of
+  10,000,000 m then puts the layer off the top of the world, which is
+  what happened in 227. A GeoPackage cannot be misread that way.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

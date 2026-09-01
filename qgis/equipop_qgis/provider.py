@@ -4,6 +4,7 @@ from qgis.core import QgsProcessingProvider
 
 from .alg_continental import ContinentalRasters
 from .alg_demography import SpatialDemography
+from .alg_fetch import SpatialDataFetch
 from .alg_counts import CountsAndShares
 from .alg_stats import ValueStatistics
 
@@ -13,7 +14,8 @@ class EquipopProvider(QgsProcessingProvider):
     def loadAlgorithms(self):
         for alg in (CountsAndShares(), ValueStatistics(),
                     ContinentalRasters(),
-                    SpatialDemography()):
+                    SpatialDemography(),
+                    SpatialDataFetch()):
             self.addAlgorithm(alg)
 
     def id(self):

@@ -382,6 +382,17 @@ SUMMARY = {
         "median, the Gini and every percentile. Nv_<field>_k reports "
         "how many neighbours had a usable value, so thin coverage is "
         "visible rather than hidden.",
+    "SpatialDataFetch":
+        "Downloads data into a folder, writes a manifest recording "
+        "exactly what was fetched and from where, and STOPS. It "
+        "produces no layer on purpose: a tool that both downloads and "
+        "analyses makes every result computed through it "
+        "unreproducible offline, because the same call next year may "
+        "return revised estimates or nothing at all. The manifest is "
+        "the deliverable rather than the files - it carries the DOI, "
+        "the citation, the licence and a checksum per file, taken "
+        "from what the provider states - so the folder stays citable "
+        "and can be checked years later.",
     "SpatialDemography":
         "Demographic indices computed over the k NEAREST PEOPLE rather "
         "than over an administrative unit. WorldPop publishes a "
@@ -410,6 +421,16 @@ SUMMARY = {
 }
 
 USAGE = {
+    "SpatialDataFetch":
+        "Run it once with DOWNLOAD unticked: it lists what would be "
+        "fetched, how many files and under which licence, and takes "
+        "nothing. Leave the dataset box empty and it lists the "
+        "datasets; leave the version box empty and it lists those. "
+        "Give a year - a release covers 2015 to 2030, so without one "
+        "a single country offers about 960 files rather than 60. "
+        "Nothing is ever overwritten: a file already present is "
+        "reused if its checksum matches and the run stops if it does "
+        "not.",
     "SpatialDemography":
         "Point it at the same folder machine 3 uses and tick the "
         "indices you want. The suggested columns are shown in the log "

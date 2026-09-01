@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """EquiPop for QGIS - bespoke k-nearest neighbourhoods."""
-__version__ = "1.43.4"
+__version__ = "1.44.0"
 
 
 def classFactory(iface):
