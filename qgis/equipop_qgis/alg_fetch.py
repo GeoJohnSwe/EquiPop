@@ -49,12 +49,12 @@ class SpatialDataFetch(EquipopAlgorithm):
             "provider", "1a. Where from",
             options=list(PROVIDER_NAMES), defaultValue=0))
         self.add(QgsProcessingParameterString(
-            "project", "1b. Dataset, e.g. age_structures, pop, births "
+            "project", "1b. Dataset - its NUMBER or short name "
                        "(leave blank to list them)",
             optional=True))
         self.add(QgsProcessingParameterString(
-            "category", "1c. Which version of it, e.g. "
-                        "G2_CN_Age_R25A_1km (blank lists the choices)",
+            "category", "1c. Which version - its NUMBER or short "
+                        "name (blank lists the choices)",
             optional=True))
         self.add(QgsProcessingParameterString(
             "iso3", "1d. Countries, space separated, e.g. BDI RWA"))
@@ -103,17 +103,18 @@ class SpatialDataFetch(EquipopAlgorithm):
             ch.info("The datasets this provider offers:")
             self._show_datasets(provider, ch)
             ch.info("")
-            ch.info("Put one of those in box 1b and run again. Nothing "
-                    "was fetched - you asked what was available.")
+            ch.info("Put the NUMBER or the short name in box 1b and "
+                    "run again. Nothing was fetched - you asked what "
+                    "was available.")
             return {"FOLDER": folder}
 
         if not category:
             names = self._show_categories(provider, project, ch)
             if names:
                 ch.info("")
-                ch.info(f"Put one of those in box 1c. They are "
-                        "DIFFERENT DATASETS - constrained or not, "
-                        "100 m or 1 km, different release years - so "
+                ch.info("Put the NUMBER or the short name in box 1c. "
+                        "They are DIFFERENT DATASETS - constrained or "
+                        "not, 100 m or 1 km, different releases - so "
                         "there is no sensible default. Nothing was "
                         "fetched.")
                 return {"FOLDER": folder}
@@ -166,24 +167,24 @@ class SpatialDataFetch(EquipopAlgorithm):
         """List a dataset's versions. Returns them, or None if the
         provider could not be reached."""
         try:
-            from equipop.doors.fetching import PROVIDERS
+            from equipop.doors.fetching import numbered, PROVIDERS
             cats = PROVIDERS[provider].categories(project)
         except Exception as exc:
             ch.warning(f"Could not list the versions of {project!r}: "
                        f"{exc}")
             return None
         ch.info(f"The versions of {project!r}:")
-        for k, v in sorted(cats.items()):
-            ch.info(f"   {k:28s} {v}")
+        for line in numbered(cats):
+            ch.info(line)
         return cats
 
     def _show_datasets(self, provider, ch):
         """List what is on offer, so an empty box is a question rather
         than a dead end."""
         try:
-            from equipop.doors.fetching import PROVIDERS
-            for k, v in sorted(PROVIDERS[provider].projects().items()):
-                ch.info(f"   {k:24s} {v}")
+            from equipop.doors.fetching import numbered, PROVIDERS
+            for line in numbered(PROVIDERS[provider].projects()):
+                ch.info(line)
         except Exception as exc:                     # network, mostly
             ch.warning(f"Could not reach {provider} to list its "
                        f"datasets: {exc}")

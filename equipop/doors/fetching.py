@@ -162,6 +162,42 @@ PROVIDERS = {"worldpop": WorldPop()}
 
 
 # ------------------------------------------------------- ask, then act
+def numbered(options):
+    """The listing, numbered, with the alias in its own column.
+
+    John typed `bic Individual countries` - the whole line - and was
+    refused. Quite reasonable: "bic Individual countries" LOOKS like
+    one string. The alias now stands in its own column, the line is
+    numbered, and resolve() accepts the number, the alias, or the
+    whole line pasted back.
+    """
+    keys = sorted(options)
+    w = max((len(k) for k in keys), default=0)
+    return [f"  {i:>2}  {k:<{w}}  {options[k]}"
+            for i, k in enumerate(keys, 1)]
+
+
+def resolve(value, options, what):
+    """A number from the listing, an alias, or a whole pasted line."""
+    keys = sorted(options)
+    v = str(value).strip().lstrip("#").strip()
+    if v.isdigit():
+        i = int(v)
+        if 1 <= i <= len(keys):
+            return keys[i - 1]
+        raise FetchError(
+            f"There is no {what} number {i}; there are {len(keys)}. "
+            "Leave the box empty to see the list again.")
+    if v in options:
+        return v
+    head = v.split()[0] if v.split() else ""
+    if head in options:                 # the whole line, pasted back
+        return head
+    raise FetchError(
+        f"No such {what}: {value!r}. Type its NUMBER, or the short "
+        "name in the left column:\n" + "\n".join(numbered(options)))
+
+
 def plan_fetch(provider="worldpop", *, project, iso3, year=None,
                category=None, get_json=None, say=print,
                will_download=False):
@@ -187,10 +223,7 @@ def plan_fetch(provider="worldpop", *, project, iso3, year=None,
                          "such as BDI or ['BDI', 'RWA'].")
 
     known = p.projects(get_json=get_json)
-    if project not in known:
-        raise FetchError(
-            f"No such dataset: {project!r}. {provider} offers: "
-            + ", ".join(sorted(known)))
+    project = resolve(project, known, "dataset")
 
     cats = p.categories(project, get_json=get_json)
     if category is None:
@@ -198,32 +231,45 @@ def plan_fetch(provider="worldpop", *, project, iso3, year=None,
             category = next(iter(cats))
         else:
             raise FetchError(
-                f"{project!r} has {len(cats)} categories and they are "
-                "different datasets, not different formats - choose "
-                "one:\n  " + "\n  ".join(f"{k}  ({v})"
-                                         for k, v in sorted(cats.items())))
-    if category not in cats:
-        raise FetchError(
-            f"No such category {category!r} in {project!r}. "
-            "Available:\n  " + "\n  ".join(f"{k}  ({v})"
-                                           for k, v in sorted(cats.items())))
+                f"{project!r} has {len(cats)} versions and they are "
+                "DIFFERENT DATASETS - constrained or not, 100 m or "
+                "1 km, different releases - so there is no sensible "
+                "default. Give the number or the short name:\n"
+                + "\n".join(numbered(cats)))
+    category = resolve(category, cats, f"version of {project!r}")
 
-    entries, missing = [], []
+    entries, missing, wrong_year = [], [], {}
     for iso in isos:
         recs = p.records(project, category, iso, get_json=get_json)
-        if year is not None:
-            recs = [r for r in recs if str(r.get("popyear")) == str(year)]
         if not recs:
             missing.append(iso)
             continue
+        if year is not None:
+            # SAY WHICH YEARS EXIST. "Check the ISO3 code and the
+            # year" sent John hunting: the country was right and only
+            # the year was wrong, and the answer was already in hand.
+            keep = [r for r in recs if str(r.get("popyear")) == str(year)]
+            if not keep:
+                wrong_year[iso] = sorted(
+                    {str(r.get("popyear")) for r in recs
+                     if r.get("popyear")})
+                continue
+            recs = keep
         for r in recs:
             entries.extend(p.entries(r))
     if missing:
         raise FetchError(
-            f"{provider} has nothing for {', '.join(missing)} in "
-            f"{project}/{category}"
-            + (f" for {year}" if year else "")
-            + ". Check the ISO3 code and the year.")
+            f"{provider} has nothing at all for "
+            f"{', '.join(missing)} in {project}/{category}. Check the "
+            "ISO3 code - it is the three-letter one, such as BDI.")
+    if wrong_year:
+        lines = [f"{provider} has nothing for {year} in "
+                 f"{project}/{category}. The years it does have:"]
+        for iso, yrs in sorted(wrong_year.items()):
+            lines.append(f"  {iso}: {', '.join(yrs)}")
+        lines.append("Put one of those in the year box, or leave it "
+                     "empty to take them all.")
+        raise FetchError("\n".join(lines))
     if not entries:
         raise FetchError("Nothing downloadable in those records.")
 

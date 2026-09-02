@@ -1794,6 +1794,30 @@ appeared twice; the weaker copy is gone.*
   "1.5.0", so a string compare would have given exactly the wrong
   advice at the next minor bump - a bug scheduled for a future date.
 
+- ~~250~~ | DONE | A LIST OF CHOICES THE USER COULD NOT TYPE BACK.
+  John left both boxes blank, was shown "bic Individual countries",
+  typed exactly that, and was refused. Entirely reasonable: the line
+  LOOKS like one string, and nothing said which half was the answer.
+  His own fix, and the right one: NUMBER THEM. The listing now puts
+  the alias in its own column and numbers every line, and resolve()
+  accepts the NUMBER, the alias, or THE WHOLE LINE PASTED BACK -
+  because pasting back what you were just shown is the most natural
+  thing a user can do and it should not be an error.
+  A number out of range says how many there are; an unknown name
+  reprints the numbered list rather than a bare refusal.
+
+- ~~251~~ | DONE | "CHECK THE ISO3 CODE AND THE YEAR" WHEN THE CODE
+  WAS FINE. John's log: births/bic for BDI in 2001 refused with advice
+  to check both, sending him hunting for a country that was correct.
+  THE ANSWER WAS ALREADY IN HAND - the records for BDI had been
+  fetched and their years discarded. Now the two cases are separated:
+  a country with nothing at all is told the code should be the
+  three-letter one; a country whose YEAR is wrong is shown THE YEARS
+  IT DOES HAVE.
+  THE PATTERN, worth remembering for every refusal in this project: if
+  the code already knows the right answer, a refusal that only names
+  the problem is a wasted trip.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

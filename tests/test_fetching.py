@@ -328,3 +328,78 @@ def test_a_plain_plan_still_says_it_downloaded_nothing(api):
     plan_fetch(project="pop", iso3="BDI", year=2000, get_json=api,
                say=said.append)
     assert "NOTHING HAS BEEN DOWNLOADED" in " ".join(said)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 250. John left both boxes empty, got "bic Individual
+# countries", typed exactly that, and was refused. Quite reasonable:
+# the line LOOKS like one string. His suggestion - number them - is
+# the fix, and the whole pasted line now works too.
+# ---------------------------------------------------------------------
+def test_the_listing_is_numbered_and_columned():
+    from equipop.doors.fetching import numbered
+    got = numbered({"bic": "Individual countries",
+                    "age_structures": "Age and sex structures"})
+    assert got[0].strip().startswith("1 ")
+    assert got[1].strip().startswith("2 ")
+    # the alias stands in its own column, so it cannot be read as
+    # part of the description
+    assert "age_structures  Age and sex" in got[0]
+
+
+@pytest.mark.parametrize("typed", ["2", "#2", " 2 ", "bic",
+                                   "bic Individual countries"])
+def test_a_choice_may_be_a_number_an_alias_or_the_whole_line(typed):
+    from equipop.doors.fetching import resolve
+    opts = {"age_structures": "Age and sex", "bic": "Individual countries",
+            "pop": "Population Counts"}
+    assert resolve(typed, opts, "dataset") == "bic"
+
+
+def test_a_number_out_of_range_says_how_many_there_are():
+    from equipop.doors.fetching import resolve
+    with pytest.raises(FetchError, match="there are 2"):
+        resolve("9", {"a": "A", "b": "B"}, "dataset")
+
+
+def test_an_unknown_name_reprints_the_numbered_list():
+    from equipop.doors.fetching import resolve
+    with pytest.raises(FetchError) as e:
+        resolve("nonsense", {"a": "A", "b": "B"}, "dataset")
+    assert "1  a" in str(e.value) and "2  b" in str(e.value)
+
+
+def test_a_wrong_year_LISTS_THE_YEARS_THAT_EXIST():
+    """John: "worldpop has nothing for BDI in births/bic for 2001.
+    Check the ISO3 code and the year." The country was right and only
+    the year was wrong, and the answer was already in hand."""
+    recs = [{"popyear": y, "iso3": "BDI", "files": [f"https://x/{y}.tif"]}
+            for y in (2000, 2010, 2015, 2020)]
+
+    def fake(url, timeout=60):
+        if "rest/data/births/bic" in url:
+            return {"data": recs}
+        if "rest/data/births" in url:
+            return {"data": [{"alias": "bic", "name": "Individual"}]}
+        return {"data": [{"alias": "births", "name": "Births"}]}
+
+    with pytest.raises(FetchError) as e:
+        plan_fetch(project="births", category="bic", iso3="BDI",
+                   year=2001, get_json=fake, say=_quiet)
+    msg = str(e.value)
+    assert "2000, 2010, 2015, 2020" in msg
+    assert "Check the ISO3" not in msg, (
+        "the country was fine; do not send them hunting for it")
+
+
+def test_a_country_that_has_nothing_is_still_told_about_the_code():
+    def fake(url, timeout=60):
+        if "rest/data/births/bic" in url:
+            return {"data": []}
+        if "rest/data/births" in url:
+            return {"data": [{"alias": "bic", "name": "Individual"}]}
+        return {"data": [{"alias": "births", "name": "Births"}]}
+
+    with pytest.raises(FetchError, match="three-letter"):
+        plan_fetch(project="births", category="bic", iso3="ZZZ",
+                   year=2001, get_json=fake, say=_quiet)
