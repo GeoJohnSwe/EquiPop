@@ -108,6 +108,20 @@ class SpatialDataFetch(EquipopAlgorithm):
                     "was available.")
             return {"FOLDER": folder}
 
+        # RESOLVE THE NUMBER BEFORE ASKING THE PROVIDER ANYTHING.
+        # The box may hold "5", and requesting /rest/data/5 returns
+        # HTTP 500. plan_fetch resolves it - but only AFTER the door
+        # has already tried to list that dataset's versions using the
+        # raw text, so John saw "Could not list the versions of '5'".
+        try:
+            from equipop.doors.fetching import PROVIDERS, resolve
+            project = resolve(project, PROVIDERS[provider].projects(),
+                              "dataset")
+        except FetchError as exc:
+            raise QgsProcessingException(str(exc))
+        except Exception as exc:
+            ch.warning(f"Could not check the dataset name: {exc}")
+
         if not category:
             names = self._show_categories(provider, project, ch)
             if names:

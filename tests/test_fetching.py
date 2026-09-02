@@ -403,3 +403,46 @@ def test_a_country_that_has_nothing_is_still_told_about_the_code():
     with pytest.raises(FetchError, match="three-letter"):
         plan_fetch(project="births", category="bic", iso3="ZZZ",
                    year=2001, get_json=fake, say=_quiet)
+
+
+def test_a_product_with_no_years_does_not_blame_the_year_box():
+    """BACKLOG 253. dahi records carry no popyear, so the refusal
+    printed "The years it does have: BDI:" and then nothing - telling
+    the user to choose from an empty list."""
+    def fake(url, timeout=60):
+        if "rest/data/dahi/dhic" in url:
+            return {"data": [{"iso3": "BDI",
+                              "files": ["https://x/a.tif"]}]}
+        if "rest/data/dahi" in url:
+            return {"data": [{"alias": "dhic", "name": "Individual"}]}
+        return {"data": [{"alias": "dahi", "name": "Development"}]}
+
+    with pytest.raises(FetchError) as e:
+        plan_fetch(project="dahi", category="dhic", iso3="BDI",
+                   year=2001, get_json=fake, say=_quiet)
+    msg = str(e.value)
+    assert "carry NO YEAR" in msg
+    assert "Clear it" in msg
+    assert "The years it does have" not in msg, (
+        "do not offer a list that is empty")
+
+
+def test_a_mixed_case_still_lists_the_years_that_exist():
+    """One country with years, one without - both must read sensibly."""
+    def fake(url, timeout=60):
+        if "iso3=RWA" in url:
+            return {"data": [{"iso3": "RWA",
+                              "files": ["https://x/r.tif"]}]}
+        if "rest/data/pop/wpgp" in url:
+            return {"data": [{"iso3": "BDI", "popyear": 2000,
+                              "files": ["https://x/b.tif"]}]}
+        if "rest/data/pop" in url:
+            return {"data": [{"alias": "wpgp", "name": "x"}]}
+        return {"data": [{"alias": "pop", "name": "Population"}]}
+
+    with pytest.raises(FetchError) as e:
+        plan_fetch(project="pop", category="wpgp", iso3=["BDI", "RWA"],
+                   year=2001, get_json=fake, say=_quiet)
+    msg = str(e.value)
+    assert "BDI: 2000" in msg
+    assert "RWA: no year recorded" in msg

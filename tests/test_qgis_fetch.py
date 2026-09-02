@@ -234,3 +234,40 @@ def test_a_real_run_writes_files_and_a_manifest(api, tmp_path,
     said = " ".join(fb.lines)
     assert "No layer was produced" in said
     assert "machine 3" in said, "say what to do next"
+
+
+def test_a_NUMBER_in_the_dataset_box_never_reaches_the_provider(api,
+                                                                tmp_path):
+    """BACKLOG 252. John typed 5 and got "Could not list the versions
+    of '5': HTTP Error 500". The door listed that dataset's versions
+    using the RAW box text, before plan_fetch had resolved it - so it
+    asked the provider for /rest/data/5.
+    """
+    asked = []
+    from equipop.doors import fetching as F
+
+    real = F.PROVIDERS["worldpop"].categories
+
+    def spy(self, project, get_json=None):
+        asked.append(project)
+        return {"wpgp": "2000-2020 100m"}
+
+    F.WorldPop.categories = spy
+    try:
+        alg, fb = _alg(), _Feedback()
+        alg.processAlgorithm(_params(project="14", category="",
+                                     FOLDER=str(tmp_path)), {}, fb)
+    finally:
+        F.WorldPop.categories = real
+    assert asked, "the door never listed the versions"
+    assert all(not a.isdigit() for a in asked), (
+        f"a raw number reached the provider: {asked}")
+
+
+def test_the_dataset_number_is_resolved_to_its_name(api, tmp_path):
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(project="14", category="",
+                                 FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(fb.lines)
+    assert "'pop'" in said or "pop" in said
+    assert "Could not list" not in said

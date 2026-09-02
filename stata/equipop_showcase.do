@@ -1,5 +1,5 @@
 * ============================================================================
-* equipop_showcase.do - EquiPop 1.44.3 from Stata: every function, one script
+* equipop_showcase.do - EquiPop 1.44.4 from Stata: every function, one script
 * ----------------------------------------------------------------------------
 * Requires: Stata 17+, Python visible to Stata (help python), and the
 * package installed in THAT Python:  pip install equipop
@@ -308,4 +308,4 @@ end
 * ---------------------------------------------------------------------------
 * Done. Everything above is now ordinary Stata: regress, margins, graph.
 * ============================================================================
-display as result "equipop_showcase.do completed - EquiPop 1.44.3 full tour"
+display as result "equipop_showcase.do completed - EquiPop 1.44.4 full tour"

@@ -1818,6 +1818,31 @@ appeared twice; the weaker copy is gone.*
   the code already knows the right answer, a refusal that only names
   the problem is a wasted trip.
 
+- ~~252~~ | DONE | THE NUMBER WE ASKED FOR WAS SENT STRAIGHT TO THE
+  PROVIDER. John typed 5, as invited, and got "Could not list the
+  versions of '5': HTTP Error 500". The door listed that dataset's
+  versions using the RAW BOX TEXT, so it requested /rest/data/5.
+  plan_fetch resolves numbers - but only AFTER the door had already
+  used the unresolved value. The door now resolves first.
+  THE SHAPE: a convenience added in one layer (numbers) was not known
+  to the layer above it, which had its own reason to use the value.
+  Adding a friendly input format means finding EVERY place the value
+  is consumed, not just the one that validates it.
+  And box 1c stayed empty for John not because listing was broken but
+  because the run DIED before reaching it - one fault presenting as
+  two.
+
+- ~~253~~ | DONE | A REFUSAL OFFERED A CHOICE FROM AN EMPTY LIST.
+  dahi records carry no popyear, so the year filter removed
+  everything and the message read "The years it does have: BDI:"
+  followed by nothing. Now a product with no years says so and tells
+  the user to CLEAR the year box; a mixed set says "no year recorded"
+  beside the country it applies to.
+  253 IS 251 UNDERSPECIFIED. That fix assumed a wrong year meant
+  OTHER years existed. It did not check the case where there are
+  none, so a good improvement produced a nonsensical message one day
+  later.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

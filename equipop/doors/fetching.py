@@ -263,10 +263,21 @@ def plan_fetch(provider="worldpop", *, project, iso3, year=None,
             f"{', '.join(missing)} in {project}/{category}. Check the "
             "ISO3 code - it is the three-letter one, such as BDI.")
     if wrong_year:
+        # SOME PRODUCTS CARRY NO YEAR AT ALL - dahi is one. Blaming
+        # the year filter then printed "The years it does have: BDI:"
+        # followed by nothing, which is incoherent and tells the user
+        # to pick from an empty list. Say what is actually true.
+        if not any(wrong_year.values()):
+            raise FetchError(
+                f"The records in {project}/{category} carry NO YEAR, "
+                "so the year box cannot choose among them. Clear it "
+                "and run again. (Records were found for "
+                f"{', '.join(sorted(wrong_year))}.)")
         lines = [f"{provider} has nothing for {year} in "
-                 f"{project}/{category}. The years it does have:"]
+                 f"{project}/{category}."]
         for iso, yrs in sorted(wrong_year.items()):
-            lines.append(f"  {iso}: {', '.join(yrs)}")
+            lines.append(f"  {iso}: " + (", ".join(yrs) if yrs
+                                         else "no year recorded"))
         lines.append("Put one of those in the year box, or leave it "
                      "empty to take them all.")
         raise FetchError("\n".join(lines))
