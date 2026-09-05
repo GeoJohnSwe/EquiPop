@@ -21,6 +21,7 @@ from qgis.core import (QgsProcessingException,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterEnum,
                        QgsProcessingParameterFolderDestination,
+                       QgsProcessingParameterMatrix,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString)
 
@@ -30,7 +31,7 @@ from .base import EquipopAlgorithm
 # QGIS builds the dialog, and the plugin must still LOAD when equipop
 # is absent (BACKLOG 218, which this door would otherwise repeat). A
 # test pins this against the package's own list.
-PROVIDER_NAMES = ["worldpop"]
+PROVIDER_NAMES = ["worldpop", "ghsl", "hdx", "geofabrik"]
 
 
 class SpatialDataFetch(EquipopAlgorithm):
@@ -48,22 +49,19 @@ class SpatialDataFetch(EquipopAlgorithm):
         self.add(QgsProcessingParameterEnum(
             "provider", "1a. Where from",
             options=list(PROVIDER_NAMES), defaultValue=0))
-        self.add(QgsProcessingParameterString(
-            "project", "1b. Dataset - its NUMBER or short name "
-                       "(leave blank to list them)",
-            optional=True))
-        self.add(QgsProcessingParameterString(
-            "category", "1c. Which version - its NUMBER or short "
-                        "name (blank lists the choices)",
-            optional=True))
-        self.add(QgsProcessingParameterString(
-            "iso3", "1d. Countries, space separated, e.g. BDI RWA"))
-        self.add(QgsProcessingParameterNumber(
-            "year", "1e. Year (blank takes every year the release "
-                    "covers - R2025A spans 2015-2030, so that is a "
-                    "lot of files)",
-            type=QgsProcessingParameterNumber.Integer,
-            optional=True, minValue=1900, maxValue=2100))
+        # ONE TABLE, NOT FOUR NAMED BOXES. Boxes called Dataset,
+        # Version, Countries and Year are WORLDPOP'S VOCABULARY, and
+        # three of the four providers do not speak it: GHSL asks for
+        # product, release, epoch, crs and resolution; Geofabrik for a
+        # region; HDX for a country group and a dataset. Every adapter
+        # already DECLARES its fields, so the tool can ask for them by
+        # name instead of guessing in advance - leave the table empty
+        # and it lists exactly what the chosen provider wants.
+        self.add(QgsProcessingParameterMatrix(
+            "settings",
+            "1b. Settings - one row per choice. Leave EMPTY and run to "
+            "see what this provider asks for.",
+            headers=["Setting", "Value"], optional=True))
         self.add(QgsProcessingParameterBoolean(
             "download", "2a. DOWNLOAD. Leave unticked to see what "
                         "would be fetched without fetching it",
@@ -83,68 +81,56 @@ class SpatialDataFetch(EquipopAlgorithm):
 
         provider = PROVIDER_NAMES[
             self.parameterAsEnum(parameters, "provider", context)]
-        project = (self.parameterAsString(parameters, "project",
-                                          context) or "").strip()
-        category = (self.parameterAsString(parameters, "category",
-                                           context) or "").strip()
-        iso3 = [c.strip().upper() for c in
-                (self.parameterAsString(parameters, "iso3", context)
-                 or "").replace(",", " ").split() if c.strip()]
-        year = self.parameterAsInt(parameters, "year", context) or None
         download = self.parameterAsBool(parameters, "download", context)
         folder = self.parameterAsString(parameters, "FOLDER", context)
 
-        # ASKING WHAT IS AVAILABLE IS NOT A FAILURE. This used to
-        # print the list and then RAISE, so QGIS painted the whole run
-        # red and said "Execution failed" - after doing exactly what
-        # the box label invited. A blank box is a question; answer it
-        # and finish cleanly.
-        if not project:
-            ch.info("The datasets this provider offers:")
-            self._show_datasets(provider, ch)
+        # THE TABLE IS THE PROVIDER'S OWN VOCABULARY. Rows arrive flat,
+        # two cells at a time.
+        flat = [str(v).strip() for v in
+                (self.parameterAsMatrix(parameters, "settings", context)
+                 or [])]
+        if len(flat) % 2:
+            raise QgsProcessingException(
+                f"Box 1b has {len(flat)} cells, which is not a whole "
+                "number of rows of two (setting, value).")
+        choices = {}
+        for k, v in zip(flat[0::2], flat[1::2]):
+            if k:
+                choices[k] = v
+
+        try:
+            from equipop.doors.fetching import PROVIDERS
+            fields = list(getattr(PROVIDERS[provider], "FIELDS", []))
+        except Exception as exc:
+            raise QgsProcessingException(
+                f"Could not read what {provider} asks for: {exc}")
+
+        # AN EMPTY TABLE IS A QUESTION. Answer it and finish cleanly -
+        # asking what a provider wants is not a failure (BACKLOG 248).
+        if not choices:
+            ch.info(f"{provider} asks for:")
+            for f in fields:
+                need = "required" if f.get("required") else "optional"
+                ch.info(f"   {f['name']:<12} {f['label']}  ({need})")
             ch.info("")
-            ch.info("Put the NUMBER or the short name in box 1b and "
-                    "run again. Nothing was fetched - you asked what "
-                    "was available.")
+            ch.info("Put those names in the left column of box 1b and "
+                    "your values on the right, then run again. Nothing "
+                    "was fetched - you asked what was available.")
             return {"FOLDER": folder}
 
-        # RESOLVE THE NUMBER BEFORE ASKING THE PROVIDER ANYTHING.
-        # The box may hold "5", and requesting /rest/data/5 returns
-        # HTTP 500. plan_fetch resolves it - but only AFTER the door
-        # has already tried to list that dataset's versions using the
-        # raw text, so John saw "Could not list the versions of '5'".
-        try:
-            from equipop.doors.fetching import PROVIDERS, resolve
-            project = resolve(project, PROVIDERS[provider].projects(),
-                              "dataset")
-        except FetchError as exc:
-            raise QgsProcessingException(str(exc))
-        except Exception as exc:
-            ch.warning(f"Could not check the dataset name: {exc}")
-
-        if not category:
-            names = self._show_categories(provider, project, ch)
-            if names:
-                ch.info("")
-                ch.info("Put the NUMBER or the short name in box 1c. "
-                        "They are DIFFERENT DATASETS - constrained or "
-                        "not, 100 m or 1 km, different releases - so "
-                        "there is no sensible default. Nothing was "
-                        "fetched.")
-                return {"FOLDER": folder}
-
-        if not iso3:
+        known = {f["name"] for f in fields}
+        unknown = sorted(k for k in choices if k not in known)
+        if unknown:
             raise QgsProcessingException(
-                "Box 1d: give at least one country code, such as BDI.")
+                f"{provider} does not take {', '.join(unknown)}. It "
+                "asks for: " + ", ".join(sorted(known)) + ".")
 
         try:
-            plan = plan_fetch(provider, project=project,
-                              category=category or None, iso3=iso3,
-                              year=year, say=ch.info,
-                              will_download=download)
-        except FetchError as exc:
-            # The spine refuses in plain words, and its refusals carry
-            # the list of valid choices. Do not add to them.
+            plan = plan_fetch(provider, say=ch.info,
+                              will_download=download, **choices)
+        except (FetchError, ValueError) as exc:
+            # The spine and the adapters refuse in plain words, and
+            # their refusals carry the lists of valid choices.
             raise QgsProcessingException(str(exc))
 
         if not download:
@@ -177,28 +163,3 @@ class SpatialDataFetch(EquipopAlgorithm):
         return {"FOLDER": folder}
 
     # -----------------------------------------------------------------
-    def _show_categories(self, provider, project, ch):
-        """List a dataset's versions. Returns them, or None if the
-        provider could not be reached."""
-        try:
-            from equipop.doors.fetching import numbered, PROVIDERS
-            cats = PROVIDERS[provider].categories(project)
-        except Exception as exc:
-            ch.warning(f"Could not list the versions of {project!r}: "
-                       f"{exc}")
-            return None
-        ch.info(f"The versions of {project!r}:")
-        for line in numbered(cats):
-            ch.info(line)
-        return cats
-
-    def _show_datasets(self, provider, ch):
-        """List what is on offer, so an empty box is a question rather
-        than a dead end."""
-        try:
-            from equipop.doors.fetching import numbered, PROVIDERS
-            for line in numbered(PROVIDERS[provider].projects()):
-                ch.info(line)
-        except Exception as exc:                     # network, mostly
-            ch.warning(f"Could not reach {provider} to list its "
-                       f"datasets: {exc}")

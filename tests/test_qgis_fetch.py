@@ -106,8 +106,12 @@ class _Feedback:
 
 
 def _params(**over):
-    p = {"provider": 0, "project": "pop", "category": "wpgp",
-         "iso3": "BDI", "year": 2000, "download": False,
+    """Settings arrive as a FLAT matrix, two cells per row."""
+    settings = over.pop("settings", ["project", "pop",
+                                     "category", "wpgp",
+                                     "iso3", "BDI",
+                                     "year", "2000"])
+    p = {"provider": 0, "settings": settings, "download": False,
          "FOLDER": "TEMPORARY_OUTPUT"}
     p.update(over)
     return p
@@ -158,48 +162,57 @@ def test_the_dry_run_says_what_it_would_take(api, tmp_path):
     assert "licence" in said
 
 
-# ------------------------------------------------------- refusals
-def test_a_blank_dataset_box_LISTS_and_SUCCEEDS(api, tmp_path):
-    """BACKLOG 248. It used to print the list and then RAISE, so QGIS
-    painted the run red and said "Execution failed" - after doing
-    exactly what the box label invited. Asking what is available is
-    not a failure."""
+# --------------------------------------------- the vocabulary problem
+def test_every_provider_is_offered_not_only_the_first():
+    """BACKLOG 263. The dropdown was a written-down list of ONE,
+    written when there was one provider and never updated - so John
+    installed four and saw one. The same fault as the naming registry
+    written from four sample files, except this one was created
+    knowingly to keep the package out of the dialog."""
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    from equipop.doors.fetching import PROVIDERS
+    for n in PROVIDER_NAMES:
+        assert n in PROVIDERS, f"the door offers {n}, which does not exist"
+    for n in ("worldpop", "ghsl", "hdx", "geofabrik"):
+        assert n in PROVIDER_NAMES, f"{n} exists but is not offered"
+
+
+def test_the_door_speaks_no_providers_vocabulary():
+    """Boxes called Dataset, Version, Countries and Year are
+    WorldPop's words, and three of four providers do not speak them."""
+    src = (ROOT / "qgis" / "equipop_qgis"
+           / "alg_fetch.py").read_text(encoding="utf-8")
+    for word in ("iso3", "category", "popyear"):
+        assert word not in src, (
+            f"the door mentions {word!r} - a provider's vocabulary has "
+            "leaked into the machine")
+
+
+def test_an_empty_table_lists_WHAT_THIS_PROVIDER_ASKS_FOR(api, tmp_path):
     alg, fb = _alg(), _Feedback()
-    out = alg.processAlgorithm(_params(project="",
+    out = alg.processAlgorithm(_params(settings=[],
                                        FOLDER=str(tmp_path)), {}, fb)
-    assert out == {"FOLDER": str(tmp_path)}, "it must finish cleanly"
+    assert out == {"FOLDER": str(tmp_path)}, "asking is not failing"
     said = " ".join(fb.lines)
-    assert "age_structures" in said and "pop " in said
-    assert "Nothing was fetched" in said
+    assert "worldpop asks for" in said
+    assert "iso3" in said and "required" in said
     assert "ERROR" not in said
 
 
-def test_a_blank_version_box_LISTS_and_SUCCEEDS(api, tmp_path):
-    alg, fb = _alg(), _Feedback()
-    out = alg.processAlgorithm(_params(category="",
-                                       FOLDER=str(tmp_path)), {}, fb)
-    assert out == {"FOLDER": str(tmp_path)}
-    said = " ".join(fb.lines)
-    assert "wpgp" in said
-    assert "DIFFERENT DATASETS" in said, (
-        "say WHY there is no default - they differ by constraint, "
-        "resolution and release")
-    assert "ERROR" not in said
-
-
-def test_no_country_is_refused_by_name(api, tmp_path):
+def test_a_setting_the_provider_does_not_take_is_refused(api, tmp_path):
     from qgis.core import QgsProcessingException
     alg, fb = _alg(), _Feedback()
-    with pytest.raises(QgsProcessingException, match="country code"):
-        alg.processAlgorithm(_params(iso3="  ", FOLDER=str(tmp_path)),
-                             {}, fb)
+    with pytest.raises(QgsProcessingException, match="does not take"):
+        alg.processAlgorithm(_params(
+            settings=["project", "pop", "tile", "R4_C19"],
+            FOLDER=str(tmp_path)), {}, fb)
 
 
-def test_an_unknown_dataset_is_refused_with_the_real_list(api, tmp_path):
+def test_a_ragged_table_is_refused_by_name(api, tmp_path):
     from qgis.core import QgsProcessingException
     alg, fb = _alg(), _Feedback()
-    with pytest.raises(QgsProcessingException, match="No such dataset"):
-        alg.processAlgorithm(_params(project="fertility",
+    with pytest.raises(QgsProcessingException, match="rows of two"):
+        alg.processAlgorithm(_params(settings=["project"],
                                      FOLDER=str(tmp_path)), {}, fb)
 
 
@@ -210,13 +223,6 @@ def test_a_temporary_folder_is_refused_for_a_real_download(api):
     alg, fb = _alg(), _Feedback()
     with pytest.raises(QgsProcessingException, match="real folder"):
         alg.processAlgorithm(_params(download=True), {}, fb)
-
-
-def test_countries_may_be_separated_by_commas_or_spaces(api, tmp_path):
-    alg, fb = _alg(), _Feedback()
-    alg.processAlgorithm(_params(iso3="bdi , BDI",
-                                 FOLDER=str(tmp_path)), {}, fb)
-    assert "ERROR" not in " ".join(fb.lines)
 
 
 # ------------------------------------------------------- downloading
@@ -278,3 +284,46 @@ def test_the_dataset_number_is_resolved_to_its_name(api, tmp_path):
     said = " ".join(fb.lines)
     assert "'pop'" in said or "pop" in said
     assert "Could not list" not in said
+
+
+def test_GHSL_runs_through_the_same_door(tmp_path):
+    """The whole point of 263. No API is touched: GHSL is a registry
+    definition and its URL is NAMED from the settings."""
+    alg, fb = _alg(), _Feedback()
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    out = alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index("ghsl"),
+        settings=["product", "POP", "epoch", "2020"],
+        FOLDER=str(tmp_path)), {}, fb)
+    assert out == {"FOLDER": str(tmp_path)}
+    said = " ".join(fb.lines)
+    assert "GHS_POP_E2020_GLOBE_R2023A_4326_30ss_V1_0.zip" in said, said
+    assert "ERROR" not in said
+
+
+def test_GHSLs_empty_table_lists_GHSLs_OWN_fields(tmp_path):
+    alg, fb = _alg(), _Feedback()
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index("ghsl"), settings=[],
+        FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(fb.lines)
+    assert "ghsl asks for" in said
+    assert "product" in said and "epoch" in said
+    assert "iso3" not in said, "that is WorldPop's word, not GHSL's"
+
+
+def test_GEOFABRIK_runs_through_the_same_door(tmp_path, monkeypatch):
+    import json as _json
+    from equipop.doors import fetching as F
+    rec = _json.loads((ROOT / "tests" / "fixtures" / "worldpop_api"
+                       / "geofabrik_index.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(F, "_get_json", lambda url, timeout=60: rec)
+    alg, fb = _alg(), _Feedback()
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index("geofabrik"),
+        settings=["region", "burundi"], FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(fb.lines)
+    assert "burundi-latest.osm.pbf" in said
+    assert "SHARE-ALIKE" in said, "the ODbL warning must reach the user"

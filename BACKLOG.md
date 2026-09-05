@@ -2067,6 +2067,32 @@ appeared twice; the weaker copy is gone.*
   message instead of the picker. Fields may now declare
   lists_when_empty.
 
+- ~~263~~ | DONE | THE QGIS DOOR OFFERED ONE PROVIDER OUT OF FOUR.
+  John installed 1.44.5 and reported "still only worldpop". He had
+  missed nothing: PROVIDER_NAMES was ["worldpop"], written down in the
+  door when there was one provider and never updated.
+  THE SAME FAULT AS THE NAMING REGISTRY (211) - a list written from
+  what existed at the time - except THIS ONE WAS CREATED KNOWINGLY, to
+  keep the package out of initAlgorithm (218), and then forgotten.
+  Hard-coding for a good reason still needs a test that notices when
+  the world moves; there is one now, and it checks both directions.
+  AND ADDING THE NAMES ALONE WOULD HAVE GIVEN HIM A BROKEN DIALOG.
+  Boxes called Dataset, Version, Countries and Year are WORLDPOP'S
+  VOCABULARY: GHSL asks for product, release, epoch, crs, res;
+  Geofabrik for a region; HDX for a country group and a dataset.
+  So the four boxes became ONE SETTINGS TABLE, driven by the FIELDS
+  every adapter already declares. Leave it empty and the tool lists
+  exactly what the chosen provider asks for, with labels and whether
+  each is required - asking is not failing (248). A test asserts the
+  door contains no provider's vocabulary at all.
+  THIS IS THE DESIGN THAT WAS DELIBERATELY DEFERRED IN 256: generic
+  boxes were not invented for imagined providers, they were written
+  once four real ones existed and their needs were known. That was the
+  right call - the shape the table took could not have been guessed
+  from WorldPop alone.
+  Verified by driving GHSL and Geofabrik through the same door,
+  including the ODbL share-alike warning reaching the user.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.
