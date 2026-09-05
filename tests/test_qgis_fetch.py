@@ -195,7 +195,9 @@ def test_an_empty_table_lists_WHAT_THIS_PROVIDER_ASKS_FOR(api, tmp_path):
     assert out == {"FOLDER": str(tmp_path)}, "asking is not failing"
     said = " ".join(fb.lines)
     assert "worldpop asks for" in said
-    assert "iso3" in said and "required" in said
+    # REQUIRED in capitals now, so it stands out from the optional
+    # ones - the test pinned the old lower-case wording.
+    assert "iso3" in said and "REQUIRED" in said
     assert "ERROR" not in said
 
 
@@ -390,3 +392,92 @@ def test_a_genuinely_ragged_table_is_still_refused(api, tmp_path):
     with pytest.raises(QgsProcessingException, match="rows of two"):
         alg.processAlgorithm(_params(settings=["project", "pop", "iso3"],
                                      FOLDER=str(tmp_path)), {}, fb)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 266. John: "how should the user know what to enter - I have
+# field names (possibly) but I don't have the alternatives."
+#
+# Right, and worse: three GHSL fields have DEFAULTS and were announced
+# as "required", which is not incomplete but untrue - it sent him
+# hunting for values he could have omitted.
+#
+# Pre-filling the table and per-cell dropdowns are NOT possible: a
+# Processing matrix's default is fixed when the dialog is built,
+# before a provider is chosen, and its widget is plain free text. So
+# the listing has to carry the information instead.
+# ---------------------------------------------------------------------
+def _listing(alg_idx, tmp_path, api=None):
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(provider=alg_idx, settings=[""],
+                                 FOLDER=str(tmp_path)), {}, fb)
+    return "\n".join(fb.lines)
+
+
+def test_the_listing_shows_the_ALLOWED_VALUES(api, tmp_path):
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
+    for v in ("POP", "BUILT_S", "BUILT_V"):
+        assert v in said, f"{v} is a legal value and is not shown"
+    assert "2020" in said and "1975" in said
+    assert "4326" in said and "54009" in said
+
+
+def test_a_field_with_a_default_is_NOT_called_required(api, tmp_path):
+    """release, crs and res all have defaults and were announced as
+    required. Saying a field is required when it can be omitted is
+    not incompleteness, it is a false statement."""
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
+    assert "defaults to R2023A" in said
+    assert "defaults to 4326" in said
+    assert "defaults to 30ss" in said
+    for line in said.splitlines():
+        if line.strip().startswith("release"):
+            assert "REQUIRED" not in line, line
+
+
+def test_the_descriptions_reach_the_user(api, tmp_path):
+    """The definition explains why 4326 matters; it should not sit
+    unread in a JSON file."""
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
+    assert "same family as WorldPop" in said
+    assert "will NOT mix" in said
+
+
+def test_a_copyable_example_is_offered(api, tmp_path):
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
+    assert "A table you can copy" in said
+    assert "product   POP" in said
+    assert "epoch   " in said
+
+
+def test_the_example_holds_only_what_must_be_filled(api, tmp_path):
+    """An optional field in a worked example reads as compulsory."""
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
+    block = said.split("A table you can copy")[1].split("Put those")[0]
+    assert "release" not in block, "release has a default"
+    assert "crs" not in block and "res" not in block
+
+
+def test_a_provider_whose_options_are_LIVE_says_how_to_see_them(api,
+                                                                tmp_path):
+    """WorldPop's datasets come from its API, so they cannot be listed
+    in the field declaration - but the user must still be told how to
+    reach them."""
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    said = _listing(PROVIDER_NAMES.index("worldpop"), tmp_path)
+    assert "run to see the list" in said
+
+
+def test_worldpop_can_still_list_its_datasets(api):
+    """The settings table quietly removed 'leave it blank to see the
+    datasets': the spine refused before the adapter could list. Fields
+    that the adapter answers for itself are marked lists_when_empty."""
+    from equipop.doors.fetching import PROVIDERS
+    names = [f["name"] for f in PROVIDERS["worldpop"].FIELDS
+             if f.get("lists_when_empty")]
+    assert "project" in names and "category" in names

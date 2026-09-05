@@ -134,8 +134,14 @@ class WorldPop:
     # discovered when the second arrives is this project's most
     # repeated mistake; this time it is loosened BEFORE.
     FIELDS = [
-        {"name": "project", "label": "Dataset", "required": True},
-        {"name": "category", "label": "Version of it", "required": False},
+        # lists_when_empty: the ADAPTER lists these, from the live
+        # catalogue - the spine must not refuse first, or WorldPop's
+        # "leave it blank to see the datasets" is unreachable, which
+        # is what the settings table quietly did to it.
+        {"name": "project", "label": "Dataset", "required": True,
+         "lists_when_empty": True},
+        {"name": "category", "label": "Version of it",
+         "required": False, "lists_when_empty": True},
         {"name": "iso3", "label": "Countries (ISO3)", "required": True,
          "many": True,
          # A field may say how to ask for itself. The generic

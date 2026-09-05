@@ -116,10 +116,54 @@ class SpatialDataFetch(EquipopAlgorithm):
         # asking what a provider wants is not a failure (BACKLOG 248).
         if not choices:
             ch.info(f"{provider} asks for:")
+            example = []
             for f in fields:
-                need = "required" if f.get("required") else "optional"
-                ch.info(f"   {f['name']:<12} {f['label']}  ({need})")
+                # WHAT MAY BE TYPED, not merely what is wanted. The
+                # listing gave field NAMES and no VALUES, so a user
+                # with the right names still could not fill the
+                # table. And a field with a DEFAULT was announced as
+                # "required", which is worse than incomplete - it is
+                # untrue, and sent John hunting for a value he could
+                # have omitted (BACKLOG 266).
+                dflt = f.get("default")
+                if dflt is not None:
+                    need = f"optional, defaults to {dflt}"
+                elif f.get("required"):
+                    need = "REQUIRED"
+                else:
+                    need = "optional"
+                ch.info(f"   {f['name']:<10} {f['label']}  ({need})")
+                opts = f.get("options") or []
+                describe = f.get("describe") or {}
+                if opts:
+                    if describe:
+                        for o in opts:
+                            note = describe.get(o, "")
+                            ch.info(f"        {o}"
+                                    + (f"  - {note}" if note else ""))
+                    else:
+                        shown = " | ".join(str(o) for o in opts[:12])
+                        more = " | ..." if len(opts) > 12 else ""
+                        ch.info(f"        {shown}{more}")
+                elif f.get("lists_when_empty"):
+                    ch.info("        (many - give this one alone and "
+                            "run to see the list)")
+                # ONLY WHAT MUST BE FILLED. An optional field in a
+                # worked example reads as compulsory, and "?" is not a
+                # value anyone can act on.
+                if f.get("required") and dflt is None:
+                    example.append((
+                        f["name"],
+                        str(opts[0]) if opts
+                        else ("<leave blank and run to see the list>"
+                              if f.get("lists_when_empty")
+                              else "<your value>")))
             ch.info("")
+            if example:
+                ch.info("A table you can copy, one row per line:")
+                for k, v in example:
+                    ch.info(f"   {k}   {v}")
+                ch.info("")
             ch.info("Put those names in the left column of box 1b and "
                     "your values on the right, then run again. Nothing "
                     "was fetched - you asked what was available.")

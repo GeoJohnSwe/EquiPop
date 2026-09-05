@@ -2144,6 +2144,33 @@ appeared twice; the weaker copy is gone.*
   generalised - 256 the defaults, 250 the numbering, 262 the listing,
   and now this.
 
+- ~~266~~ | DONE | THE LISTING GAVE FIELD NAMES AND NO VALUES. John:
+  "how should the user know what to enter - I have field names
+  (possibly) but I don't have the alternatives."
+  AND IT WAS WORSE THAN INCOMPLETE. Three GHSL fields - release, crs,
+  res - have DEFAULTS and were announced as "(required)". That is not
+  a gap, it is a FALSE STATEMENT, and it sent him hunting for values
+  he could have omitted. The definition knew both the defaults and the
+  allowed values and printed neither.
+  The listing now shows every allowed value, what each MEANS where the
+  definition explains it - "4326 WGS84 degrees, the same family as
+  WorldPop" and "54009 will NOT mix" - which of the fields have
+  defaults and can be left out, and a COPYABLE EXAMPLE holding only
+  what must be filled, because an optional field in a worked example
+  reads as compulsory.
+  WHAT WAS ASKED FOR AND CANNOT BE DONE, said plainly rather than
+  quietly dropped: a Processing matrix's default is fixed when the
+  DIALOG IS BUILT, before a provider is chosen, so the table cannot
+  pre-populate; and its widget is plain free text, so there are no
+  per-cell dropdowns. The listing has to carry the information
+  instead.
+  AND THE SETTINGS TABLE HAD QUIETLY BROKEN WORLDPOP'S OWN LISTING.
+  "Leave the dataset blank to see the list" was unreachable, because
+  the spine's required-check refused before the adapter could list.
+  project and category are marked lists_when_empty now. A feature
+  removed by accident during a redesign, noticed only because someone
+  asked a different question about the same screen.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.
