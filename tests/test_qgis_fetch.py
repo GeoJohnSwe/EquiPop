@@ -327,3 +327,66 @@ def test_GEOFABRIK_runs_through_the_same_door(tmp_path, monkeypatch):
     said = " ".join(fb.lines)
     assert "burundi-latest.osm.pbf" in said
     assert "SHARE-ALIKE" in said, "the ODbL warning must reach the user"
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 264. John left the table empty on all four providers and got
+# "Box 1b has 1 cells, which is not a whole number of rows of two" -
+# every time, so the "leave it empty to see the options" invitation
+# could never be accepted.
+#
+# QGIS returns [''] for an untouched matrix, NOT []. The simulator
+# returned [], so every test passed and every real run failed. Third
+# time this stub has been more forgiving than the thing it simulates.
+# ---------------------------------------------------------------------
+@pytest.mark.parametrize("empty", [[""], [], None, ["", ""], ["  "]])
+def test_an_untouched_table_is_treated_as_empty(api, tmp_path, empty):
+    """John's log shows [''] and None; QGIS produces both."""
+    alg, fb = _alg(), _Feedback()
+    out = alg.processAlgorithm(_params(settings=empty,
+                                       FOLDER=str(tmp_path)), {}, fb)
+    assert out == {"FOLDER": str(tmp_path)}, "asking is not failing"
+    said = " ".join(fb.lines)
+    assert "asks for" in said, said
+    assert "rows of two" not in said
+
+
+@pytest.mark.parametrize("provider", ["worldpop", "ghsl", "hdx",
+                                      "geofabrik"])
+def test_EVERY_provider_answers_an_empty_table(api, tmp_path, provider,
+                                               monkeypatch):
+    """John tested all four and all four refused."""
+    import json as _json
+    from equipop.doors import fetching as F
+    rec = _json.loads((ROOT / "tests" / "fixtures" / "worldpop_api"
+                       / "geofabrik_index.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(F, "_get_json", lambda url, timeout=60: rec)
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index(provider), settings=[""],
+        FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(fb.lines)
+    assert f"{provider} asks for" in said, said
+    assert "ERROR" not in said
+
+
+def test_a_trailing_blank_row_does_not_break_a_real_table(api, tmp_path):
+    """A user who fills one row and leaves the next blank."""
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(
+        settings=["project", "pop", "category", "wpgp",
+                  "iso3", "BDI", "year", "2000", "", ""],
+        FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(fb.lines)
+    assert "file(s) from worldpop" in said
+    assert "ERROR" not in said
+
+
+def test_a_genuinely_ragged_table_is_still_refused(api, tmp_path):
+    """The check must survive being made tolerant."""
+    from qgis.core import QgsProcessingException
+    alg, fb = _alg(), _Feedback()
+    with pytest.raises(QgsProcessingException, match="rows of two"):
+        alg.processAlgorithm(_params(settings=["project", "pop", "iso3"],
+                                     FOLDER=str(tmp_path)), {}, fb)

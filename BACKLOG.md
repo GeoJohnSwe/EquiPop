@@ -2093,6 +2093,29 @@ appeared twice; the weaker copy is gone.*
   Verified by driving GHSL and Geofabrik through the same door,
   including the ODbL share-alike warning reaching the user.
 
+- ~~264~~ | DONE | "LEAVE IT EMPTY TO SEE THE OPTIONS" COULD NEVER BE
+  ACCEPTED. John left the settings table empty on ALL FOUR providers
+  and got the same refusal every time: "Box 1b has 1 cells, which is
+  not a whole number of rows of two".
+  AN UNTOUCHED QGIS MATRIX IS [''], NOT []. A list holding one empty
+  string - and a None parameter comes back the same way. The evenness
+  check therefore saw ONE cell and refused before the listing could
+  run, so the invitation printed on the box was impossible to take up.
+  THE SIMULATOR RETURNED [] AND SO EVERY TEST PASSED. THIRD TIME
+  tests/qgis_stub.py HAS BEEN MORE FORGIVING THAN QGIS - 221 accepted
+  a bare int for a WKB type, 223 accepted and DISCARDED the sink's
+  CRS, 231 lacked parameterAsEnum entirely. Every one of them let a
+  door ship broken with a green suite.
+  THE STUB IS STILL THE MOST DANGEROUS FILE IN THIS REPOSITORY. Every
+  door test is only as true as its imitation, and the imitation has
+  now been wrong four times in four different ways.
+  Fixed in both places: the stub returns [''] as QGIS does, and the
+  door drops trailing blanks and treats an all-blank table as no
+  table. Tested with [''], [], None, ['',''] and ['  '], across all
+  four providers, plus a real table with a trailing blank row - and a
+  genuinely ragged table is still refused, because the check had to
+  survive being made tolerant. Reverting the fix fails eight of them.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

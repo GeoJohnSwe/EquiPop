@@ -1,4 +1,4 @@
-*! EquiPop 1.44.6 - Bristol County, Rhode Island: the argument in one run
+*! EquiPop 1.44.7 - Bristol County, Rhode Island: the argument in one run
 *!
 *! FOR THE PRESENTATION. Six short sections. Each one prints a small
 *! number of figures you can read straight off the screen.

@@ -638,7 +638,20 @@ class QgsProcessingAlgorithm:
         return list(v) if isinstance(v, (list, tuple)) else [str(v)]
 
     def parameterAsMatrix(self, parameters, name, context):
-        return parameters.get(name) or []
+        """AN EMPTY MATRIX IS [''], NOT [].
+
+        Real QGIS 3.42 returns a list holding one empty string for an
+        untouched table - and None for the parameter comes back the
+        same way. This returned [] instead, so a door that checked the
+        cell count for evenness passed every test and refused every
+        real empty table. Third time this simulator has been more
+        forgiving than the thing it simulates (221 the bare int, 223
+        the discarded CRS, 231 the missing reader).
+        """
+        v = parameters.get(name)
+        if v is None or v == []:
+            return [""]
+        return list(v)
 
     def parameterAsRasterLayer(self, parameters, name, context):
         return parameters.get(name)
