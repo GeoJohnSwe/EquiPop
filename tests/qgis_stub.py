@@ -136,6 +136,35 @@ class _MetaTypes:
     Double, Int, QString, Bool = 6, 2, 10, 1
 
 
+class _Null:
+    """PyQGIS's NULL. str(NULL) is the four characters 'NULL'.
+
+    THIS IS THE FIFTH TIME this simulator has been kinder than QGIS.
+    An untouched matrix cell is a QVariant null, and code that strips
+    it and tests for emptiness sees a four-character string instead.
+    The stub returned '' and then [], so a door that handled BOTH of
+    those still failed on John's machine.
+    """
+
+    def __str__(self):
+        return "NULL"
+
+    def __repr__(self):
+        return "NULL"
+
+    def __bool__(self):
+        return False
+
+    def __eq__(self, other):
+        return other is self or other is None or other == ""
+
+    def __hash__(self):
+        return hash("")
+
+
+NULL = _Null()
+
+
 class QMetaType:
     """v1.29.3: QGIS 3.38 moved field types from QVariant::Type to
     QMetaType::Type and deprecated the old QgsField constructor."""
@@ -638,7 +667,7 @@ class QgsProcessingAlgorithm:
         return list(v) if isinstance(v, (list, tuple)) else [str(v)]
 
     def parameterAsMatrix(self, parameters, name, context):
-        """AN EMPTY MATRIX IS [''], NOT [].
+        """AN EMPTY MATRIX IS [NULL], AND str(NULL) IS 'NULL'.
 
         Real QGIS 3.42 returns a list holding one empty string for an
         untouched table - and None for the parameter comes back the
@@ -649,8 +678,8 @@ class QgsProcessingAlgorithm:
         the discarded CRS, 231 the missing reader).
         """
         v = parameters.get(name)
-        if v is None or v == []:
-            return [""]
+        if v is None or v == [] or v == [""]:
+            return [NULL]
         return list(v)
 
     def parameterAsRasterLayer(self, parameters, name, context):

@@ -370,10 +370,9 @@ class CountsAndShares(EquipopAlgorithm):
         # the logic locally and coupled them.
         treatmode = (self.parameterAsEnums(parameters, "treatmode",
                                            context) or [0])[0]
-        pop_vals = [str(v).strip() for v in
-                    (self.parameterAsMatrix(parameters, "reftable",
-                                            context) or [])
-                    if str(v).strip()]
+        from .base import matrix_cells
+        pop_vals = [c for c in matrix_cells(self, parameters,
+                                            "reftable", context) if c]
 
         # ------------------------------------------------ BACKLOG 104
         # A ladder whose rungs read different boxes, in a dialog that
@@ -386,9 +385,8 @@ class CountsAndShares(EquipopAlgorithm):
                                           context).strip()
         tcat = (self.parameterAsStrings(parameters, "treatcatfield",
                                         context) or [None])[0]
-        tmat = [str(v).strip() for v in
-                (self.parameterAsMatrix(parameters, "treattable",
-                                        context) or []) if str(v).strip()]
+        tmat = [c for c in matrix_cells(self, parameters, "treattable",
+                                        context) if c]
 
         if refmode == 1 and not pop:
             raise QgsProcessingException(rungs.missing(
@@ -454,8 +452,8 @@ class CountsAndShares(EquipopAlgorithm):
         if restricting or grouping:
             from equipop.categorical import categories_to_binary
             groups = self._groups_from_matrix(
-                self.parameterAsMatrix(parameters, "treattable",
-                                       context)) if grouping else {}
+                matrix_cells(self, parameters, "treattable",
+                             context)) if grouping else {}
             tcatf = (self.parameterAsStrings(parameters,
                                             "treatcatfield", context)
                      or [None])[0] or catfield

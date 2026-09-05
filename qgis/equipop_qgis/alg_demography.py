@@ -193,10 +193,16 @@ class SpatialDemography(EquipopAlgorithm):
         """
         from equipop.doors.demography import INDICES, parse_spec
 
-        flat = [str(v).strip() for v in
-                (self.parameterAsMatrix(parameters, "settings", context)
-                 or [])]
-        if not any(flat):
+        # AN UNTOUCHED CELL IS PyQGIS's NULL and str(NULL) is the
+        # four characters 'NULL'. The SAME fault as machine 5's
+        # settings table (BACKLOG 265), found here only when the
+        # simulator stopped being kinder than QGIS - which means this
+        # tool would have refused an untouched box 2c on John's
+        # machine too, and nobody had tried it yet.
+        from .base import matrix_cells
+        flat = matrix_cells(self, parameters,
+                            "settings", context)
+        if not flat:
             return {}
         if len(flat) % 3:
             raise QgsProcessingException(

@@ -100,6 +100,33 @@ def _newer(a, b):
         return False
 
 
+def matrix_cells(alg, parameters, name, context):
+    """A QGIS matrix as a list of clean strings.
+
+    AN UNTOUCHED CELL IS PyQGIS's NULL, AND str(NULL) IS THE FOUR
+    CHARACTERS 'NULL'. Not an empty string, not None. Every door that
+    read a matrix wrote its own stripping, and every one of them
+    handled "" and missed this - so machines 1, 4 and 5 each refused
+    an untouched table, in three different messages, and only machine
+    5's was ever reported (BACKLOG 265).
+    Trailing blanks are dropped and an all-blank table becomes empty,
+    because "leave it empty" must be an acceptable answer.
+    """
+    out = []
+    for v in (alg.parameterAsMatrix(parameters, name, context) or []):
+        s = "" if v is None else str(v).strip()
+        if s.upper() == "NULL":
+            s = ""
+        out.append(s)
+    # THE LENGTH IS PRESERVED. An earlier version dropped trailing
+    # blanks, which suits a two-column table and BREAKS a
+    # three-column one, where "Ageing index / 70- / (blank)" is a
+    # complete row whose last cell is empty on purpose. Only an
+    # ENTIRELY blank table becomes empty; each door checks its own
+    # row width.
+    return [] if not any(out) else out
+
+
 def check_versions(channel):
     """Say when the two halves are from different releases.
 

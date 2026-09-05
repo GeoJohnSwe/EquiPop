@@ -86,18 +86,16 @@ class SpatialDataFetch(EquipopAlgorithm):
 
         # THE TABLE IS THE PROVIDER'S OWN VOCABULARY. Rows arrive flat,
         # two cells at a time.
-        flat = [str(v).strip() for v in
-                (self.parameterAsMatrix(parameters, "settings", context)
-                 or [])]
-        # AN UNTOUCHED TABLE COMES BACK AS [''], NOT []. QGIS gives a
-        # list holding one empty string, so the evenness check saw ONE
-        # cell and refused - and the "leave it empty to see the
-        # options" invitation could never be accepted. Drop trailing
-        # blanks, and treat an all-blank table as no table.
-        while flat and not flat[-1]:
-            flat.pop()
-        if not any(flat):
-            flat = []
+        # AN UNTOUCHED CELL IS PyQGIS's NULL, AND str(NULL) IS THE
+        # FOUR CHARACTERS 'NULL'. Not an empty string, not None. So
+        # stripping and testing for emptiness left a four-character
+        # string, the evenness check saw ONE cell, and the invitation
+        # printed on the box could never be accepted. John hit this on
+        # all four providers TWICE, because the first fix handled the
+        # empty string and None and not this.
+        from .base import matrix_cells
+        flat = matrix_cells(self, parameters,
+                            "settings", context)
         if len(flat) % 2:
             raise QgsProcessingException(
                 f"Box 1b has {len(flat)} cells, which is not a whole "

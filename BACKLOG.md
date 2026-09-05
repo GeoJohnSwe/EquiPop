@@ -2116,6 +2116,34 @@ appeared twice; the weaker copy is gone.*
   genuinely ragged table is still refused, because the check had to
   survive being made tolerant. Reverting the fix fails eight of them.
 
+- ~~265~~ | DONE | AN UNTOUCHED MATRIX CELL IS PyQGIS's NULL, AND
+  str(NULL) IS THE FOUR CHARACTERS 'NULL'. Not an empty string, not
+  None. John reported the same refusal TWICE, on all four providers:
+  "Box 1b has 1 cells". The first fix handled "" and None and missed
+  this, so his second report was the same error against a release that
+  was supposed to have fixed it.
+  THE SIMULATOR RETURNED "" AND THEN [] AND WAS WRONG BOTH TIMES.
+  FIFTH FIDELITY FAILURE in tests/qgis_stub.py - after a bare int
+  accepted for a WKB type (221), the sink's CRS accepted and DISCARDED
+  (223), parameterAsEnum missing entirely (231), and [] for an empty
+  matrix (264). Every one let a door ship broken with a green suite.
+  MAKING THE SIMULATOR HONEST FOUND TWO MORE LIVE FAULTS IMMEDIATELY.
+  Machine 4's index table and machine 1's reference and treatment
+  tables read a matrix their own way and each handled "" and missed
+  NULL - so all THREE tools would have refused an untouched table on
+  John's machine, in three different messages, and only machine 5's
+  had ever been tried.
+  ONE READER NOW, base.matrix_cells(), used by all three. The fault
+  appeared three times independently because the reading was written
+  three times.
+  AND THE SHARED HELPER BROKE MACHINE 4 ON ITS FIRST OUTING: it
+  dropped trailing blanks, which suits a TWO-column table and
+  destroys a THREE-column one, where "Ageing index / 70- / blank" is a
+  complete row. Length is preserved now and each door checks its own
+  width. FOURTH TIME a generalisation has overruled the thing it
+  generalised - 256 the defaults, 250 the numbering, 262 the listing,
+  and now this.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.
