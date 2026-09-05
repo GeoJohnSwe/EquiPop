@@ -1,4 +1,4 @@
-*! EquiPop 1.44.9 - a test pass over stata_test_data.dta
+*! EquiPop 1.44.10 - a test pass over stata_test_data.dta
 *!
 *! WHAT CHANGED IN 1.40.5, and why it matters:
 *!   Until now this file STATED its invariants and did not ENFORCE
@@ -54,7 +54,7 @@ global EQP_DATA ""
 * updated by two different mechanisms, and a half-update is the most
 * common support problem this project has.
 
-global EQP_EXPECT "1.44.9"
+global EQP_EXPECT "1.44.10"
 
 * ------------------------------------------------------------------
 * Nothing below here needs editing.

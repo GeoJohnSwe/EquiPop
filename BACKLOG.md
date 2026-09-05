@@ -2171,6 +2171,54 @@ appeared twice; the weaker copy is gone.*
   removed by accident during a redesign, noticed only because someone
   asked a different question about the same screen.
 
+- ~~267~~ | DONE | HANDOVER 14 WRITTEN. HANDOVER 13 ended at 1.41.0
+  and the tree is at 1.44.9 - eighteen releases, 57 backlog items
+  closed, 12 open. Machines 3, 4 and 5, the provider registry and four
+  providers all arrived after 13 was written, so a fresh session
+  reading 13 would have been badly misled about what exists.
+  ITS CENTRE IS THE FOUR PATTERNS THAT REPEATED, because they cost
+  more than any single defect and EVERY ONE RECURRED AFTER BEING
+  WRITTEN DOWN:
+    the simulator kinder than QGIS - FIVE times
+    a generalisation overruling what it generalised - FOUR times
+    a refusal blaming the wrong thing - THREE times
+    a rule written from one sample - THREE times
+  Writing them down is demonstrably not sufficient. Each needs a test
+  that fires, and 14 says so rather than repeating the advice that
+  already failed.
+  ALSO RECORDED: handovers 9 and 10 have never been in the tree. 13
+  flagged it and they are still absent, so two sessions exist only in
+  downloads if at all.
+
+- ~~268~~ | DONE | FOUR FAILED ATTEMPTS IN ONE SITTING, FOUR
+  SEPARATE FAULTS, ALL CLAUDE'S. John: "the messages are not fully
+  helpful and somewhat confusing ... it is unclear if I should enter
+  'product Which layer (required)' as Setting. And see year - first
+  asked for then rejecting it later."
+  (a) THE KEY AND ITS LABEL DISAGREED. The field was named `epoch` and
+  LABELLED "Year", and its refusal said "Which year?" - the label's
+  word for a key that did not exist. He typed `year`, which was the
+  only sensible move, and was refused. Renamed to `year` IN THE
+  DEFINITION, one line of JSON and no code, which is exactly what the
+  registry was built for. WorldPop already used `year`, so one word
+  across providers beats matching JRC's own vocabulary.
+  (b) 'Product' WAS REFUSED FOR A CAPITAL LETTER. A setting name is
+  not data. Matched case-insensitively now.
+  (c) '1' WAS REFUSED WITH NO HELP - and he typed it because options
+  are NUMBERED everywhere else in this tool. Unknown settings now
+  SUGGEST the nearest, matching on the label too, so "year" would have
+  found "epoch" even before the rename.
+  (d) THE LAYOUT LEANED ON ALIGNMENT. "product   Which layer
+  (REQUIRED)" gave no clue where the Setting column ended - and QGIS's
+  log COLLAPSES whitespace, so the two columns became one sentence.
+  Names and values are QUOTED now, which survives any mangling, and a
+  test asserts the listing still reads correctly with all whitespace
+  collapsed.
+  THE PATTERN: every one of these is the tool describing itself in
+  words that do not match what it will accept. A message is part of
+  the interface and must be tested against the shape the user
+  actually sees, not the shape it has in the source.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

@@ -295,7 +295,7 @@ def test_GHSL_runs_through_the_same_door(tmp_path):
     from equipop_qgis.alg_fetch import PROVIDER_NAMES
     out = alg.processAlgorithm(_params(
         provider=PROVIDER_NAMES.index("ghsl"),
-        settings=["product", "POP", "epoch", "2020"],
+        settings=["product", "POP", "year", "2020"],
         FOLDER=str(tmp_path)), {}, fb)
     assert out == {"FOLDER": str(tmp_path)}
     said = " ".join(fb.lines)
@@ -311,7 +311,7 @@ def test_GHSLs_empty_table_lists_GHSLs_OWN_fields(tmp_path):
         FOLDER=str(tmp_path)), {}, fb)
     said = " ".join(fb.lines)
     assert "ghsl asks for" in said
-    assert "product" in said and "epoch" in said
+    assert "product" in said and "year" in said
     assert "iso3" not in said, "that is WorldPop's word, not GHSL's"
 
 
@@ -419,7 +419,7 @@ def test_the_listing_shows_the_ALLOWED_VALUES(api, tmp_path):
     said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
     for v in ("POP", "BUILT_S", "BUILT_V"):
         assert v in said, f"{v} is a legal value and is not shown"
-    assert "2020" in said and "1975" in said
+    assert "2020" in said and "1975" in said  # the year options
     assert "4326" in said and "54009" in said
 
 
@@ -429,9 +429,9 @@ def test_a_field_with_a_default_is_NOT_called_required(api, tmp_path):
     not incompleteness, it is a false statement."""
     from equipop_qgis.alg_fetch import PROVIDER_NAMES
     said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
-    assert "defaults to R2023A" in said
-    assert "defaults to 4326" in said
-    assert "defaults to 30ss" in said
+    assert "left out, it uses R2023A" in said
+    assert "left out, it uses 4326" in said
+    assert "left out, it uses 30ss" in said
     for line in said.splitlines():
         if line.strip().startswith("release"):
             assert "REQUIRED" not in line, line
@@ -449,16 +449,16 @@ def test_the_descriptions_reach_the_user(api, tmp_path):
 def test_a_copyable_example_is_offered(api, tmp_path):
     from equipop_qgis.alg_fetch import PROVIDER_NAMES
     said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
-    assert "A table you can copy" in said
-    assert "product   POP" in said
-    assert "epoch   " in said
+    assert "The smallest table that will work" in said
+    flat = " ".join(" ".join(l.split()) for l in said.splitlines())
+    assert "product POP" in flat and "year 1975" in flat
 
 
 def test_the_example_holds_only_what_must_be_filled(api, tmp_path):
     """An optional field in a worked example reads as compulsory."""
     from equipop_qgis.alg_fetch import PROVIDER_NAMES
     said = _listing(PROVIDER_NAMES.index("ghsl"), tmp_path)
-    block = said.split("A table you can copy")[1].split("Put those")[0]
+    block = said.split("The smallest table that will work")[1]
     assert "release" not in block, "release has a default"
     assert "crs" not in block and "res" not in block
 
@@ -481,3 +481,73 @@ def test_worldpop_can_still_list_its_datasets(api):
     names = [f["name"] for f in PROVIDERS["worldpop"].FIELDS
              if f.get("lists_when_empty")]
     assert "project" in names and "category" in names
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 268. John, from four failed attempts in one sitting:
+# "the messages are not fully helpful and somewhat confusing ... it is
+# unclear if I should enter 'product Which layer (required)' as
+# Setting. And see year - first asked for then rejecting it later."
+# ---------------------------------------------------------------------
+def test_the_key_and_its_label_AGREE(api):
+    """He was told the setting was 'Year' and typed `year`; the key
+    was `epoch`. Then the refusal said 'Which year?' - using the
+    LABEL's word for a key that did not exist. WorldPop already calls
+    it year, so one word across providers beats matching JRC."""
+    from equipop.doors.fetching import PROVIDERS
+    names = [f["name"] for f in PROVIDERS["ghsl"].FIELDS]
+    assert "year" in names and "epoch" not in names
+
+
+def test_johns_exact_table_now_works(api):
+    from equipop.doors.fetching import plan_fetch
+    plan = plan_fetch("ghsl", product="BUILT_V", year="2005",
+                      say=lambda m: None)
+    assert "GHS_BUILT_V_E2005" in plan["entries"][0]["url"]
+
+
+def test_a_setting_name_is_not_case_sensitive(api, tmp_path):
+    """'Product' was refused for a capital letter. A setting name is
+    not data."""
+    alg, fb = _alg(), _Feedback()
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index("ghsl"),
+        settings=["Product", "BUILT_V ", "YEAR", "2005"],
+        FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(fb.lines)
+    assert "GHS_BUILT_V_E2005" in said, said
+
+
+def test_an_unknown_setting_SUGGESTS_the_right_one(api, tmp_path):
+    from qgis.core import QgsProcessingException
+    alg, fb = _alg(), _Feedback()
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    with pytest.raises(QgsProcessingException, match="did you mean"):
+        alg.processAlgorithm(_params(
+            provider=PROVIDER_NAMES.index("ghsl"),
+            settings=["yea", "2005"], FOLDER=str(tmp_path)), {}, fb)
+
+
+def test_the_listing_survives_whitespace_being_collapsed(api, tmp_path):
+    """The old layout leaned on alignment - 'product   Which layer' -
+    and QGIS's log collapses spacing, so the column boundary vanished.
+    Quotes survive any amount of mangling."""
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index("ghsl"), settings=[""],
+        FOLDER=str(tmp_path)), {}, fb)
+    flat = [" ".join(l.split()) for l in fb.lines]
+    assert "Setting 'product' (REQUIRED) - Which layer" in flat
+    assert any(l.startswith("Value 'BUILT_V'") for l in flat)
+
+
+def test_an_optional_field_says_what_happens_if_left_out(api, tmp_path):
+    from equipop_qgis.alg_fetch import PROVIDER_NAMES
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(
+        provider=PROVIDER_NAMES.index("ghsl"), settings=[""],
+        FOLDER=str(tmp_path)), {}, fb)
+    said = " ".join(" ".join(l.split()) for l in fb.lines)
+    assert "left out, it uses R2023A" in said

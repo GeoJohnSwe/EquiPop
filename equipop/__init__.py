@@ -50,7 +50,7 @@ and fails if any of the optional libraries arrive uninvited.
 
 from importlib import import_module as _import_module
 
-__version__ = "1.44.9"
+__version__ = "1.44.10"
 
 # name -> the module it lives in. This is the whole public surface;
 # adding a name here is how a new export is published.

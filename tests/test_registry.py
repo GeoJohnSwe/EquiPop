@@ -121,7 +121,7 @@ def test_ghsl_builds_the_url_confirmed_against_the_real_server():
     """Confirmed 2026-09-02 against
     jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/
     """
-    plan = plan_fetch("ghsl", product="POP", epoch="2020",
+    plan = plan_fetch("ghsl", product="POP", year="2020",
                       say=lambda m: None)
     url = plan["entries"][0]["url"]
     assert url == (
@@ -134,41 +134,43 @@ def test_ghsl_defaults_to_WGS84_so_it_can_share_a_folder_with_worldpop():
     """54009 is Mollweide and WorldPop is 4326. A mixed-CRS folder is
     REFUSED by the loader (BACKLOG 239), so the default must be the
     one that can be combined."""
-    plan = plan_fetch("ghsl", product="POP", epoch="2020",
+    plan = plan_fetch("ghsl", product="POP", year="2020",
                       say=lambda m: None)
     assert "_4326_" in plan["entries"][0]["url"]
 
 
 def test_ghsl_carries_its_provenance_and_its_obligations():
-    e = plan_fetch("ghsl", product="POP", epoch="2020",
+    e = plan_fetch("ghsl", product="POP", year="2020",
                    say=lambda m: None)["entries"][0]
     assert e["doi"].startswith("10.2905/")
     assert "Schiavina" in e["citation"]
     assert e["may_redistribute"] is True
     assert e["share_alike"] is False
-    assert e["registry_version"] == "2026-09-02"
+    assert e["registry_version"] == "2026-09-05"
 
 
 def test_a_different_product_carries_a_different_doi():
-    a = plan_fetch("ghsl", product="POP", epoch="2020",
+    a = plan_fetch("ghsl", product="POP", year="2020",
                    say=lambda m: None)["entries"][0]
-    b = plan_fetch("ghsl", product="BUILT_S", epoch="2020",
+    b = plan_fetch("ghsl", product="BUILT_S", year="2020",
                    say=lambda m: None)["entries"][0]
     assert a["doi"] != b["doi"]
 
 
 def test_a_year_is_a_year_and_not_an_index():
+    # the field is now called , not  - John was told the
+    # setting was "Year" and typed year, and the key disagreed
     """The numbering convenience read '2020' as 'the 2020th option'
     and refused it as out of range. If the value IS one of the
     choices, it is the choice."""
-    plan = plan_fetch("ghsl", product="POP", epoch="2020",
+    plan = plan_fetch("ghsl", product="POP", year="2020",
                       say=lambda m: None)
     assert "E2020" in plan["entries"][0]["url"]
 
 
 def test_an_impossible_year_is_still_refused():
     with pytest.raises(FetchError):
-        plan_fetch("ghsl", product="POP", epoch="1066",
+        plan_fetch("ghsl", product="POP", year="1066",
                    say=lambda m: None)
 
 
@@ -184,9 +186,9 @@ def test_the_registry_version_reaches_the_manifest(tmp_path):
             f.write(b"x")
         return 1, hashlib.sha256(b"x").hexdigest()
 
-    plan = plan_fetch("ghsl", product="POP", epoch="2020",
+    plan = plan_fetch("ghsl", product="POP", year="2020",
                       say=lambda m: None)
     man = run_fetch(plan, str(tmp_path), get_file=fake,
                     say=lambda m: None)
-    assert man["registry_version"] == "2026-09-02"
-    assert man["files"][0]["registry_version"] == "2026-09-02"
+    assert man["registry_version"] == "2026-09-05"
+    assert man["files"][0]["registry_version"] == "2026-09-05"

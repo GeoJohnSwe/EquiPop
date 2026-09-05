@@ -115,66 +115,93 @@ class SpatialDataFetch(EquipopAlgorithm):
         # AN EMPTY TABLE IS A QUESTION. Answer it and finish cleanly -
         # asking what a provider wants is not a failure (BACKLOG 248).
         if not choices:
-            ch.info(f"{provider} asks for:")
+            # QUOTE THE SETTING NAME AND LABEL THE COLUMNS. The
+            # old layout leaned on alignment - "product   Which layer
+            # (REQUIRED)" - and QGIS's log collapses the spacing, so
+            # John could not tell where the Setting column ended and
+            # the Value began. Quotes survive any amount of
+            # whitespace mangling (BACKLOG 268).
+            ch.info(f"{provider} asks for these settings. Put the "
+                    "quoted NAME in the Setting column and one of "
+                    "the values in the Value column.")
+            ch.info("")
             example = []
             for f in fields:
-                # WHAT MAY BE TYPED, not merely what is wanted. The
-                # listing gave field NAMES and no VALUES, so a user
-                # with the right names still could not fill the
-                # table. And a field with a DEFAULT was announced as
-                # "required", which is worse than incomplete - it is
-                # untrue, and sent John hunting for a value he could
-                # have omitted (BACKLOG 266).
                 dflt = f.get("default")
                 if dflt is not None:
-                    need = f"optional, defaults to {dflt}"
+                    need = f"optional - left out, it uses {dflt}"
                 elif f.get("required"):
                     need = "REQUIRED"
                 else:
                     need = "optional"
-                ch.info(f"   {f['name']:<10} {f['label']}  ({need})")
+                ch.info(f"  Setting '{f['name']}'  ({need})"
+                        f"  - {f['label']}")
                 opts = f.get("options") or []
                 describe = f.get("describe") or {}
-                if opts:
-                    if describe:
-                        for o in opts:
-                            note = describe.get(o, "")
-                            ch.info(f"        {o}"
-                                    + (f"  - {note}" if note else ""))
-                    else:
-                        shown = " | ".join(str(o) for o in opts[:12])
-                        more = " | ..." if len(opts) > 12 else ""
-                        ch.info(f"        {shown}{more}")
+                if opts and describe:
+                    for o in opts:
+                        note = describe.get(o, "")
+                        ch.info(f"      Value '{o}'"
+                                + (f"  - {note}" if note else ""))
+                elif opts:
+                    shown = " | ".join(str(o) for o in opts[:12])
+                    more = " | ..." if len(opts) > 12 else ""
+                    ch.info(f"      Value: {shown}{more}")
                 elif f.get("lists_when_empty"):
-                    ch.info("        (many - give this one alone and "
-                            "run to see the list)")
-                # ONLY WHAT MUST BE FILLED. An optional field in a
-                # worked example reads as compulsory, and "?" is not a
-                # value anyone can act on.
+                    ch.info("      Value: many - give this setting "
+                            "alone and run to see the list")
                 if f.get("required") and dflt is None:
                     example.append((
                         f["name"],
                         str(opts[0]) if opts
-                        else ("<leave blank and run to see the list>"
+                        else ("<blank - run to see the list>"
                               if f.get("lists_when_empty")
                               else "<your value>")))
             ch.info("")
             if example:
-                ch.info("A table you can copy, one row per line:")
+                ch.info("The smallest table that will work:")
+                ch.info("      Setting        Value")
                 for k, v in example:
-                    ch.info(f"   {k}   {v}")
+                    ch.info(f"      {k:<14} {v}")
                 ch.info("")
-            ch.info("Put those names in the left column of box 1b and "
-                    "your values on the right, then run again. Nothing "
-                    "was fetched - you asked what was available.")
+            ch.info("Nothing was fetched - you asked what was "
+                    "available.")
             return {"FOLDER": folder}
 
-        known = {f["name"] for f in fields}
-        unknown = sorted(k for k in choices if k not in known)
+        # A SETTING NAME IS NOT DATA, so its case should not matter.
+        # John typed "Product" and was refused for a capital letter.
+        by_lower = {f["name"].lower(): f["name"] for f in fields}
+        fixed, unknown = {}, []
+        for k, v in choices.items():
+            real = by_lower.get(k.strip().lower())
+            if real:
+                fixed[real] = v
+            else:
+                unknown.append(k)
+        choices = fixed
         if unknown:
+            # SUGGEST, do not merely refuse. He typed "year" because
+            # the field was LABELLED Year, and "1" because the options
+            # elsewhere are numbered.
+            hints = []
+            for bad in unknown:
+                b = bad.strip().lower()
+                near = [n for n in by_lower.values()
+                        if b in n.lower() or n.lower() in b
+                        or b in str(next(f["label"] for f in fields
+                                         if f["name"] == n)).lower()]
+                if near:
+                    hints.append(f"{bad!r} - did you mean "
+                                 + " or ".join(repr(n) for n in near)
+                                 + "?")
+                else:
+                    hints.append(f"{bad!r}")
             raise QgsProcessingException(
-                f"{provider} does not take {', '.join(unknown)}. It "
-                "asks for: " + ", ".join(sorted(known)) + ".")
+                f"{provider} does not take " + "; ".join(hints)
+                + ". It asks for: "
+                + ", ".join(f["name"] for f in fields)
+                + ". Put the NAME in the left column, the VALUE in "
+                  "the right.")
 
         try:
             plan = plan_fetch(provider, say=ch.info,
