@@ -446,3 +446,336 @@ def test_a_mixed_case_still_lists_the_years_that_exist():
     msg = str(e.value)
     assert "BDI: 2000" in msg
     assert "RWA: no year recorded" in msg
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 254. John chose version 5 of `pop` - G2_MOS_POP_R25A_1km,
+# "Global mosaics" - and asked for BDI. The refusal said "Check the
+# ISO3 code", so he checked a code that was correct. A global mosaic
+# holds no single country and never will.
+# ---------------------------------------------------------------------
+@pytest.mark.parametrize("name,per_country", [
+    ("Individual countries 2015-2030 ( 1km resolution ) R2025A v1", True),
+    ("Unconstrained individual countries 2000-2020 ( 100m )", True),
+    ("Constrained Individual countries 2020 UN adjusted", True),
+    ("Global mosaics 2015-2030 ( 1km resolution ) R2025A v1", False),
+    ("Unconstrained global mosaics 2000-2020 ( 1km resolution )", False),
+    ("Whole Continent", False),
+])
+def test_the_catalogue_says_which_products_are_per_country(name,
+                                                           per_country):
+    from equipop.doors.fetching import is_per_country
+    assert is_per_country(name) is per_country
+
+
+def _pop_api(records=None):
+    cats = {"G2_MOS_POP_R25A_1km": "Global mosaics 2015-2030 ( 1km )",
+            "G2_CN_POP_R25A_1km": "Individual countries 2015-2030 ( 1km )",
+            "wpgp": "Unconstrained individual countries 2000-2020",
+            "pop_continent": "Whole Continent"}
+
+    def fake(url, timeout=60):
+        if "/pop/" in url:
+            return {"data": records or []}
+        if url.rstrip("/").endswith("/pop"):
+            return {"data": [{"alias": k, "name": v}
+                             for k, v in cats.items()]}
+        return {"data": [{"alias": "pop", "name": "Population Counts"}]}
+    return fake
+
+
+def test_a_global_product_says_so_instead_of_blaming_the_code():
+    with pytest.raises(FetchError) as e:
+        plan_fetch(project="pop", category="G2_MOS_POP_R25A_1km",
+                   iso3="BDI", year=2001, get_json=_pop_api(),
+                   say=_quiet)
+    msg = str(e.value)
+    assert "GLOBAL product" in msg
+    assert "never work" in msg
+    assert "Check the ISO3" not in msg, (
+        "his code was right; do not send him to check it")
+
+
+def test_it_lists_the_PER_COUNTRY_versions_so_the_fix_is_one_step():
+    with pytest.raises(FetchError) as e:
+        plan_fetch(project="pop", category="G2_MOS_POP_R25A_1km",
+                   iso3="BDI", get_json=_pop_api(), say=_quiet)
+    msg = str(e.value)
+    assert "G2_CN_POP_R25A_1km" in msg and "wpgp" in msg
+    assert "pop_continent" not in msg, "a continent is not per-country"
+    assert "G2_MOS_POP_R25A_1km" in msg.split("versions of")[0], (
+        "name the offending one, then the alternatives")
+
+
+def test_a_per_country_product_with_a_bad_code_still_says_so():
+    """The old message was right for the case it was written for."""
+    with pytest.raises(FetchError, match="three-letter"):
+        plan_fetch(project="pop", category="wpgp", iso3="ZZZ",
+                   get_json=_pop_api(), say=_quiet)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 256. The spine took project, category, iso3 and year as fixed
+# keyword arguments - WorldPop's shape, baked into the machine. GHSL is
+# tiled globally and has no iso3; Overture has no year; HDX has
+# neither. A rule shaped by one case and discovered when the second
+# arrives is this project's most repeated mistake, so it was loosened
+# BEFORE the second adapter rather than after.
+#
+# The proof is a provider shaped NOTHING like WorldPop.
+# ---------------------------------------------------------------------
+class _Tiles:
+    """A pretend provider with no countries and no years."""
+
+    name = "tiles"
+    FIELDS = [
+        {"name": "release", "label": "Release", "required": True},
+        {"name": "tile", "label": "Tile", "required": True,
+         "missing": "Which tile? They look like R4_C19."},
+        {"name": "band", "label": "Band", "required": False},
+    ]
+
+    def plan(self, choices, get_json=None, say=print):
+        rel, tile = choices["release"], choices["tile"]
+        if tile != "R4_C19":
+            raise FetchError(f"No tile {tile!r} in {rel}.")
+        return ([{"url": f"https://x/{rel}/{tile}.tif",
+                  "name": f"{tile}.tif", "licence": "CC-BY 4.0"}],
+                {"release": rel, "tile": tile})
+
+
+@pytest.fixture
+def tiles():
+    from equipop.doors import fetching as F
+    F.PROVIDERS["tiles"] = _Tiles()
+    yield
+    F.PROVIDERS.pop("tiles", None)
+
+
+def test_a_provider_with_no_countries_and_no_years_works(tiles):
+    plan = plan_fetch("tiles", release="R2023A", tile="R4_C19",
+                      say=_quiet)
+    assert plan["provider"] == "tiles"
+    assert plan["release"] == "R2023A" and plan["tile"] == "R4_C19"
+    assert len(plan["entries"]) == 1
+    assert "iso3" not in plan and "year" not in plan
+
+
+def test_the_spine_reports_what_that_provider_asks_for(tiles):
+    with pytest.raises(FetchError, match="does not take iso3"):
+        plan_fetch("tiles", release="R2023A", iso3="BDI", say=_quiet)
+
+
+def test_a_field_may_carry_its_own_wording(tiles):
+    """Moving a check up a layer must not cost the user the better
+    message. The generic "tiles needs tile - Tile" is correct and
+    worse than the sentence the adapter can write."""
+    with pytest.raises(FetchError, match="They look like R4_C19"):
+        plan_fetch("tiles", release="R2023A", say=_quiet)
+
+
+def test_a_field_without_its_own_wording_still_gets_a_message(tiles):
+    with pytest.raises(FetchError, match="needs release - Release"):
+        plan_fetch("tiles", tile="R4_C19", say=_quiet)
+
+
+def test_the_spine_never_mentions_worldpops_vocabulary():
+    """If 'iso3' or 'popyear' appear in plan_fetch itself, the shape
+    has leaked back in."""
+    src = (Path(__file__).resolve().parents[1] / "equipop" / "doors"
+           / "fetching.py").read_text(encoding="utf-8")
+    spine = src[src.index("def plan_fetch("):src.index("def run_fetch(")]
+    for word in ("iso3", "popyear", "country", "ISO3"):
+        assert word not in spine, (
+            f"the spine mentions {word!r} - a provider's vocabulary "
+            "has leaked back into the machine")
+
+
+def test_a_downloaded_plan_from_any_provider_still_writes_a_manifest(
+        tiles, tmp_path):
+    import hashlib
+
+    def fake(url, dest, timeout=900):
+        with open(dest, "wb") as f:
+            f.write(b"tile")
+        return 4, hashlib.sha256(b"tile").hexdigest()
+
+    plan = plan_fetch("tiles", release="R2023A", tile="R4_C19",
+                      say=_quiet)
+    man = run_fetch(plan, str(tmp_path), get_file=fake, say=_quiet)
+    assert man["provider"] == "tiles"
+    assert man["files"][0]["sha256"]
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 261 - HDX, confirmed against John's real package_search
+# response for Sweden, 2 Sep 2026. Two things that response settled,
+# and the second broke an assumption in PROVIDERS_PLAN.md.
+# ---------------------------------------------------------------------
+def _hdx_api():
+    with open(CAPTURED / "hdx_swe.json", encoding="utf-8") as f:
+        rec = json.load(f)
+    return lambda url, timeout=60: rec
+
+
+def test_hdx_is_a_provider():
+    from equipop.doors.fetching import PROVIDERS
+    assert "hdx" in PROVIDERS
+
+
+def test_no_dataset_lists_them_numbered():
+    with pytest.raises(FetchError) as e:
+        plan_fetch("hdx", country="swe", get_json=_hdx_api(), say=_quiet)
+    msg = str(e.value)
+    assert "iati-swe" in msg and "cod-ab-swe" in msg
+    assert "1  " in msg, "numbered, as everywhere else"
+
+
+def test_every_resource_carries_THE_PUBLISHERS_OWN_MD5():
+    """Like Geofabrik, HDX states a hash. That lets a download be
+    checked against what the PUBLISHER says the file is, not merely
+    against the bytes that arrived. WorldPop offers nothing of the
+    kind."""
+    plan = plan_fetch("hdx", country="swe", dataset="iati-swe",
+                      get_json=_hdx_api(), say=_quiet)
+    for e in plan["entries"]:
+        assert e["publisher_md5"], e["name"]
+        assert len(e["publisher_md5"]) == 32
+
+
+def test_an_unresolvable_licence_is_admitted_not_guessed():
+    """THE ASSUMPTION THIS BROKE. PROVIDERS_PLAN.md said the manifest
+    would record whether a source may be redistributed and whether it
+    imposes share-alike. For HDX that is often UNKNOWABLE: the IATI
+    dataset returns license_id 'hdx-other', title 'Other', and prose
+    pointing at a web page. Guessing would be worse than admitting."""
+    e = plan_fetch("hdx", country="swe", dataset="iati-swe",
+                   get_json=_hdx_api(), say=_quiet)["entries"][0]
+    assert e["licence_id"] == "hdx-other"
+    assert e["may_redistribute"] is None
+    assert e["share_alike"] is None
+    assert e["licence_note"], "the prose must survive for a human"
+
+
+def test_a_known_licence_IS_resolved():
+    e = plan_fetch("hdx", country="swe", dataset="cod-ab-swe",
+                   get_json=_hdx_api(), say=_quiet)["entries"][0]
+    assert e["licence_id"] == "cc-by"
+    assert e["may_redistribute"] is True
+    assert e["share_alike"] is False
+
+
+def test_an_unreadable_licence_is_said_out_loud():
+    said = []
+    plan_fetch("hdx", country="swe", dataset="iati-swe",
+               get_json=_hdx_api(), say=said.append)
+    text = " ".join(said)
+    assert "LICENCE NOT MACHINE-READABLE" in text
+    assert "before republishing" in text
+
+
+def test_a_format_filter_narrows_and_says_what_exists():
+    plan = plan_fetch("hdx", country="swe", dataset="iati-swe",
+                      format="CSV", get_json=_hdx_api(), say=_quiet)
+    assert len(plan["entries"]) == 2
+    with pytest.raises(FetchError, match="It offers: CSV"):
+        plan_fetch("hdx", country="swe", dataset="iati-swe",
+                   format="SHP", get_json=_hdx_api(), say=_quiet)
+
+
+def test_one_dataset_may_hold_several_files():
+    """Unlike GHSL, where one set of choices names one file."""
+    plan = plan_fetch("hdx", country="swe", dataset="iati-swe",
+                      get_json=_hdx_api(), say=_quiet)
+    assert len(plan["entries"]) == 2
+
+
+def test_a_number_chooses_the_dataset_too():
+    plan = plan_fetch("hdx", country="swe", dataset="2",
+                      get_json=_hdx_api(), say=_quiet)
+    assert plan["dataset"] == "iati-swe"
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 262 - Geofabrik. Structure confirmed against the real
+# index-v1.json, all 700 pages of it, supplied by John.
+# ---------------------------------------------------------------------
+def _gf_api():
+    with open(CAPTURED / "geofabrik_index.json", encoding="utf-8") as f:
+        rec = json.load(f)
+    return lambda url, timeout=60: rec
+
+
+def test_an_empty_region_lists_the_continents():
+    """John: 'a simple selection like a continent/country/region list
+    where download from any level is acceptable'."""
+    with pytest.raises(FetchError) as e:
+        plan_fetch("geofabrik", region="", get_json=_gf_api(),
+                   say=_quiet)
+    msg = str(e.value)
+    assert "africa" in msg and "europe" in msg
+    assert "Every level is downloadable" in msg
+
+
+@pytest.mark.parametrize("region", ["africa", "burundi", "act"])
+def test_any_level_can_be_fetched(region):
+    """A continent, a country, and a sub-region."""
+    plan = plan_fetch("geofabrik", region=region, get_json=_gf_api(),
+                      say=_quiet)
+    assert plan["entries"][0]["url"].endswith(".osm.pbf")
+
+
+def test_a_near_miss_suggests_the_real_one():
+    with pytest.raises(FetchError, match="sweden"):
+        plan_fetch("geofabrik", region="swed", get_json=_gf_api(),
+                   say=_quiet)
+
+
+def test_the_publishers_md5_sidecar_is_recorded():
+    """Geofabrik states a checksum beside every file, so a download
+    can be checked against what the PUBLISHER says it is."""
+    e = plan_fetch("geofabrik", region="burundi", get_json=_gf_api(),
+                   say=_quiet)["entries"][0]
+    assert e["md5_url"] == e["url"] + ".md5"
+
+
+def test_ODbL_share_alike_is_recorded_AND_said_out_loud():
+    """The first source here with a share-alike obligation, and
+    EquiPop exists to produce published derived surfaces."""
+    said = []
+    plan = plan_fetch("geofabrik", region="burundi",
+                      get_json=_gf_api(), say=said.append)
+    e = plan["entries"][0]
+    assert e["share_alike"] is True
+    assert e["may_redistribute"] is True
+    assert "ODbL" in e["licence"]
+    text = " ".join(said)
+    assert "SHARE-ALIKE" in text and "before publishing" in text
+
+
+def test_the_shapefile_route_exists_because_there_is_no_gpkg():
+    """A search snippet claimed .gpkg.zip; the real index offers pbf
+    and shp only. shp is the route that needs no new dependency."""
+    plan = plan_fetch("geofabrik", region="sweden", format="shp",
+                      get_json=_gf_api(), say=_quiet)
+    assert plan["entries"][0]["url"].endswith(".shp.zip")
+    with pytest.raises(FetchError, match="It offers: pbf, shp"):
+        plan_fetch("geofabrik", region="sweden", format="gpkg",
+                   get_json=_gf_api(), say=_quiet)
+
+
+def test_taking_a_whole_continent_is_allowed_but_mentioned():
+    said = []
+    plan_fetch("geofabrik", region="africa", get_json=_gf_api(),
+               say=said.append)
+    assert "sub-regions" in " ".join(said)
+
+
+def test_NAMIBIA_survives():
+    """iso3166-1:alpha2 for Namibia is "NA", which pandas turns into
+    NaN by default. A country vanishing from a country list without a
+    word is this project's signature fault, so it is pinned."""
+    e = plan_fetch("geofabrik", region="namibia", get_json=_gf_api(),
+                   say=_quiet)["entries"][0]
+    assert e["iso3166_1"] == ["NA"], e["iso3166_1"]
+    assert e["region_name"] == "Namibia"

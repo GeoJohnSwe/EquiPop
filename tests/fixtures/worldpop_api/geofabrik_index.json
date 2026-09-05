@@ -1,0 +1,152 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "africa",
+    "name": "Africa",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/africa-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/africa-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/africa",
+     "updates": "https://download.geofabrik.de/africa-updates"
+    }
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "europe",
+    "name": "Europe",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/europe-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/europe-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/europe",
+     "updates": "https://download.geofabrik.de/europe-updates"
+    }
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "australia-oceania",
+    "name": "Australia and Oceania",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/australia-oceania-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/australia-oceania-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/australia-oceania",
+     "updates": "https://download.geofabrik.de/australia-oceania-updates"
+    }
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "burundi",
+    "name": "Burundi",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/africa/burundi-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/africa/burundi-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/burundi",
+     "updates": "https://download.geofabrik.de/africa/burundi-updates"
+    },
+    "parent": "africa",
+    "iso3166-1:alpha2": [
+     "BI"
+    ]
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "rwanda",
+    "name": "Rwanda",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/africa/rwanda-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/africa/rwanda-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/rwanda",
+     "updates": "https://download.geofabrik.de/africa/rwanda-updates"
+    },
+    "parent": "africa",
+    "iso3166-1:alpha2": [
+     "RW"
+    ]
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "namibia",
+    "name": "Namibia",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/africa/namibia-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/africa/namibia-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/namibia",
+     "updates": "https://download.geofabrik.de/africa/namibia-updates"
+    },
+    "parent": "africa",
+    "iso3166-1:alpha2": [
+     "NA"
+    ]
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "sweden",
+    "name": "Sweden",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/europe/sweden-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/europe/sweden-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/sweden",
+     "updates": "https://download.geofabrik.de/europe/sweden-updates"
+    },
+    "parent": "europe",
+    "iso3166-1:alpha2": [
+     "SE"
+    ]
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "australia",
+    "name": "Australia",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/australia-oceania/australia-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/australia-oceania/australia-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/australia",
+     "updates": "https://download.geofabrik.de/australia-oceania/australia-updates"
+    },
+    "parent": "australia-oceania",
+    "iso3166-1:alpha2": [
+     "AU"
+    ]
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "act",
+    "name": "Australian Capital Territory",
+    "urls": {
+     "pbf": "https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf",
+     "shp": "https://download.geofabrik.de/australia-oceania/australia/act-latest-free.shp.zip",
+     "taginfo": "https://taginfo.geofabrik.de/act",
+     "updates": "https://download.geofabrik.de/australia-oceania/australia/act-updates"
+    },
+    "parent": "australia"
+   },
+   "geometry": null
+  }
+ ]
+}

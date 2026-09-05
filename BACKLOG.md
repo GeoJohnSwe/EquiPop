@@ -1843,6 +1843,230 @@ appeared twice; the weaker copy is gone.*
   none, so a good improvement produced a nonsensical message one day
   later.
 
+- ~~254~~ | DONE, IN THE TREE, NOT RELEASED | A GLOBAL PRODUCT WAS
+  BLAMED ON THE COUNTRY CODE. John picked version 5 of `pop` -
+  G2_MOS_POP_R25A_1km, "Global mosaics" - asked for BDI, and was told
+  "Check the ISO3 code - it is the three-letter one, such as BDI". His
+  code was BDI. A global mosaic holds no single country and never
+  will.
+  THE CATALOGUE SAYS WHICH IS WHICH in plain words - "Global
+  mosaics", "Whole Continent", "Individual countries" - and the code
+  was not reading it. is_per_country() now does, and the refusal names
+  the offending product, says why it can never work, and LISTS THE
+  PER-COUNTRY VERSIONS. His two-step becomes one.
+  THIRD TIME IN THREE DAYS a refusal has blamed the wrong thing: 251
+  (the year, when the code was fine), 253 (the year box, when there
+  were no years), and now the code when the product was global. THE
+  PATTERN IS ALWAYS THE SAME - the information needed to give the
+  right answer was already in hand and was not consulted.
+
+- 255 | OPEN, WON'T FIX AS ASKED | "COULD WE LOOK FOR AVAILABILITY AT
+  ALL SETTINGS AND NOT JUST THE FIRST?" John, after hitting a global
+  product and then, one step later, an unavailable year.
+  PARTLY IMPOSSIBLE: the checks are DEPENDENT, not parallel. The
+  category list cannot be fetched until the dataset resolves; the
+  years cannot be known until the country's records are fetched; and
+  the records cannot be fetched from a global product at all. So
+  "check everything at once" cannot be done in general.
+  WHAT WAS DONE INSTEAD, and it covers his actual case: 254 removes
+  the two-step by naming the per-country versions in the same
+  refusal. Left open in case a second instance appears with a
+  different shape - if it does, the answer is probably to report the
+  independent checks together (dataset, category, country code) and
+  leave the dependent ones sequential.
+
+- ~~256~~ | DONE | THE FETCHING SPINE NO LONGER KNOWS WHAT A COUNTRY
+  IS. plan_fetch took project, category, iso3 and year as fixed
+  keyword arguments - WORLDPOP'S SHAPE, BAKED INTO THE MACHINE. GHSL
+  is tiled globally and has no iso3; Overture has no year; HDX has
+  neither. A rule shaped by one case and found when the second
+  arrives is this project's most repeated mistake (211 the naming
+  registry, 225 the cell-size default, 208 the manifest path), so this
+  time it was loosened BEFORE the second adapter, on John's ruling.
+  An adapter now declares FIELDS and implements plan(choices) ->
+  (entries, described). The spine does only what is common: refuse an
+  unknown provider, check declared fields are present, build the plan,
+  say what would happen. A test asserts the words iso3, popyear and
+  country DO NOT APPEAR in plan_fetch at all.
+  THE PROOF IS A FAKE SECOND PROVIDER shaped nothing like WorldPop -
+  releases and tiles, no countries, no years - and it immediately
+  found a leak the refactor had missed: run_fetch still named
+  plan["iso3"] and plan["year"] when writing the manifest, so any
+  other provider raised KeyError. The manifest now records whatever
+  the adapter described.
+  A FIELD MAY CARRY ITS OWN WORDING. Moving the required-field check
+  up a layer replaced "Which country? Give one or more ISO3 codes,
+  such as BDI" with "worldpop needs iso3 - Countries (ISO3)" - correct
+  and worse. Generalising a check must not cost the user the better
+  message.
+  DELIBERATELY NOT DONE: the QGIS door still has five fixed boxes
+  matching WorldPop. Designing generic boxes for providers that do not
+  exist yet would be the SAME MISTAKE IN REVERSE - a shape invented
+  from imagination rather than from a second real case. It waits for
+  adapter number two.
+
+- 257 | OPEN, RESEARCHED | THE NEXT FETCH ADAPTERS. Written up in
+  PROVIDERS_PLAN.md rather than left in a conversation, because the
+  WorldPop docs turned out FOUR YEARS STALE and building from a
+  half-remembered web page is how that happens.
+  TWO FINDINGS WORTH KNOWING BEFORE ANY CODE:
+  (a) MOST GHSL PRODUCTS ARE MOLLWEIDE (ESRI:54009) AND WORLDPOP IS
+  WGS84. Put both in one folder and the loader REFUSES them - which is
+  BACKLOG 239 working exactly as intended. But POP, BUILT-S and
+  BUILT-V are ALSO published in WGS84 at 3 and 30 arc-seconds, the
+  same grid family as WorldPop, so the two CAN share a folder if the
+  WGS84 variants are chosen. Whether the origins actually align is a
+  measurement nobody has made. The adapter should default to WGS84 and
+  say why.
+  (b) GEOFABRIK PUBLISHES .md5 SIDECARS, so a fetch can be verified
+  against WHAT THE PUBLISHER SAYS THE FILE IS, not merely against what
+  we happened to receive. That is stronger provenance than anything
+  else on the list, including WorldPop, and the adapter should use it.
+  GHSL HAS NO API - a predictable HTTPS tree under jeodpp.jrc.ec.
+  europa.eu and citations only on the web page, so the DOIs must be
+  written INTO the adapter and can therefore go stale.
+  GEOFABRIK IS TWO JOBS, NOT ONE: EquiPop cannot read .osm.pbf. Try
+  the .gpkg.zip format plus the lattice join before adding pyrosm or
+  pyosmium as a dependency.
+  STILL NEEDED: one directory listing from the GHSL tree, one HDX
+  package_search response, and one feature from Geofabrik's
+  index-v1-nogeom.json (the file is ~1 MB, which is why pasting it
+  whole failed).
+
+- ~~258~~ | DONE | SEPARATE THE SITE-SPECIFIC
+  KNOWLEDGE FROM THE TOOL. John: "relying on http is tough of course
+  if they change the content structure all will need to be
+  reinstalled ... what if the site specific instructions could be
+  separated from the tool - so that if the user is running an old tool
+  and it doesn't work - just retrieving site specific instructions
+  from GIT would be enough - is that a dumb thought?"
+  NOT DUMB. IT IS THE PATTERN, and this project already has the
+  evidence: BACKLOG 211, the WorldPop naming registry, was written
+  from four sample files and failed on all 120 of John's real ones. It
+  was DATA baked into CODE, so fixing it needed a release, a build, a
+  PyPI upload and three host installs. As an external registry it
+  would have been a one-line edit pushed to GitHub, and John's next
+  run would have worked.
+  THE SEAM IS CLEAN. The MECHANISM is stable - fetch, checksum,
+  manifest, refuse to overwrite. The SITE KNOWLEDGE is volatile - URL
+  patterns, field names, which products exist, naming conventions.
+  Volatile things belong in data, stable things in code.
+  THREE CONDITIONS, and the first is not negotiable:
+  (a) DATA ONLY, NEVER CODE. URL templates and field declarations, no
+      Python, no eval. A tool that people install into QGIS must not
+      execute instructions fetched over the network.
+  (b) A BUNDLED COPY IS THE FALLBACK. The remote is an UPDATE, not a
+      dependency. Offline, the tool works with what it shipped with.
+  (c) THE MANIFEST RECORDS WHICH REGISTRY VERSION WAS USED. Otherwise
+      a fetch becomes unreproducible in a NEW way - "which rules were
+      in force?" - and reproducibility is the whole reason machine 5
+      exists.
+  Pin to a tag or record the commit, never a bare branch.
+
+- 259 | OPEN | THE GEOFABRIK INDEX, CONFIRMED FROM THE REAL FILE (John
+  supplied all 700 pages). properties: id, parent, name, urls,
+  iso3166-1:alpha2, iso3166-2. urls keys: pbf, shp, pbf-internal,
+  history, taginfo, updates.
+  TWO CORRECTIONS TO PROVIDERS_PLAN.md, WRITTEN ONE DAY EARLIER FROM A
+  SEARCH SNIPPET:
+  (a) THERE IS NO gpkg. The snippet listed .gpkg.zip among Geofabrik's
+      formats; the actual index offers pbf and shp only. The
+      no-new-dependency route is therefore the SHAPEFILE ZIP, which
+      QGIS and GDAL read natively - the route survives, for a
+      different reason than the one written down. DOCUMENTATION
+      DESCRIBED THE DATA AND THE DATA DISAGREED, for the second time
+      in this workstream after WorldPop's four-year-stale pages.
+  (b) iso3166-1:alpha2 CONTAINS "NA" - NAMIBIA. pandas reads that as
+      NaN by default, so Namibia vanishes silently from any country
+      list. Demonstrated: read_csv turns ['SE','NA','NO'] into
+      ['SE', nan, 'NO']. Use keep_default_na=False, or do not use
+      pandas for this file. A country disappearing without a word is
+      exactly this project's signature fault.
+
+- ~~260~~ | DONE | THE PROVIDER REGISTRY, AND GHSL AS ITS FIRST
+  ENTRY. equipop/providers/*.json, loaded by doors/registry.py.
+  GHSL IS NOW ENTIRELY DATA - no code at all. The URL, the DOI, the
+  citation and the licence obligations all come from a JSON file that
+  can be corrected and pushed without a release. Verified against the
+  real server: GHS_POP_GLOBE_R2023A/GHS_POP_E2020_GLOBE_R2023A_4326_
+  30ss/V1-0/..._V1_0.zip, built from the definition and matching
+  character for character.
+  RULE ONE IS ENFORCED, NOT DOCUMENTED. _check_safe() refuses any
+  definition containing __, import, eval, exec, lambda, os. or
+  subprocess, and a test runs it over every BUNDLED file - the rule
+  applies to what SHIPS, not only to what is loaded. EquiPop is
+  installed inside QGIS and ArcGIS Pro; a tool that executed
+  instructions fetched over the network would be a remote code
+  execution hole in a research instrument.
+  RULE TWO: definitions live INSIDE the package, so they travel in the
+  wheel. Claude first put them beside it, which would have shipped
+  them to nobody - the same fault as run_fetch.py importing a module
+  no wheel contained (241).
+  RULE THREE: registry_version reaches the manifest, both at the top
+  and per file. Without it a fetch is unreproducible in a NEW way -
+  which rules were in force when this ran?
+  A BROKEN DEFINITION IS SKIPPED AND NAMED, not fatal, for the same
+  reason the QGIS plugin loads when equipop is absent.
+  THREE FAULTS FOUND BY RUNNING IT, all of them the generalisation
+  overruling the thing it generalised:
+    the spine checked `required` BEFORE the adapter applied its own
+      defaults, so a definition that supplied one was refused for not
+      supplying it;
+    resolve() read "2020" as "the 2020th option" - the numbering
+      convenience from 250 colliding with a field whose choices ARE
+      numbers. A value that IS a choice now wins;
+    a QGIS test patched `projects` onto EVERY provider, and a
+      TemplateProvider has no catalogue to list. The test assumed
+      every provider looks like the first one, which is exactly what
+      256 was done to remove.
+
+- ~~261~~ | DONE | HDX IS THE THIRD PROVIDER, and its real response
+  broke an assumption written down one day earlier.
+  A CODE adapter, not a registry entry: a search must be issued and a
+  dataset chosen, so it cannot be NAMED from the user's choices. That
+  is the split the registry was designed around and it held.
+  EVERY RESOURCE CARRIES AN MD5 IN `hash`. Like Geofabrik, a download
+  can be verified against WHAT THE PUBLISHER SAYS THE FILE IS. Two of
+  three providers now offer this; WorldPop offers nothing of the kind.
+  THE ASSUMPTION IT BROKE: PROVIDERS_PLAN.md said the manifest would
+  record may_redistribute and share_alike per source. FOR HDX THAT IS
+  OFTEN UNKNOWABLE - the IATI dataset returns license_id "hdx-other",
+  title "Other", and PROSE pointing at a web page. Those fields are
+  now None when unresolved, the prose is carried verbatim, and the run
+  SAYS SO before fetching. Guessing "probably CC-BY" would have been
+  worse than admitting ignorance, and would have been exactly the kind
+  of plausible wrong answer this project keeps finding.
+  A KNOWN licence IS resolved: cc-by, cc-by-sa, odc-odbl and the rest
+  map to obligations; anything else is left undecided on purpose.
+  ONE DATASET MAY HOLD SEVERAL FILES, unlike GHSL where one set of
+  choices names one file - which is why the entries list, not a single
+  entry, is the unit.
+
+- ~~262~~ | DONE | GEOFABRIK IS THE FOURTH PROVIDER. Structure
+  confirmed against the real index-v1.json - all 700 pages, supplied
+  by John as a PDF after two plain pastes arrived empty.
+  ANY LEVEL IS DOWNLOADABLE, which is what John asked for: an empty
+  region box lists the continents, and a continent, a country or a
+  sub-region can each be named directly. A near miss suggests the real
+  one - 'swed' offers 'sweden'.
+  ODbL, AND IT IS THE FIRST SOURCE WITH SHARE-ALIKE. Recorded in the
+  manifest AND said out loud before every fetch, because EquiPop
+  exists to produce published derived surfaces and a share-alike
+  obligation may travel to them.
+  THE .md5 SIDECAR is recorded, so a download can be checked against
+  what GEOFABRIK says the file is. Three of four providers now offer a
+  publisher checksum; WorldPop still offers none.
+  NO gpkg, contradicting a search snippet - the real index has pbf and
+  shp only, so the no-new-dependency route is the SHAPEFILE ZIP.
+  NAMIBIA IS PINNED BY A TEST. Its iso3166-1:alpha2 is "NA", which
+  pandas turns into NaN by default; a country vanishing from a country
+  list without a word is this project's signature fault.
+  AND A THIRD TIME THE GENERALISATION OVERRULED THE THING IT
+  GENERALISED: the spine's required-field check fired before the
+  adapter could LIST the continents, so an empty box got a generic
+  message instead of the picker. Fields may now declare
+  lists_when_empty.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

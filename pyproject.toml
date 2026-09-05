@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "equipop"
-version = "1.44.4"
+version = "1.44.5"
 description = "k-nearest neighbour contexts/neighbourhoods on gridded and hexagonal data: bespoke neighbourhoods, friction growth, distance decay, statistics and segregation measures"
 readme = "README.md"
 license = {text = "MIT"}
@@ -31,4 +31,4 @@ include = ["equipop*"]
 # a pip install - so load("gridby"), the first line of chapter 1,
 # failed for every student who installed from PyPI.
 [tool.setuptools.package-data]
-equipop = ["data/*.csv", "data/*.xlsx"]
+equipop = ["data/*.csv", "data/*.xlsx", "providers/*.json"]

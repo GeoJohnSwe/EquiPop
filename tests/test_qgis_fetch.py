@@ -56,7 +56,14 @@ def api(monkeypatch):
         raise AssertionError(f"no captured response for {url}")
 
     monkeypatch.setattr(fetching, "_get_json", get)
-    for p in fetching.PROVIDERS.values():
+    # ONLY the providers that HAVE a catalogue to list. "projects" is
+    # a WorldPop idea, not a universal one - a TemplateProvider builds
+    # its URLs from a definition and has no catalogue to query, so
+    # patching one onto it raised AttributeError. The test assumed
+    # every provider looks like the first one, which is the same fault
+    # the spine was loosened to remove (BACKLOG 256).
+    for p in [x for x in fetching.PROVIDERS.values()
+              if hasattr(x, "projects")]:
         monkeypatch.setattr(type(p), "projects",
                             lambda self, get_json=None: {
                                 d["alias"]: d.get("name", "")

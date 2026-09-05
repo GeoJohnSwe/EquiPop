@@ -1,0 +1,82 @@
+{
+ "success": true,
+ "result": {
+  "count": 98,
+  "results": [
+   {
+    "name": "iati-swe",
+    "id": "ade5a5db-a373-43d8-bb17-293620add363",
+    "title": "Sweden - Current IATI Aid Activities",
+    "notes": "List of active aid activities shared via IATI.",
+    "dataset_source": "Various IATI reporting organisations",
+    "dataset_date": "[1990-01-01T00:00:00 TO 2026-03-30T23:59:59]",
+    "license_id": "hdx-other",
+    "license_title": "Other",
+    "license_other": "Allowed licenses for IATI reporting organisations are listed here",
+    "methodology": "Registry",
+    "caveats": "Information originates from various IATI reporting organisations.",
+    "last_modified": "2026-09-02T12:32:08.223522",
+    "organization": {
+     "name": "iati",
+     "title": "International Aid Transparency Initiative"
+    },
+    "groups": [
+     {
+      "name": "swe",
+      "title": "Sweden"
+     }
+    ],
+    "resources": [
+     {
+      "name": "IATI activities in Sweden (no location information)",
+      "format": "CSV",
+      "size": 322652,
+      "hash": "3476b1515e80eea493fe67122233b0c2",
+      "mimetype": "text/csv",
+      "last_modified": "2026-09-02T12:32:08.222893",
+      "url": "https://data.humdata.org/dataset/ade5a5db-a373-43d8-bb17-293620add363/resource/9b1972e8-75ed-42aa-a46c-e54f1e974a7b/download/iati-activities-in-sweden-no-location-information.csv"
+     },
+     {
+      "name": "IATI activity locations in Sweden",
+      "format": "CSV",
+      "size": 63461,
+      "hash": "f2e204b71553b6b75ab70f56f284bed4",
+      "mimetype": "text/csv",
+      "last_modified": "2026-09-02T12:32:08.223522",
+      "url": "https://data.humdata.org/dataset/ade5a5db-a373-43d8-bb17-293620add363/resource/2d2f3946-6ded-45f6-b195-03b1d39c6b31/download/iati-activity-locations-in-sweden.csv"
+     }
+    ]
+   },
+   {
+    "name": "cod-ab-swe",
+    "id": "b2",
+    "title": "Sweden - Subnational Administrative Boundaries",
+    "notes": "Administrative boundaries",
+    "license_id": "cc-by",
+    "license_title": "Creative Commons Attribution",
+    "dataset_source": "OCHA",
+    "last_modified": "2026-05-01T00:00:00",
+    "organization": {
+     "name": "ocha",
+     "title": "OCHA"
+    },
+    "groups": [
+     {
+      "name": "swe",
+      "title": "Sweden"
+     }
+    ],
+    "resources": [
+     {
+      "name": "swe_adm.gpkg",
+      "format": "GeoPackage",
+      "size": 1234567,
+      "hash": "aa11bb22cc33dd44ee55ff6677889900",
+      "last_modified": "2026-05-01T00:00:00",
+      "url": "https://data.humdata.org/x/swe_adm.gpkg"
+     }
+    ]
+   }
+  ]
+ }
+}

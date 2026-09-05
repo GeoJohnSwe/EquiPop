@@ -1,0 +1,85 @@
+{
+  "provider": "ghsl",
+  "label": "Global Human Settlement Layer (JRC, Copernicus)",
+  "registry_version": "2026-09-02",
+  "confirmed_against": "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/ read 2026-09-02",
+
+  "licence": "European Union open data: reuse authorised with proper acknowledgment of the source",
+  "may_redistribute": true,
+  "share_alike": false,
+
+  "note_crs": "4326 pairs with arc-second resolutions (3ss, 30ss); 54009 (Mollweide) pairs with metres (100, 1000). WORLDPOP IS 4326, so choose 4326 if the two are to share a folder - the loader refuses a mixed-CRS folder, which is BACKLOG 239 working as designed. Whether the origins actually align has NOT been measured.",
+
+  "product_field": "product",
+
+  "url": "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_{product}_GLOBE_{release}/GHS_{product}_E{epoch}_GLOBE_{release}_{crs}_{res}/V1-0/GHS_{product}_E{epoch}_GLOBE_{release}_{crs}_{res}_V1_0.zip",
+
+  "fields": [
+    {
+      "name": "product",
+      "label": "Which layer",
+      "required": true,
+      "options": ["POP", "BUILT_S", "BUILT_V"],
+      "describe": {
+        "POP": "Resident population, people per cell",
+        "BUILT_S": "Built-up surface, square metres per cell",
+        "BUILT_V": "Built-up volume, cubic metres per cell"
+      },
+      "missing": "Which layer? POP is resident population, BUILT_S built-up surface, BUILT_V built-up volume."
+    },
+    {
+      "name": "release",
+      "label": "Release",
+      "required": true,
+      "options": ["R2023A"],
+      "default": "R2023A"
+    },
+    {
+      "name": "epoch",
+      "label": "Year",
+      "required": true,
+      "options": ["1975", "1980", "1985", "1990", "1995", "2000",
+                  "2005", "2010", "2015", "2020", "2025", "2030"],
+      "missing": "Which year? GHSL runs 1975 to 2030 in five-year steps."
+    },
+    {
+      "name": "crs",
+      "label": "Coordinate system",
+      "required": true,
+      "options": ["4326", "54009"],
+      "default": "4326",
+      "describe": {
+        "4326": "WGS84 degrees - the same family as WorldPop",
+        "54009": "Mollweide metres - will NOT mix with WorldPop in one folder"
+      }
+    },
+    {
+      "name": "res",
+      "label": "Resolution",
+      "required": true,
+      "options": ["3ss", "30ss", "100", "1000"],
+      "default": "30ss",
+      "describe": {
+        "3ss": "3 arc-seconds, about 100 m - use with crs 4326",
+        "30ss": "30 arc-seconds, about 1 km - use with crs 4326",
+        "100": "100 m - use with crs 54009",
+        "1000": "1 km - use with crs 54009"
+      }
+    }
+  ],
+
+  "products": {
+    "POP": {
+      "doi": "10.2905/2FF68A52-5B5B-4A22-8F40-C41DA8332CFE",
+      "citation": "Schiavina M., Freire S., Carioli A., MacManus K. (2023): GHS-POP R2023A - GHS population grid multitemporal (1975-2030). European Commission, Joint Research Centre (JRC)."
+    },
+    "BUILT_S": {
+      "doi": "10.2905/9F06F36F-4B11-47EC-ABB0-4F8B7B1D72EA",
+      "citation": "Pesaresi M., Politis P. (2023): GHS-BUILT-S R2023A - GHS built-up surface grid, derived from Sentinel2 composite and Landsat, multitemporal (1975-2030). European Commission, Joint Research Centre (JRC)."
+    },
+    "BUILT_V": {
+      "doi": "10.2905/AB2F107A-03CD-47A3-85E5-139D8EC63283",
+      "citation": "Pesaresi M., Politis P. (2023): GHS-BUILT-V R2023A - GHS built-up volume grids derived from joint assessment of Sentinel2, Landsat, and global DEM data, multitemporal (1975-2030). European Commission, Joint Research Centre (JRC)."
+    }
+  }
+}
