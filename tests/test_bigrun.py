@@ -76,3 +76,79 @@ def test_resume_skips_done_and_repairs_missing(tmp_path):
     a = df.sort_values(["EastWest", "NorthSouth"]).N_30.to_numpy(float)
     b = ref.sort_values(["EastWest", "NorthSouth"]).N_30.to_numpy(float)
     assert np.allclose(a, b)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 276 - external review of 1.44.10, finding 7. A resumed run
+# accepted an existing manifest without comparing its parameters to
+# the requested run, and skipped tiles on FILENAME AND EXISTENCE
+# ALONE.
+#
+# Reproduced: k=100, then k=200 into the same folder. The second call
+# COMPLETED, and returned N_100 with no N_200 column and no warning.
+# The manifest even RECORDED the old parameters and nobody read them.
+#
+# A run that silently answers an earlier question is the worst kind of
+# wrong: nothing in the output says so.
+# ---------------------------------------------------------------------
+def _small_cells(n=400, seed=5):
+    import pandas as pd
+    from equipop.cells import build_cells
+    rng = np.random.default_rng(seed)
+    df = pd.DataFrame({"x": rng.uniform(0, 5000, n),
+                       "y": rng.uniform(0, 5000, n),
+                       "w": rng.integers(1, 20, n).astype(float)})
+    return build_cells(df, "x", "y", value_vars=["w"], unit_size=100.0)
+
+
+def test_resuming_with_a_different_k_is_refused(tmp_path, capsys):
+    cd = _small_cells()
+    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
+                         tile_m=2000.0)
+    with pytest.raises(ValueError, match="DIFFERENT run"):
+        run_knn_counts_tiled(cd, k_values=[200], out_dir=str(tmp_path),
+                             tile_m=2000.0)
+
+
+def test_the_refusal_names_what_differs(tmp_path):
+    cd = _small_cells()
+    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
+                         tile_m=2000.0)
+    with pytest.raises(ValueError) as e:
+        run_knn_counts_tiled(cd, k_values=[200], out_dir=str(tmp_path),
+                             tile_m=2000.0)
+    msg = str(e.value)
+    assert "k_values" in msg and "[100]" in msg and "[200]" in msg
+    assert "NOT the analysis you requested" in msg
+
+
+@pytest.mark.parametrize("change", [
+    {"tile_m": 1000.0},
+    {"dtype": "float64"},
+])
+def test_any_parameter_change_is_caught(tmp_path, change):
+    cd = _small_cells()
+    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
+                         tile_m=2000.0)
+    kw = {"k_values": [100], "out_dir": str(tmp_path),
+          "tile_m": 2000.0, **change}
+    with pytest.raises(ValueError, match="DIFFERENT run"):
+        run_knn_counts_tiled(cd, **kw)
+
+
+def test_a_matching_resume_still_works(tmp_path, capsys):
+    """The check must not break the feature it guards."""
+    cd = _small_cells()
+    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
+                         tile_m=2000.0)
+    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
+                         tile_m=2000.0)
+    assert "parameters match" in capsys.readouterr().out
+
+
+def test_a_fresh_folder_is_unaffected(tmp_path):
+    cd = _small_cells()
+    run_knn_counts_tiled(cd, k_values=[200], out_dir=str(tmp_path),
+                         tile_m=2000.0)
+    got = load_tiled(str(tmp_path))
+    assert "N_200" in got.columns

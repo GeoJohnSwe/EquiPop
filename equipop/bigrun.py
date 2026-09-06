@@ -76,21 +76,45 @@ def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
     print(f"[bigrun] {len(cd.E):,} cells -> {len(groups)} tiles of "
           f"{tile_m / 1000:g} km; out: {out_dir}/ ({dtype})")
 
+    params = {"k_values": k_values, "r_values": r_values,
+               "decay": (None if decay is None else
+                         {"model": decay.model,
+                          "half_life_m": decay.half_life_m,
+                          "gamma": decay.gamma}),
+               "tile_m": tile_m, "dtype": dtype,
+               "unit_size": cd.unit_size,
+               "n_cells": int(len(cd.E))}
+
     if resume and os.path.exists(mpath):
         man = json.load(open(mpath))
+        # DOES THE FINISHED WORK ANSWER THE QUESTION BEING ASKED?
+        # Resume skipped tiles on FILENAME AND EXISTENCE ALONE, never
+        # comparing what they contain to what was requested. Running
+        # k=100 and then k=200 into the same folder reported success
+        # and returned N_100, with no N_200 column and no warning -
+        # the manifest even RECORDED the old parameters and nobody
+        # read them. A run that silently answers an earlier question
+        # is the worst kind of wrong (BACKLOG 276).
+        was = man.get("params") or {}
+        differ = [k for k in sorted(set(was) | set(params))
+                  if was.get(k) != params.get(k)]
+        if differ:
+            lines = [f"{out_dir} already holds a DIFFERENT run, and "
+                     "resuming it would return that one's answers:"]
+            for k in differ:
+                lines.append(f"  {k}: finished run has "
+                             f"{was.get(k)!r}, you asked for "
+                             f"{params.get(k)!r}")
+            lines.append("Use an empty folder, or pass resume=False to "
+                         "recompute. The tiles on disk are NOT the "
+                         "analysis you requested.")
+            raise ValueError("\n".join(lines))
         print(f"[bigrun] resume: manifest found, "
-              f"{len(man['tiles'])} tiles already done")
+              f"{len(man['tiles'])} tiles already done, "
+              "parameters match")
     else:
         man = {"created": time.strftime("%Y-%m-%d %H:%M:%S"),
-               "params": {"k_values": k_values, "r_values": r_values,
-                          "decay": (None if decay is None else
-                                    {"model": decay.model,
-                                     "half_life_m": decay.half_life_m,
-                                     "gamma": decay.gamma}),
-                          "tile_m": tile_m, "dtype": dtype,
-                          "unit_size": cd.unit_size,
-                          "n_cells": int(len(cd.E))},
-               "tiles": {}}
+               "params": params, "tiles": {}}
 
     t0 = time.time()
     for n_done, ((gx, gy), grp) in enumerate(groups, 1):

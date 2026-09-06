@@ -33,6 +33,20 @@ from .base import EquipopAlgorithm
 # test pins this against the package's own list.
 PROVIDER_NAMES = ["worldpop", "ghsl", "hdx", "geofabrik"]
 
+# WHAT THE DROPDOWN SHOWS. The keys are internal and were displayed
+# raw - John: "the info in the dropbox looks like spelling errors".
+# Quite so: worldpop, ghsl, hdx, geofabrik say nothing about what they
+# hold or what they cost you. THE LICENCE BELONGS HERE, because
+# Geofabrik's share-alike obligation matters BEFORE the download, not
+# after, and it is the one thing that can follow a published result
+# home.
+PROVIDER_LABELS = [
+    "worldpop - population by age and sex, 100 m / 1 km, per country",
+    "ghsl - built-up surface and population 1975-2030, global grid (JRC)",
+    "hdx - humanitarian datasets by country, many formats",
+    "geofabrik - OpenStreetMap extracts (ODbL: SHARE-ALIKE)",
+]
+
 
 class SpatialDataFetch(EquipopAlgorithm):
     """Fetch data into a folder, with a manifest. Analyses nothing."""
@@ -48,7 +62,7 @@ class SpatialDataFetch(EquipopAlgorithm):
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterEnum(
             "provider", "1a. Where from",
-            options=list(PROVIDER_NAMES), defaultValue=0))
+            options=list(PROVIDER_LABELS), defaultValue=0))
         # ONE TABLE, NOT FOUR NAMED BOXES. Boxes called Dataset,
         # Version, Countries and Year are WORLDPOP'S VOCABULARY, and
         # three of the four providers do not speak it: GHSL asks for

@@ -327,7 +327,8 @@ def test_GEOFABRIK_runs_through_the_same_door(tmp_path, monkeypatch):
         provider=PROVIDER_NAMES.index("geofabrik"),
         settings=["region", "burundi"], FOLDER=str(tmp_path)), {}, fb)
     said = " ".join(fb.lines)
-    assert "burundi-latest.osm.pbf" in said
+    # shapefile by default now - see test_any_level_can_be_fetched
+    assert "burundi-latest-free.shp.zip" in said
     assert "SHARE-ALIKE" in said, "the ODbL warning must reach the user"
 
 

@@ -164,7 +164,8 @@ def load_folder(folders, compose: dict | None = None,
                 labels: dict[str, str] | None = None,
                 pattern: str | None = None,
                 sum_cohorts: bool = False,
-                keep_zero: bool = False) -> tuple[pd.DataFrame, dict]:
+                keep_zero: bool = False,
+                year=None) -> tuple[pd.DataFrame, dict]:
     """Every raster under `folders` as ONE point table.
 
     labels    : explicit {filename_stem: column_name}, the manual
@@ -327,11 +328,18 @@ def load_folder(folders, compose: dict | None = None,
         print(f"[folder] {name} = {len(parts)} columns, "
               f"{pts[name].sum():,.1f} people")
 
+    # WHICH COLUMNS ARE MEASUREMENTS - decided ONCE. This rule was
+    # written out three separate times as "everything except ...", and
+    # when keep_index added gx and gy one of the three was not
+    # updated, so THE GRID INDICES WERE SUMMED INTO THE POPULATION
+    # (BACKLOG 272). An exclusion list is a promise about every column
+    # that will ever exist, and it was broken by the next column added.
+    NOT_MEASUREMENTS = ("gx", "gy", "iso3", "lon", "lat")
+    measure_cols = [c for c in pts.columns
+                    if c not in NOT_MEASUREMENTS]
+
     if not keep_zero:
-        # iso3 is a LABEL, not a measurement. Every other place that
-        # walks the columns had to learn the same thing.
-        vals = [c for c in pts.columns
-                if c not in ("gx", "gy", "iso3", "lon", "lat")]
+        vals = measure_cols
         pts = pts.loc[pts[vals].to_numpy().sum(axis=1) > 0].copy()
 
     pts["lon"] = ref["c"] + (pts["gx"] + 0.5) * ref["a"]
@@ -344,12 +352,24 @@ def load_folder(folders, compose: dict | None = None,
     if keep_index:
         front += ["gx", "gy"]
     cols = front + [c for c in pts.columns
-                    if c not in ("gx", "gy", "lon", "lat", "iso3")]
+                    if c not in NOT_MEASUREMENTS]
     pts = pts[cols].reset_index(drop=True)
 
     if sum_cohorts:
+        # NAME THE MEASUREMENTS, do not exclude the rest. This said
+        # "everything except lon, lat and iso3" - and when keep_index
+        # added gx and gy, THE GRID INDICES WERE ADDED TO THE
+        # POPULATION. A 2x2 grid holding 10 people per cell returned
+        # [10, 11, 11, 12] - 44 people instead of 40 - and on a
+        # continental grid an index dwarfs the population it corrupts.
+        # John reported this as BACKLOG 232 and Claude twice failed to
+        # reproduce it, because he never combined sum_cohorts with
+        # keep_index. Found by the external review of 1.44.10.
+        # An exclusion list is a promise about every column that will
+        # ever exist. `labels` is what the loader itself identified as
+        # measurements, so it cannot drift.
         lab_cols = [c for c in pts.columns
-                    if c not in ("lon", "lat", "iso3")]
+                    if c not in NOT_MEASUREMENTS]
         both = totals_overlap_parts(lab_cols)
         if both:
             raise ValueError(
@@ -361,7 +381,12 @@ def load_folder(folders, compose: dict | None = None,
                 "either keep only the t_ files, or keep only the f_ and "
                 "m_ files, and point this at that folder.")
         pts["pop"] = pts[lab_cols].sum(axis=1)
-        keep = ["lon", "lat"] + (["iso3"] if "iso3" in pts.columns else [])
+        # KEEP WHATEVER IDENTIFIES A POINT, including the lattice
+        # indices when the caller asked for them. Dropping gx and gy
+        # here meant the sum option and the exact lattice join could
+        # not be used together - the second half of BACKLOG 272.
+        keep = [c for c in ("lon", "lat", "iso3", "gx", "gy")
+                if c in pts.columns]
         pts = pts[keep + ["pop"]]
 
     man["labels"] = seen
@@ -469,6 +494,10 @@ def folder_to_cells(folders, weight: str | None = None,
     from .projection import suggest_projection
 
     pts, man = load_folder(folders, compose=compose, **kw)
+    # `year` names WHICH YEAR IS BEING ANALYSED. It does not filter
+    # the columns loaded - every year stays available - it confines
+    # the REFERENCE POPULATION below, so a run of 2020 gives the same
+    # answer whether or not 2030 is also on disk (BACKLOG 273).
     value_cols = [c for c in pts.columns
                   if c not in ("lon", "lat", "iso3")]
 
@@ -484,6 +513,26 @@ def folder_to_cells(folders, weight: str | None = None,
     if isinstance(weight, str) and weight.lower() in ("total", "sexes"):
         want = "t_" if weight.lower() == "total" else ("f_", "m_")
         picked = [c for c in value_cols if c.startswith(want)]
+        # A SELECTED YEAR MUST CONFINE THE REFERENCE POPULATION.
+        # This summed the f_ and m_ columns of EVERY YEAR in the
+        # folder, so analysing 2020 gave a different answer once 2030
+        # had also been downloaded - the neighbourhood was drawn
+        # through twice as many people. Measured by the external
+        # review of 1.44.10: the reference population doubled and
+        # radii moved by up to 55 m, with the selected year's data
+        # unchanged. A result that depends on which OTHER files are
+        # present is not reproducible (BACKLOG 273).
+        year = kw.get("year")
+        if year is not None:
+            same_year = [c for c in picked
+                         if c.rsplit("_", 1)[-1] == str(year)]
+            if same_year:
+                dropped = len(picked) - len(same_year)
+                picked = same_year
+                if dropped:
+                    print(f"[folder] weight confined to {year}: "
+                          f"{dropped} column(s) from other years left "
+                          "out of the reference population")
         if not picked:
             raise ValueError(
                 f"No {weight} columns here. Found: {value_cols[:6]}"

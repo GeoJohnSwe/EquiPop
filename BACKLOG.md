@@ -2219,6 +2219,136 @@ appeared twice; the weaker copy is gone.*
   the interface and must be tested against the shape the user
   actually sees, not the shape it has in the source.
 
+- ~~269~~ | DONE | THE INVENTORY: WHAT IS IN A FOLDER. John's idea -
+  save a short description with each download so a later merge can
+  offer dropdowns instead of making the user hunt.
+  TWO OBJECTS, AND ONLY ONE IS MACHINE 5'S. The MANIFEST records
+  PROVENANCE and machine 5 writes it WITHOUT OPENING ANYTHING,
+  because a fetcher downloads and stops. The INVENTORY records
+  CONTENTS - layers, fields, CRS, geometry, extent, class values -
+  which needs the files READ, so it belongs on the analysis side.
+  Putting it in machine 5 would have broken the standing rule for
+  convenience.
+  THE LATTICE IS THE POINT. Files are grouped by grid identity, and
+  the key is the CRS, the pixel size, and THE ORIGIN MODULO THE PIXEL
+  SIZE - not the origin, because two rasters covering different areas
+  of one grid are the same lattice. More than one lattice is said out
+  loud, because merging across grids needs a decision and BACKLOG 239
+  exists from one being made silently.
+  CLASS VALUES COME FROM THE DATA, NOT FROM DOCUMENTATION. fclass and
+  its kin are read from the user's own extract, so the grouping
+  dropdown is right for Sweden and right for Burundi without a list
+  written from a schema PDF - the fault that broke the WorldPop naming
+  registry on all 120 of John's files (211). A column with more than
+  60 distinct values is reported as an identifier rather than listed,
+  so street names cannot bury fclass.
+  IT READS THE CLASS COLUMN ONLY, never the geometry, so a country
+  extract is inventoried without loading it.
+  AN UNREADABLE FILE IS RECORDED WITH ITS ERROR, not skipped - and
+  that is how Claude's own bug was found rather than losing two
+  shapefiles silently: pyogrio returns `fields` as a NUMPY ARRAY, so
+  `info.get("fields") or []` evaluates an array's truthiness and
+  raises. Written from habit without reading what read_info returns.
+
+- ~~270~~ | DONE | THE DROPDOWN SAID NOTHING. John: "the info in the
+  dropbox looks like spelling errors". Quite so - worldpop, ghsl, hdx,
+  geofabrik are internal keys, shown raw, saying nothing about what
+  they hold. Labelled now, WITH THE LICENCE, because Geofabrik's
+  share-alike obligation matters BEFORE the download and is the one
+  thing that can follow a published result home.
+
+- ~~271~~ | DONE | GEOFABRIK DEFAULTS TO SHAPEFILE, NOT pbf. John:
+  "the file format when opening is very slow - 10 s just to open".
+  GDAL builds a temporary index database the first time it opens a
+  .osm.pbf, and pays it again on every open. THE FIX IS NOT TO
+  OPTIMISE THE OPEN - it is not to use that format. The free
+  shapefile zip is already split into thematic layers carrying
+  fclass, opens in a second, and needs no new dependency: pyogrio,
+  which geopandas already uses.
+  DECIDED AGAINST pyrosm and pyosmium (new dependencies) and against
+  osgeo (present in QGIS, ABSENT in Stata's Python and standalone).
+
+- ~~272~~ | DONE, HIGH | GRID INDICES WERE ADDED TO THE POPULATION.
+  External review of 1.44.10, with an exact reproduction. This is
+  JOHN'S BACKLOG 232, which he reported weeks ago and Claude twice
+  failed to reproduce - because he never combined sum_cohorts with
+  keep_index, and the reproduction needs both.
+  A 2x2 grid holding 10 people per cell returned [10, 11, 11, 12] -
+  44 people instead of 40. On a continental grid an index DWARFS the
+  population it corrupts.
+  THE RULE WAS WRITTEN THREE TIMES as "everything except lon, lat,
+  iso3". keep_index later added gx and gy, and one of the three was
+  not updated. AN EXCLUSION LIST IS A PROMISE ABOUT EVERY COLUMN THAT
+  WILL EVER EXIST, and it was broken by the next column added. One
+  definition now, used three times.
+  The sum also DROPPED gx and gy afterwards, so the sum option and the
+  exact lattice join could not be used together - fixed as well.
+  Pinned with and without indices, on a larger grid, and with two
+  countries.
+
+- ~~273~~ | DONE, HIGH | A RESULT THAT DEPENDED ON WHICH OTHER FILES
+  WERE PRESENT. The selected year filtered the numerator and
+  denominator, but the REFERENCE POPULATION summed the f_ and m_
+  columns of EVERY year in the folder. Analysing 2020 changed once
+  2030 had also been downloaded: measured here, mean Dist 34.60 m
+  against 24.37 m - a 30% change in the neighbourhood - with the
+  selected year's data identical. The review measured radii moving up
+  to 55 m and the sex ratio by 0.073.
+  THE YEAR WAS NEVER PASSED DOWN. run_indices knew it, used it to
+  pick cohorts, and did not give it to the loader; run_folder and
+  load_folder did not accept it at all - so machine 3's own door
+  could not confine a year either. Wired through all three.
+  The run now SAYS when it leaves columns out, because that is a
+  decision the user must see.
+  PERMANENT REGRESSION TEST, as the review asks: "adding an unrelated
+  year leaves this year's output unchanged", for two indices. THIS IS
+  THE ONLY KIND OF DEFECT THAT MAKES A PUBLISHED COMPARISON WRONG FOR
+  A REASON NOBODY CAN SEE IN THE OUTPUT.
+  AND CLAUDE ASSUMED A KEY NAME AGAIN while writing the test -
+  INDICES entries have `code`, not `short`. Third time this session an
+  edit was written against unread structure.
+
+- ~~274~~ | DONE, HIGH | A FILENAME COLLISION ATTRIBUTED OLD BYTES TO
+  A NEW SOURCE. Review finding 5, reproduced. Reuse matched on
+  BASENAME ALONE: fetching productB/population.tif after productA's
+  kept A's bytes on disk and wrote B's URL into the manifest. ONLY A
+  WAS EVER DOWNLOADED, and the manifest said otherwise.
+  Reuse now requires the RECORDED URL to match the requested one, and
+  an existing file with no manifest entry is refused rather than
+  adopted - attributing it to the requested URL would invent a
+  provenance that was never observed.
+
+- ~~275~~ | DONE, HIGH | A SECOND FETCH ERASED THE FIRST'S PROVENANCE.
+  Review finding 6. The manifest was rewritten with only the current
+  plan, so fetching a second country left the first files on disk and
+  REMOVED THEIR ENTRIES.
+  THE CONSEQUENCE IS THE POINT: tampering with the forgotten file then
+  verified as "1 unchanged, 0 CHANGED, 0 missing". THE VERIFIER SAID
+  ALL WAS WELL ABOUT A FOLDER IT HAD FORGOTTEN HALF OF - and machine 3
+  reads the whole folder regardless, so the untracked file is analysed
+  anyway.
+  The manifest ACCUMULATES now, keeps a per-fetch history, and is
+  written ATOMICALLY so an interrupted write cannot destroy the
+  provenance of everything already fetched. verify_folder also reports
+  UNTRACKED files, because a file nobody fetched still reaches the
+  analysis.
+
+- ~~276~~ | DONE, HIGH | A RESUMED RUN SILENTLY RETURNED AN EARLIER
+  ANALYSIS. Review finding 7, reproduced: k=100, then k=200 into the
+  same folder. THE SECOND CALL COMPLETED SUCCESSFULLY and returned
+  N_100, with no N_200 column and no warning.
+  Tiles were skipped on FILENAME AND EXISTENCE ALONE. The manifest had
+  RECORDED the parameters all along and nothing ever read them - the
+  identity existed and was ignored.
+  Resume now compares the full run identity - k, radii, decay, tile
+  size, dtype, unit size, cell count - and refuses a mismatch by name,
+  saying which parameter differs and what each side holds. A matching
+  resume still works, and a test guards that too, because a check
+  must not break the feature it protects.
+  A RUN THAT SILENTLY ANSWERS AN EARLIER QUESTION IS THE WORST KIND OF
+  WRONG: nothing in the output says so, and the columns look
+  plausible.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

@@ -722,7 +722,9 @@ def test_any_level_can_be_fetched(region):
     """A continent, a country, and a sub-region."""
     plan = plan_fetch("geofabrik", region=region, get_json=_gf_api(),
                       say=_quiet)
-    assert plan["entries"][0]["url"].endswith(".osm.pbf")
+    # SHAPEFILE by default now: GDAL builds an index database on
+    # every .osm.pbf open, which cost John ten seconds a time.
+    assert plan["entries"][0]["url"].endswith(".shp.zip")
 
 
 def test_a_near_miss_suggests_the_real_one():
@@ -779,3 +781,114 @@ def test_NAMIBIA_survives():
                    say=_quiet)["entries"][0]
     assert e["iso3166_1"] == ["NA"], e["iso3166_1"]
     assert e["region_name"] == "Namibia"
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 274/275 - external review of 1.44.10, findings 5 and 6. Both
+# corrupt PROVENANCE, which is the whole justification for machine 5.
+# ---------------------------------------------------------------------
+def _bytes_from_url():
+    import hashlib
+
+    def get(url, dest, timeout=900):
+        body = b"BYTES-FROM-" + url.encode()
+        with open(dest, "wb") as f:
+            f.write(body)
+        return len(body), hashlib.sha256(body).hexdigest()
+    return get
+
+
+def _plan(url, name, provider="x"):
+    return {"provider": provider,
+            "entries": [{"url": url, "name": name}]}
+
+
+def test_the_same_filename_from_a_different_source_is_refused(tmp_path):
+    """Reuse matched on BASENAME alone, so fetching
+    productB/population.tif after productA's kept A's bytes and wrote
+    B's URL into the manifest. Only A was ever downloaded."""
+    run_fetch(_plan("https://s/productA/population.tif",
+                    "population.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    with pytest.raises(FetchError, match="DIFFERENT source"):
+        run_fetch(_plan("https://s/productB/population.tif",
+                        "population.tif"), str(tmp_path),
+                  get_file=_bytes_from_url(), say=_quiet)
+
+
+def test_the_refusal_names_both_urls(tmp_path):
+    run_fetch(_plan("https://s/A/p.tif", "p.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    with pytest.raises(FetchError) as e:
+        run_fetch(_plan("https://s/B/p.tif", "p.tif"), str(tmp_path),
+                  get_file=_bytes_from_url(), say=_quiet)
+    assert "https://s/A/p.tif" in str(e.value)
+    assert "https://s/B/p.tif" in str(e.value)
+
+
+def test_a_file_nobody_fetched_is_not_given_an_origin(tmp_path):
+    """Attributing an unrecorded local file to the requested URL would
+    invent a provenance that was never observed."""
+    (tmp_path / "stray.tif").write_bytes(b"from somewhere else")
+    with pytest.raises(FetchError, match="never observed"):
+        run_fetch(_plan("https://s/stray.tif", "stray.tif"),
+                  str(tmp_path), get_file=_bytes_from_url(), say=_quiet)
+
+
+def test_a_second_fetch_KEEPS_the_first_ones_provenance(tmp_path):
+    """The manifest was rewritten with only the current plan, so a
+    second country removed the first's entries while leaving its files
+    on disk."""
+    run_fetch(_plan("https://s/bdi.tif", "bdi.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    run_fetch(_plan("https://s/rwa.tif", "rwa.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    names = {f["name"] for f in read_manifest(str(tmp_path))["files"]}
+    assert names == {"bdi.tif", "rwa.tif"}
+
+
+def test_each_fetch_is_recorded_separately(tmp_path):
+    run_fetch(_plan("https://s/bdi.tif", "bdi.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    run_fetch(_plan("https://s/rwa.tif", "rwa.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    man = read_manifest(str(tmp_path))
+    assert len(man["fetches"]) == 2
+    assert all(f.get("utc") for f in man["fetches"])
+
+
+def test_a_forgotten_file_can_still_be_caught_changing(tmp_path):
+    """THE FAULT THAT MATTERED: after a second fetch, tampering with
+    the FIRST file verified as "1 unchanged, 0 changed" - the verifier
+    said all was well about a folder it had forgotten half of."""
+    run_fetch(_plan("https://s/bdi.tif", "bdi.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    run_fetch(_plan("https://s/rwa.tif", "rwa.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    (tmp_path / "bdi.tif").write_bytes(b"TAMPERED")
+    got = verify_folder(str(tmp_path), say=_quiet)
+    assert got["changed"] == ["bdi.tif"]
+    assert got["ok"] == 1
+
+
+def test_verify_reports_files_nobody_fetched(tmp_path):
+    """Machine 3 reads the WHOLE folder, so an untracked file is
+    analysed while contributing nothing to the provenance."""
+    run_fetch(_plan("https://s/bdi.tif", "bdi.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    (tmp_path / "someone_elses.tif").write_bytes(b"?")
+    said = []
+    got = verify_folder(str(tmp_path), say=said.append)
+    assert got["untracked"] == ["someone_elses.tif"]
+    assert "untracked" in " ".join(said)
+
+
+def test_the_manifest_is_written_atomically(tmp_path):
+    """An interrupted write must not destroy the provenance of
+    everything already fetched."""
+    run_fetch(_plan("https://s/a.tif", "a.tif"), str(tmp_path),
+              get_file=_bytes_from_url(), say=_quiet)
+    assert not (tmp_path / (MANIFEST + ".part")).exists()
+    src = (Path(__file__).resolve().parents[1] / "equipop" / "doors"
+           / "fetching.py").read_text(encoding="utf-8")
+    assert "os.replace(tmp, os.path.join(folder, MANIFEST))" in src

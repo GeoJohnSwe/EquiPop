@@ -445,7 +445,32 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
         dest = os.path.join(folder, e["name"])
         if os.path.exists(dest):
             have = sha256_of(dest)
-            was = known.get(e["name"], {}).get("sha256")
+            record = known.get(e["name"], {})
+            was = record.get("sha256")
+
+            # IS IT THE SAME FILE, OR JUST THE SAME NAME? Reuse
+            # matched on BASENAME alone, so fetching
+            # productB/population.tif after productA/population.tif
+            # kept A's bytes and wrote B's URL into the manifest.
+            # Only A was ever downloaded (BACKLOG 274).
+            if record and record.get("url") and record["url"] != e["url"]:
+                raise FetchError(
+                    f"{e['name']} is already here, but it came from a "
+                    f"DIFFERENT source:\n  on disk: {record['url']}\n"
+                    f"  wanted : {e['url']}\n"
+                    "Same filename, different file. Fetch into a "
+                    "separate folder, or move the existing one aside "
+                    "- reusing it would attribute bytes that were "
+                    "never downloaded to the source you asked for.")
+            if record is not None and not record and os.path.exists(dest):
+                # A FILE NOBODY FETCHED. Attributing it to the
+                # requested URL would invent a provenance.
+                raise FetchError(
+                    f"{e['name']} is already in {folder} but is not in "
+                    f"{MANIFEST}, so nothing records where it came "
+                    "from. Recording it as this download would claim "
+                    "an origin that was never observed. Move it aside "
+                    "or fetch into an empty folder.")
             if was and was != have:
                 raise FetchError(
                     f"{e['name']} is already here but has CHANGED since "
@@ -489,8 +514,28 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
     for k, v in plan.items():
         if k not in ("entries", "provider", "planned_utc"):
             man.setdefault(k, v)
-    with open(os.path.join(folder, MANIFEST), "w", encoding="utf-8") as f:
+    # THE MANIFEST ACCUMULATES; IT DOES NOT REPLACE. It was rewritten
+    # with only the current plan, so fetching a second country left
+    # the first files on disk and REMOVED THEIR PROVENANCE. A tampered
+    # file then verified as "1 unchanged, 0 changed" - the verifier
+    # said all was well about a folder it had forgotten half of
+    # (BACKLOG 275).
+    carried = [f for f in prior.get("files", [])
+               if f["name"] not in {g["name"] for g in files}]
+    man["files"] = carried + files
+    man["fetches"] = list(prior.get("fetches", []))
+    man["fetches"].append({
+        "utc": man["fetched_utc"], "provider": plan["provider"],
+        "files": [f["name"] for f in files],
+        **{k: v for k, v in plan.items()
+           if k not in ("entries", "provider", "planned_utc")}})
+
+    # ATOMIC. An interrupted write must not destroy the provenance of
+    # everything already fetched.
+    tmp = os.path.join(folder, MANIFEST + ".part")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, os.path.join(folder, MANIFEST))
 
     say(f"[fetch] {fetched} downloaded, {kept} already present, "
         f"{len(files)} recorded in {MANIFEST}.")
@@ -527,12 +572,31 @@ def verify_folder(folder, say=print):
             changed.append(f["name"])
         else:
             ok += 1
+    # UNTRACKED FILES MATTER TOO. Machine 3 reads the WHOLE folder
+    # recursively, so a file nobody fetched will be analysed with
+    # everything else while contributing nothing to the provenance
+    # (BACKLOG 275).
+    tracked = {f["name"] for f in man["files"]}
+    extra = []
+    for root, _d, names in os.walk(folder):
+        for n in names:
+            if n in (MANIFEST, MANIFEST + ".part") or n.endswith(".part"):
+                continue
+            rel = os.path.relpath(os.path.join(root, n), folder)
+            if os.path.basename(rel) not in tracked:
+                extra.append(rel)
+
     say(f"[verify] {ok} unchanged, {len(changed)} CHANGED, "
-        f"{len(gone)} missing, against a fetch of {man['fetched_utc']}")
+        f"{len(gone)} missing, {len(extra)} untracked, against "
+        f"{len(man.get('fetches', [])) or 1} fetch(es), latest "
+        f"{man['fetched_utc']}")
     for n in changed + gone:
         say(f"           {n}")
+    for n in sorted(extra):
+        say(f"           {n}  (not fetched by EquiPop - machine 3 "
+            "will still read it)")
     return {"ok": ok, "changed": changed, "missing": gone,
-            "manifest": man}
+            "untracked": sorted(extra), "manifest": man}
 
 
 # ---------------------------------------------------- the HDX door
@@ -723,7 +787,12 @@ class Geofabrik:
 
     def plan(self, choices, get_json=None, say=print):
         region = str(choices.get("region") or "").strip()
-        fmt = str(choices.get("format") or "pbf").strip().lower()
+        # SHAPEFILE BY DEFAULT, NOT pbf. GDAL builds a temporary
+        # index database the first time it opens a .osm.pbf, which is
+        # why John's file took ten seconds EVERY TIME. The free
+        # shapefile zip is already split into thematic layers carrying
+        # fclass - the exact schema wanted - and opens in a second.
+        fmt = str(choices.get("format") or "shp").strip().lower()
         index = self.index(get_json=get_json)
 
         if not region:

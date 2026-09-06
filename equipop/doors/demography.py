@@ -355,6 +355,11 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
     man = run_folder(folders, k_values=k_values, unit_size=unit_size,
                      epsg=epsg,
                      weight="sexes" if p["sexes"] != ["t"] else "total",
+                     # PASS THE YEAR DOWN. Without it the reference
+                     # population is summed across EVERY year in the
+                     # folder, so analysing 2020 changes once 2030 has
+                     # been downloaded (BACKLOG 273).
+                     year=year,
                      compose={"num": p["numerator"],
                               "den": p["denominator"]},
                      groups=["num", "den"],
@@ -432,6 +437,11 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     man = run_folder(folders, k_values=k_values, unit_size=unit_size,
                      epsg=epsg,
                      weight="sexes" if sexes != ["t"] else "total",
+                     # PASS THE YEAR DOWN. Without it the reference
+                     # population is summed across EVERY year in the
+                     # folder, so analysing 2020 changes once 2030 has
+                     # been downloaded (BACKLOG 273).
+                     year=year,
                      compose=compose, groups=groups, channel=channel,
                      **kw)
 

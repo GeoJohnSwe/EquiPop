@@ -108,7 +108,7 @@ def run_folder(folders, *, k_values=None, r_values=None,
                unit_size=1000.0, epsg=None, weight=None, groups=None,
                sum_cohorts=False, keep_zero=False, out_dir=None,
                tile_m=50_000.0, convention=None, labels=None,
-               pattern=None, channel=None):
+               pattern=None, channel=None, year=None):
     """Load a folder of rasters, build the cells, run the neighbourhoods.
 
     folders    : one folder, or several. Subfolders are included, so a
@@ -181,7 +181,7 @@ def run_folder(folders, *, k_values=None, r_values=None,
             folders, weight=weight, unit_size=unit_size, epsg=epsg,
             groups=groups, compose=compose, sum_cohorts=sum_cohorts,
             keep_zero=keep_zero, convention=convention,
-            labels=labels, pattern=pattern)
+            labels=labels, pattern=pattern, year=year)
     man["seconds_loading"] = round(time.time() - t0, 1)
 
     n_cells = len(cd)

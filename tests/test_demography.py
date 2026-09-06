@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 
 from equipop.doors.demography import (
-    BAND_STARTS, DemographyError, INDICES, columns_for, pick_sex, plan,
-    years_in)
+    BAND_STARTS, DemographyError, INDICES, columns_for, parse_spec,
+    pick_sex, plan, run_indices, years_in)
 
 
 def _labels(year=2026, sexes="fmt"):
@@ -391,3 +391,91 @@ def test_a_refusal_never_names_a_character_the_user_did_not_type():
 def test_three_ranges_are_refused_with_the_form_that_works():
     with pytest.raises(DemographyError, match="two separated by a comma"):
         parse_spec("0-4,15-49,65-")
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 273 - A RESULT THAT DEPENDS ON WHICH OTHER FILES ARE PRESENT.
+# External review of 1.44.10, reproduced here: the selected year
+# filtered the numerator and denominator, but the REFERENCE POPULATION
+# summed the f_ and m_ columns of EVERY year in the folder. So
+# analysing 2020 changed once 2030 had also been downloaded - the
+# neighbourhood was drawn through twice as many people.
+#
+# Measured before the fix: mean Dist 34.60 m against 24.37 m, a 30%
+# change in the neighbourhood, with the selected year's data
+# identical. The review's own run moved radii by up to 55 m.
+#
+# The review asks for this as a PERMANENT regression test, and it is
+# right to: it is the only kind of defect that makes a published
+# comparison wrong for a reason nobody can see in the output.
+# ---------------------------------------------------------------------
+def _silent():
+    class _C:
+        def info(self, *a): pass
+        def warning(self, *a): pass
+    return _C()
+
+
+def _year_folder(tmp, years, n=10):
+    import rasterio
+    from rasterio.transform import from_origin
+    px = 1.0 / 1200
+    rng = np.random.default_rng(3)
+    for y in years:
+        for sex in "fm":
+            for age in BAND_STARTS:
+                a = (rng.random((n, n)) * 8 + 1).astype("float32")
+                f = tmp / (f"bdi_{sex}_{age:02d}_{y}"
+                           "_CN_1km_R2025A_UA_v1.tif")
+                with rasterio.open(str(f), "w", driver="GTiff",
+                                   height=n, width=n, count=1,
+                                   dtype="float32", crs="EPSG:4326",
+                                   nodata=-99999.0,
+                                   transform=from_origin(
+                                       30.0, -2.0 + n * px, px, px)) as o:
+                    o.write(a, 1)
+    return tmp
+
+
+@pytest.mark.parametrize("index", ["sex_ratio", "ageing_index"])
+def test_an_unrelated_year_leaves_this_years_answer_unchanged(
+        tmp_path, index):
+    rasterio = pytest.importorskip("rasterio")
+    one = _year_folder(tmp_path / "one", [2020]) \
+        if (tmp_path / "one").mkdir() is None else None
+    two = _year_folder(tmp_path / "two", [2020, 2030]) \
+        if (tmp_path / "two").mkdir() is None else None
+    got = []
+    for folder in (tmp_path / "one", tmp_path / "two"):
+        man = run_indices(str(folder), [index], k_values=[100],
+                          unit_size=100.0, year="2020", epsg=32735,
+                          channel=_silent())
+        r = man["results"]
+        got.append((r["Dist_100"].mean(),
+                    r[[c for c in r.columns
+                       if c.startswith(INDICES[index]["code"])][0]].mean()))
+    assert got[0][0] == pytest.approx(got[1][0], abs=1e-9), (
+        "the neighbourhood changed because another year exists")
+    assert got[0][1] == pytest.approx(got[1][1], abs=1e-9), (
+        "the measure changed because another year exists")
+
+
+def test_the_reference_population_says_when_it_confines_a_year(tmp_path):
+    """Leaving columns out of the reference population is a decision
+    the user must see, not a silent correction."""
+    pytest.importorskip("rasterio")
+    (tmp_path / "two").mkdir()
+    _year_folder(tmp_path / "two", [2020, 2030])
+
+    said = []
+
+    class Ch:
+        def info(self, m):
+            said.append(str(m))
+
+        def warning(self, m):
+            said.append(str(m))
+
+    run_indices(str(tmp_path / "two"), ["sex_ratio"], k_values=[100],
+                unit_size=100.0, year="2020", epsg=32735, channel=Ch())
+    assert any("confined to 2020" in s for s in said), said[-6:]
