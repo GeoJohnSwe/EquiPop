@@ -2494,6 +2494,31 @@ appeared twice; the weaker copy is gone.*
   plainly that NOBODY HAS CALIBRATED THEM and that a published result
   needs his own. Seven OSM classes collapse to five groups.
 
+- ~~284~~ | DONE | "THE LOG IS NOT GIVING ME ENOUGH INFO TO EVEN
+  DOWNLOAD WHAT I DOWNLOADED BEFORE." John, after SEVEN failed
+  attempts in five minutes on a fetch he had already done.
+  THE TOOL SAID "No such dataset: None". None is not a value he
+  typed - it is the ABSENCE of a row he did not know to add, printed
+  as though it were his mistake. It now says "No dataset was given.
+  Add a row with 'project' in the Setting column", and lists the
+  choices.
+  AND IT NAMED THE DESCRIPTION, NOT THE KEY: "add a row with
+  'dataset'" when the setting is called `project`. THE SAME FAULT AS
+  268, where he was told the field was "Year" and the key was
+  `epoch`. A message must use the words the tool accepts, and this is
+  the second time that rule has been broken in the same file.
+  HIS FIFTH ATTEMPT HAD THE RIGHT VALUE IN THE WRONG BOX -
+  age_structures, a DATASET, placed in the version row - and the tool
+  KNEW it was a dataset and refused without saying so. It now says
+  which row it belongs in.
+  TWO OF CLAUDE'S OWN GUARDS CAUGHT HIM WHILE FIXING IT. The door's
+  no-provider-vocabulary test fired TWICE - once for naming WorldPop's
+  fields in the check, once for naming them in the COMMENT explaining
+  the first fix. And osm_road_groups.json, shipped a day earlier into
+  equipop/providers/, was picked up by the registry loader as a
+  malformed provider definition. providers/ is for provider
+  definitions; it moved to equipop/tables/.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

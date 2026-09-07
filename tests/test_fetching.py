@@ -976,3 +976,57 @@ def test_the_transport_cleans_up_after_itself():
     assert "except BaseException:" in body
     assert "os.remove(tmp)" in body
     assert "Content-Length" in body, "the declared length is checked"
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 284 - "the log is not giving me enough info to even download
+# what I downloaded before". John, after seven failed attempts.
+#
+# The tool said "No such dataset: None". None is not a value he typed
+# - it is the ABSENCE of a row he did not know to add, printed as
+# though it were his mistake.
+# ---------------------------------------------------------------------
+def test_an_absent_value_is_not_reported_as_a_wrong_one():
+    from equipop.doors.fetching import resolve
+    with pytest.raises(FetchError) as e:
+        resolve(None, {"a": "A", "b": "B"}, "dataset", key="project")
+    msg = str(e.value)
+    assert "No dataset was given" in msg
+    assert "None" not in msg, "None is not something the user typed"
+
+
+def test_it_names_the_SETTING_the_user_must_type():
+    """It said "add a row with 'dataset'" when the setting is called
+    `project` - the same fault as telling him the field was "Year"
+    when the key was `epoch`."""
+    from equipop.doors.fetching import resolve
+    with pytest.raises(FetchError, match="'project'"):
+        resolve("", {"a": "A"}, "dataset", key="project")
+
+
+def test_the_missing_row_is_shown_with_its_choices():
+    from equipop.doors.fetching import resolve
+    with pytest.raises(FetchError) as e:
+        resolve(None, {"age_structures": "Age and sex structures",
+                       "pop": "Population Counts"}, "dataset",
+                key="project")
+    msg = str(e.value)
+    assert "age_structures" in msg and "1  " in msg
+
+
+def test_worldpop_without_a_project_says_which_row_is_missing():
+    """John's third attempt: iso3 alone."""
+    import json
+    with open(CAPTURED / "data.json", encoding="utf-8") as f:
+        rec = json.load(f)
+
+    def fake(url, timeout=60):
+        return rec if url.rstrip("/").endswith("rest/data") \
+            else {"data": []}
+
+    with pytest.raises(FetchError) as e:
+        plan_fetch("worldpop", iso3="bdi", year="2021",
+                   get_json=fake, say=_quiet)
+    msg = str(e.value)
+    assert "No dataset was given" in msg
+    assert "'project'" in msg

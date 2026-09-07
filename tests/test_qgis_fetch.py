@@ -552,3 +552,34 @@ def test_an_optional_field_says_what_happens_if_left_out(api, tmp_path):
         FOLDER=str(tmp_path)), {}, fb)
     said = " ".join(" ".join(l.split()) for l in fb.lines)
     assert "left out, it uses R2023A" in said
+
+
+def test_a_right_value_in_the_wrong_box_is_named(api, tmp_path):
+    """BACKLOG 284. John's fifth attempt put `age_structures` - a
+    DATASET - into `category`. The tool knew it was a dataset and
+    refused without saying so."""
+    from qgis.core import QgsProcessingException
+    alg, fb = _alg(), _Feedback()
+    with pytest.raises(QgsProcessingException, match="belongs in the"):
+        alg.processAlgorithm(_params(
+            settings=["iso3", "bdi", "category", "age_structures",
+                      "year", "2021"],
+            FOLDER=str(tmp_path)), {}, fb)
+
+
+def test_the_misplaced_value_message_says_where_it_belongs(api,
+                                                           tmp_path):
+    from qgis.core import QgsProcessingException
+    alg, fb = _alg(), _Feedback()
+    with pytest.raises(QgsProcessingException) as e:
+        alg.processAlgorithm(_params(
+            settings=["category", "age_structures"],
+            FOLDER=str(tmp_path)), {}, fb)
+    assert "'project'" in str(e.value)
+
+
+def test_a_correctly_placed_value_is_unaffected(api, tmp_path):
+    """The check must not refuse what it was written to allow."""
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(_params(FOLDER=str(tmp_path)), {}, fb)
+    assert "ERROR" not in " ".join(fb.lines)

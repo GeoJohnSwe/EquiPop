@@ -195,7 +195,8 @@ class WorldPop:
                 "BDI or ['BDI', 'RWA'].")
 
         known = self.projects(get_json=get_json)
-        project = resolve(project, known, "dataset")
+        project = resolve(project, known, "dataset",
+                          key="project")
 
         cats = self.categories(project, get_json=get_json)
         if category is None or category == "":
@@ -208,7 +209,9 @@ class WorldPop:
                     "100 m or 1 km, different releases - so there is "
                     "no sensible default. Give the number or the "
                     "short name:\n" + "\n".join(numbered(cats)))
-        category = resolve(category, cats, f"version of {project!r}")
+        category = resolve(category, cats,
+                           f"version of {project!r}",
+                           key="category")
 
         entries, missing, wrong_year = [], [], {}
         for iso in isos:
@@ -328,9 +331,27 @@ def numbered(options):
             for i, k in enumerate(keys, 1)]
 
 
-def resolve(value, options, what):
-    """A number from the listing, an alias, or a whole pasted line."""
+def resolve(value, options, what, key=None):
+    """A number from the listing, an alias, or a whole pasted line.
+
+    `key` is the SETTING NAME the user must type. Without it the
+    message named the description - "add a row with 'dataset'" when
+    the setting is called `project` - which is the same fault as
+    telling John the field was "Year" when the key was `epoch`
+    (BACKLOG 268). A message must use the words the tool accepts.
+    """
     keys = sorted(options)
+    # AN ABSENT VALUE IS NOT A WRONG ONE. This printed "No such
+    # dataset: None" - and None is not something the user typed, it is
+    # the absence of a row they did not know to add. John read that
+    # seven times in five minutes and could not tell what was missing
+    # (BACKLOG 284).
+    if value is None or not str(value).strip():
+        raise FetchError(
+            f"No {what} was given. Add a row with "
+            f"{(key or what.split()[0])!r} in the Setting column and "
+            "one of these in the Value column:\n"
+            + "\n".join(numbered(options)))
     v = str(value).strip().lstrip("#").strip()
     # A NUMBER IS ONLY AN INDEX WHEN THE CHOICES ARE NOT THEMSELVES
     # NUMBERS. GHSL's epochs are years - 1975 to 2030 - and "2020" was

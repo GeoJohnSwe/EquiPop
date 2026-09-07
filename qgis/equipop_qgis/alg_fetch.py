@@ -217,6 +217,33 @@ class SpatialDataFetch(EquipopAlgorithm):
                 + ". Put the NAME in the left column, the VALUE in "
                   "the right.")
 
+        # IS A RIGHT VALUE IN THE WRONG BOX? John put age_structures -
+        # a dataset - into the version row, and the tool knew it
+        # dataset and refused without saying so. It cannot check every
+        # field without network calls, but the one it already has is
+        # free (BACKLOG 284).
+        try:
+            from equipop.doors.fetching import PROVIDERS as _P
+            _p = _P[provider]
+            # THE FIELD THAT LISTS A CATALOGUE, whatever it is
+            # called. Claude first named two of WorldPop's fields
+            # here - a provider's vocabulary, in the door, which the
+            # door's own test forbids and caught immediately, twice:
+            # once in the code and once in the comment explaining it.
+            _lister = next((f["name"] for f in fields
+                            if f.get("lists_when_empty")), None)
+            if _lister and hasattr(_p, "projects"):
+                _known = _p.projects()
+                for _k, _v in list(choices.items()):
+                    if _k != _lister and _v in _known:
+                        raise QgsProcessingException(
+                            f"{_v!r} belongs in the {_lister!r} row, "
+                            f"not {_k!r} - {_known[_v]}.")
+        except QgsProcessingException:
+            raise
+        except Exception:
+            pass                       # network: the spine will say so
+
         try:
             plan = plan_fetch(provider, say=ch.info,
                               will_download=download, **choices)
