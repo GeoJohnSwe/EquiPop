@@ -574,3 +574,75 @@ def test_two_countries_are_still_conserved(tmp_path):
     pts, _ = load_folder(tmp_path, sum_cohorts=True, keep_index=True)
     assert pts["pop"].sum() == 80.0
     assert (pts["pop"] == 10.0).all()
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 277 - external review of 1.44.10, finding 4. The mixed-CRS
+# blocker (239) closed one hole; three more remained, and one produced
+# COORDINATES THAT WERE SIMPLY WRONG rather than merely unlabelled.
+# ---------------------------------------------------------------------
+def _one_raster(tmp, crs, transform, name="bdi_f_15_2026_CN_1km"
+                                          "_R2025A_UA_v1"):
+    import rasterio
+    with rasterio.open(str(tmp / (name + ".tif")), "w", driver="GTiff",
+                       height=4, width=4, count=1, dtype="float32",
+                       crs=crs, nodata=-99999.0,
+                       transform=transform) as o:
+        o.write(np.full((4, 4), 3.0, dtype="float32"), 1)
+
+
+def test_a_raster_with_no_crs_is_refused(tmp_path):
+    """It was accepted and recorded as the string "None". Guessing a
+    CRS would put the result somewhere plausible and wrong."""
+    from rasterio.transform import from_origin
+    px = 1.0 / 1200
+    _one_raster(tmp_path, None, from_origin(30.0, -2.0 + 4 * px, px, px))
+    with pytest.raises(ValueError, match="NO coordinate system"):
+        load_folder(tmp_path)
+
+
+def test_a_rotated_raster_is_refused(tmp_path):
+    """Accepted, with its rotation DISCARDED: the true first centre
+    was 30.000500, -1.997000 and EquiPop returned 30.000417,
+    -1.997083. An actual coordinate error, not missing metadata."""
+    from rasterio.transform import Affine
+    px = 1.0 / 1200
+    rot = Affine(px, px * 0.2, 30.0, px * 0.2, -px, -2.0 + 4 * px)
+    _one_raster(tmp_path, "EPSG:4326", rot)
+    with pytest.raises(ValueError, match="ROTATED"):
+        load_folder(tmp_path)
+
+
+def test_the_rotation_refusal_says_what_to_do(tmp_path):
+    from rasterio.transform import Affine
+    px = 1.0 / 1200
+    _one_raster(tmp_path, "EPSG:4326",
+                Affine(px, px * 0.2, 30.0, px * 0.2, -px, -2.0 + 4 * px))
+    with pytest.raises(ValueError) as e:
+        load_folder(tmp_path)
+    assert "Warp" in str(e.value)
+
+
+def test_a_north_up_raster_is_still_accepted(tmp_path):
+    """The contract must not refuse what it was written to allow."""
+    from rasterio.transform import from_origin
+    px = 1.0 / 1200
+    _one_raster(tmp_path, "EPSG:4326",
+                from_origin(30.0, -2.0 + 4 * px, px, px))
+    pts, man = load_folder(tmp_path)
+    assert len(pts) == 16 and man["crs"] == "EPSG:4326"
+
+
+def test_a_projected_folder_reprojects_from_ITS_OWN_crs(tmp_path):
+    """A projected folder was accepted and then reprojected AS IF it
+    were degrees, so its metres were read as longitudes. GHSL's
+    Mollweide and any UTM set are legitimate inputs."""
+    from rasterio.transform import from_origin
+    from equipop.rasterfolder import folder_to_cells
+    _one_raster(tmp_path, "EPSG:32735",
+                from_origin(166000.0, 9779000.0, 100.0, 100.0))
+    cd, man = folder_to_cells(tmp_path, weight="f_15_2026",
+                              unit_size=100.0, epsg=32735)
+    # same CRS in and out, so the coordinates must survive unchanged
+    assert abs(float(cd.E.min()) - 166050.0) < 1.0, float(cd.E.min())
+    assert abs(float(cd.N.max()) - 9778950.0) < 1.0, float(cd.N.max())

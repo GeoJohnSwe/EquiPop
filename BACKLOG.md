@@ -2349,6 +2349,106 @@ appeared twice; the weaker copy is gone.*
   WRONG: nothing in the output says so, and the columns look
   plausible.
 
+- ~~277~~ | DONE, HIGH | THE GEOGRAPHIC CONTRACT WAS ONLY PARTLY
+  ENFORCED. Review finding 4. BACKLOG 239 closed the mixed-CRS hole;
+  three more remained, and one produced COORDINATES THAT WERE SIMPLY
+  WRONG.
+  A raster with NO CRS was accepted and recorded as the string
+  "None" - now refused, because guessing would place the result
+  somewhere plausible and wrong.
+  A ROTATED raster was accepted and ITS ROTATION DISCARDED. The true
+  first centre was 30.000500, -1.997000 and EquiPop returned
+  30.000417, -1.997083. Not missing metadata - an arithmetic error,
+  silent, in every coordinate. Now refused, with the QGIS menu path
+  for warping it north-up.
+  A PROJECTED folder was accepted and then reprojected AS IF IT WERE
+  DEGREES, because three places assumed EPSG:4326: the transform
+  source, the QGIS points-only stamp, and the field message. GHSL's
+  Mollweide and any UTM folder are legitimate inputs, so the fix is
+  not to refuse them but to USE THE FOLDER'S OWN CRS - and to skip
+  suggest_projection entirely, since it reads lon and lat as degrees
+  and refuses anything beyond +/-90.
+  CLAUDE INVENTED A HELPER THAT DID NOT EXIST while fixing this
+  (_cells_from) and had to undo it. Writing code against a function
+  never checked for is the same fault as editing text never read.
+
+- ~~278~~ | DONE | CHECKSUMS WERE RECORDED MORE STRONGLY THAN THEY
+  WERE VERIFIED. Review finding 8. HDX's publisher_md5 and
+  Geofabrik's .md5 sidecar were attached to every entry and NEVER
+  CHECKED - so the manifest promised more than it had established. A
+  local SHA-256 says what bytes are here; it says nothing about
+  whether they are the right ones.
+  A deliberately wrong publisher MD5 was accepted. A transport
+  declaring 1,000 bytes and returning 5 had those five PROMOTED to
+  the final file.
+  Both refused now, and the bad file REMOVED rather than left. The
+  transport checks Content-Length and cleans up its .part on any
+  failure - the QGIS message had been claiming nothing partial was
+  kept while .part files were being left behind.
+  THE SIZE IS MEASURED FROM DISK, not taken from the transport's own
+  report. Comparing a transport against the number it supplied would
+  always agree with itself - the first version of this fix did
+  exactly that and passed.
+
+- ~~279~~ | DONE, HIGH - LAST OF THE REVIEW'S HIGHS | AN INCOMPLETE
+  MEASURE WORE A COMPLETE MEASURE'S NAME. Review finding 3. The
+  planner checked each side had AT LEAST ONE matching column, never
+  that the bands the measure NEEDS are present.
+  A folder holding f_00, f_15 and f_65 was accepted as a DEPENDENCY
+  RATIO and computed (under-one + 65-69) / 15-19, keeping the general
+  label and the general explanation. THE ARITHMETIC WAS RIGHT AND THE
+  NAME WAS A LIE - the hardest kind of fault to see, because nothing
+  is wrong with the number, only with what it is called.
+  Refused now, naming EVERY missing band. A deliberately restricted
+  study stays legitimate through allow_incomplete=True, and is then
+  RECORDED on the plan, so it is CHOSEN rather than arrived at by
+  absence.
+  THE MOVED BOUNDARY, the second half of the finding: asking for 0-17
+  selects whole bands 0 to 14 and drops ages 15, 16 and 17. Whole
+  bands are right for banded data; discovering it in a footnote is
+  not. The plan now carries asked-versus-covers per side and the run
+  says "the boundary moved". IT ALSO REVEALED THAT 18-64 COVERS
+  20-64, which nobody had noticed.
+  AND CLAUDE WROTE THE BAND RULE OUT A SECOND TIME. expected_bands
+  first had its own loop, and it DISAGREED with columns_for: 0-17 gave
+  five bands in one and four in the other, so the completeness check
+  would have demanded a band the selector never picks. Both use
+  _bands_from now. ONE RULE WRITTEN TWICE IS EXACTLY HOW 272 HAPPENED,
+  three days ago, in the same file's neighbour.
+
+- ~~280~~ | DONE | LINES AND POLYGONS REACH THE LATTICE. The missing
+  half of John's OSM plan: points already landed on the grid, lines
+  and polygons did not, and LINES ARE WHAT FRICTION NEEDS -
+  features_to_friction(), load_friction_table() and run_knn_friction()
+  have existed for months waiting for exactly this input.
+  A ROAD IS DIVIDED BETWEEN THE CELLS IT CROSSES, not assigned to one.
+  250 m spanning three cells appears as 50 + 100 + 100, and total
+  length is conserved to floating point - the property that matters,
+  because anything lost at a boundary is lost invisibly.
+  THE UNIT IS THE MEASURE, which is John's own observation: "if we
+  declare that the longest road stretch in the unit defines the
+  friction value we need to know WHERE it is the longest". So
+  length_top is the longest-wins rule stated directly, and it is
+  computed PER CELL - a class can win in one cell and lose in the
+  next.
+  POLYGONS REPORT A SHARE, 0 to 1, not an area: water and buildings
+  are coverage and barriers rather than friction, and a raw area would
+  depend on the cell size and stop being comparable between runs.
+  GROUPING IS A DEFINITION THE USER SUPPLIES - cafe plus restaurant
+  plus fast_food as "eateries" - and an UNGROUPED value keeps its own
+  name, because a class vanishing from a classification is this
+  project's signature fault. A value in two groups is refused, since
+  the totals would count it twice.
+  THE BOUNDARY IS HELD: EquiPop reduces geometry to VALUES ON A
+  LATTICE and is not becoming a GIS. Intersect, within and buffer as
+  general operations stay in QGIS.
+  CLAUDE PREDICTED A REFUSAL THAT CANNOT HAPPEN: features on a distant
+  lattice origin are not "elsewhere" - the grid is built AROUND them,
+  so the origin only shifts the INDICES. The test now records that,
+  which matters more than the refusal would have: the indices are what
+  a join matches on, so the same road on two lattice origins joins to
+  nothing.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

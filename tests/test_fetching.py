@@ -892,3 +892,87 @@ def test_the_manifest_is_written_atomically(tmp_path):
     src = (Path(__file__).resolve().parents[1] / "equipop" / "doors"
            / "fetching.py").read_text(encoding="utf-8")
     assert "os.replace(tmp, os.path.join(folder, MANIFEST))" in src
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 278 - review finding 8. publisher_md5 and md5_url were
+# RECORDED and never CHECKED, so the manifest promised more than it
+# had established. A local SHA-256 says what bytes are here; it says
+# nothing about whether they are the right ones.
+# ---------------------------------------------------------------------
+def _liar(actual=b"short", claim=1000):
+    """Declares a length it does not deliver - the review's case."""
+    import hashlib
+
+    def get(url, dest, timeout=900):
+        with open(dest, "wb") as f:
+            f.write(actual)
+        return (claim, hashlib.sha256(actual).hexdigest(),
+                hashlib.md5(actual).hexdigest())
+    return get
+
+
+def test_a_wrong_publisher_checksum_is_refused(tmp_path):
+    plan = {"provider": "x", "entries": [
+        {"url": "https://s/a.tif", "name": "a.tif",
+         "publisher_md5": "0" * 32}]}
+    with pytest.raises(FetchError, match="DOES NOT MATCH"):
+        run_fetch(plan, str(tmp_path), get_file=_liar(), say=_quiet)
+
+
+def test_the_bad_file_is_removed_not_left_behind(tmp_path):
+    plan = {"provider": "x", "entries": [
+        {"url": "https://s/a.tif", "name": "a.tif",
+         "publisher_md5": "0" * 32}]}
+    with pytest.raises(FetchError):
+        run_fetch(plan, str(tmp_path), get_file=_liar(), say=_quiet)
+    assert not (tmp_path / "a.tif").exists()
+
+
+def test_a_matching_publisher_checksum_passes(tmp_path):
+    """The check must not refuse what it was written to allow."""
+    import hashlib
+    body = b"short"
+    plan = {"provider": "x", "entries": [
+        {"url": "https://s/a.tif", "name": "a.tif",
+         "publisher_md5": hashlib.md5(body).hexdigest()}]}
+    man = run_fetch(plan, str(tmp_path), get_file=_liar(body, len(body)),
+                    say=_quiet)
+    assert (tmp_path / "a.tif").exists()
+    assert man["files"][0]["sha256"]
+
+
+def test_a_wrong_size_is_refused_by_MEASURING_the_file(tmp_path):
+    """The transport REPORTED 1,000 bytes and delivered 5. Comparing
+    against the transport's own number would always agree with
+    itself, so the file on disk is measured instead."""
+    plan = {"provider": "x", "entries": [
+        {"url": "https://s/a.tif", "name": "a.tif",
+         "bytes_expected": 1000}]}
+    with pytest.raises(FetchError, match="WRONG SIZE"):
+        run_fetch(plan, str(tmp_path), get_file=_liar(), say=_quiet)
+
+
+def test_a_transport_returning_two_values_still_works(tmp_path):
+    """Older transports return (bytes, sha256) with no md5."""
+    import hashlib
+
+    def two(url, dest, timeout=900):
+        with open(dest, "wb") as f:
+            f.write(b"ok")
+        return 2, hashlib.sha256(b"ok").hexdigest()
+
+    man = run_fetch(_plan("https://s/a.tif", "a.tif"), str(tmp_path),
+                    get_file=two, say=_quiet)
+    assert man["files"][0]["bytes"] == 2
+
+
+def test_the_transport_cleans_up_after_itself():
+    """The QGIS message claimed nothing partial was kept while .part
+    files were being left behind."""
+    src = (Path(__file__).resolve().parents[1] / "equipop" / "doors"
+           / "fetching.py").read_text(encoding="utf-8")
+    body = src[src.index("def _get_file("):src.index("def sha256_of(")]
+    assert "except BaseException:" in body
+    assert "os.remove(tmp)" in body
+    assert "Content-Length" in body, "the declared length is checked"

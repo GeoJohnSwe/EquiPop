@@ -249,8 +249,69 @@ def parse_spec(text):
     return {"sexes": sexes, "ages": (lo, hi)}
 
 
+def effective_range(spec_side):
+    """What a requested age range ACTUALLY covers, in whole bands.
+
+    Asking for 0-17 selects bands 0, 1, 5 and 10 - ages 0 to 14 - and
+    ages 15, 16 and 17 are silently dropped. Whole bands are the right
+    rule when the data are banded, but the REQUESTED and EFFECTIVE
+    definitions must be distinguished (BACKLOG 279, review finding 3).
+    """
+    bands = expected_bands(spec_side)
+    if not bands:
+        return None
+    lo, hi = spec_side.get("ages", (None, None))
+    if spec_side.get("plus"):
+        hi = None
+    top = (None if bands[-1] == BAND_STARTS[-1] and hi is None
+           else _band_end(bands[-1]))
+    return {"asked": (lo, hi), "covers": (bands[0], top),
+            "bands": bands,
+            "exact": (bands[0] == lo
+                      and (hi is None or top == hi))}
+
+
+def expected_bands(spec_side):
+    """The band starts a side SHOULD cover.
+
+    USES _bands_from, THE SAME FUNCTION columns_for USES. Claude first
+    wrote this rule out a second time and the two disagreed - 0-17
+    gave [0,1,5,10,15] here and [0,1,5,10] there, so the completeness
+    check would have demanded a band the selector never picks. One
+    rule written twice is how BACKLOG 272 happened three weeks ago.
+    """
+    want = set(_bands_from(*spec_side["ages"]))
+    if spec_side.get("plus"):
+        want |= set(_bands_from(*spec_side["plus"]))
+    return sorted(want)
+
+
+def _band_end(start):
+    nxt = [b for b in BAND_STARTS if b > start]
+    return (nxt[0] - 1) if nxt else None
+
+
+def effective_range(spec_side):
+    """What a requested range ACTUALLY covers, in whole bands.
+
+    Asking for 0-17 selects ages 0 to 14; 15, 16 and 17 are dropped.
+    Whole bands are the right rule for banded data, but the REQUESTED
+    and EFFECTIVE definitions must be distinguished (review finding 3).
+    """
+    bands = expected_bands(spec_side)
+    if not bands:
+        return None
+    lo, hi = spec_side.get("ages", (None, None))
+    if spec_side.get("plus"):
+        hi = None
+    top = _band_end(bands[-1])
+    return {"asked": (lo, hi), "covers": (bands[0], top),
+            "bands": bands,
+            "exact": bands[0] == lo and (hi is None or top == hi)}
+
+
 def plan(name, labels, year=None, num_spec=None,
-         den_spec=None) -> dict:
+         den_spec=None, allow_incomplete=False) -> dict:
     """Work out an index's two halves WITHOUT running anything.
 
     Separated so a door can show the user exactly which columns are
@@ -291,6 +352,36 @@ def plan(name, labels, year=None, num_spec=None,
 
     top = columns_for(num, labels, year)
     bot = columns_for(den, labels, year)
+
+    # IS THE MEASURE ENTITLED TO ITS NAME? Having ONE matching column
+    # was enough, so f_00 + f_65 over f_15 was published as a
+    # "Dependency ratio". A deliberately restricted study is
+    # legitimate - allow=True says so explicitly - but it must be
+    # CHOSEN, not arrived at by absence (BACKLOG 279).
+    gaps = {}
+    for side, want, have in (("numerator", num, top),
+                             ("denominator", den, bot)):
+        need = expected_bands(want)
+        got = {int(c.split("_")[1]) for c in have}
+        missing = [b for b in need if b not in got]
+        if missing:
+            gaps[side] = missing
+        for sx in (want["sexes"] or []):
+            if not any(c.startswith(sx + "_") for c in have):
+                gaps.setdefault(side + " sexes", []).append(sx)
+    if gaps and not allow_incomplete:
+        lines = [f"{spec['label']}: the data cannot support this "
+                 "measure under its own name."]
+        for where, missing in gaps.items():
+            lines.append(f"  {where}: missing "
+                         + ", ".join(str(m) for m in missing))
+        lines.append("What would be computed is a DIFFERENT quantity "
+                     "wearing this one's label.")
+        lines.append("Fetch the missing cohorts, choose an index the "
+                     "data supports, or pass allow_incomplete=True to "
+                     "say the restriction is deliberate - it is then "
+                     "recorded in the plan.")
+        raise DemographyError("\n".join(lines))
     if not top:
         raise DemographyError(
             f"{spec['label']}: nothing to put on top. Wanted ages "
@@ -303,7 +394,15 @@ def plan(name, labels, year=None, num_spec=None,
             f"and the points carry none of them.")
     return {"index": name, "label": spec["label"], "about": spec["about"],
             "year": year, "sexes": list(sexes),
-            "numerator": top, "denominator": bot}
+            "numerator": top, "denominator": bot,
+            # WHAT WAS ASKED FOR AND WHAT IT COVERS. 0-17 selects
+            # whole bands 0 to 14, and the three missing years must be
+            # visible rather than inferred (review finding 3).
+            "effective": {"numerator": effective_range(num),
+                          "denominator": effective_range(den)},
+            # A DELIBERATE RESTRICTION IS RECORDED, so a reader of the
+            # output can see the measure is not the general one.
+            "restricted": (dict(gaps) if gaps else None)}
 
 
 # ------------------------------------------------------------- running
@@ -342,6 +441,20 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
         p["denominator"] = list(denominator)
 
     say(f"{p['label']}, {p['year']}.")
+    # SAY WHEN THE BOUNDARY MOVED. Asking for 0-17 and getting 0-14
+    # is the right behaviour for banded data and the wrong thing to
+    # discover in a footnote (review finding 3).
+    for side, r in (p.get("effective") or {}).items():
+        if r and not r["exact"]:
+            a, c = r["asked"], r["covers"]
+            say(f"  NOTE: {side} asked for "
+                f"{a[0]}-{a[1] if a[1] is not None else ''} and covers "
+                f"{c[0]}-{c[1] if c[1] is not None else ''} - whole "
+                "bands only, so the boundary moved.")
+    if p.get("restricted"):
+        say("  NOTE: this is a RESTRICTED version of the measure - "
+            + "; ".join(f"{k} missing {v}" for k, v
+                        in p["restricted"].items()))
     say(f"  on top    : {' + '.join(p['numerator'])}")
     say(f"  divided by: {' + '.join(p['denominator'])}")
     say(f"  {p['about']}")

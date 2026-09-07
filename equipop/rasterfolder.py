@@ -217,6 +217,31 @@ def load_folder(folders, compose: dict | None = None,
         with rasterio.open(p) as r:
             t, nod = r.transform, r.nodata
             if ref is None:
+                # THE INPUT CONTRACT, checked on the FIRST raster.
+                # External review of 1.44.10, finding 4: three
+                # geographic faults passed the loader. A raster with
+                # NO CRS was accepted and recorded as "None"; a
+                # ROTATED raster was accepted and its rotation
+                # DISCARDED, giving cell centres that were simply
+                # wrong - 30.000417 where the truth is 30.000500.
+                # BACKLOG 277.
+                if r.crs is None:
+                    raise ValueError(
+                        f"{stem} has NO coordinate system. EquiPop "
+                        "cannot place its cells on the earth, and "
+                        "guessing one would put the result somewhere "
+                        "plausible and wrong. Assign a CRS - in QGIS, "
+                        "Raster > Projections > Assign Projection - "
+                        "and try again.")
+                if abs(t.b) > 1e-12 or abs(t.d) > 1e-12:
+                    raise ValueError(
+                        f"{stem} is ROTATED (its transform carries "
+                        f"b={t.b:g}, d={t.d:g}). EquiPop builds cell "
+                        "centres from a north-up grid, so a rotated "
+                        "raster would be read with its rotation "
+                        "silently dropped and every coordinate would "
+                        "be wrong. Warp it to north-up first - in "
+                        "QGIS, Raster > Projections > Warp.")
                 ref = {"a": t.a, "e": t.e, "c": t.c, "f": t.f,
                        "crs": str(r.crs), "first": stem}
             elif str(r.crs) != ref["crs"]:
@@ -572,19 +597,47 @@ def folder_to_cells(folders, weight: str | None = None,
     # unit = 10x the source it is 10 or 11, a 10% swing, invisible.
     _warn_aliasing(pts, unit_size, say=print)
 
-    adv = suggest_projection(pts)
-    if epsg is None:
-        epsg = adv.epsg
-    print(f"[folder] projection: EPSG:{epsg} - {adv.name}")
-    print(f"[folder]   {adv.rationale}")
-    for w in adv.warnings:
-        print(f"[folder]   WARNING: {w}")
-    if adv.tiled_run_recommended:
+    # IS THE FOLDER ALREADY PROJECTED? suggest_projection reads lon
+    # and lat as DEGREES and refuses anything beyond +/-90 - right
+    # for WorldPop, wrong for a folder already in metres, such as
+    # GHSL's Mollweide or any UTM set. Those need no advice and no
+    # transform (BACKLOG 277, review finding 4).
+    from pyproj import CRS as _CRS
+    _src = man.get("crs") or "EPSG:4326"
+    try:
+        _projected = _CRS.from_user_input(_src).is_projected
+    except Exception:                               # pragma: no cover
+        _projected = False
+
+    if _projected:
+        _here = _CRS.from_user_input(_src).to_epsg()
+        epsg = int(epsg) if epsg else _here
+        print(f"[folder] already projected ({_src}); "
+              + (f"reprojecting to EPSG:{epsg}" if epsg != _here
+                 else "no reprojection needed"))
+        adv = None
+    else:
+        adv = suggest_projection(pts)
+    if adv is not None:
+        if epsg is None:
+            epsg = adv.epsg
+        print(f"[folder] projection: EPSG:{epsg} - {adv.name}")
+        print(f"[folder]   {adv.rationale}")
+        for w in adv.warnings:
+            print(f"[folder]   WARNING: {w}")
+    if adv is not None and adv.tiled_run_recommended:
         print("[folder]   this extent wants a TILED run: see "
               "equipop.bigrun.run_knn_counts_tiled")
 
     from pyproj import Transformer
-    tr = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+    # REPROJECT FROM THE FOLDER'S OWN CRS, not from an assumption.
+    # This said EPSG:4326 always, so a folder of PROJECTED rasters -
+    # GHSL's Mollweide, or any UTM set - had its metres read as
+    # degrees and every coordinate landed in the wrong place. The
+    # loader knows the CRS; it was simply not asked (BACKLOG 277,
+    # external review finding 4).
+    src = man.get("crs") or "EPSG:4326"
+    tr = Transformer.from_crs(src, f"EPSG:{epsg}", always_xy=True)
     x, y = tr.transform(pts["lon"].to_numpy(), pts["lat"].to_numpy())
     pts["_x"], pts["_y"] = x, y
 
@@ -605,8 +658,10 @@ def folder_to_cells(folders, weight: str | None = None,
 
     cd = build_cells(pts, "_x", "_y", unit_size=unit_size,
                      binary_vars=groups or None, weights=weight)
-    man["projection"] = {"epsg": int(epsg), "name": adv.name,
-                         "warnings": list(adv.warnings)}
+    man["projection"] = {
+        "epsg": int(epsg) if epsg else None,
+        "name": adv.name if adv is not None else str(_src),
+        "warnings": list(adv.warnings) if adv is not None else []}
     man["weight_column"] = weight
     print(f"[folder] {len(pts):,} points -> {len(cd):,} cells of "
           f"{unit_size:g} m, holding {cd.n.sum():,.1f} people")

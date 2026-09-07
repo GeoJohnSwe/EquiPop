@@ -191,7 +191,21 @@ class ContinentalRasters(EquipopAlgorithm):
                         "with the cohort named in its own column.")
             table = man["points_table"].rename(
                 columns={"lon": "EastWest", "lat": "NorthSouth"})
-            man.setdefault("projection", {})["epsg"] = 4326
+            # STAMP THE FOLDER'S OWN CRS, not 4326. The points-only
+            # path wrote 4326 whatever the rasters were, so a folder
+            # of GHSL Mollweide or UTM produced a layer labelled with
+            # a CRS it was not in - and it would draw in the wrong
+            # part of the world (BACKLOG 277, review finding 4).
+            src = str(man.get("crs") or "EPSG:4326")
+            code = (int(src.split(":", 1)[1])
+                    if src.upper().startswith("EPSG:")
+                    and src.split(":", 1)[1].isdigit() else None)
+            if code is None:
+                ch.warning(
+                    f"The rasters are in {src!r}, which is not a plain "
+                    "EPSG code. The output layer carries no CRS - set "
+                    "it by hand before using the coordinates.")
+            man.setdefault("projection", {})["epsg"] = code
         elif tiles:
             from equipop.bigrun import load_tiled
             table = load_tiled(tiles)

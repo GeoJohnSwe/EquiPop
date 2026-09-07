@@ -168,7 +168,8 @@ def run_folder(folders, *, k_values=None, r_values=None,
         cols = [c for c in pts.columns if c not in ("lon", "lat")]
         say(f"{len(man['files'])} {_plural(len(man['files']), 'raster')} "
             f"-> {len(pts):,} points, {len(cols)} "
-            f"{_plural(len(cols), 'field')}, in degrees (EPSG:4326).")
+            f"{_plural(len(cols), 'field')}, in "
+            f"{man.get('crs') or 'the rasters\u2019 own CRS'}.")
         say("No k was asked for, so this is the point table itself - "
             "every cohort a field, the countries stacked as rows, and "
             "a real 0.0 wherever a layer had nothing there. Give a k "

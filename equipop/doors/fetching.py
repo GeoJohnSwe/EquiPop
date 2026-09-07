@@ -62,21 +62,42 @@ def _get_json(url, timeout=60):                     # pragma: no cover
 
 
 def _get_file(url, dest, timeout=900):              # pragma: no cover
-    """Stream to disk. Returns (bytes, sha256). Never leaves a partial
-    file at `dest`: it writes .part and renames only on success."""
+    """Stream to disk. Returns (bytes, sha256, md5).
+
+    CHECKS THE DECLARED LENGTH. The loop stopped at whatever arrived,
+    so a response announcing 1,000 bytes and delivering 5 promoted
+    those 5 to the final file (BACKLOG 278, review finding 8).
+    CLEANS UP ON FAILURE, because the QGIS message claimed nothing
+    partial was kept and .part files were being left behind.
+    """
     import urllib.request
-    h, n, tmp = hashlib.sha256(), 0, dest + ".part"
-    with urllib.request.urlopen(url, timeout=timeout) as r, \
-            open(tmp, "wb") as f:
-        while True:
-            b = r.read(1 << 20)
-            if not b:
-                break
-            h.update(b)
-            f.write(b)
-            n += len(b)
+    sha, md5, n = hashlib.sha256(), hashlib.md5(), 0
+    tmp = dest + ".part"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r, \
+                open(tmp, "wb") as f:
+            declared = r.headers.get("Content-Length")
+            declared = int(declared) if declared and declared.isdigit() \
+                else None
+            while True:
+                b = r.read(1 << 20)
+                if not b:
+                    break
+                sha.update(b)
+                md5.update(b)
+                f.write(b)
+                n += len(b)
+        if declared is not None and n != declared:
+            raise FetchError(
+                f"{os.path.basename(dest)} is INCOMPLETE: the server "
+                f"declared {declared:,} bytes and {n:,} arrived. "
+                "Nothing was kept - try again.")
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
     os.replace(tmp, dest)
-    return n, h.hexdigest()
+    return n, sha.hexdigest(), md5.hexdigest()
 
 
 def sha256_of(path, chunk=1 << 20):
@@ -489,7 +510,41 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
             raise FetchError(
                 f"{e['name']} already exists in {folder}. Refusing to "
                 "overwrite - move it aside, or fetch into a new folder.")
-        n, h = get_file(e["url"], dest)
+        got = get_file(e["url"], dest)
+        # Transports may return (bytes, sha256) or (bytes, sha256,
+        # md5). The publisher's checksum is MD5 for both HDX and
+        # Geofabrik, so it is computed while streaming rather than by
+        # re-reading the file.
+        n, h = got[0], got[1]
+        local_md5 = got[2] if len(got) > 2 else None
+
+        # VERIFY WHAT THE PUBLISHER SAID, not merely what arrived.
+        # publisher_md5 and md5_url were RECORDED and never CHECKED,
+        # so the manifest promised more than it had established
+        # (BACKLOG 278). A local SHA-256 says what bytes are here; it
+        # says nothing about whether they are the right ones.
+        want = e.get("publisher_md5")
+        if want and local_md5 and want.lower() != local_md5.lower():
+            os.remove(dest)
+            raise FetchError(
+                f"{e['name']} DOES NOT MATCH what the publisher says "
+                f"it is.\n  published MD5: {want}\n  downloaded   : "
+                f"{local_md5}\nThe file has been removed. This is "
+                "either a corrupted transfer or a changed source - "
+                "try again, and if it repeats, the publisher's record "
+                "and their file disagree.")
+        # MEASURE THE FILE, do not trust the count the transport
+        # reported. A transport that miscounts - or lies - would
+        # otherwise be compared against its own number and always
+        # agree with itself.
+        n = os.path.getsize(dest)
+        size_want = e.get("bytes_expected")
+        if size_want and int(size_want) != n:
+            os.remove(dest)
+            raise FetchError(
+                f"{e['name']} is the WRONG SIZE: the catalogue says "
+                f"{int(size_want):,} bytes and {n:,} arrived. The "
+                "file has been removed.")
         fetched += 1
         files.append({**{k: v for k, v in e.items() if k != "url"},
                       "url": e["url"], "bytes": n, "sha256": h,

@@ -11,6 +11,8 @@ than working in band starts gets "15 to 49" wrong at both ends.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -126,7 +128,10 @@ def test_columns_that_are_not_cohorts_are_refused_in_plain_words():
 def test_an_index_whose_ages_are_absent_says_which_it_wanted():
     """A folder of only working-age cohorts cannot give an ageing index."""
     labs = [f"f_{a}_2026" for a in (15, 20, 25, 30)]
-    with pytest.raises(DemographyError, match="nothing to put on top"):
+    # The completeness check now fires FIRST and names every missing
+    # band, which is strictly more useful than "nothing to put on
+    # top" (BACKLOG 279).
+    with pytest.raises(DemographyError, match="cannot support this measure"):
         plan("ageing_index", labs)
 
 
@@ -479,3 +484,93 @@ def test_the_reference_population_says_when_it_confines_a_year(tmp_path):
     run_indices(str(tmp_path / "two"), ["sex_ratio"], k_values=[100],
                 unit_size=100.0, year="2020", epsg=32735, channel=Ch())
     assert any("confined to 2020" in s for s in said), said[-6:]
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 279 - review finding 3. The planner checked that each side
+# had AT LEAST ONE matching column, never that the bands it needs are
+# present. A folder holding f_00, f_15 and f_65 was accepted as a
+# DEPENDENCY RATIO and computed (under-one + 65-69) / 15-19 while
+# keeping the general label. The arithmetic was right and the name was
+# a lie.
+# ---------------------------------------------------------------------
+_SPARSE = ["f_00_2020", "f_15_2020", "f_65_2020"]
+_FULL = [f"{s}_{a:02d}_2020" for s in "fm" for a in BAND_STARTS]
+
+
+def test_a_measure_is_refused_when_the_data_cannot_support_it():
+    with pytest.raises(DemographyError, match="cannot support"):
+        plan("dependency_ratio", _SPARSE)
+
+
+def test_the_refusal_names_every_missing_band():
+    with pytest.raises(DemographyError) as e:
+        plan("dependency_ratio", _SPARSE)
+    msg = str(e.value)
+    for band in ("1", "5", "10", "70"):
+        assert band in msg
+    assert "DIFFERENT quantity wearing this one's label" in msg
+
+
+def test_a_deliberate_restriction_is_allowed_and_RECORDED():
+    """A female-only study is legitimate; it must be CHOSEN, not
+    arrived at by absence."""
+    got = plan("dependency_ratio", _SPARSE, allow_incomplete=True)
+    assert got["restricted"], "the restriction must be visible"
+    assert "numerator" in got["restricted"]
+
+
+def test_a_complete_folder_is_not_flagged():
+    assert plan("dependency_ratio", _FULL)["restricted"] is None
+
+
+@pytest.mark.parametrize("index", sorted(INDICES))
+def test_every_index_passes_on_complete_data(index):
+    """The check must not refuse what it was written to allow."""
+    assert plan(index, _FULL)["restricted"] is None
+
+
+# ------------------------------------------------- the moved boundary
+def test_a_requested_range_reports_what_it_actually_covers():
+    """Asking for 0-17 selects whole bands 0 to 14; ages 15, 16 and 17
+    are dropped. Right for banded data, wrong to discover later."""
+    got = plan("dependency_ratio", _FULL, num_spec=parse_spec("0-17"),
+               den_spec=parse_spec("18-64"), allow_incomplete=True)
+    num = got["effective"]["numerator"]
+    assert num["asked"] == (0, 17)
+    assert num["covers"] == (0, 14)
+    assert num["exact"] is False
+
+
+@pytest.mark.parametrize("spec", ["0-14", "15-64", "15-49", "65-"])
+def test_a_range_on_the_band_boundaries_is_exact(spec):
+    got = plan("dependency_ratio", _FULL, num_spec=parse_spec(spec),
+               allow_incomplete=True)
+    assert got["effective"]["numerator"]["exact"] is True
+
+
+def test_expected_bands_agrees_with_the_selector():
+    """Claude first wrote this rule out a SECOND time and the two
+    disagreed - 0-17 gave five bands here and four there, so the
+    completeness check would have demanded a band the selector never
+    picks. One rule written twice is how BACKLOG 272 happened."""
+    from equipop.doors.demography import expected_bands
+    for spec in ("0-14", "0-17", "15-64", "65-", "20-39"):
+        s = parse_spec(spec)
+        s["sexes"] = ("f",)
+        picked = sorted({int(c.split("_")[1])
+                         for c in columns_for(s, _FULL, "2020")})
+        assert picked == expected_bands(s), spec
+
+
+def test_the_plan_carries_the_effective_range_for_a_door_to_print():
+    """The announcement is inline in run_index, not a separate
+    function - Claude invented `_announce` for this test and had to
+    look. What a door needs is on the plan itself."""
+    got = plan("dependency_ratio", _FULL, num_spec=parse_spec("0-17"),
+               allow_incomplete=True)
+    assert got["effective"]["numerator"]["exact"] is False
+    src = (Path(__file__).resolve().parents[1] / "equipop" / "doors"
+           / "demography.py").read_text(encoding="utf-8")
+    assert "boundary moved" in src, "and run_index says so"
+    assert "RESTRICTED version" in src
