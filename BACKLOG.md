@@ -2449,6 +2449,51 @@ appeared twice; the weaker copy is gone.*
   a join matches on, so the same road on two lattice origins joins to
   nothing.
 
+- 281 | OPEN, NEXT VERSION, MINOR | "Value: many" DOES NOT SAY WHICH
+  COLUMN IT MEANS. John, testing geofabrik: every other line quotes
+  its name - Setting 'region', Value 'POP' - but a field whose options
+  come from a live catalogue prints "Value: many - give this setting
+  alone and run to see the list", with no quotes and no column named.
+  He worked it out and said so anyway, which is the useful kind of
+  report: HE COULD READ IT AND STILL FOUND IT UNCLEAR.
+  The fix is to keep the same shape as the quoted lines - name the
+  Value column explicitly - so the listing reads the same way whether
+  the options are known in advance or fetched.
+
+- ~~282~~ | DONE | LENGTH IN A GEOGRAPHIC CRS IS DEGREES, NOT METRES.
+  Found while writing John's test instructions, which is the only
+  reason it was found at all: 1.46.0 shipped a day earlier with a
+  docstring promising metres.
+  WORLDPOP'S LATTICE IS EPSG:4326, so the case that matters most was
+  the broken one - a 1 km road measured 0.009, and every friction
+  value derived from it would have been wrong by a factor of about
+  100,000. GEOPANDAS WARNED, into a log nobody was reading.
+  Lengths and areas are now measured ON THE ELLIPSOID when the
+  lattice is geographic, which is exact and needs no projection
+  choice. 1001.3 m for that road.
+  AND THE CELL'S OWN AREA IS MEASURED PER CELL, because a 30
+  arc-second cell is 860,000 m2 at the equator and 440,000 at 60
+  degrees - one figure for the grid would have made every share wrong
+  except in the middle. Pinned at the equator AND at 60 N, which is
+  the test that would have caught a single global value.
+  THE PATTERN: the tests used a PROJECTED lattice throughout, because
+  that is what the friction machinery expects - and the real data is
+  geographic. A test suite that never uses the shape of the actual
+  input is a suite that agrees with itself.
+
+- ~~283~~ | DONE | A RUNNABLE RECIPE FOR THE OSM WORK, and it says
+  where to run it: THERE IS NO QGIS TOOL FOR THIS YET. The engine
+  works and nothing wraps it, so run_osm_friction.py drives it from
+  the QGIS Python console, the OSGeo4W Shell or Anaconda.
+  Written and RUN end to end here on data shaped like John's -
+  WorldPop 1 km rasters plus a Geofabrik-style roads layer over the
+  same ground - before being handed over. 60 roads, 194 cells, seven
+  classes.
+  equipop/providers/osm_road_groups.json ships the group defaults
+  John asked for, with illustrative friction values and a note saying
+  plainly that NOBODY HAS CALIBRATED THEM and that a published result
+  needs his own. Seven OSM classes collapse to five groups.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

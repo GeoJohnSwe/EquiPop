@@ -176,3 +176,68 @@ def test_features_are_reprojected_to_the_lattice():
     got = lines_to_cells(g, LAT, say=said.append)
     assert got["length_total"].sum() == pytest.approx(30.0, rel=1e-6)
     assert any("reprojecting" in s for s in said)
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 282 - LENGTH IN A GEOGRAPHIC CRS IS DEGREES, NOT METRES.
+# WorldPop's lattice is EPSG:4326, so a 1 km road measured 0.009 and
+# every friction value derived from it would have been wrong. The
+# docstring said metres. GEOPANDAS WARNED, into a log nobody read.
+# ---------------------------------------------------------------------
+GEO = {"a": 1.0 / 120, "e": -1.0 / 120, "c": 30.0, "f": -2.0,
+       "crs": "EPSG:4326"}
+
+
+def test_length_on_a_geographic_lattice_is_METRES():
+    from shapely.geometry import LineString
+    road = gpd.GeoDataFrame(
+        {"fclass": ["motorway"],
+         "geometry": [LineString([(30.001, -2.001), (30.010, -2.001)])]},
+        crs="EPSG:4326")
+    got = lines_to_cells(road, GEO, say=_quiet)
+    # 0.009 degrees of longitude at 2S is about 1001 m
+    assert got["length_total"].sum() == pytest.approx(1001, abs=5)
+
+
+def test_it_says_that_it_measured_on_the_ellipsoid():
+    from shapely.geometry import LineString
+    said = []
+    road = gpd.GeoDataFrame(
+        {"fclass": ["motorway"],
+         "geometry": [LineString([(30.001, -2.001), (30.010, -2.001)])]},
+        crs="EPSG:4326")
+    lines_to_cells(road, GEO, say=said.append)
+    assert any("ELLIPSOID" in s.upper() for s in said)
+
+
+def test_a_share_on_a_geographic_lattice_uses_THAT_CELLS_area():
+    """A 30 arc-second cell is 860,000 m2 at the equator and 440,000
+    at 60 degrees, so one figure for the whole grid would make the
+    share wrong everywhere except the middle."""
+    px = 1.0 / 120
+    half = Polygon([(30.0, -2.0), (30.0 + px / 2, -2.0),
+                    (30.0 + px / 2, -2.0 - px), (30.0, -2.0 - px)])
+    water = gpd.GeoDataFrame({"fclass": ["water"], "geometry": [half]},
+                             crs="EPSG:4326")
+    got = areas_to_cells(water, GEO, say=_quiet)
+    assert got["water"].iloc[0] == pytest.approx(0.5, abs=1e-3)
+
+
+def test_the_same_share_holds_far_from_the_equator():
+    """The test that would have caught a single global cell area."""
+    px = 1.0 / 120
+    north = dict(GEO, f=60.0)
+    half = Polygon([(30.0, 60.0), (30.0 + px / 2, 60.0),
+                    (30.0 + px / 2, 60.0 - px), (30.0, 60.0 - px)])
+    water = gpd.GeoDataFrame({"fclass": ["water"], "geometry": [half]},
+                             crs="EPSG:4326")
+    got = areas_to_cells(water, north, say=_quiet)
+    assert got["water"].iloc[0] == pytest.approx(0.5, abs=1e-3)
+
+
+def test_a_projected_lattice_still_uses_plain_geometry():
+    """The fix must not change what was already right."""
+    got = lines_to_cells(_roads([("motorway",
+                                  [(50, 950), (300, 950)])]),
+                         LAT, say=_quiet)
+    assert got["length_total"].sum() == pytest.approx(250.0)

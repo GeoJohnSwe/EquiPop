@@ -60,6 +60,9 @@ def apply_groups(values, groups):
     return pd.Series(values).map(lambda v: lookup.get(v, v))
 
 
+from pyproj import CRS as _CRS
+
+
 def _lattice(like):
     """The grid a set of features is being reduced onto."""
     from .latticejoin import lattice_of
@@ -140,7 +143,20 @@ def lines_to_cells(gdf, like, class_col="fclass", groups=None,
         raise VectorJoinError(
             "No feature falls on this lattice. Are they the same "
             "part of the world?")
-    cut["_m"] = cut.geometry.length
+    # LENGTH IN A GEOGRAPHIC CRS IS DEGREES, NOT METRES. WorldPop's
+    # lattice is EPSG:4326, so a 1 km road measured 0.009 and every
+    # friction value would have been wrong - and geopandas WARNED,
+    # into a log nobody was reading (BACKLOG 282). Measure on the
+    # ellipsoid instead, which is exact and needs no projection
+    # choice.
+    if _CRS.from_user_input(lat["crs"]).is_geographic:
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        cut["_m"] = [geod.geometry_length(g) for g in cut.geometry]
+        say("[vector] the lattice is geographic, so lengths are "
+            "measured ON THE ELLIPSOID and reported in metres.")
+    else:
+        cut["_m"] = cut.geometry.length
 
     wide = (cut.groupby(["gx", "gy", class_col])["_m"].sum()
             .unstack(fill_value=0.0).reset_index())
@@ -225,14 +241,38 @@ def areas_to_cells(gdf, like, class_col="fclass", groups=None,
         raise VectorJoinError(
             "No feature falls on this lattice. Are they the same "
             "part of the world?")
-    cut["_a"] = cut.geometry.area
+    # AREA IN A GEOGRAPHIC CRS IS SQUARE DEGREES. Same fault as the
+    # lengths; a share would come out right only by accident, because
+    # BOTH the part and the whole are wrong by the same factor - but
+    # only near the equator, and not at all once cells vary with
+    # latitude.
+    if _CRS.from_user_input(lat["crs"]).is_geographic:
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        cut["_a"] = [abs(geod.geometry_area_perimeter(g)[0])
+                     for g in cut.geometry]
+    else:
+        cut["_a"] = cut.geometry.area
     wide = (cut.groupby(["gx", "gy", class_col])["_a"].sum()
             .unstack(fill_value=0.0).reset_index())
     value_cols = [x for x in wide.columns if x not in ("gx", "gy")]
+    # THE CELL'S OWN AREA, PER CELL. On a geographic lattice a cell
+    # shrinks towards the poles, so one figure for the whole grid
+    # would make the share wrong everywhere except the middle - a
+    # 30 arc-second cell is 860,000 m2 at the equator and 440,000 at
+    # 60 degrees. Measured per cell rather than assumed.
+    if _CRS.from_user_input(lat["crs"]).is_geographic:
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        own = {(g.gx, g.gy): abs(geod.geometry_area_perimeter(
+            g.geometry)[0]) for g in grid.itertuples()}
+        denom = wide.apply(lambda r: own[(r["gx"], r["gy"])], axis=1)
+    else:
+        denom = cell_area
     for col in value_cols:
         # A SHARE, not an area. Overlapping polygons of one class
-        # could exceed the cell, so it is clipped at 1 and said.
-        wide[col] = (wide[col] / cell_area).clip(upper=1.0)
+        # could exceed the cell, so it is clipped at 1.
+        wide[col] = (wide[col] / denom).clip(upper=1.0)
     wide[f"{name}_any"] = wide[value_cols].max(axis=1)
     say(f"[vector] {len(work):,} polygon(s) -> {len(wide):,} cells, "
         f"{len(value_cols)} class(es). Values are the SHARE of each "

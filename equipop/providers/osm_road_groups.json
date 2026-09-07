@@ -1,0 +1,20 @@
+{
+  "_about": "STARTING POINT, NOT AN ANSWER. Which OSM road classes belong together, and what each group costs to travel. Copy this file, edit it, and pass it with --groups. The class names are OSM's own fclass values; the ones present in YOUR extract come from the inventory, not from this list - a class you have that is missing here keeps its own name rather than vanishing.",
+  "_friction_note": "The values are RELATIVE COST PER METRE, 1.0 being an ordinary road. They are illustrative. Nobody has calibrated them, and for a published result they should be yours.",
+
+  "groups": {
+    "major_road":       ["motorway", "motorway_link", "trunk", "trunk_link"],
+    "through_road":     ["primary", "primary_link", "secondary", "secondary_link"],
+    "local_road":       ["tertiary", "tertiary_link", "residential", "unclassified", "living_street", "service"],
+    "track":            ["track", "track_grade1", "track_grade2", "track_grade3", "track_grade4", "track_grade5"],
+    "path":             ["path", "footway", "pedestrian", "steps", "bridleway", "cycleway"]
+  },
+
+  "friction": {
+    "major_road":   0.4,
+    "through_road": 0.6,
+    "local_road":   1.0,
+    "track":        2.0,
+    "path":         3.0
+  }
+}
