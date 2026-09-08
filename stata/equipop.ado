@@ -1,4 +1,4 @@
-*! equipop v1.46.2  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.46.3  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -301,6 +301,31 @@ program define equipop, rclass
         }
     }
 
+    * ---- WARN ABOUT LONG NAMES BEFORE COMPUTING ANYTHING -------
+    * John's run finished 646,766 cells, three widened passes and two
+    * k values before stopping on a 33-character name. The engine
+    * cannot be reached from here to know every column it will make,
+    * but the LONGEST one is predictable: prefix + the longest treat
+    * variable + "_" + the largest k. Saying so first costs nothing
+    * and saves the run.
+    if "`treat'" != "" {
+        local _longest = 0
+        foreach v of varlist `treat' {
+            if length("`v'") > `_longest' local _longest = length("`v'")
+        }
+        local _bigk = 0
+        foreach kk of numlist `k' {
+            if `kk' > `_bigk' local _bigk = `kk'
+        }
+        local _need = length("`prefix'") + 2 + `_longest' ///
+            + 1 + length("`_bigk'")
+        if `_need' > 32 {
+            display as text "[equipop] names will exceed Stata's 32 " ///
+                "characters (about `_need') and will be SHORTENED - " ///
+                "every rename is listed when the variables are made."
+        }
+    }
+
     * Every option is passed BY NAME, and the receiving
     * function is keyword-only. Up to v1.34 this was a positional
     * call, and that is how the door broke for eleven releases: an
@@ -370,7 +395,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.46.2"
+    local eqp_ado_version "1.46.3"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -511,13 +536,62 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
     # only tested against "N_1", which proves nothing about
     # T_<longvariablename>_100.
     wanted = [prefix + name for name in res]
+
+    # SHORTEN RATHER THAN REFUSE. John's run finished 646,766 cells,
+    # three widened passes and both k values, and THEN stopped because
+    # T_h72004_africanamericanalone_100 is 33 characters. The
+    # arithmetic was done; only the label was too long. Refusing
+    # threw away the work and told him to rename his data.
+    # WHAT IS SHORTENED IS THE MIDDLE. The prefix says which measure
+    # it is and the tail says which k - both carry meaning and both
+    # are short. The variable's own name is the only part with room.
+    # EVERY RENAME IS ANNOUNCED. A silently renamed column is how
+    # somebody publishes the wrong variable.
+    def _shorten(full, taken):
+        if len(full) <= 32:
+            return full
+        head, _, tail = full.rpartition("_")
+        tail = "_" + tail
+        room = 32 - len(prefix) - len(tail)
+        if room < 3:
+            return None                 # prefix and k alone too long
+        stem = head[len(prefix):]
+        cand = prefix + stem[:room] + tail
+        n = 0
+        while cand in taken:
+            n += 1
+            mark = str(n)
+            cand = prefix + stem[:room - len(mark)] + mark + tail
+            if n > 99:
+                return None
+        return cand
+
+    renamed, taken, final = [], set(existing), []
+    for full in wanted:
+        got = _shorten(full, taken)
+        if got is not None and got != full:
+            renamed.append((full, got))
+        final.append(got if got is not None else full)
+        if got is not None:
+            taken.add(got)
+    if renamed:
+        SFIToolkit.displayln("")
+        SFIToolkit.displayln("{txt}[equipop] Stata allows 32 "
+                             "characters, so these were shortened:")
+        for was, now in renamed:
+            SFIToolkit.displayln(f"{{txt}}    {was} -> {now}")
+        SFIToolkit.displayln("{txt}[equipop] the prefix and the k are "
+                             "kept; only the variable name is cut.")
+    wanted = final
+
     problems = []
     for name in wanted:
         if len(name) > 32:
             problems.append(
-                f"{name} is {len(name)} characters - Stata allows 32. "
-                f"Use a shorter prefix() or shorter treatment variable "
-                f"names.")
+                f"{name} is {len(name)} characters and cannot be "
+                f"shortened - prefix() and the k suffix already take "
+                f"{len(name) - len(name.rpartition('_')[0]) + len(prefix)}"
+                " of the 32. Use a shorter prefix().")
         elif name in existing:
             problems.append(
                 f"{name} already exists - use option replace")

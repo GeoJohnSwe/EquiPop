@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.46.2}{...}
+{* *! version 1.46.3}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.46.2)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.46.3)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -254,7 +254,23 @@ See also {c -({c )-}help python{c )-}, and {c -({c )-}cmd:python query{c
 {phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}
 {phang}{cmd:. equipop, x(X_local) y(Y_local) treat(HighEdu) k(25 50 200) unit(100)}{p_end}
 {phang}{cmd:. equipop if urban==1, x(X) y(Y) treat(HighEdu) k(50) replace}{p_end}
-{phang}{cmd:. equipop [fweight=pop], x(X) y(Y) treat(HighEdu) k(50)}{p_end}
+
+{pstd}A reference population - counts per row rather than one row per person:{p_end}
+{phang}{cmd:. equipop, x(X) y(Y) pop(totalpop) treat(university) k(500 1000)}{p_end}
+{pstd}{cmd:pop()} takes FRACTIONAL counts, which is what gridded population needs. {cmd:[fweight=]} means the same thing and lets Stata validate it, but demands whole numbers - give one or the other, never both:{p_end}
+{phang}{cmd:. equipop [fweight=households], x(X) y(Y) treat(renting) k(200)}{p_end}
+
+{pstd}Self-potential - whether an origin counts itself. The default keeps it, which is right when a row is a place; {cmd:selfpot(0)} drops it, which is right when a row is a person and you are asking about their surroundings:{p_end}
+{phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) selfpot(0)}{p_end}
+
+{pstd}Distance decay - near neighbours weigh more than far ones. {cmd:half(m)} is the distance at which a neighbour counts half:{p_end}
+{phang}{cmd:. equipop, x(X) y(Y) treat(HighEdu) k(1000) decay(negexp) half(500)}{p_end}
+{phang}{cmd:. equipop, x(X) y(Y) treat(HighEdu) k(1000) decay(lognormal) half(2000)}{p_end}
+
+{pstd}Overshoot - what to do with the ring that carries the neighbourhood past k. {cmd:whole} takes the whole ring, so N exceeds k; {cmd:proportional} takes the same fraction of every cell in it, so N equals k exactly. The difference is largest where this work matters most - small k, large cells, and at boundaries:{p_end}
+{phang}{cmd:. equipop, x(X) y(Y) treat(HighEdu) k(100) overshoot(proportional)}{p_end}
+
+{pstd}The new variables are named in {cmd:r(varlist)}, so they can be used directly:{p_end}
 {phang}{cmd:. regress income `r(varlist)'}{p_end}
 
 {marker author}{...}

@@ -2519,6 +2519,40 @@ appeared twice; the weaker copy is gone.*
   malformed provider definition. providers/ is for provider
   definitions; it moved to equipop/tables/.
 
+- ~~285~~ | DONE | A 33-CHARACTER NAME THREW AWAY A COMPLETED RUN.
+  John: 646,766 cells, three widened passes, both k values - and then
+  "T_h72004_africanamericanalone_100 is 33 characters - Stata allows
+  32. Use a shorter prefix() or shorter treatment variable names."
+  THE ARITHMETIC WAS DONE. Only the label was too long, and the tool
+  answered by discarding the work and telling him to rename his data.
+  Names are SHORTENED now, and what is cut is THE MIDDLE: the prefix
+  says which measure and the tail says which k, both carry meaning and
+  both are short. His four names fit at exactly 32 with the k intact.
+  COLLISIONS ARE CHECKED and a disambiguating digit added, because two
+  long names can truncate to the same thing. EVERY RENAME IS
+  ANNOUNCED - a silently renamed column is how somebody publishes the
+  wrong variable.
+  AND A WARNING NOW COMES BEFORE THE COMPUTATION. The ado cannot know
+  every column the engine will make, but the LONGEST is predictable -
+  prefix, the longest treat variable, and the largest k - so it says
+  so first. A ten-minute run must not die at the labelling step.
+
+- ~~286~~ | DONE | THE HELP'S EXAMPLES, and one of them was wrong.
+  John asked for pop(), self-potential, decay and overshoot. Written -
+  and CLAUDE WROTE overshoot(shares) FROM MEMORY. The real values are
+  `whole` and `proportional`; `sampled` exists in the engine and is
+  NOT offered by the Stata door. A user copying the help would have
+  been refused by the command the help documents.
+  He also asked what [fweight=] is FOR when pop() exists. They mean
+  the same thing - "this row stands for N identical observations" IS a
+  population count - and the command refuses both together. fweight
+  demands WHOLE NUMBERS and pop() takes fractional counts, which is
+  what gridded population needs. Now said in the help rather than
+  discoverable only from the source.
+  TWO TESTS NOW CHECK EVERY EXAMPLE: every option against the syntax
+  line, and every VALUE against the inlist() the command validates
+  with. The second is the one that would have caught this.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

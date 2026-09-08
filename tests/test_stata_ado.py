@@ -488,3 +488,75 @@ def test_net_install_manifest_lists_files_that_exist():
         "the package ships no help file")
     assert "p equipop" in open(toc, encoding="utf-8").read(), (
         "stata.toc does not offer the equipop package")
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 285/286 - the help's examples, and names that are too long.
+# ---------------------------------------------------------------------
+def test_every_option_in_every_example_exists():
+    """Claude wrote overshoot(shares) from memory. The real values are
+    `whole` and `proportional`, and `sampled` is not offered by the
+    Stata door at all - so a user copying the help would have been
+    refused by the command the help documents."""
+    import re
+    h = _read("equipop.sthlp")
+    ado = _ado_text()
+    ex = h[h.index("{title:Examples}"):h.index("{marker author}")]
+    i = ado.index("    syntax ")
+    syn = ado[i:ado.index("\n\n", i)].lower()
+    for cmd in re.findall(r"\{cmd:\. (equipop[^}]*)\}", ex):
+        for opt in re.findall(r"(\w+)\(", cmd):
+            assert opt.lower() in syn, (
+                f"the help shows {opt}() and the syntax line has no "
+                f"such option: {cmd}")
+
+
+def test_every_VALUE_in_the_examples_is_accepted():
+    """decay(negexp) and overshoot(proportional) must be words the
+    command actually takes."""
+    import re
+    h = _read("equipop.sthlp")
+    ado = _ado_text()
+    ex = h[h.index("{title:Examples}"):h.index("{marker author}")]
+    for opt in ("decay", "overshoot"):
+        i = ado.index(f'inlist("`{opt}\'')
+        allowed = set(re.findall(r'"([a-z]+)"', ado[i:i + 260]))
+        for cmd in re.findall(r"\{cmd:\. (equipop[^}]*)\}", ex):
+            for used in re.findall(rf"{opt}\((\w+)\)", cmd):
+                assert used in allowed, (
+                    f"{opt}({used}) is in the help; the command takes "
+                    + ", ".join(sorted(allowed - {""})))
+
+
+def test_the_examples_cover_what_john_asked_for():
+    h = _read("equipop.sthlp")
+    ex = h[h.index("{title:Examples}"):h.index("{marker author}")]
+    for want in ("pop(", "selfpot(", "decay(", "overshoot("):
+        assert want in ex, f"no example uses {want}"
+
+
+def test_pop_and_fweight_are_explained_as_the_same_thing():
+    """John asked what [fweight=] is for when pop() exists. They mean
+    the same; fweight demands whole numbers and pop() does not."""
+    h = _read("equipop.sthlp")
+    ex = h[h.index("{title:Examples}"):h.index("{marker author}")]
+    assert "same thing" in ex and "never both" in ex
+    assert "FRACTIONAL" in ex
+
+
+def test_long_names_are_shortened_rather_than_refused():
+    """John's run finished 646,766 cells, three widened passes and two
+    k values, and THEN stopped because a name was 33 characters. The
+    arithmetic was done; only the label was too long."""
+    ado = _ado_text()
+    assert "SHORTEN RATHER THAN REFUSE" in ado
+    assert "_shorten" in ado
+    assert "were shortened" in ado, "every rename must be announced"
+
+
+def test_the_length_warning_comes_BEFORE_the_computation():
+    """A ten-minute run must not die at the labelling step."""
+    ado = _ado_text()
+    warn = ado.index("names will exceed Stata's 32")
+    run = ado.index("python: _equipop_machine1(")
+    assert warn < run, "the warning is after the run again"
