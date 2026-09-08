@@ -2553,6 +2553,25 @@ appeared twice; the weaker copy is gone.*
   line, and every VALUE against the inlist() the command validates
   with. The second is the one that would have caught this.
 
+- ~~287~~ | DONE | THE RENAME WAS ANNOUNCED AND NOT APPLIED. One
+  release after 285. The names were shortened correctly, PRINTED TO
+  JOHN correctly - twelve of them, exactly right - and then the
+  writing loop rebuilt each name from `res` and created the ORIGINAL.
+  Stata refused with "invalid varname" AFTER the rename had been
+  shown on screen.
+  THE NAMES WERE RIGHT ON SCREEN AND WRONG IN THE DATA, which is the
+  worst arrangement of the two: the log said the problem was solved.
+  A mapping was computed and never carried to the point of use. That
+  is the same shape as BACKLOG 252 - the number resolved in one layer
+  and consumed raw in another - and as 272, where one rule was written
+  three times and one copy went stale.
+  THE TESTS NOW EXECUTE THE SHIPPED BLOCK rather than reading it. The
+  broken version passed every reading test it had, because the
+  announcement was correct; only the writer was wrong. Reverting the
+  fix fails them.
+  72 names checked at once, three prefixes, eight k values: all within
+  32, all distinct, short names untouched, the k always preserved.
+
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
   neither would have raised an error.

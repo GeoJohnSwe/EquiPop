@@ -560,3 +560,82 @@ def test_the_length_warning_comes_BEFORE_the_computation():
     warn = ado.index("names will exceed Stata's 32")
     run = ado.index("python: _equipop_machine1(")
     assert warn < run, "the warning is after the run again"
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 287 - THE RENAME WAS ANNOUNCED AND NOT APPLIED. The names
+# were shortened, printed to John correctly, and then the writing loop
+# rebuilt each name from `res` and created the ORIGINAL - so Stata
+# refused with "invalid varname" AFTER the rename had been shown. The
+# names were right on screen and wrong in the data.
+#
+# These tests EXECUTE the shipped naming block rather than reading it,
+# because the previous version passed every reading test it had.
+# ---------------------------------------------------------------------
+def _naming_block():
+    import re
+    import textwrap
+    s = _ado_text()
+    i = s.index("    wanted = [prefix + name for name in res]")
+    j = s.index("    problems = []", i)
+    block = textwrap.dedent(s[i:j])
+    return re.sub(r"SFIToolkit\.displayln\(", "(lambda *a: None)(",
+                  block)
+
+
+def _run_naming(res, prefix, existing=()):
+    ns = {"res": res, "prefix": prefix, "existing": set(existing)}
+    exec(_naming_block(), ns)
+    return ns["use"], ns["wanted"]
+
+
+JOHNS = {f"{v}_{k}": None
+         for v in ("h72003_whitealone", "h72004_africanamericanalone",
+                   "h72006_asianalone")
+         for k in (25, 50, 100, 200, 400, 800, 1600, 3200)}
+
+
+@pytest.mark.parametrize("prefix", ["N_", "T_", "R_"])
+def test_every_written_name_fits_stata(prefix):
+    use, _ = _run_naming(JOHNS, prefix)
+    over = {k: v for k, v in use.items() if len(v) > 32}
+    assert not over, over
+
+
+@pytest.mark.parametrize("prefix", ["N_", "T_", "R_"])
+def test_the_names_stay_distinct(prefix):
+    use, _ = _run_naming(JOHNS, prefix)
+    assert len(set(use.values())) == len(use)
+
+
+def test_the_MAPPING_is_what_the_writer_uses():
+    """The fault: `use` was never built, so the writer rebuilt the
+    long name from res. A test that only read the announcement would
+    still have passed."""
+    ado = _ado_text()
+    assert "name = use[key]" in ado, (
+        "the writing loop must take the shortened name")
+    assert "name = prefix + name" not in ado, (
+        "the writing loop is rebuilding the original name again")
+
+
+def test_a_short_name_is_left_exactly_alone():
+    use, _ = _run_naming({"h72003_whitealone_100": None}, "T_")
+    assert use["h72003_whitealone_100"] == "T_h72003_whitealone_100"
+
+
+def test_the_k_survives_shortening():
+    """The tail says which k and the prefix says which measure - both
+    carry meaning, so only the middle may be cut."""
+    use, _ = _run_naming(JOHNS, "T_")
+    for key, name in use.items():
+        assert name.endswith("_" + key.rsplit("_", 1)[1]), name
+        assert name.startswith("T_"), name
+
+
+def test_two_names_that_truncate_alike_are_disambiguated():
+    res = {"averyverylongvariablenamehere_100": None,
+           "averyverylongvariablenamehero_100": None}
+    use, _ = _run_naming(res, "T_")
+    assert len(set(use.values())) == 2
+    assert all(len(v) <= 32 for v in use.values())

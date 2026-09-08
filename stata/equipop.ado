@@ -1,4 +1,4 @@
-*! equipop v1.46.3  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.46.4  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -395,7 +395,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.46.3"
+    local eqp_ado_version "1.46.4"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -566,12 +566,19 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                 return None
         return cand
 
-    renamed, taken, final = [], set(existing), []
-    for full in wanted:
+    renamed, taken, final, use = [], set(existing), [], {}
+    for key, full in zip(res, wanted):
         got = _shorten(full, taken)
         if got is not None and got != full:
             renamed.append((full, got))
         final.append(got if got is not None else full)
+        # THE MAPPING MUST REACH THE WRITER. The first version of
+        # this computed the shortened names, ANNOUNCED them, and then
+        # the writing loop rebuilt the name from res and created the
+        # ORIGINAL - so Stata refused with "invalid varname" after
+        # the rename had been printed. The names were right on screen
+        # and wrong in the data.
+        use[key] = got if got is not None else full
         if got is not None:
             taken.add(got)
     if renamed:
@@ -611,8 +618,8 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
         return
 
     made = []
-    for name, arr in res.items():
-        name = prefix + name
+    for key, arr in res.items():
+        name = use[key]
         vals = np.asarray(arr, dtype=float)
         if keep is not None:
             vals = np.where(keep, vals, np.nan)
