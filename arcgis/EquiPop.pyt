@@ -1016,7 +1016,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
-              seed=None, overshoot=None):
+              seed=None, overshoot=None, originrule=None):
     """The single glue path both machines share (stub-validated)."""
     import pandas as pd
     from equipop.stata_bridge import dispatch
@@ -1285,6 +1285,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     # the manual.
     if overshoot is not None:
         kw["overshoot_mode"] = str(overshoot)
+    if originrule is not None:
+        # BACKLOG 290. Passed EXPLICITLY, like the overshoot mode and
+        # for the same reason: a door that names no rule cannot be
+        # measured against an answer key pinned to one.
+        kw["self_rule"] = str(originrule)
     kw["k_values"] = [int(round(v)) for v in _numlist(k_text)] or None
     kw["r_values"] = _numlist(r_text) or None
     if tau_text:
@@ -1440,7 +1445,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                 self_potential, rest_group, groups_count,
                 treat_fields, value_fields),
             source=_catalog_of(layer) or str(layer),
-            overshoot=overshoot, seed=seed), messages)
+            overshoot=overshoot, originrule=originrule,
+            seed=seed), messages)
         messages.addMessage("[time] TOTAL: " + _hms(time.time()
                                                     - t_all))
         return
@@ -1574,7 +1580,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             self_potential, rest_group, groups_count,
             treat_fields, value_fields),
         source=_catalog_of(layer) or str(layer),
-        overshoot=overshoot, seed=seed), messages)
+        overshoot=overshoot, originrule=originrule,
+        seed=seed), messages)
     if stages:
         slow = max(stages, key=lambda p: p[1])
         messages.addMessage(
@@ -1593,6 +1600,7 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
                    decay_eps, barrier, barrier_field, barrier_agg,
                    auto_project, n_rows, out_fields, stages, total,
                    population=None, source=None, overshoot=None,
+                   originrule=None,
                    seed=None):
     """BACKLOG 148: `population` carries the settings that DEFINE the
     numbers - the reference and treatment rungs, the count field, the
@@ -1639,6 +1647,7 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
         # these describes a run it cannot reproduce - which is the
         # exact complaint 148 was raised on.
         ("overshoot", overshoot or ""),
+        ("originrule", originrule or ""),
         ("overshoot_seed", "" if seed is None else seed),
         # BACKLOG 148 - the settings that define the POPULATION, and
         # therefore the numbers. A manifest without them cannot
@@ -1885,6 +1894,17 @@ OVERSHOOT_MODES = [
     "sampled, seeded - whole cells, one at a time",
 ]
 OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
+
+# BACKLOG 290. Is a place its own neighbour? Two rules, John's ruling
+# 1.47. Spelled the SAME WAY as the QGIS door - a box the two doors
+# word differently is this project's oldest failure (see
+# tests/door_parity.py), and this one is worse than most because the
+# means barely move, so no user could notice the disagreement.
+ORIGIN_MODES = [
+    "include the origin (i=j) - as in every published EquiPop result",
+    "exclude the origin cell (i!=j) - needed for spatial regression",
+]
+ORIGIN_VALUES = ["include", "exclude"]
 
 
 def _mode(pm, name, modes):
@@ -2757,6 +2777,8 @@ class CountsShares:
                   "GPString", required=False),
                _p("overshoot", "The ring that crosses k",
                   "GPString", required=False),
+               _p("originrule", "Is a place its own neighbour?",
+                  "GPString", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -2850,6 +2872,9 @@ class CountsShares:
             # every k-based number - so it sits with the
             # neighbourhood boxes rather than in Advanced.
             "overshoot": "Neighbourhood",
+            # BACKLOG 290. Also Neighbourhood, and NOT Advanced:
+            # it decides who is counted.
+            "originrule": "Neighbourhood",
         }
         for nm, cat in SECTION.items():
             if nm in pm:
@@ -2886,6 +2911,9 @@ class CountsShares:
         pm["overshoot"].filter.type = "ValueList"
         pm["overshoot"].filter.list = OVERSHOOT_MODES
         pm["overshoot"].value = OVERSHOOT_MODES[1]
+        pm["originrule"].filter.type = "ValueList"
+        pm["originrule"].filter.list = ORIGIN_MODES
+        pm["originrule"].value = ORIGIN_MODES[0]
         return ps
 
     def updateParameters(self, parameters):
@@ -3005,6 +3033,8 @@ class CountsShares:
                   # answer key pinned to one.
                   overshoot=OVERSHOOT_VALUES[
                       _mode(pm, "overshoot", OVERSHOOT_MODES)],
+                  originrule=ORIGIN_VALUES[
+                      _mode(pm, "originrule", ORIGIN_MODES)],
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))
 
@@ -3072,6 +3102,8 @@ class ValueStatistics:
                   "GPString", required=False),
                _p("overshoot", "The ring that crosses k",
                   "GPString", required=False),
+               _p("originrule", "Is a place its own neighbour?",
+                  "GPString", required=False),
                _p("autoproj", "Auto-project degree data to a suitable "
                   "metric CRS (layers only - the fitting UTM zone is "
                   "computed from the data; input untouched)",
@@ -3128,6 +3160,9 @@ class ValueStatistics:
                         "outfc": "Output", "outtable": "Output",
                         "shortnames": "Output",
                         "overshoot": "Neighbourhood",
+            # BACKLOG 290. Also Neighbourhood, and NOT Advanced:
+            # it decides who is counted.
+            "originrule": "Neighbourhood",
                         "seed": "Advanced"}.items():
             if nm in pm2:
                 pm2[nm].category = cat
@@ -3159,6 +3194,9 @@ class ValueStatistics:
         pm2["overshoot"].filter.type = "ValueList"
         pm2["overshoot"].filter.list = OVERSHOOT_MODES
         pm2["overshoot"].value = OVERSHOOT_MODES[1]
+        pm2["originrule"].filter.type = "ValueList"
+        pm2["originrule"].filter.list = ORIGIN_MODES
+        pm2["originrule"].value = ORIGIN_MODES[0]
         return ps
 
     def updateParameters(self, parameters):
@@ -3242,6 +3280,8 @@ class ValueStatistics:
                   # answer key pinned to one.
                   overshoot=OVERSHOOT_VALUES[
                       _mode(pm, "overshoot", OVERSHOOT_MODES)],
+                  originrule=ORIGIN_VALUES[
+                      _mode(pm, "originrule", ORIGIN_MODES)],
                   seed=_num(pm, "seed"),
                   auto_project=_flag(pm, "autoproj"),
                   short_names=_flag(pm, "shortnames"))

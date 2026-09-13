@@ -34,7 +34,7 @@ from scipy.spatial import cKDTree
 import pandas as pd
 from itertools import groupby
 
-from . import overshoot, selfpot
+from . import overshoot, selfpot, selfrule
 from .decay import Decay
 
 
@@ -114,6 +114,7 @@ def run_knn(
     seed: int | None = None,
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
     overshoot_mode: str | None = None,
+    self_rule: str | None = None,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis for every populated cell.
@@ -167,6 +168,14 @@ def run_knn(
     if osm == overshoot.SAMPLED:
         print(overshoot.seed_message(os_seed, _seed_given))
     sp = selfpot.check(self_potential)          # BACKLOG 153
+    # BACKLOG 290. Is the origin its own neighbour? The slow engine
+    # seeds every running total with the origin cell, so under i!=j
+    # the change is simply not to seed it - the rings never contain
+    # the origin offset (build_distance_rings drops (0,0)), so there
+    # is nowhere else it can enter.
+    srule = selfrule.resolve(self_rule)
+    drop_self = srule == selfrule.EXCLUDE
+    print(selfrule.message(srule, self_potential if drop_self else None))
     nm = NAMES[naming]
 
     def col(kind: str, k: int) -> str:
@@ -210,14 +219,19 @@ def run_knn(
         }
 
         # running totals - raw and (optionally) decay-weighted
-        sum_all, sum_grp, dist_m = local_all, local_grp, 0.0
+        # Under i!=j the origin contributes nothing, so the totals
+        # start empty (BACKLOG 290). CountAllLocal/CountGroupLocal
+        # above are facts about THE CELL and stay either way.
+        sum_all, sum_grp, dist_m = (
+            (0.0, 0.0, 0.0) if drop_self else (local_all, local_grp, 0.0))
         # BACKLOG 153: the origin's own people are not standing on the
         # origin. Charge them the mean intra-cell distance, exactly as
         # run_knn_counts does, or they keep weight 1.0 - the largest
         # weight in the calculation - on the mass we know least about.
         _w0 = (decay.weight(selfpot.decay_distance(unit_size, sp))
                if decay and sp > 0 else 1.0)
-        d_all, d_grp = local_all * _w0, local_grp * _w0
+        d_all, d_grp = ((0.0, 0.0) if drop_self
+                        else (local_all * _w0, local_grp * _w0))
         pending = list(k_values)
 
         def record(k: int, n=None, t=None, d=None):
@@ -252,7 +266,7 @@ def run_knn(
         # exactly as the fast engine does by treating it as ring 1.
         # Handling it as a whole cell here was the two engines'
         # remaining disagreement under `proportional`.
-        if osm != overshoot.WHOLE:
+        if osm != overshoot.WHOLE and not drop_self:
             _oid = np.array([origin_ident], dtype=np.uint64)
             _opop = np.array([local_all], dtype=float)
             while pending and local_all >= pending[0]:
@@ -366,6 +380,7 @@ def run_knn_stats(
     overshoot_mode: str | None = None,
     seed: int | None = None,
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
+    self_rule: str | None = None,
 ) -> pd.DataFrame:
     """
     Radial k-NN analysis with user-selected statistics per variable.
@@ -454,6 +469,13 @@ def run_knn_stats(
                                  "plus percentiles like p10/p97.5")
 
     sp = selfpot.check(self_potential)
+    # BACKLOG 290: the origin as its own neighbour. This engine walks
+    # a neighbour LIST, so the rule is applied by removing the origin
+    # from that list once, in _walk, rather than by threading a flag
+    # through every statistic.
+    srule = selfrule.resolve(self_rule)
+    drop_self = srule == selfrule.EXCLUDE
+    print(selfrule.message(srule, self_potential if drop_self else None))
     # BACKLOG 154, John's ruling: refuse a Gini over negative values,
     # everywhere. ArcGIS Pro has refused it for years; the core and
     # the QGIS path did not, and QGIS has Gini in its DEFAULT list -
@@ -533,6 +555,14 @@ def run_knn_stats(
         result had to be taken from the final, possibly incomplete
         ring of an m-limited neighbourhood."""
         e0, n0 = cd.E[oi], cd.N[oi]
+        if drop_self:
+            # BACKLOG 290. Drop the origin from its own neighbour list
+            # and everything below is unchanged - the statistics, the
+            # ring bounds, the value chunks. Matched on the INDEX, not
+            # on position 0: the origin is normally first at distance
+            # zero, but co-located cells make that "normally".
+            _m = ni != oi
+            nd, ni = nd[_m], ni[_m]
         d_last = float(nd[-1]) if len(nd) else 0.0
         touched_last = False
 

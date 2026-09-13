@@ -60,6 +60,15 @@ recursive-include tests/fixtures *.tif
 # The demo scripts (BACKLOG 107). Listed at last: they sit in the repo
 # root, nothing grafted them, and they had never entered an archive.
 include demo_*.py
+# The RUNNERS at the repository root: run_fetch.py,
+# run_raster_folder.py, run_osm_friction.py. FOURTH INSTANCE of the
+# miss the three comments above describe, and the worst of them:
+# BACKLOG 283 records that run_osm_friction.py is THE ONLY WAY to
+# reach the 1.46.0/1.46.1 OSM lattice work, because no door wraps it
+# yet. So the sdist carried the headline feature of two releases with
+# no way to run it. Found by listing the archive, which is what
+# test_packaging now does for every run_*.py at the root.
+include run_*.py
 
 # Worked examples, and the Book's sources.
 graft examples

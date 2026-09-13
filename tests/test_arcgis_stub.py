@@ -1533,7 +1533,34 @@ def test_pyt_dialog_warns_about_shapefile_before_run():
     assert not errs2
 
 
-def test_help_xml_covers_every_parameter():
+def test_generating_the_help_does_not_dirty_the_working_tree(tmp_path):
+    """BACKLOG 45. The suite used to leave two untracked
+    EquiPop.*.pyt.xml files in arcgis/ on every run. They are build
+    outputs - not committed, not shipped - so the repo only ever held
+    them by accident, and a test that writes into the tree it tests
+    can mask the change it exists to catch.
+
+    Checked by RUNNING THE GENERATOR the way the suite does and
+    looking at arcgis/ afterwards, not by reading the call.
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    arc = os.path.join(root, "arcgis")
+    before = {f for f in os.listdir(arc) if f.endswith(".pyt.xml")}
+    gen = os.path.join(arc, "make_help_xml.py")
+    subprocess.run([sys.executable, gen, "--out", str(tmp_path)],
+                   check=True, cwd=root)
+    after = {f for f in os.listdir(arc) if f.endswith(".pyt.xml")}
+    assert after == before, (
+        f"generating the help wrote {sorted(after - before)} into "
+        "arcgis/ - it was given --out and ignored it")
+    written = {f for f in os.listdir(tmp_path) if f.endswith(".pyt.xml")}
+    assert len(written) == 2, (
+        f"--out produced {sorted(written)}, expected both toolbox "
+        "help files")
+
+
+def test_help_xml_covers_every_parameter(tmp_path):
     """The sidecar help must stay in step with the dialogs: every
     parameter of both tools needs its own explanation, and the XML
     must parse."""
@@ -1541,15 +1568,21 @@ def test_help_xml_covers_every_parameter():
     import subprocess
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     gen = os.path.join(root, "arcgis", "make_help_xml.py")
-    subprocess.run([sys.executable, gen], check=True, cwd=root)
+    # BACKLOG 45. Into tmp_path, NOT into arcgis/. Running the suite
+    # used to leave two untracked EquiPop.*.pyt.xml files in the
+    # working tree every time - build outputs the repo held only by
+    # accident, and a test that writes into the tree it is testing
+    # can mask a change it was meant to catch.
+    outdir = str(tmp_path)
+    subprocess.run([sys.executable, gen, "--out", outdir],
+                   check=True, cwd=root)
     t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
                       "SHAPE@Y": [0.0]})
     _install_fake_arcpy(t)
     pyt = _load_pyt()
     for cls, name in ((pyt.CountsShares, "CountsShares"),
                       (pyt.ValueStatistics, "ValueStatistics")):
-        path = os.path.join(root, "arcgis",
-                            f"EquiPop.{name}.pyt.xml")
+        path = os.path.join(outdir, f"EquiPop.{name}.pyt.xml")
         tree = ET.parse(path)
         helped = {p.get("name") for p in tree.iter("param")}
         assert {p.name for p in cls().getParameterInfo()} <= helped

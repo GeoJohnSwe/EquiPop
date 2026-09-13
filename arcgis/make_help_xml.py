@@ -7,6 +7,14 @@ EquiPop.<ToolName>.pyt.xml - so nothing is fetched from the web.
 
 Run this file from the repo root to regenerate them:
     python arcgis/make_help_xml.py
+    python arcgis/make_help_xml.py --out DIR   # write elsewhere
+
+BACKLOG 45: --out exists because the SUITE used to call this with no
+way to say where, so `pytest` left two untracked .pyt.xml files in
+`arcgis/` every time it ran. A test that modifies the working tree it
+is testing is a test that can hide a change - and these are build
+outputs, neither committed nor shipped, so the repo only ever held
+them by accident.
 The parameter NAMES are read from the toolbox itself (through the
 test harness's simulated arcpy), so the help can never drift from
 the dialog.
@@ -51,14 +59,15 @@ def build(tool_name, display, params):
     return md
 
 
-def main():
+def main(out_dir=None):
     import test_arcgis_stub as H
     import pandas as pd
     t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
                       "SHAPE@Y": [0.0]})
     H._install_fake_arcpy(t)
     pyt = H._load_pyt()
-    here = os.path.dirname(os.path.abspath(__file__))
+    here = out_dir or os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(here, exist_ok=True)
     for cls, name in ((pyt.CountsShares, "CountsShares"),
                       (pyt.ValueStatistics, "ValueStatistics")):
         tool = cls()
@@ -76,4 +85,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--out", default=None,
+                    help="directory to write the .pyt.xml files into "
+                         "(default: next to EquiPop.pyt, which is "
+                         "where Pro looks for them)")
+    main(ap.parse_args().out)

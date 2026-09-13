@@ -44,6 +44,7 @@ OPTION_HELP = {
     "pop(varname)": "pop",
     "prefix(string)": None,
     "selfpot(#)": "selfpot",
+    "originrule(string)": "originrule",
     "treatmode(string)": None,
     "missing(numlist)": "missingcodes",
     "decay(string)": "decaymodel",
@@ -214,7 +215,8 @@ def build():
     for opt in ("x(varname)", "y(varname)"):
         add("{synopt:{opt %s}}%s{p_end}" % (opt, _first_line(opt)))
     add("{syntab:Neighbourhood}")
-    for opt in ("k(numlist)", "r(numlist)", "unit(#)", "selfpot(#)"):
+    for opt in ("k(numlist)", "r(numlist)", "unit(#)", "selfpot(#)",
+                "originrule(string)"):
         add("{synopt:{opt %s}}%s{p_end}" % (opt, _first_line(opt)))
     add("{syntab:Population}")
     for opt in ("treat(varlist)", "pop(varname)"):

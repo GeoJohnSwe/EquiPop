@@ -33,6 +33,7 @@ MEASURE_KEY = {"variance": "var"}
 
 from .alg_counts import (OUTSIDE_MODES, OVERSHOOT_MODES,  # noqa: F401
                          OVERSHOOT_VALUES, REF_MODES,
+                         ORIGIN_MODES, ORIGIN_VALUES,
                          SELFPOT_MODES, SELFPOT_VALUES)
 # REF_MODES carries its "(fill 1a)" hints from alg_counts, so machine
 # 1 and machine 2 cannot start describing the same ladder differently
@@ -130,6 +131,9 @@ class ValueStatistics(EquipopAlgorithm):
         # agree again and a student running both over one dataset gets
         # one answer instead of two.
         self.add(QgsProcessingParameterEnum(
+            "originrule", "Is a place its own neighbour?",
+            options=ORIGIN_MODES, defaultValue=0))
+        self.add(QgsProcessingParameterEnum(
             "overshoot", "The ring that crosses k",
             options=OVERSHOOT_MODES, defaultValue=1), advanced=True)
         self.add(QgsProcessingParameterNumber(
@@ -207,12 +211,16 @@ class ValueStatistics(EquipopAlgorithm):
         # BACKLOG 99, named explicitly as in machine 1. The note that
         # stood here - warning that the two machines used different
         # modes - retired with BACKLOG 118: they no longer do.
+        origin_rule = ORIGIN_VALUES[
+            (self.parameterAsEnums(parameters, "originrule",
+                                   context) or [0])[0]]
         overshoot_mode = OVERSHOOT_VALUES[
             (self.parameterAsEnums(parameters, "overshoot",
                                    context) or [1])[0]]
         seed = self.optional_int(parameters, "seed")
         kw = dict(unit_size=float(unit),
                   overshoot_mode=overshoot_mode, seed=seed,
+                  self_rule=origin_rule,
                   self_potential=SELFPOT_VALUES[
                       (self.parameterAsEnums(parameters, "selfpot",
                                              context) or [2])[0]],

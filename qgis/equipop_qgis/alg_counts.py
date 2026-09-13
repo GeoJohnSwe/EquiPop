@@ -83,6 +83,17 @@ OVERSHOOT_MODES = [
 ]
 OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 
+# BACKLOG 290. Is a place its own neighbour? Two rules, John's
+# ruling 1.47. The wording says WHAT CHANGES rather than naming the
+# convention, because the convention is only meaningful to the half
+# of users who run regressions - and the other half need to know that
+# the default is the published one.
+ORIGIN_MODES = [
+    "include the origin (i=j) - as in every published EquiPop result",
+    "exclude the origin cell (i!=j) - needed for spatial regression",
+]
+ORIGIN_VALUES = ["include", "exclude"]
+
 import numpy as np
 
 from .base import EquipopAlgorithm
@@ -247,6 +258,13 @@ class CountsAndShares(EquipopAlgorithm):
         self.add(QgsProcessingParameterEnum(
             "overshoot", "The ring that crosses k", 
             options=OVERSHOOT_MODES, defaultValue=1), advanced=True)
+        # BACKLOG 290. NOT advanced, and that is deliberate: this box
+        # changes who is counted, the means barely move, and nobody
+        # can tell from the output which rule produced it. A choice
+        # that invisible does not belong behind a disclosure arrow.
+        self.add(QgsProcessingParameterEnum(
+            "originrule", "Is a place its own neighbour?",
+            options=ORIGIN_MODES, defaultValue=0))
         # BACKLOG 99. The seed used to matter only to permutations,
         # so QGIS never offered it; under 'sampled' it DECIDES THE
         # ANSWER, which makes it an analytical box by door_parity's
@@ -327,12 +345,16 @@ class CountsAndShares(EquipopAlgorithm):
         # the engine's default: a door that says nothing cannot be
         # conformance-checked against a named mode, which is the
         # whole reason both doors failed the answer key in 1.30.
+        origin_rule = ORIGIN_VALUES[
+            (self.parameterAsEnums(parameters, "originrule",
+                                   context) or [0])[0]]
         overshoot_mode = OVERSHOOT_VALUES[
             (self.parameterAsEnums(parameters, "overshoot",
                                    context) or [1])[0]]
         seed = self.optional_int(parameters, "seed")
         kw = dict(unit_size=float(unit), treat_are_counts=True,
                   overshoot_mode=overshoot_mode, seed=seed,
+                  self_rule=origin_rule,
                   self_potential=SELFPOT_VALUES[
                       (self.parameterAsEnums(parameters, "selfpot",
                                              context) or [2])[0]])

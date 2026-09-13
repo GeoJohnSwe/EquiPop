@@ -165,6 +165,38 @@ def test_every_version_string_in_the_repo_agrees():
         + "; ".join(f"{k} = {v}" for k, v in sorted(found.items())))
 
 
+def test_every_runner_at_the_root_is_carried_by_the_manifest():
+    """v1.47. The sdist for 1.46.4 carried NONE of run_fetch.py,
+    run_raster_folder.py or run_osm_friction.py. MANIFEST.in had
+    gained `include demo_*.py` for BACKLOG 107 and nothing for the
+    runners, so the pattern the file's own comments describe three
+    times happened a fourth.
+
+    It mattered most for run_osm_friction.py. BACKLOG 283 records
+    that it is THE ONLY WAY to reach the OSM lattice engine, because
+    no door wraps it - so the source archive shipped the headline
+    feature of 1.46.0 and 1.46.1 with no way to run it.
+
+    Checked against the FILES ON DISK rather than a fixed list, so a
+    runner added later is covered without anyone remembering to come
+    back here.
+    """
+    runners = sorted(f for f in os.listdir(ROOT)
+                     if re.fullmatch(r"run_.*\.py", f))
+    assert runners, "no run_*.py at the root - has the naming changed?"
+    manifest = open(os.path.join(ROOT, "MANIFEST.in"),
+                    encoding="utf-8").read()
+    lines = [l.strip() for l in manifest.split("\n")]
+    covered = any(re.fullmatch(r"include run_\*\.py", l) for l in lines)
+    if not covered:
+        missing = [f for f in runners
+                   if not any(l == f"include {f}" for l in lines)]
+        assert not missing, (
+            f"MANIFEST.in does not carry {missing} - the source "
+            "archive will ship a runner-less copy, which is how "
+            "1.46.4 shipped the OSM work with no way to run it")
+
+
 def test_the_stub_audit_travels_with_the_code_it_checks():
     """v1.29.1. tools/stub_audit.py is the only check that can catch
     the simulator promising methods QGIS does not have - the fault

@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from . import overshoot, selfpot
+from . import overshoot, selfpot, selfrule
 from .cells import CellData
 
 
@@ -35,6 +35,7 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                    report: bool = True,
                    report_label: str = "",
                    overshoot_mode: str | None = None,
+                   self_rule: str | None = None,
                    seed: int | None = None) -> pd.DataFrame:
     """
     k-NN counts/ratios for every cell in cd, vectorised.
@@ -48,6 +49,15 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         1.29.3, where a cell that already held k people reported
         Dist_k = 0 and k stopped being a parameter. 1 (the default)
         uses the equal-area radius. See equipop/selfpot.py.
+    self_rule : whether the origin cell is its own neighbour
+        (1.47, BACKLOG 290). "include" (the default, and what every
+        published EquiPop result used) or "exclude" for the w_ii = 0
+        convention that spatial regression requires. Under "exclude"
+        the origin cell contributes no people, self_potential has
+        nothing to act on, and an origin with no populated neighbour
+        within reach reports N_k = 0 with undefined shares rather
+        than an invented number. N_local and <var>_local describe THE
+        CELL and are unchanged either way. See equipop/selfrule.py.
     m_neighbors : how many nearest CELLS are fetched per origin in the
         fast pass. Origins whose cumulative population within
         m_neighbors cells does not reach max(k) are automatically
@@ -63,6 +73,12 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
     sp = selfpot.check(self_potential)
     # BACKLOG 99: what happens to the ring that crosses k.
     osm = overshoot.resolve(overshoot_mode)
+    # BACKLOG 290: is the origin its own neighbour? Resolved BEFORE
+    # anything is computed, so a bad name costs nothing.
+    srule = selfrule.resolve(self_rule)
+    drop_self = srule == selfrule.EXCLUDE
+    if report:
+        print(selfrule.message(srule, self_potential if drop_self else None))
     seed_given = seed is not None
     os_seed = int(seed) if seed_given else overshoot.draw_seed()
     if osm == overshoot.SAMPLED and report:
@@ -125,9 +141,27 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         the loop below)."""
         unsat = []
         # dist, idx: (C, m) sorted by distance (self included at 0)
-        cpop = np.cumsum(pop[idx], axis=1)
-        cgrp = {v: np.cumsum(grp[v][idx], axis=1) for v in bvars}
-        cok = {v: np.cumsum(okp[v][idx], axis=1) for v in bvars}
+        #
+        # BACKLOG 290. Under i!=j the ORIGIN CELL CONTRIBUTES NOTHING.
+        # Masked here, once, so every downstream step - the cumulative
+        # sums, the ring bounds, the decay weights, the overshoot
+        # share - sees a neighbourhood the origin is simply not in.
+        # Nothing below this point needs to know about the rule.
+        #
+        # MATCHED ON THE INDEX, NOT ON POSITION 0. cKDTree returns the
+        # origin at distance 0 so position 0 is almost always self -
+        # but two cells may share coordinates, and then "almost
+        # always" silently drops somebody else's people instead.
+        keep = (idx != np.asarray(oi_range)[:, None]) if drop_self else None
+
+        def _mass(a):
+            """The per-neighbour mass this rule allows to be counted."""
+            m = a[idx]
+            return m if keep is None else np.where(keep, m, 0.0)
+
+        cpop = np.cumsum(_mass(pop), axis=1)
+        cgrp = {v: np.cumsum(_mass(grp[v]), axis=1) for v in bvars}
+        cok = {v: np.cumsum(_mass(okp[v]), axis=1) for v in bvars}
 
         # BACKLOG 185. Decay does NOT choose the neighbourhood - the
         # RAW count does. John's rule, and the original EquiPop's:
@@ -151,10 +185,12 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 own = dwm[:, 0] <= 0.0
                 dwm[own, 0] = selfpot.decay_distance(cd.unit_size, sp)
             wdec = decay.weight_vec(dwm.ravel()).reshape(dwm.shape)
-            cpopd = np.cumsum(pop[idx] * wdec, axis=1)
-            cgrpd = {v: np.cumsum(grp[v][idx] * wdec, axis=1)
+            # Masked mass, not raw mass (BACKLOG 290): a decayed run
+            # under i!=j must not weight people the rule removed.
+            cpopd = np.cumsum(_mass(pop) * wdec, axis=1)
+            cgrpd = {v: np.cumsum(_mass(grp[v]) * wdec, axis=1)
                      for v in bvars}
-            cokd = {v: np.cumsum(okp[v][idx] * wdec, axis=1)
+            cokd = {v: np.cumsum(_mass(okp[v]) * wdec, axis=1)
                     for v in bvars}
         for r, oi in enumerate(oi_range):
             covered = dist[r, -1]
@@ -244,7 +280,20 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     # a share cannot do without.
                     before = float(cp[lo - 1]) if lo > 0 else 0.0
                     cells_i = idx[r, lo:hi + 1]
-                    rpop = pop[cells_i]
+                    # BACKLOG 290: the crossing ring can contain the
+                    # origin, and a share of the origin is still the
+                    # origin. Masked with the same rule as the sums
+                    # above, or the ring path would quietly reinstate
+                    # what i!=j removed.
+                    ring_keep = (keep[r, lo:hi + 1] if keep is not None
+                                 else None)
+
+                    def _ring(a):
+                        m = a[cells_i]
+                        return (m if ring_keep is None
+                                else np.where(ring_keep, m, 0.0))
+
+                    rpop = _ring(pop)
                     ids = overshoot.cell_identity(
                         np.round(cd.E[cells_i] / cd.unit_size),
                         np.round(cd.N[cells_i] / cd.unit_size))
@@ -260,11 +309,11 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                         t_before = (float(cgrp[v][r][lo - 1])
                                     if lo > 0 else 0.0)
                         grp_k[v] = t_before + float(
-                            (grp[v][cells_i] * w).sum())
+                            (_ring(grp[v]) * w).sum())
                         o_before = (float(cok[v][r][lo - 1])
                                     if lo > 0 else 0.0)
                         den_k[v] = o_before + float(
-                            (okp[v][cells_i] * w).sum())
+                            (_ring(okp[v]) * w).sum())
                     if decay is not None:
                         wd_ring = wdec[r, lo:hi + 1]
                         nd_before = (float(cpopd[r][lo - 1])
@@ -276,11 +325,11 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                             tb = (float(cgrpd[v][r][lo - 1])
                                   if lo > 0 else 0.0)
                             grpd_k[v] = tb + float(
-                                (grp[v][cells_i] * wd_ring * w).sum())
+                                (_ring(grp[v]) * wd_ring * w).sum())
                             ob = (float(cokd[v][r][lo - 1])
                                   if lo > 0 else 0.0)
                             dend_k[v] = ob + float(
-                                (okp[v][cells_i] * wd_ring * w).sum())
+                                (_ring(okp[v]) * wd_ring * w).sum())
                     ring_all = float(rpop.sum())
                     f = taken / ring_all if ring_all > 0 else 1.0
                     d_prev = float(dd[lo - 1]) if lo > 0 else 0.0
@@ -319,6 +368,18 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                                               if dend_k[v] > 0
                                               else np.nan)
                 if d_k <= 0.0 and n_k >= k:
+                    # BACKLOG 290. Under i!=j this CANNOT be the origin
+                    # cell - its mass was removed. A zero radius here
+                    # means a DIFFERENT cell sharing the origin's
+                    # coordinates, which is a real and separate thing.
+                    # The arithmetic is the same either way: mass at
+                    # distance zero needs the equal-area radius or
+                    # Dist_k comes back 0 and k stops distinguishing
+                    # origins (BACKLOG 191). What must NOT be the same
+                    # is the report, which would otherwise announce
+                    # "the whole neighbourhood was the origin cell"
+                    # about a rule that excluded it.
+                    #
                     # the whole neighbourhood IS the origin cell, so
                     # the radius is not zero - it is unmeasured, and
                     # k has stopped being a parameter (BACKLOG 95).
@@ -329,7 +390,12 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     # Invisible under `whole`, where the two are equal.
                     d_k = selfpot.radius_for_k(cd.unit_size, k,
                                                float(cp[pos]), sp)
-                    tally["selfpot"][k] += 1
+                    if drop_self:
+                        tally.setdefault("colocated", {})
+                        tally["colocated"][k] = (
+                            tally["colocated"].get(k, 0) + 1)
+                    else:
+                        tally["selfpot"][k] += 1
                 if n_k >= 2 * k:               # BACKLOG 94
                     tally["over"][k] += 1
                 rec[f"Dist_{k}"] = d_k
@@ -428,6 +494,19 @@ def report_selfpot(tally: dict, k_values, sp: float,
             print(f"[selfpot]{label} k={k}: the whole neighbourhood "
                   f"was the origin cell for {nsp:,} of {tot:,} origins "
                   f"- {how}")
+        # BACKLOG 290: same arithmetic, different fact. Under i!=j the
+        # origin's own people were removed, so mass at distance zero
+        # is a DIFFERENT cell standing on the same coordinates. Saying
+        # "the whole neighbourhood was the origin cell" there would be
+        # false, and it is exactly the kind of false that survives
+        # because it sounds familiar.
+        ncl = tally.get("colocated", {}).get(k, 0)
+        if ncl:
+            print(f"[selfpot]{label} k={k}: {ncl:,} of {tot:,} origins "
+                  f"reached k entirely from cells sharing their own "
+                  f"coordinates - the origin itself was excluded "
+                  f"(i!=j), so Dist_{k} is the equal-area radius of "
+                  f"those cells, not of the origin's")
         nov = tally["over"].get(k, 0)
         if nov:
             # BACKLOG 142: this said "the k YOU asked for" even when

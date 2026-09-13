@@ -6,8 +6,8 @@
 Read 13 first — the delivery rule and the network rule live there and
 are still the operating agreement.
 
-Where 13 ended at **1.41.0**, this ends at **1.44.9**: eighteen
-releases, 998 tests, 57 backlog items closed and 12 still open.
+Where 13 ended at **1.41.0**, this ends at **1.46.4**: 1,109 tests,
+and every HIGH finding of the external review of 1.44.10 closed.
 
 ---
 
@@ -52,6 +52,47 @@ reused; one whose checksum differs stops the run and is named, because
 whatever was computed from it was computed from *that* file.
 
 ---
+
+## 2b. TWO RULES ADDED AT THE END OF THE SESSION
+
+Both come from counting what the last week actually contained: 6 new
+capabilities, 8 real defects found by external review, 6 reports from
+John's own use — and **7 repairs of work I had shipped days earlier**,
+three of them the same issue twice.
+
+### BATCH RELEASES TO WHEN JOHN WILL TEST
+
+**John's ruling.** The delivery rule (13 §3b) says four artefacts per
+SESSION that changes code. It had been read as *per message*, which
+put John on an install treadmill: fix, install, find the next thing,
+repeat. Two of the repeated failures — the empty matrix then NULL, the
+shortened names then the names not applied — would have been ONE round
+trip if the first fix had not shipped on its own.
+
+**Cut a release when he is going to install one**, not when a fix is
+finished. Work accumulates in the tree; the tree is delivered every
+time regardless, so nothing is lost by waiting.
+
+### A TEST THAT NEVER MEETS THE REAL SHAPE IS A TEST OF MY ASSUMPTIONS
+
+Five of the seven self-repairs had one cause, and it is not
+carelessness — it is the suite agreeing with itself:
+
+- the QGIS stub returned `[]` where QGIS returns **NULL**, so every
+  door test passed and every real run failed
+- the vector tests used a **projected** lattice throughout; John's
+  data is geographic, and a kilometre measured 0.009
+- the Stata tests **read** the naming code instead of running it, so a
+  version that announced the right names and wrote the wrong ones
+  passed everything
+- two messages used words the tool does not accept — `epoch` labelled
+  "Year", `project` described as "dataset"
+
+**Before shipping anything user-facing: run it the way John runs it.**
+Real CRS, real file shapes, executing rather than reading. Where a
+simulator stands in for a host, assume it is wrong until it has been
+checked against the host's documented behaviour — `qgis_stub.py` has
+now been more forgiving than QGIS **five times**.
 
 ## 3. THE FOUR PATTERNS THAT REPEATED
 
@@ -165,16 +206,33 @@ project's signature fault and the reason for its testing discipline.
 
 ---
 
-## 5b. HANDOVERS 9 AND 10 ARE STILL MISSING
+## 5b. HANDOVERS 9 AND 10 ARE GONE — RULED, SESSION 12
 
 The tree holds 6, 7, 8, 11, 12, 13 and this one. **9 and 10 have never
-been in it** — HANDOVER 13 §"still John's to do" flagged them and they
-are still absent, so two sessions of reasoning exist only in
-downloads, if at all.
+been in it.** HANDOVER 13 §"still John's to do" flagged them; HANDOVER
+14 asked once more; **John ruled in session 12: record the gap.**
 
-If John still has them, they belong in the repository root. If not,
-they are gone, and the gap between 8 and 11 should be noted in this
-file rather than left for someone to wonder about.
+So it is recorded here, and this is the answer to the question a
+future session will ask when it counts the files:
+
+**The jump from 8 to 11 is not a mistake, a bad unzip or a missing
+file. Those two handovers were written and were never committed. They
+are lost.** Do not go looking for them, do not reconstruct them from
+the backlog, and do not treat their absence as evidence that
+something else went wrong at the same time.
+
+What sits either side of the gap is intact. HANDOVER 8 ends where it
+ends; HANDOVER 11 opens without assuming the reader has 9 or 10; the
+backlog is continuous across the whole period, item numbers included,
+because items were appended as they arose regardless of which session
+was writing. **The backlog is therefore the record for that stretch**,
+and it is the only one.
+
+THE STANDING LESSON, which is the reason to write this down rather
+than simply delete the question: a handover that is delivered but not
+committed does not exist. Two sessions of reasoning were lost that
+way. Every handover from this one onward goes into the repository root
+in the same act as the release, not afterwards.
 
 ## 6. THINGS A FRESH SESSION WILL GET WRONG
 

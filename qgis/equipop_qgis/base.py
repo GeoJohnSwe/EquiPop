@@ -521,6 +521,17 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 "results.")
 
         n = len(self._features)
+        # BACKLOG 291. COUNT WHAT THE SINK TOOK, not what was offered.
+        # addFeature() returns False when the sink rejects a feature -
+        # a field type it will not hold, a shapefile's 255-field or
+        # 10-character limits, a full disk - and the return value was
+        # discarded. The log then reported `n`, THE INTENDED COUNT,
+        # so a run that wrote fewer rows than it was given announced
+        # complete success. That is the shape of the unexplained
+        # output complaints in BACKLOG 224 and 232; it is not a
+        # diagnosis of them, and it is one mechanism that can no
+        # longer be the answer.
+        written, refused = 0, []
         for i, f in enumerate(self._features):
             nf = QgsFeature(out_fields)
             if f.hasGeometry():
@@ -532,10 +543,27 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                             (isinstance(v, float) and np.isnan(v))
                             else float(v))
             nf.setAttributes(vals)
-            sink.addFeature(nf)
+            ok = sink.addFeature(nf)
+            # a sink that returns None predates the checked contract;
+            # only an explicit False is a refusal
+            if ok is False:
+                if len(refused) < 5:
+                    refused.append(i)
+            else:
+                written += 1
             if n and i % 5000 == 0:
                 feedback.setProgress(100.0 * i / n)
+        if written != n:
+            raise QgsProcessingException(
+                f"The output kept only {written:,} of {n:,} rows - "
+                f"{n - written:,} were refused by the destination "
+                f"(first at row {refused[0] if refused else '?'}). "
+                "This is usually a shapefile limit (255 fields, "
+                "10-character names) or a full disk. NOTHING HAS "
+                "BEEN REPORTED AS SUCCESSFUL: an output missing rows "
+                "is not a smaller answer, it is a wrong one. Try a "
+                "GeoPackage destination, or fewer k values.")
         self.channel(feedback).info(
-            f"Wrote {n} rows with {len(order)} new columns: "
+            f"Wrote {written} rows with {len(order)} new columns: "
             + ", ".join(order))
         return dest

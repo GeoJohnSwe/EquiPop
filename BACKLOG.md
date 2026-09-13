@@ -18,69 +18,72 @@ costs. 71 and 74 were the same duplication. Items 38/42/43/45/49
 appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
-1. ~~**139**~~ — DONE, unreleased. A diagonal move now costs sqrt(2); iso-effort contours are round, not square
-2. ~~**99**~~ — DONE v1.30. THE OVERSHOOT, closed at both doors; ~~**162**~~ and ~~**163**~~ travelled with it
-2b. ~~**164**~~ — DONE v1.30.1. John's field test: a new feature class received every result ONE ROW EARLY, silently, since v1.20
-3. **161** — Pro will not offer a barrier raster from the map. John field-found it: he had to drag and drop. Small, and it makes the barrier box behave the way the DEM box and all of QGIS already do
-4. **102** — QGIS has no bandwidth boxes, so the 1.17 headline feature is missing from the teaching door
-4. ~~**128**~~ — STATA HALF DONE v1.37 (`equipop doctor`). Pro and QGIS still to do; the dependency story is the adoption risk
-5. **129** — version the output SEMANTICS, not just the structure. 1.29.5 changed what Dist_k MEANS and said nothing
-6. **117** — one validated run specification, used by the package and every door
-7. **120** — move reference and treatment construction into shared package code
-8. **133** — a fourth door (R, SPSS). GATED BEHIND 120: every door is another copy of the logic that produced 108
 
-9. **CONTINENTAL RUNS / 38** — segmentation and tiling as its own machine; John's destination, and machine 3 waits behind it. UNPAUSED by John, 1.29.3+
-10. **118** — weighted statistics without person expansion. BLOCKER for the continental machine
-11. **119** — resume must validate its parameters and fingerprint its input
-12. **93** — the WORKING FRAME (choose by extent, offer WGS84 with great-circle). It decides what 38's numbers MEAN, so it is settled before 38 is coded
-13. **149** — suggest_projection splits a 2-degree extent because it straddles a zone boundary; one zone costs 0.17%
-14. **92** — the continental DATA path: name the files instead of fetching the zip, cache populated cells once
-15. **137** — WorldPop is per COUNTRY and 92 assumes one; concatenate the extracted cells, never mosaic the rasters
-16. **124** — fetch caches by filename only; WorldPop filenames repeat across countries
-17. **125** — QGIS runs cannot be cancelled; needed before continental GUI work
-18. **97** — a decayed denominator is not a count; machine 3's standard errors need the effective sample size. RULED IN by John 1.29.5
-19. **106** — decay for machine 2; engine work, and the same job as 97
-20. **98** — mortality by differencing: keep the raw negatives, report the count. Clamping inflates mortality up to 11.8x. RULED by John 1.29.5
-21. **82** — machines must be DISCOVERED, not hard-coded; 38 is itself a machine and machine 3 waits behind it, so the doors stop counting to two
-22. **90** — the decay-truncation box steps by 1 in QGIS: a stray click turns 0,000001 into 1,000001 and the run succeeds. A silent wrong answer, and a cheap fix
-23. **67** — QGIS barriers are simulator-proved only - an evening of John's, not a release of Claude's
-24. **58** — same evening: a GeoPackage barrier layer has still never been run
-25. **88** — and polygon barriers have never been run in PRO; same subject, same evening
-26. **42** — the illustrated manual still never describes variable-bandwidth decay - a WRITING session
-27. **81** — the Book has a chapter for the Pro door and none for QGIS, which is the door being taught with; travels with the next BOOK run
-28. **44** — the suspected one-line cause of 34; they travel together
-29. **34** — Pro renders the help page empty; needs one field cycle to confirm
-30. **87** — the simulated arcpy is WRONG rather than sparse, and makes a real Pro dialog route untestable
-31. **101** — the suite writes run manifests into the working directory; on Windows that is a real C:\Data\
-32. **91** — RULED already: short decay labels in both doors; travels with the next release that touches the doors
-33. **89** — the output-table rule refuses a run that has already said where its output goes
-34. **49** — extend the conformance reference beyond counts and stats - a second door now proves the mechanism
-35. **45** — small, but these files ship inside every release zip
-36. **62** — the shapefile-in-a-map warning may be too eager; John's eye decides
-37. **100** — MedDist_k as its own column, computed exactly from the rings rather than as r/sqrt(2). Never folded into Dist_k
-38. **41** — the reconstructed 1.17 MANUAL row has never been checked against what shipped
-39. **43** — CITATION.cff still says 1.0.0 - the author's to set, not Claude's
-40. **77** — the rest of the neutral-vocabulary pass, to be shown before it lands
-41. **59** — does QGIS refresh GeoPackage fields properly? one look answers it
-42. **61** — whether the rungs READ well in Pro is John's call, not the simulator's
-43. **55** — same: the simulator honours category and enabled, only Pro can say they read well
-44. **54** — Gridby has no missing data, so the missing-data rules rest on small fixtures
-45. **57** — retire the old single-table path once John confirms no saved tool needs it
-46. **40** — one sentence in the Gridby README
-47. **4** — heights / third dimension - design can precede data, and there is no data yet
-48. **3** — hexagons: the principled fix for 139, and hex.py already exists; the 6-neighbour friction graph is the missing piece
-49. **80** — run the stub audit in a live QGIS every release that touches the QGIS door
-50. **66** — not a task: a standing caution about editing multi-line Python
+*Rewritten in full, 1.47.0. The list this replaces STOPPED AT ITEM
+164: everything from 165 to 293 — machines 3, 4 and 5, the registry,
+all four providers, the OSM lattice work, the eight external-review
+HIGHs — never entered it. The file opens by promising that its top
+answers "what next?" without reading the rest, and for eleven
+releases it could not. Two independent readers found the same thing
+in the same week, which is how long a stale index survives before it
+costs somebody a session.*
 
-51. **107** — MANIFEST.in omits the demo scripts, so they have never shipped in an sdist
-52. **123** — run metadata records absolute paths and machine details
-53. **126** — a text category is lost whenever any value in the column parses as a number
-54. **127** — Value Statistics skips the version warning and shadows `wanted`
-55. **130** — Stata is not SSC-ready: no .sthlp, contradictory version headers, treat() wrongly mandatory
-56. **134** — a golden dataset with expected results, one per host
-57. **132** — a public ArcGIS Online item; the .pyt is already the right artifact
-58. **158** — hex self-potential uses a square-cell area, overstating the radius by 7.5%
-59. **159** — RunLog is not the progressive record the manual promises
+**The rule for this list: an entry that is struck leaves it.** Done
+items live in the detail below and in the manual's version history,
+not here. A list of completed work is not a plan.
+
+### Now — the Machine 5 arc (one outcome, several releases)
+1. **248–265, 268, 278, 284** — a data BROWSER, not more message
+   fixes. One complete WorldPop path and one complete Geofabrik path
+   first; GHSL's dependent tuples and HDX's paged search follow on the
+   same contract. Needs John in the loop testing the dialog, so it
+   should not share a release with work that does not.
+2. **280, 282, 283 + 269** — the two finished engines with NO DOOR.
+   The OSM lattice join is reachable only from run_osm_friction.py;
+   doors/inventory.py is reachable from nothing at all. Both are QGIS
+   dialog work and belong with the browser.
+
+### Next — reachability and trust
+3. **293** — RunLog is dead code and it is item 2. Analysis runs have
+   no provenance record, which is why neither `overshoot` nor the new
+   `originrule` can be written to one. Needs its own release and a
+   decision about which door writes the sidecar.
+4. **205 + 118** — Stata cannot reach machine 2 at all, and the
+   statistics path still rounds weights and expands rows into persons
+   though the engine has carried fractional weights since 1.29.
+5. **119** — resume compares parameters but not input CONTENT. The
+   same cell count and the same settings are not proof of the same
+   data. Not ready for an unattended world-scale run.
+6. **128, 80, 87, 198–199, 288** — a real-host release gate: small
+   recorded end-to-end runs in live QGIS and Pro, matching
+   plugin/engine version checks, cancellation, a copyable diagnostic.
+
+### Then — analytical capability already half-built
+7. **102 + 42** — QGIS variable bandwidth and its explanation.
+8. **117 + 120** — shared validation and construction, as those paths
+   are touched. 120 is confined to machine 1; machines 3, 4 and 5 have
+   none of it, so it gates changes to counts and nothing else.
+9. **158** — hex self-potential uses a square-cell area, overstating
+   the radius by 7.5%.
+10. **134, 132** — a golden dataset per host; a public ArcGIS Online
+    item.
+
+### Waiting on John, not on code
+- **224, 232** — need the exact inputs, versions, choices and output
+  table from a run where the symptom appears. No speculative
+  arithmetic. (291's addFeature fix removes ONE possible mechanism;
+  it does not diagnose either.)
+- **210** — zip rasters measured 3.5x slower and the penalty does not
+  amortise. Needs a ruling on which wins when a folder holds both.
+- **216** — vital-event rasters, and the circularity caveat already
+  recorded there. A methodological exercise, not a menu entry.
+- **257** — PAUSED by John, session 12. Four providers work; a fifth
+  is capability, not a gap.
+
+### Ruled out, recorded so they are not raised again
+- **203** — a radius run reports no distance. That is the design.
+- **100** — see 203.
+
 ## Still to do — detail, in the order above
 
 - ~~95~~ | DONE v1.29.5 | SELF-POTENTIAL, shipped. equipop/selfpot.py holds the rule once so the two engines cannot drift; both apply it; both doors offer `selfpot` and BOTH ARE CHECKED ON VALUES, not names. Default 1.0, John's ruling. Guards broken on purpose six ways before being trusted - including the Pro one, whose FIRST version passed against a deliberate break because it drove _run_tool and skipped the dialog hop where `or 1.0` eats a falsy 0. Rewritten through execute(). s=0 reproduces pre-1.29.5 numbers exactly, asserted not assumed.
@@ -696,7 +699,7 @@ appeared twice; the weaker copy is gone.*
   nothing had been skipped; and the verdict named the count. A
   do-file-only fix, so the Stata freeze holds.
 
-- 203 | OPEN, QUESTION FOR JOHN | SHOULD A RADIUS RUN REPORT A
+- 203 | ~~RULED OUT~~ SESSION 12 | SHOULD A RADIUS RUN REPORT A
   DISTANCE AT ALL? 202 establishes that Dist_r would be the constant
   the user typed, which is useless. But two OTHER distances inside a
   fixed radius are not constant and are not currently offered:
@@ -706,6 +709,27 @@ appeared twice; the weaker copy is gone.*
   the second is the natural companion to Dist_k. Not a defect and not
   urgent - a method question, and John's to rule on. Do not build
   before he does.
+  JOHN'S RULING, SESSION 12, BOTH HALVES REFUSED: "radius is radius
+  and good enough so let us not persue neither (a) or (b)".
+  SO A RADIUS RUN REPORTS NO DISTANCE, AND THAT IS THE DESIGN, not an
+  omission. The next session to notice the asymmetry - k gives
+  Dist_k, r gives nothing - should read this entry and stop, rather
+  than raise it a third time.
+  THE ARGUMENTS THAT DID NOT WIN, recorded so they are not rebuilt
+  from scratch. (a) was nearly free: the engine already computes the
+  position of the last included cell and discards the distance, so
+  the maximum is one lookup already in hand, and it is the SAME
+  STATISTIC as Dist_k under 115 - the maximum extent of the accepted
+  ring - with the stopping rule swapped from k people to r metres.
+  (b) was not: a population-weighted running total of distance
+  through the inner loop of both engines, both doors and Stata, and
+  it is CELL-RESOLUTION DEPENDENT in a way a maximum is not -
+  everyone in a cell shares one distance, so the 225 aliasing rides
+  in the mean and mostly not in the max, and the self-potential
+  radius would have to be honoured or the mean moves with cell size.
+  None of that outweighed the ruling, and the ruling is the shorter
+  answer: the radius IS the neighbourhood definition, and a run does
+  not owe a second description of it.
 
 - ~~204~~ | DONE v1.40.7 | equipop_showcase.do CRASHED AT SECTION 6 AND
   HAD DONE FOR MANY RELEASES. Found because John ran the wrong file by
@@ -1905,10 +1929,13 @@ appeared twice; the weaker copy is gone.*
   from imagination rather than from a second real case. It waits for
   adapter number two.
 
-- 257 | OPEN, RESEARCHED | THE NEXT FETCH ADAPTERS. Written up in
-  PROVIDERS_PLAN.md rather than left in a conversation, because the
-  WorldPop docs turned out FOUR YEARS STALE and building from a
-  half-remembered web page is how that happens.
+- 257 | OPEN, PAUSED BY JOHN, SESSION 12 | THE NEXT FETCH ADAPTERS.
+  Written up in PROVIDERS_PLAN.md rather than left in a conversation,
+  because the WorldPop docs turned out FOUR YEARS STALE and building
+  from a half-remembered web page is how that happens.
+  PAUSED, session 12: "let us wait with the providers for now". Four
+  providers work; a fifth is capability, not a gap. Nothing here is
+  blocked on anything - it resumes when John says so.
   TWO FINDINGS WORTH KNOWING BEFORE ANY CODE:
   (a) MOST GHSL PRODUCTS ARE MOLLWEIDE (ESRI:54009) AND WORLDPOP IS
   WGS84. Put both in one folder and the loader REFUSES them - which is
@@ -1928,10 +1955,29 @@ appeared twice; the weaker copy is gone.*
   GEOFABRIK IS TWO JOBS, NOT ONE: EquiPop cannot read .osm.pbf. Try
   the .gpkg.zip format plus the lattice join before adding pyrosm or
   pyosmium as a dependency.
-  STILL NEEDED: one directory listing from the GHSL tree, one HDX
+  ~~STILL NEEDED: one directory listing from the GHSL tree, one HDX
   package_search response, and one feature from Geofabrik's
   index-v1-nogeom.json (the file is ~1 MB, which is why pasting it
-  whole failed).
+  whole failed).~~
+  ALL THREE WERE OBTAINED AND THIS LINE WENT STALE. GHSL's URL was
+  confirmed against a real directory read on 2026-09-02 and the date
+  is in ghsl.json's `confirmed_against`; HDX was confirmed against a
+  real package_search response for Sweden (261); Geofabrik's index
+  was confirmed from the real file John supplied (259, 262). The line
+  was written before 260-262 landed and nobody struck it.
+  IT THEN COST A ROUND TRIP: session 12 read it and asked John for
+  three samples he had already supplied. A STALE "STILL NEEDED" IS
+  WORSE THAN NO LIST - it reads as current, and the reader has no way
+  to tell. Same shape as PROVIDER_NAMES = ["worldpop"] (263) and the
+  "what next" list that stops at 164: a note written once and true
+  once.
+  WHAT IS ACTUALLY UNKNOWN is different in kind and none of it is a
+  sample anyone can send: whether EOG nightlights requires a free
+  account (unconfirmed, and a login is what John wanted to avoid),
+  Copernicus requires registration, and Overture is not a file
+  download at all - global GeoParquet queried over the network, with
+  no artefact to checksum unless one is defined. That last is a
+  design decision and belongs last.
 
 - ~~258~~ | DONE | SEPARATE THE SITE-SPECIFIC
   KNOWLEDGE FROM THE TOOL. John: "relying on http is tough of course
@@ -2571,6 +2617,187 @@ appeared twice; the weaker copy is gone.*
   fix fails them.
   72 names checked at once, three prefixes, eight k values: all within
   32, all distinct, short names untouched, the k always preserved.
+
+- ~~288~~ | DONE, JOHN'S RULING | BATCH RELEASES TO WHEN HE WILL
+  TEST. He asked whether the last few days had been "limited progress
+  and a lot of repair". Counted honestly: 6 new capabilities, 8 real
+  defects found by external review, 6 reports from his own use, and
+  SEVEN REPAIRS OF WORK SHIPPED DAYS EARLIER - three of them the same
+  issue twice.
+  The delivery rule says four artefacts per SESSION. Claude had been
+  reading it as per MESSAGE, which put John on an install treadmill.
+  264+265 and 285+287 would each have been one round trip.
+  AND THE DIAGNOSIS, which matters more than the rule: five of the
+  seven had ONE CAUSE - the test never met the real shape. The stub
+  returned [] where QGIS returns NULL. The vector tests used a
+  projected lattice and the data is geographic. The Stata tests READ
+  the naming code instead of running it. A suite that never meets the
+  real input is a suite that agrees with itself.
+  Both written into HANDOVER 14 as standing rules.
+  THE EXTERNAL REVIEW WORK WAS NOT CHURN and the record should say so:
+  grid indices added to the population, a result that changed
+  depending on which other files were on disk, a resumed run silently
+  returning an earlier analysis. Those were producing wrong numbers
+  before this week.
+
+- ~~289~~ | DONE, JOHN'S RULING | HANDOVERS 9 AND 10 ARE GONE, AND THE
+  GAP IS NOW RECORDED. Asked in HANDOVER 13, asked again in HANDOVER
+  14 §5b, ruled by John in session 12: "record the gap".
+  Written into HANDOVER 14 §5b, which is where a future session will
+  look when it counts the files and finds 6, 7, 8, 11, 12, 13, 14. The
+  jump is not a bad unzip and not a missing delivery - those two
+  handovers were written and never committed.
+  THE BACKLOG IS THE RECORD FOR THAT STRETCH and it is continuous
+  across it, item numbers included, because items were appended as
+  they arose regardless of which session was writing. Nothing else
+  survives from 9 and 10.
+  THE LESSON IS THE REASON TO WRITE IT DOWN RATHER THAN DROP THE
+  QUESTION: a handover that is delivered but not committed does not
+  exist. Two sessions of reasoning were lost to a step that takes a
+  minute. From 14 onward the handover enters the repository root in
+  the same act as the release.
+
+- ~~290~~ | DONE v1.47.0 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
+  ruling: two rules, i=j and i!=j, and `include` STAYS THE DEFAULT.
+  THE PACKAGE ALREADY HELD TWO ANSWERS and called both "the
+  neighbourhood". autocorr.build_weights() has always excluded self -
+  its diagonal sums to exactly 0.0 - while the counting machines have
+  always included it, with selfpot.py existing precisely because the
+  origin's people sit at distance 0. The Tartu slides say "self is
+  never its own neighbour", which was true of the estimator and false
+  of every other machine.
+  MEASURED ON CaliData2010, John's own five-county Los Angeles blocks
+  and the data behind Osth, Clark and Malmberg (2015). The package
+  reproduces the published isolation at k=100 to within 0.001 -
+  African Americans 0.2752 against Figure 4's ~0.28, Asians 0.3325
+  against ~0.33 - so the shift below is the RULE and not the
+  arithmetic:
+      group              include   exclude    shift
+      African American    0.2765    0.2394   -13.4%
+      Asian               0.3335    0.3024    -9.3%
+      White               0.6323    0.6267    -0.9%
+  THE SHIFT IS NOT UNIFORM AND THAT IS THE POINT. Minority members
+  live disproportionately where their group is concentrated, so their
+  own block is a large part of their measured isolation; for a 63%
+  majority the neighbourhood is White either way.
+  IT ALSO BENDS THE SCALE PROFILE, which is the more serious finding.
+  Across k = 100, 200, 400, 800: African American isolation falls
+  0.0240 with the origin in and 0.0037 with it out - SIX TIMES LESS
+  DECLINE. Over that range the origin block shrinks from roughly all
+  of the neighbourhood to about a seventh, so most of the slope at
+  small k is THE ORIGIN BLOCK BEING DILUTED, not the surroundings
+  changing. Mean block population there is 113 and 35.6% of blocks
+  hold 100 or more, so at k=100 the "hundred nearest neighbours" IS
+  the origin block for over a third of the region. None of this
+  touches the 2015 paper's macroscale conclusions - by k=6,400 the
+  origin block is negligible - but it qualifies the microscale end.
+  A THIRD RULE WAS DESIGNED, TESTED AND DROPPED: remove one AVERAGE
+  resident, n-1 and t - t/n. It preserves the cell's balance exactly
+  (10 people of whom 1 treated give 0.1000, not 1/9 = 0.1111), it IS
+  the expectation of suppressing a random individual (0.0999 over
+  200,000 draws), and the same formula collapses correctly on
+  individual rows where n=1 and the row vanishes. Dropped because it
+  does nothing: on the LA blocks it moved isolation from 0.2765 to
+  0.2764. Removing one person from a unit of 113 is noise - the
+  contamination is your CELL-MATES, not you. Recorded so the next
+  session finds the measurement instead of repeating the work.
+  SHIPPED IN: equipop/selfrule.py, all three engines, both QGIS
+  algorithms, both Pro tools, Stata's originrule(), doors/help.py.
+  Named `originrule` in the doors rather than `selfrule` because
+  Stata already has SELFpot and SELFPOTName and a third self... option
+  risked an abbreviation clash that cannot be tested from here.
+  TWO OF ITS OWN TESTS COULD NOT FAIL and the house practice caught
+  both. The crossing-ring test was wrong twice: first the origin was
+  never IN the crossing ring (rings are equal-distance groups, the
+  origin sits at 0, and with its mass removed the crossing moves
+  outward - it can only be in that ring when another cell SHARES ITS
+  COORDINATES); then, with the fixture fixed, asserting on the SHARE
+  still could not catch an unmasked ring total, because the ring
+  fraction scales numerator and denominator alike and `proportional`
+  pins N_k to k by construction. Only T moves - 15 to 5 - while N_30
+  stays exactly 30 and R_g stays exactly 0.5. A share and a count
+  that both look right while the total is a third of what it should
+  be. Both reasons are in the test's docstring.
+
+- ~~291~~ | DONE v1.47.0 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
+  REVIEW OF 1.46.4. Eight claims were checked against this tree
+  before anything was changed; all eight held and ONE WAS WORSE THAN
+  REPORTED.
+  THE MD5 SIDECAR. `md5_url` appeared exactly TWICE in 1.46.4: the
+  line that wrote it, and a comment above the checksum block claiming
+  BACKLOG 278 had fixed it. Nothing ever read it. 278 covered HDX,
+  which supplies publisher_md5 inline, and left Geofabrik entirely
+  unverified while the comment read as though both were done - so
+  every Geofabrik file in every manifest since then carried a
+  provenance record STRONGER THAN ITS EVIDENCE. Now fetched, parsed
+  (`<32 hex>  name`, several lines, optional `*`), checked, and the
+  outcome recorded per file as publisher_check.
+  THE OTHERS, each with a test that fails when the old behaviour is
+  restored: HDX asked rows=100 with no `start` and stopped, so
+  Turkey's 175 datasets could not be reached past 100 - Sweden has 98
+  and fitted, which is why a Sweden-only fixture kept it invisible;
+  the manifest was written only after the LAST entry, so a failure at
+  file 2 left file 1 with no provenance and a retry then refused it;
+  untracked files were compared by BASENAME, so nested/a.tif hid
+  behind a tracked a.tif - the one thing a verify exists to notice;
+  an HTTP 200 carrying an HTML sign-in page was checksummed,
+  manifested and reported as done; WorldPop's suffix filter ran
+  endswith() against the WHOLE URL, discarding a valid
+  `...tif?download=1` with no message.
+  A SECOND DEFECT FROM THE SAME QUERY STRING, found while fixing the
+  first: os.path.basename() of the whole URL produced a file named
+  `swe_pop.tif?download=1` - refused outright by Windows, and on
+  Linux a file no importer recognises by extension.
+  THE FORMAT CHECK WAS NARROWED AFTER BEING WRITTEN. The first
+  version carried a magic-bytes table per extension and refused
+  anything that did not match. It broke twenty existing tests and,
+  worse, would have refused .csv, .json, .pbf, .shp and whatever the
+  next provider serves. Inventing a rule from an incomplete list is
+  how the four-years-stale WorldPop docs and GHSL's prose-only CRS
+  constraint both hurt this project. It now catches only the failure
+  actually observed - a web page where a file should be - and leaves
+  truncation and corruption to the declared length and the publisher
+  checksum, which are the right instruments for those.
+  ALSO: qgis/base.py discarded addFeature()'s return value and then
+  reported the INTENDED row count, so a run that wrote fewer rows
+  than it was given announced complete success. The simulator always
+  returned True, so the one thing that could have caught it agreed
+  with the code; tests/qgis_stub.py can now refuse a row. This is ONE
+  MECHANISM that could produce the unexplained output complaints in
+  224 and 232. It is not a diagnosis of them - those still need
+  John's logs - but it can no longer be the answer.
+
+- ~~292~~ | DONE v1.47.0 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
+  run_fetch.py, run_raster_folder.py and run_osm_friction.py were all
+  absent from equipop-1.46.4.tar.gz. MANIFEST.in had gained
+  `include demo_*.py` for BACKLOG 107 and nothing for the runners, so
+  the miss its own comments describe three times happened a FOURTH.
+  IT MATTERED MOST FOR run_osm_friction.py. BACKLOG 283 records that
+  it is THE ONLY WAY to reach the OSM lattice engine, because no door
+  wraps it - so the source archive carried the headline feature of
+  1.46.0 and 1.46.1 with no way to run it.
+  Fixed by one line, and guarded by a test that reads the run_*.py
+  files OFF DISK, so a runner added later is covered without anyone
+  remembering to come back.
+
+- 293 | OPEN, FOUND v1.47.0 | RunLog IS DEAD CODE, AND IT IS BACKLOG
+  ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
+  design as agreed)" - is complete, documented, exported in __all__,
+  and CALLED BY NOTHING AND TESTED BY NOTHING. No door, no engine, no
+  runner constructs a RunLog.
+  FOUND while looking for somewhere to record the self rule of 290.
+  There was nowhere: analysis runs have no provenance record at all,
+  which is also why `overshoot` has never been recorded despite
+  moving every k-based number since 1.30.
+  NOT FIXED IN 1.47 DELIBERATELY. Building a provenance system inside
+  the self-rule item is the scope creep that produced engines without
+  doors in the first place. It needs its own release and its own
+  decision about which door writes the sidecar.
+  THIRD UNREACHABLE CAPABILITY FOUND THIS SESSION, after
+  doors/inventory.py (269, shipped 1.45.0) and vectorjoin.py
+  (280/282). This one is the oldest by a wide margin. The pattern is
+  now the project's characteristic failure: a thing is built, tested,
+  and never connected to a way of reaching it.
 
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,
@@ -4189,12 +4416,28 @@ appeared twice; the weaker copy is gone.*
   slope, fca and lisa are not in it. Now that a second door exists
   and the mechanism is proved, this is worth doing.
 
-- 45 | open v1.18.0 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
+- ~~45~~ | DONE v1.47.0 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
   the Windows-style catalog paths they pretend to use, so a test run
   on Linux leaves four literal files named `C:\Data\...csv` in the
   repo root (and one stray figure from the Book build). Harmless,
   untracked, and cleaned by hand this round - but they belong in
   pytest's tmp_path, and on Windows those paths are real. Small.
+  CLOSED v1.47.0, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
+  running the suite on a clean tree: the four `C:\Data\...csv` files
+  did NOT recur and appear to have been fixed earlier without anyone
+  narrowing this entry. What DID recur was two files the item never
+  named - arcgis/EquiPop.CountsShares.pyt.xml and
+  EquiPop.ValueStatistics.pyt.xml, written on every run by
+  make_help_xml.py. Build outputs, neither committed nor shipped,
+  that the repo only ever held by accident.
+  make_help_xml.py now takes --out and the test passes tmp_path.
+  GUARDED BY RUNNING THE GENERATOR and looking at arcgis/ afterwards,
+  not by reading the call - a test that writes into the tree it is
+  testing can mask the change it exists to catch.
+  THE LESSON IS THE STALE HALF, not the fix. This entry described a
+  symptom that had already gone and missed one that was still there,
+  so anyone working from it would have fixed nothing. An item is only
+  as good as its last measurement.
 
 ### 1.18.0, second pass: the source archive
 
@@ -4212,10 +4455,19 @@ appeared twice; the weaker copy is gone.*
   validation record was deliberately NOT reconstructed: writing one
   would mean claiming validation nobody performed.
 
-- 43 | open v1.18.0 | CITATION.cff still says `version: 1.0.0` while
-  the package is at 1.18.0. Left alone deliberately - citation
-  metadata is the author's to set, and it matters more than usual
-  ahead of the Zenodo DOI at 2.0.0.
+- ~~43~~ | DONE v1.40.2, see the entry above | CITATION.cff still says
+  `version: 1.0.0` while the package is at 1.18.0. Left alone
+  deliberately - citation metadata is the author's to set, and it
+  matters more than usual ahead of the Zenodo DOI at 2.0.0.
+  THIS COPY WAS STALE AND IT COST A ROUND TRIP IN SESSION 12. Item 43
+  closed in 1.40.2: only the `version:` field moves, it is PINNED BY A
+  TEST against the package, and it is therefore a mechanical bump
+  rather than an author's decision. Reading this copy, Claude put it
+  to John as "author's call", John reasonably answered "no update for
+  now", and the release then failed its own citation test.
+  The author's part - the preferred-citation, the 2014 report, the
+  affiliation - is untouched by a version bump and remains John's
+  alone. Struck here so the file holds one answer.
 
 - 77 | open v1.29.0 | The vocabulary sweep. 1.29 made the shared
   `pop` entry neutral (John: a point may stand for services, jobs,

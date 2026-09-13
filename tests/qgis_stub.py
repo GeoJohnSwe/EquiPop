@@ -388,7 +388,16 @@ class _Sink:
         self.crs = crs
         self.features = []
 
+    #: Rows the sink will REFUSE, by index, so a test can reproduce a
+    #: shapefile field limit or a full disk. Real QgsFeatureSink
+    #: returns False there; the simulator always said True, which is
+    #: why the discarded return value in base.py went unnoticed
+    #: (BACKLOG 291).
+    refuse_rows = ()
+
     def addFeature(self, feature, flags=None):
+        if len(self.features) in (self.refuse_rows or ()):
+            return False
         self.features.append(feature)
         return True
 

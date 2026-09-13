@@ -1,4 +1,4 @@
-*! equipop v1.46.4  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.47.0  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -75,7 +75,8 @@ program define equipop, rclass
             TREATmode(string) MISSing(numlist) ///
             DECAY(string) HALFlife(real 0) HALFlifevar(varname numeric) ///
             SELFPOTName(string) ///
-            BINS(integer 10) OVERshoot(string) REPLACE]
+            BINS(integer 10) OVERshoot(string) ///
+            ORIGINrule(string) REPLACE]
 
     * ---- projection -------------------------------------------
     * Design rule: a professional spatial analyst has their
@@ -189,6 +190,32 @@ program define equipop, rclass
     }
     if !inlist("`overshoot'", "", "whole", "proportional") {
         display as error "overshoot() must be whole or proportional"
+        exit 198
+    }
+
+    * ---- is the origin its own neighbour? (BACKLOG 290) ----------
+    * John's ruling, 1.47: two rules, and `include` stays the default
+    * because it is the rule EVERY PUBLISHED EquiPop number used -
+    * his own 2015 Geographical Analysis paper included. Flipping it
+    * silently would change results with no message saying why.
+    *
+    * Accepted here in the two spellings a Stata user reaches for.
+    * "i=j" cannot be typed as an option value without quoting, so
+    * the words are what the help documents.
+    if "`originrule'" == "i=j" | "`originrule'" == "i==j" {
+        local originrule "include"
+    }
+    if "`originrule'" == "i!=j" | "`originrule'" == "i ne j" {
+        local originrule "exclude"
+    }
+    if !inlist("`originrule'", "", "include", "exclude") {
+        display as error "originrule() must be include or exclude"
+        display as text "  include (the default) counts the origin's " ///
+            "own cell as part of its neighbourhood, as every " ///
+            "published EquiPop result does."
+        display as text "  exclude leaves it out - the w(ii)=0 " ///
+            "convention that spatial regression needs. Results " ///
+            "under the two are NOT comparable."
         exit 198
     }
 
@@ -338,7 +365,7 @@ program define equipop, rclass
         project="`project'", epsg=`epsg', treatmode="`treatmode'",  ///
         missing="`missing'", decay="`decay'", halflife=`halflife',   ///
         halflifevar="`halflifevar'", bins=`bins',                    ///
-        overshoot="`overshoot'")
+        overshoot="`overshoot'", originrule="`originrule'")
 
     * ---- returned results -------------------------------------
     * r(varlist) is the one that changes how the
@@ -395,7 +422,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.46.4"
+    local eqp_ado_version "1.47.0"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -449,7 +476,8 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                       weight="", selfpot=1.0, touse="", prefix="",
                       project="", epsg=0, treatmode="counts",
                       missing="", decay="", halflife=0.0,
-                      halflifevar="", bins=10, overshoot=""):
+                      halflifevar="", bins=10, overshoot="",
+                      originrule=""):
     # KEYWORD-ONLY on purpose: a positional call raises TypeError
     # rather than quietly meaning something else.
     try:
@@ -516,7 +544,8 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                           decay_half_life=(_col(halflifevar)
                                            if halflifevar else None),
                           decay_bins=int(bins),
-                          overshoot_mode=(overshoot or None))
+                          overshoot_mode=(overshoot or None),
+                          self_rule=(originrule or None))
     except ValueError as exc:
         for line in _wrap_for_stata(str(exc)):
             SFIToolkit.errprintln(line)

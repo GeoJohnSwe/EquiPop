@@ -61,6 +61,118 @@ def _get_json(url, timeout=60):                     # pragma: no cover
         return json.loads(r.read().decode("utf-8"))
 
 
+def _get_text(url, timeout=60):                     # pragma: no cover
+    """Fetch a small text sidecar - Geofabrik's .md5, and nothing
+    larger. Capped so a mis-typed URL cannot stream a raster into
+    memory (BACKLOG 291)."""
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return r.read(64 * 1024).decode("utf-8", "replace")
+
+
+#: What a sign-in page, a rate-limit notice or an outage banner looks
+#: like when it arrives with status 200 and is saved as a raster.
+_HTML_STARTS = (b"<!doctype", b"<html", b"<?xml", b"<head", b"<body")
+
+
+def format_complaint(path, name=None):
+    """Why these bytes are not a file at all, or None.
+
+    BACKLOG 291. An HTTP 200 carrying an HTML sign-in page was
+    written to disk, checksummed, recorded in the manifest and
+    reported as a completed download. The status code says the
+    REQUEST succeeded; it says nothing about what came back.
+
+    DELIBERATELY NARROW, and the first version was not. That one
+    carried a table of magic bytes per extension and refused anything
+    that did not match - which failed twenty existing tests and, more
+    to the point, would refuse every format the table had not heard
+    of. .csv, .json, .pbf, .shp and whatever the next provider serves
+    are all absent from any list written today. Inventing a rule from
+    an incomplete list is how the four-years-stale WorldPop docs and
+    GHSL's prose-only CRS constraint both hurt this project.
+
+    So this catches the failure that was actually observed - a WEB
+    PAGE WHERE A FILE SHOULD BE - and nothing else. A truncated or
+    corrupt file of the right kind is caught by the declared length
+    and the publisher checksum, which are the right instruments for
+    it. Checked on the SIGNATURE rather than Content-Type, because
+    providers serve rasters as application/octet-stream constantly
+    and an HTML page is unmistakable whatever header rode with it.
+    """
+    try:
+        with open(path, "rb") as f:
+            head = f.read(512)
+    except OSError:                                 # pragma: no cover
+        return None
+    if not head:
+        return "the file is empty"
+    low = head.lstrip()[:64].lower()
+    if any(low.startswith(h) for h in _HTML_STARTS):
+        return ("a web page arrived instead of the file - usually a "
+                "sign-in page, a rate limit or an outage notice "
+                "served with a success code")
+    return None
+
+
+def url_filename(url):
+    """The filename a URL's PATH implies, with no query or fragment.
+
+    BACKLOG 291, found while fixing _url_suffix and worth its own
+    note. `os.path.basename` of the whole URL turns
+    `swe_pop.tif?download=1` into a FILE CALLED `swe_pop.tif?download=1`
+    - which Windows refuses outright, and which on Linux produces a
+    file no importer will recognise by extension. The same query
+    string caused two separate defects: the file was discarded by the
+    suffix filter, and if it survived it was written under a name
+    nothing could open.
+    """
+    from urllib.parse import urlsplit, unquote
+    path = urlsplit(str(url)).path
+    name = os.path.basename(unquote(path))
+    # a URL ending in / has no filename to offer
+    return name or "download"
+
+
+def _url_suffix(url):
+    """The file extension of a URL's PATH, lower-cased.
+
+    Query strings and fragments belong to the request, not to the
+    file: `pop.tif?download=1` is a TIFF and `pop.tif#part2` is the
+    same TIFF. Taking the end of the whole string says otherwise.
+    """
+    from urllib.parse import urlsplit
+    path = urlsplit(str(url)).path
+    return os.path.splitext(path)[1].lower()
+
+
+def parse_md5_sidecar(text, name=None):
+    """The digest out of a `md5sum` sidecar.
+
+    The format is `<32 hex>  <filename>`, sometimes several lines,
+    sometimes with a `*` before the name for binary mode. Returns None
+    when nothing usable is there - a sidecar that cannot be read is
+    NOT a verified file and must not be reported as one.
+    """
+    if not text:
+        return None
+    want = os.path.basename(name) if name else None
+    first = None
+    for line in str(text).splitlines():
+        parts = line.strip().split()
+        if not parts:
+            continue
+        h = parts[0].strip().lower()
+        if len(h) != 32 or any(c not in "0123456789abcdef" for c in h):
+            continue
+        if first is None:
+            first = h
+        if want and len(parts) > 1:
+            if os.path.basename(parts[-1].lstrip("*")) == want:
+                return h
+    return first
+
+
 def _get_file(url, dest, timeout=900):              # pragma: no cover
     """Stream to disk. Returns (bytes, sha256, md5).
 
@@ -278,12 +390,17 @@ class WorldPop:
         """
         out = []
         for url in rec.get("files") or []:
-            if not str(url).lower().endswith((".tif", ".tiff", ".zip",
-                                              ".csv", ".gz")):
+            # BACKLOG 291. THE PATH, NOT THE WHOLE URL. This tested
+            # endswith() against the entire string, so a perfectly
+            # good `....tif?download=1` was silently discarded and the
+            # country appeared to publish nothing - a missing file
+            # with no message, which is the hardest kind to notice.
+            if not _url_suffix(url) in (".tif", ".tiff", ".zip",
+                                        ".csv", ".gz"):
                 continue
             out.append({
                 "url": url,
-                "name": os.path.basename(url),
+                "name": url_filename(url),
                 "id": rec.get("id"),
                 "iso3": rec.get("iso3"),
                 "country": rec.get("country"),
@@ -465,8 +582,8 @@ def plan_fetch(provider="worldpop", *, get_json=None, say=print,
     return plan
 
 
-def run_fetch(plan, folder, *, get_file=None, say=print,
-              skip_existing=True):
+def run_fetch(plan, folder, *, get_file=None, get_text=None,
+              say=print, skip_existing=True):
     """Download the planned files and write the manifest.
 
     REFUSES TO OVERWRITE (John's ruling). A file already present whose
@@ -475,6 +592,7 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
     is how a reproducible result stops being reproducible.
     """
     get_file = get_file or _get_file          # late-bound, see above
+    get_text = get_text or _get_text
     if not plan.get("entries"):
         raise FetchError("An empty plan. Call plan_fetch first.")
     os.makedirs(folder, exist_ok=True)
@@ -483,95 +601,153 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
     known = {f["name"]: f for f in prior.get("files", [])}
 
     files, fetched, kept = [], 0, 0
-    for e in plan["entries"]:
-        dest = os.path.join(folder, e["name"])
-        if os.path.exists(dest):
-            have = sha256_of(dest)
-            record = known.get(e["name"], {})
-            was = record.get("sha256")
+    # BACKLOG 291. A FAILURE MUST NOT ERASE WHAT SUCCEEDED. The
+    # manifest was written only after the LAST entry, so an
+    # interruption at file 2 of 3 left file 1 on disk with no record
+    # of where it came from - and a retry then met it as an unknown
+    # file with a clashing name and refused to continue. The loop is
+    # wrapped so whatever completed is recorded, the job is marked
+    # incomplete, and the original error is raised afterwards.
+    failure = None
+    try:
+        for e in plan["entries"]:
+            dest = os.path.join(folder, e["name"])
+            if os.path.exists(dest):
+                have = sha256_of(dest)
+                record = known.get(e["name"], {})
+                was = record.get("sha256")
 
-            # IS IT THE SAME FILE, OR JUST THE SAME NAME? Reuse
-            # matched on BASENAME alone, so fetching
-            # productB/population.tif after productA/population.tif
-            # kept A's bytes and wrote B's URL into the manifest.
-            # Only A was ever downloaded (BACKLOG 274).
-            if record and record.get("url") and record["url"] != e["url"]:
+                # IS IT THE SAME FILE, OR JUST THE SAME NAME? Reuse
+                # matched on BASENAME alone, so fetching
+                # productB/population.tif after productA/population.tif
+                # kept A's bytes and wrote B's URL into the manifest.
+                # Only A was ever downloaded (BACKLOG 274).
+                if record and record.get("url") and record["url"] != e["url"]:
+                    raise FetchError(
+                        f"{e['name']} is already here, but it came from a "
+                        f"DIFFERENT source:\n  on disk: {record['url']}\n"
+                        f"  wanted : {e['url']}\n"
+                        "Same filename, different file. Fetch into a "
+                        "separate folder, or move the existing one aside "
+                        "- reusing it would attribute bytes that were "
+                        "never downloaded to the source you asked for.")
+                if record is not None and not record and os.path.exists(dest):
+                    # A FILE NOBODY FETCHED. Attributing it to the
+                    # requested URL would invent a provenance.
+                    raise FetchError(
+                        f"{e['name']} is already in {folder} but is not in "
+                        f"{MANIFEST}, so nothing records where it came "
+                        "from. Recording it as this download would claim "
+                        "an origin that was never observed. Move it aside "
+                        "or fetch into an empty folder.")
+                if was and was != have:
+                    raise FetchError(
+                        f"{e['name']} is already here but has CHANGED since "
+                        "it was fetched - the manifest records "
+                        f"{was[:16]}... and the file on disk is "
+                        f"{have[:16]}.... Refusing to touch it. Move it "
+                        "aside if you want a fresh copy; whatever you have "
+                        "computed from it was computed from THIS file.")
+                if skip_existing:
+                    kept += 1
+                    files.append({**{k: v for k, v in e.items() if k != "url"},
+                                  "url": e["url"],
+                                  "bytes": os.path.getsize(dest),
+                                  "sha256": have, "reused": True})
+                    continue
                 raise FetchError(
-                    f"{e['name']} is already here, but it came from a "
-                    f"DIFFERENT source:\n  on disk: {record['url']}\n"
-                    f"  wanted : {e['url']}\n"
-                    "Same filename, different file. Fetch into a "
-                    "separate folder, or move the existing one aside "
-                    "- reusing it would attribute bytes that were "
-                    "never downloaded to the source you asked for.")
-            if record is not None and not record and os.path.exists(dest):
-                # A FILE NOBODY FETCHED. Attributing it to the
-                # requested URL would invent a provenance.
-                raise FetchError(
-                    f"{e['name']} is already in {folder} but is not in "
-                    f"{MANIFEST}, so nothing records where it came "
-                    "from. Recording it as this download would claim "
-                    "an origin that was never observed. Move it aside "
-                    "or fetch into an empty folder.")
-            if was and was != have:
-                raise FetchError(
-                    f"{e['name']} is already here but has CHANGED since "
-                    "it was fetched - the manifest records "
-                    f"{was[:16]}... and the file on disk is "
-                    f"{have[:16]}.... Refusing to touch it. Move it "
-                    "aside if you want a fresh copy; whatever you have "
-                    "computed from it was computed from THIS file.")
-            if skip_existing:
-                kept += 1
-                files.append({**{k: v for k, v in e.items() if k != "url"},
-                              "url": e["url"],
-                              "bytes": os.path.getsize(dest),
-                              "sha256": have, "reused": True})
-                continue
-            raise FetchError(
-                f"{e['name']} already exists in {folder}. Refusing to "
-                "overwrite - move it aside, or fetch into a new folder.")
-        got = get_file(e["url"], dest)
-        # Transports may return (bytes, sha256) or (bytes, sha256,
-        # md5). The publisher's checksum is MD5 for both HDX and
-        # Geofabrik, so it is computed while streaming rather than by
-        # re-reading the file.
-        n, h = got[0], got[1]
-        local_md5 = got[2] if len(got) > 2 else None
+                    f"{e['name']} already exists in {folder}. Refusing to "
+                    "overwrite - move it aside, or fetch into a new folder.")
+            got = get_file(e["url"], dest)
+            # Transports may return (bytes, sha256) or (bytes, sha256,
+            # md5). The publisher's checksum is MD5 for both HDX and
+            # Geofabrik, so it is computed while streaming rather than by
+            # re-reading the file.
+            n, h = got[0], got[1]
+            local_md5 = got[2] if len(got) > 2 else None
 
-        # VERIFY WHAT THE PUBLISHER SAID, not merely what arrived.
-        # publisher_md5 and md5_url were RECORDED and never CHECKED,
-        # so the manifest promised more than it had established
-        # (BACKLOG 278). A local SHA-256 says what bytes are here; it
-        # says nothing about whether they are the right ones.
-        want = e.get("publisher_md5")
-        if want and local_md5 and want.lower() != local_md5.lower():
-            os.remove(dest)
-            raise FetchError(
-                f"{e['name']} DOES NOT MATCH what the publisher says "
-                f"it is.\n  published MD5: {want}\n  downloaded   : "
-                f"{local_md5}\nThe file has been removed. This is "
-                "either a corrupted transfer or a changed source - "
-                "try again, and if it repeats, the publisher's record "
-                "and their file disagree.")
-        # MEASURE THE FILE, do not trust the count the transport
-        # reported. A transport that miscounts - or lies - would
-        # otherwise be compared against its own number and always
-        # agree with itself.
-        n = os.path.getsize(dest)
-        size_want = e.get("bytes_expected")
-        if size_want and int(size_want) != n:
-            os.remove(dest)
-            raise FetchError(
-                f"{e['name']} is the WRONG SIZE: the catalogue says "
-                f"{int(size_want):,} bytes and {n:,} arrived. The "
-                "file has been removed.")
-        fetched += 1
-        files.append({**{k: v for k, v in e.items() if k != "url"},
-                      "url": e["url"], "bytes": n, "sha256": h,
-                      "reused": False})
-        say(f"[fetch] {e['name']}  {n / 1e6:.1f} MB")
+            # VERIFY WHAT THE PUBLISHER SAID, not merely what arrived.
+            # publisher_md5 and md5_url were RECORDED and never CHECKED,
+            # so the manifest promised more than it had established
+            # (BACKLOG 278). A local SHA-256 says what bytes are here; it
+            # says nothing about whether they are the right ones.
+            want = e.get("publisher_md5")
+            checked = "publisher checksum absent"
+            if not want and e.get("md5_url"):
+                # BACKLOG 291. THE SIDECAR IS NOW ACTUALLY FETCHED.
+                # `md5_url` appeared exactly twice in 1.46.4: at the line
+                # that wrote it, and in a comment above this one claiming
+                # BACKLOG 278 had fixed it. Nothing read it. 278 covered
+                # HDX, which supplies `publisher_md5` inline, and left
+                # Geofabrik unverified while the comment said otherwise -
+                # so every Geofabrik file in every manifest since then
+                # carried a provenance record stronger than its evidence.
+                try:
+                    sidecar = get_text(e["md5_url"])
+                except Exception as exc:                # pragma: no cover
+                    sidecar = None
+                    say(f"[fetch] could not read {e['name']}.md5 "
+                        f"({exc.__class__.__name__}) - the file is "
+                        "recorded as NOT CHECKED against the publisher, "
+                        "not as verified")
+                if sidecar:
+                    want = parse_md5_sidecar(sidecar, e["name"])
+                    if not want:
+                        say(f"[fetch] {e['name']}.md5 held nothing "
+                            "readable - recorded as NOT CHECKED")
+                        checked = "publisher checksum unreadable"
+            if want and local_md5 and want.lower() != local_md5.lower():
+                os.remove(dest)
+                raise FetchError(
+                    f"{e['name']} DOES NOT MATCH what the publisher says "
+                    f"it is.\n  published MD5: {want}\n  downloaded   : "
+                    f"{local_md5}\nThe file has been removed. This is "
+                    "either a corrupted transfer or a changed source - "
+                    "try again, and if it repeats, the publisher's record "
+                    "and their file disagree.")
+            # MEASURE THE FILE, do not trust the count the transport
+            # reported. A transport that miscounts - or lies - would
+            # otherwise be compared against its own number and always
+            # agree with itself.
+            n = os.path.getsize(dest)
+            size_want = e.get("bytes_expected")
+            if size_want and int(size_want) != n:
+                os.remove(dest)
+                raise FetchError(
+                    f"{e['name']} is the WRONG SIZE: the catalogue says "
+                    f"{int(size_want):,} bytes and {n:,} arrived. The "
+                    "file has been removed.")
+            # BACKLOG 291: is this the KIND of file that was asked
+            # for? Checked before the entry is recorded, so a service
+            # page can never reach the manifest as a completed asset.
+            bad = format_complaint(dest, e["name"])
+            if bad:
+                os.remove(dest)
+                raise FetchError(
+                    f"{e['name']} is not what it should be: {bad}.\n"
+                    f"  from {e['url']}\n"
+                    "The file has been removed. A download that "
+                    "returns HTTP 200 has not necessarily returned "
+                    "your file.")
+            fetched += 1
+            # BACKLOG 291. WHETHER THE CHECK HAPPENED, not merely what it
+            # would have said. A manifest that records a local SHA-256 and
+            # nothing else says "these are the bytes that arrived"; it
+            # does NOT say they are the right bytes, and the two were
+            # indistinguishable in the file until now.
+            if want and local_md5:
+                checked = "verified against publisher md5"
+            elif want:
+                checked = "publisher md5 known, transport gave no md5"
+            files.append({**{k: v for k, v in e.items() if k != "url"},
+                          "url": e["url"], "bytes": n, "sha256": h,
+                          "publisher_md5": want or None,
+                          "publisher_check": checked,
+                          "reused": False})
+            say(f"[fetch] {e['name']}  {n / 1e6:.1f} MB")
 
+    except FetchError as exc:
+        failure = exc
     from .. import __version__
     man = {
         "fetched_by": f"EquiPop {__version__}",
@@ -602,6 +778,12 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
     man["fetches"] = list(prior.get("fetches", []))
     man["fetches"].append({
         "utc": man["fetched_utc"], "provider": plan["provider"],
+        # BACKLOG 291: a job that stopped part-way says so, and names
+        # how far it got. "complete" is a claim, so it is only made
+        # when every planned entry was accounted for.
+        "status": "incomplete" if failure is not None else "complete",
+        "planned": len(plan["entries"]),
+        "error": (str(failure) if failure is not None else None),
         "files": [f["name"] for f in files],
         **{k: v for k, v in plan.items()
            if k not in ("entries", "provider", "planned_utc")}})
@@ -612,6 +794,13 @@ def run_fetch(plan, folder, *, get_file=None, say=print,
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=2, ensure_ascii=False)
     os.replace(tmp, os.path.join(folder, MANIFEST))
+
+    if failure is not None:
+        say(f"[fetch] STOPPED after {fetched} downloaded and {kept} "
+            f"already present, of {len(plan['entries'])} planned. "
+            f"What arrived IS recorded in {MANIFEST}, so a retry "
+            "will recognise it instead of refusing it.")
+        raise failure
 
     say(f"[fetch] {fetched} downloaded, {kept} already present, "
         f"{len(files)} recorded in {MANIFEST}.")
@@ -652,15 +841,31 @@ def verify_folder(folder, say=print):
     # recursively, so a file nobody fetched will be analysed with
     # everything else while contributing nothing to the provenance
     # (BACKLOG 275).
-    tracked = {f["name"] for f in man["files"]}
+    # BACKLOG 291. FULL RELATIVE PATHS, not basenames. A nested
+    # `sub/a.tif` used to disappear behind a tracked top-level
+    # `a.tif`, so the one file a verify exists to notice - something
+    # in the folder that nobody fetched - was the one it could miss.
+    # Both spellings are accepted because manifests written before
+    # 1.47 hold bare names.
+    tracked = set()
+    for f in man["files"]:
+        nm = str(f.get("name") or "")
+        tracked.add(nm.replace("\\", "/"))
+    tracked_base = {os.path.basename(t) for t in tracked}
     extra = []
     for root, _d, names in os.walk(folder):
         for n in names:
             if n in (MANIFEST, MANIFEST + ".part") or n.endswith(".part"):
                 continue
             rel = os.path.relpath(os.path.join(root, n), folder)
-            if os.path.basename(rel) not in tracked:
-                extra.append(rel)
+            key = rel.replace("\\", "/")
+            if key in tracked:
+                continue
+            # a legacy manifest names files without their folder; only
+            # then may a bare name stand in, and only at the top level
+            if os.sep not in rel and key in tracked_base:
+                continue
+            extra.append(rel)
 
     say(f"[verify] {ok} unchanged, {len(changed)} CHANGED, "
         f"{len(gone)} missing, {len(extra)} untracked, against "
@@ -724,14 +929,65 @@ class HDX:
          "required": False},
     ]
 
-    def search(self, country, rows=100, get_json=None):
+    #: How many datasets one CKAN request returns. 1000 is the
+    #: documented ceiling; 100 was the old hard-coded value and the
+    #: reason results 101 onward could not be selected at all.
+    PAGE = 100
+
+    #: A stop, not a limit anyone should hit. Without it a provider
+    #: that miscounts, or a query that matches everything, would page
+    #: forever. Reaching it is reported rather than passed over.
+    MAX_PAGES = 50
+
+    def search(self, country, rows=None, get_json=None, say=None):
+        """Every dataset in the group, not the first page of them.
+
+        BACKLOG 291. This asked for `rows=100` and stopped. CKAN
+        returns a `count` alongside the page, so the shortfall was
+        always visible and never looked at - Sweden has 98 datasets
+        and fitted, which is why a Sweden-only fixture kept the
+        limitation invisible. Turkey has 175. The Kayseri work needs
+        those.
+        """
         get_json = get_json or _get_json
-        url = (f"{self.root}/package_search?fq=groups:{country}"
-               f"&rows={int(rows)}")
-        got = get_json(url)
-        if not got.get("success"):
-            raise FetchError(f"HDX refused the search for {country!r}.")
-        return got["result"]["results"]
+        page = int(rows or self.PAGE)
+        out, start, total, pages = [], 0, None, 0
+        while True:
+            url = (f"{self.root}/package_search?fq=groups:{country}"
+                   f"&rows={page}&start={start}")
+            got = get_json(url)
+            if not got.get("success"):
+                raise FetchError(
+                    f"HDX refused the search for {country!r}.")
+            res = got["result"]
+            batch = res.get("results") or []
+            if total is None:
+                total = res.get("count")
+            out.extend(batch)
+            pages += 1
+            start += len(batch)
+            if not batch or total is None or start >= int(total):
+                break
+            if pages >= self.MAX_PAGES:
+                if say:
+                    say(f"[hdx] stopped after {self.MAX_PAGES} pages "
+                        f"with {len(out)} of {total} datasets - that "
+                        "is a stop, not the end of the catalogue")
+                break
+        # CKAN can repeat a dataset across pages when the catalogue
+        # changes mid-query. Deduplicate on the STABLE id, keeping
+        # first sight, so a name cannot resolve to two records.
+        seen, uniq = set(), []
+        for p in out:
+            key = p.get("id") or p.get("name")
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append(p)
+        if say and total is not None and len(uniq) < int(total):
+            say(f"[hdx] {len(uniq)} datasets retrieved of {total} "
+                "the catalogue reports")
+        return uniq
 
     def _obligations(self, pkg):
         lic = str(pkg.get("license_id") or "").lower()
@@ -744,7 +1000,7 @@ class HDX:
         wanted = str(choices.get("dataset") or "").strip()
         only = str(choices.get("format") or "").strip().upper()
 
-        found = self.search(country, get_json=get_json)
+        found = self.search(country, get_json=get_json, say=say)
         if not found:
             raise FetchError(
                 f"HDX has no datasets in group {country!r}. The group "

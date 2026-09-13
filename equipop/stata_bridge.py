@@ -35,7 +35,8 @@ from .fastcounts import run_knn_counts
 def _binned_decay_counts(cd, cells, k_values, r_values, decay,
                          half_life, n_bins, decay_eps, m_neighbors,
                          n_rows, valid, self_potential=1.0,
-                         overshoot_mode=None, seed=None):
+                         overshoot_mode=None, seed=None,
+                         self_rule=None):
     """VARIABLE-BANDWIDTH decay (v1.17): each row carries its own
     half-life - an estimated median travel distance, a group
     potential, or the row's own Dist_k (urban form setting the
@@ -94,6 +95,7 @@ def _binned_decay_counts(cd, cells, k_values, r_values, decay,
                               overshoot_mode=overshoot_mode, seed=seed,
                               origins=np.asarray(origins, int),
                               self_potential=self_potential,
+                              self_rule=self_rule,
                               report=False)
         part = part.set_index(["EastWest", "NorthSouth"])
         frames.append((sel, part))
@@ -342,6 +344,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 decay_half_life=None, decay_bins: int = 10,
                 self_potential: float = 1.0,
                 overshoot_mode: str | None = None,
+                self_rule: str | None = None,
                 seed: int | None = None,
                 report_label: str = "") -> dict:
     """
@@ -448,7 +451,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
         bin_frames, bin_of_row, base = _binned_decay_counts(
             cd, cells, k_values, r_values, decay, decay_half_life,
             decay_bins, decay_eps, m_neighbors, n_rows, valid,
-            self_potential=self_potential,
+            self_potential=self_potential, self_rule=self_rule,
             overshoot_mode=overshoot_mode, seed=seed)
         res = base.reset_index()
     else:
@@ -456,6 +459,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                              m_neighbors=m_neighbors,
                              r_values=r_values, decay=decay,
                              self_potential=self_potential,
+                             self_rule=self_rule,
                              overshoot_mode=overshoot_mode, seed=seed,
                              report_label=report_label)
 
@@ -587,6 +591,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              decay_bins: int = 10,
              self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
              overshoot_mode: str | None = None,
+             self_rule: str | None = None,
              seed: int | None = None,
              missing_codes=None,
              **extra) -> dict:
@@ -662,6 +667,16 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             first = knn_to_rows(x, y, [k0], weight=weight,
                                 unit_size=unit_size,
                                 self_potential=self_potential,
+                                # BACKLOG 290: the calibration pass
+                                # must use THE SAME neighbourhood as
+                                # the run it calibrates. A Dist_k
+                                # measured with the origin included,
+                                # feeding a kernel applied with it
+                                # excluded, is the two-definitions
+                                # problem this rule exists to end -
+                                # reintroduced inside a single run,
+                                # where nobody would look for it.
+                                self_rule=self_rule,
                                 # BACKLOG 142: EquiPop's own pass,
                                 # not the user's run
                                 report_label=" calibration pass,",
@@ -704,6 +719,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                            decay=dec, decay_eps=decay_eps,
                            decay_half_life=hl, decay_bins=decay_bins,
                            self_potential=self_potential,
+                           self_rule=self_rule,
                            treat_are_counts=extra.get(
                                "treat_are_counts", False))
 
@@ -761,6 +777,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         cd = _add_empty_origin_cells(cd, E, N, list(values))
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            self_potential=self_potential,
+                           self_rule=self_rule,
                            overshoot_mode=overshoot_mode, seed=seed,
                            stats=stats or {v: ["mean", "median", "gini"]
                                            for v in values})

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.46.4}{...}
+{* *! version 1.47.0}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.46.4)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.47.0)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -46,6 +46,7 @@ Install or update the calculating engine, into the Python this Stata is using. A
 {synopt:{opt r(numlist)}}Fixed radii in metres, space-separated.{p_end}
 {synopt:{opt unit(#)}}The grid cell size in metres.{p_end}
 {synopt:{opt selfpot(#)}}Self-potential: how far away what is LOCAL - what your...{p_end}
+{synopt:{opt originrule(string)}}WHETHER THE ORIGIN COUNTS AS ITS OWN NEIGHBOUR.{p_end}
 {syntab:Population}
 {synopt:{opt treat(varlist)}}Group counts: persons of the group at this point (use...{p_end}
 {synopt:{opt pop(varname)}}How many each point stands for - people, jobs,...{p_end}
@@ -137,6 +138,10 @@ for Stata.
 
 {phang}
 {opt selfpot(#)} Self-potential: how far away what is LOCAL - what your own cell already holds, the quantity reported as N_local - is treated as being. Rows are snapped to a grid, so everything in the origin's own cell sits at exactly the origin - distance zero - unless you say otherwise. That matters wherever one cell already contains k of whatever you are counting, which happens in a dense block or at a large cell size: the radius comes out as zero and k stops making any difference, so the nearest 100 and the nearest 1000 give the same answer. Leave this at 1 and the distance is estimated by spreading the cell's contents evenly across it, which recovers the radius you would have measured from individual points to within a fraction of a percent. Set it to 0.71 for the median distance instead of the radius, or to 0 to reproduce results from before this setting existed.
+{p_end}
+
+{phang}
+{opt originrule(string)} WHETHER THE ORIGIN COUNTS AS ITS OWN NEIGHBOUR. EquiPop grows a neighbourhood outward from each place until it holds k people, and it has always started counting AT THAT PLACE - your own cell's residents are your nearest neighbours, and they include you. 'Include' keeps that, and it is the rule behind EVERY PUBLISHED EquiPop result, so leave it alone if you are reproducing or extending published work. 'Exclude' leaves the origin cell out entirely - the w(ii)=0 convention that spatial regression requires (SAR, SDM, SLX), and what EquiPop's own spatial-weights builder has always used. Choose it when a place's own value must not appear inside its own context variable. HOW MUCH THIS MATTERS DEPENDS ON HOW BIG YOUR UNITS ARE. On US census blocks averaging 113 people, isolation at k=100 fell 13.4% for African Americans, 9.3% for Asians and 0.9% for Whites - the shift is largest for concentrated minorities, because their own block is a large part of their measured isolation, and smallest for the majority. On fine grids holding a handful of people it barely registers. BEWARE: the AVERAGES hardly move under either rule, so you cannot tell from the numbers which one produced them - the run says so in its log, and results under the two rules are not comparable with each other.
 {p_end}
 
 {phang}

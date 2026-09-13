@@ -34,7 +34,13 @@ CORE = {"layer", "pop", "treat", "k", "r", "unit", "catfield",
         # but under the `sampled` mode it DECIDES THE ANSWER,
         # and a box that decides the answer belongs in CORE by
         # this file's own stated rule.
-        "overshoot", "seed"}
+        "overshoot", "seed",
+        # v1.47, BACKLOG 290. Whether the origin is its own
+        # neighbour moves every share and every group total, and
+        # the MEANS BARELY MOVE - so a user cannot tell from the
+        # output which rule ran. That is precisely the kind of box
+        # the two doors must not disagree about.
+        "originrule"}
 
 # machine 2 - Value Statistics (list added v1.29). `pop` is the
 # reference population; `values` the treatment fields measured over
@@ -53,7 +59,9 @@ CORE_M2 = {"layer", "xfield", "yfield", "pop", "values", "measures",
            # still OFFER the box, or the two doors cannot be
            # held to the same answer key. Pro had never had a
            # seed box here at all.
-           "overshoot", "seed"}
+           "overshoot", "seed",
+           # v1.47, BACKLOG 290 - an ENGINE rule, so both doors.
+           "originrule"}
 
 
 # v1.29.3, BACKLOG 86: parity of BEHAVIOUR, not just of names.
