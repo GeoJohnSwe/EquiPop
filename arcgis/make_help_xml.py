@@ -111,7 +111,7 @@ def load_toolbox():
     inside Pro's Python Command Prompt, where arcpy is real.
 
     Only the first ever worked. This file has been shipped as one of
-    the five since 1.44.4 and, until 1.47.1, could not be run by the
+    the five since 1.44.4 and, until 1.47.2, could not be run by the
     person it was shipped to - ModuleNotFoundError on
     test_arcgis_stub, immediately, every time. Found when the --plain
     escape hatch offered as insurance turned out to be unusable by
@@ -157,8 +157,20 @@ def main(out_dir=None, plain=False):
     pyt = load_toolbox()
     here = out_dir or os.path.dirname(os.path.abspath(__file__))
     os.makedirs(here, exist_ok=True)
+    # BACKLOG 294. ALL FOUR TOOLS, from v1.47.2. Machines 3 and 4
+    # were absent from this list for as long as it has existed - not
+    # by choice but because thirteen of their parameters had no help
+    # text, and this script refuses to write a sidecar with a gap in
+    # it. So rather than a partial file it wrote none, and Pro showed
+    # "There is no description for this item" and "There is no
+    # explanation for this parameter" against every box, for both
+    # tools, in every release.
+    # Their summary and usage text existed the whole time. It could
+    # not reach Pro for want of a file.
     for cls, name in ((pyt.CountsShares, "CountsShares"),
-                      (pyt.ValueStatistics, "ValueStatistics")):
+                      (pyt.ValueStatistics, "ValueStatistics"),
+                      (pyt.ContinentalRasters, "ContinentalRasters"),
+                      (pyt.SpatialDemography, "SpatialDemography")):
         tool = cls()
         params = [(p.name, p.displayName)
                   for p in tool.getParameterInfo()]

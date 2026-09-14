@@ -1555,9 +1555,17 @@ def test_generating_the_help_does_not_dirty_the_working_tree(tmp_path):
         f"generating the help wrote {sorted(after - before)} into "
         "arcgis/ - it was given --out and ignored it")
     written = {f for f in os.listdir(tmp_path) if f.endswith(".pyt.xml")}
-    assert len(written) == 2, (
-        f"--out produced {sorted(written)}, expected both toolbox "
-        "help files")
+    # one per REGISTERED tool - read from the toolbox, not a fixed
+    # number, so adding a fifth machine cannot leave it unhelped
+    pyt_src = open(os.path.join(root, "arcgis", "EquiPop.pyt"),
+                   encoding="utf-8").read()
+    n_tools = len([t for t in re.search(
+        r"self\.tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
+        if t.strip()])
+    assert len(written) == n_tools, (
+        f"--out produced {sorted(written)} for {n_tools} registered "
+        "tools - a tool with no sidecar shows 'There is no "
+        "description for this item' in Pro")
 
 
 def test_help_xml_covers_every_parameter(tmp_path):
@@ -2392,7 +2400,7 @@ def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
 
 
 def test_the_help_generator_explains_itself_where_john_keeps_it():
-    """v1.47.1. make_help_xml.py has shipped as one of the five Pro
+    """v1.47.2. make_help_xml.py has shipped as one of the five Pro
     files since 1.44.4 and, until now, could not be run from the
     folder it ships to: it imported test_arcgis_stub, which lives in
     the repository's tests/ directory and is not one of the five.
