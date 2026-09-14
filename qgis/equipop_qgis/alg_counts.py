@@ -89,8 +89,8 @@ OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 # of users who run regressions - and the other half need to know that
 # the default is the published one.
 ORIGIN_MODES = [
-    "include the origin (i=j) - as in every published EquiPop result",
-    "exclude the origin cell (i!=j) - needed for spatial regression",
+    "include the origin (i=j)",
+    "exclude the origin cell (i!=j)",
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 

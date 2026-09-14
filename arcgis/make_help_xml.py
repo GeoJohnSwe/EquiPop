@@ -35,11 +35,53 @@ from equipop.doors.help import (HELP, help_for, missing_help,
                                 summary_for, usage_for)
 
 
-def build(tool_name, display, params):
+def as_dialog_html(text):
+    """The parameter comment as the escaped HTML Pro expects.
+
+    BACKLOG 34 recorded the suspicion in v1.16.8: "plain text where
+    escaped HTML is expected". The text went in as one unbroken
+    paragraph - 1,286 characters for the newest entry - which is hard
+    to read even when it renders.
+
+    Sentences that START A NEW IDEA get their own paragraph. The cue
+    is the house style itself: these entries put the thing that
+    matters in CAPITALS at the head of a sentence, so a capitalised
+    opening is a reliable break and needs no new markup in help.py.
+    """
+    import re as _re
+    text = " ".join(str(text).split())
+    parts, cur = [], []
+    for sent in _re.split(r"(?<=[.!?]) +", text):
+        head = sent.split(" ")[0].strip("'\":,")
+        # >= 3 letters, not > 3: "HOW MUCH THIS MATTERS..." opens a
+        # real new idea and a four-letter threshold silently swallowed
+        # it. Two-letter openers ("IT", "SO") are left alone - they
+        # continue a thought rather than starting one.
+        shouty = len(head) >= 3 and head.isupper() and head.isalpha()
+        if shouty and cur:
+            parts.append(" ".join(cur))
+            cur = [sent]
+        else:
+            cur.append(sent)
+    if cur:
+        parts.append(" ".join(cur))
+    return "".join(f"<p>{escape(p)}</p>" for p in parts if p)
+
+
+def build(tool_name, display, params, plain=False):
     md = ET.Element("metadata", {"xml:lang": "en"})
     esri = ET.SubElement(md, "Esri")
     ET.SubElement(esri, "ArcGISFormat").text = "1.0"
-    ET.SubElement(esri, "SyncOnce").text = "TRUE"
+    # BACKLOG 44, open since v1.18.0 and waiting on exactly one field
+    # cycle: SyncOnce=TRUE lets Pro SYNCHRONISE ITS OWN METADATA OVER
+    # the authored text the first time the toolbox is opened, which is
+    # the suspected cause of 34 (help rendering empty). John supplied
+    # the cycle in session 12 - a dialogReference flyout with a
+    # correct title and an empty body. FALSE tells Pro the metadata is
+    # authored and not to regenerate it.
+    # STILL A HYPOTHESIS. It is one of three faults found together and
+    # only a run in a real Pro can say which mattered.
+    ET.SubElement(esri, "SyncOnce").text = "FALSE"
     tool = ET.SubElement(md, "tool", {"name": tool_name,
                                       "displayname": display,
                                       "toolboxalias": "equipop"})
@@ -49,8 +91,9 @@ def build(tool_name, display, params):
         p = ET.SubElement(ps, "param", {
             "sync": "true", "name": name, "displayname": disp,
             "type": "Optional", "direction": "Input"})
-        ET.SubElement(p, "dialogReference").text = help_for(
-            name, disp)
+        txt = help_for(name, disp)
+        ET.SubElement(p, "dialogReference").text = (
+            txt if plain else as_dialog_html(txt))
     ET.SubElement(tool, "usage").text = usage_for(tool_name)
     idinfo = ET.SubElement(md, "dataIdInfo")
     cit = ET.SubElement(idinfo, "idCitation")
@@ -59,13 +102,59 @@ def build(tool_name, display, params):
     return md
 
 
-def main(out_dir=None):
-    import test_arcgis_stub as H
-    import pandas as pd
-    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
-                      "SHAPE@Y": [0.0]})
-    H._install_fake_arcpy(t)
-    pyt = H._load_pyt()
+def load_toolbox():
+    """EquiPop.pyt, loaded whichever way this machine allows.
+
+    TWO CALLERS, TWO WORLDS. A release build runs from the repository
+    and has no ArcGIS, so it uses the simulated arcpy in tests/. John
+    runs it from a folder holding FIVE FILES AND NO tests/ DIRECTORY,
+    inside Pro's Python Command Prompt, where arcpy is real.
+
+    Only the first ever worked. This file has been shipped as one of
+    the five since 1.44.4 and, until 1.47.1, could not be run by the
+    person it was shipped to - ModuleNotFoundError on
+    test_arcgis_stub, immediately, every time. Found when the --plain
+    escape hatch offered as insurance turned out to be unusable by
+    the one person who might need it.
+    """
+    try:
+        import test_arcgis_stub as H
+        import pandas as pd
+        t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                          "SHAPE@Y": [0.0]})
+        H._install_fake_arcpy(t)
+        return H._load_pyt()
+    except ImportError:
+        pass
+    try:
+        import arcpy                              # noqa: F401
+    except ImportError:
+        raise SystemExit(
+            "[help] cannot load the toolbox. Either run this from the "
+            "EquiPop repository root, where tests/ supplies a "
+            "simulated arcpy:\n"
+            "    python arcgis/make_help_xml.py\n"
+            "or run it inside ArcGIS Pro's PYTHON COMMAND PROMPT "
+            "(Start menu -> ArcGIS), where arcpy is real:\n"
+            "    cd C:\\Data\\EQP\n"
+            "    python make_help_xml.py\n"
+            "Pro's embedded Python WINDOW is not a command prompt - "
+            "typing `python ...` there is a syntax error.")
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, "EquiPop.pyt")
+    if not os.path.exists(path):
+        raise SystemExit(f"[help] no EquiPop.pyt beside {__file__}. "
+                         "The toolbox and this script must sit in the "
+                         "same folder.")
+    spec = importlib.util.spec_from_file_location("EquiPop_pyt", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def main(out_dir=None, plain=False):
+    pyt = load_toolbox()
     here = out_dir or os.path.dirname(os.path.abspath(__file__))
     os.makedirs(here, exist_ok=True)
     for cls, name in ((pyt.CountsShares, "CountsShares"),
@@ -77,7 +166,7 @@ def main(out_dir=None):
         if missing:
             raise SystemExit(f"[help] no text for parameters: "
                              f"{missing}")
-        md = build(name, tool.label, params)
+        md = build(name, tool.label, params, plain=plain)
         path = os.path.join(here, f"EquiPop.{name}.pyt.xml")
         ET.ElementTree(md).write(path, encoding="UTF-8",
                                  xml_declaration=True)
@@ -87,8 +176,17 @@ def main(out_dir=None):
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--plain", action="store_true",
+                    help="write the parameter comments as PLAIN TEXT "
+                         "instead of escaped <p> paragraphs. Use this "
+                         "if Pro shows literal <p> tags in the flyout "
+                         "beside a parameter box - the paragraphs are "
+                         "an untested attempt at BACKLOG 34 and this "
+                         "switch undoes them in ten seconds without "
+                         "waiting for a release.")
     ap.add_argument("--out", default=None,
                     help="directory to write the .pyt.xml files into "
                          "(default: next to EquiPop.pyt, which is "
                          "where Pro looks for them)")
-    main(ap.parse_args().out)
+    _a = ap.parse_args()
+    main(_a.out, plain=_a.plain)

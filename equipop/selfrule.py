@@ -15,16 +15,33 @@ has always excluded self while the counting machines have always
 included it. TWO NEIGHBOURHOOD DEFINITIONS IN ONE PACKAGE, both called
 "the neighbourhood". That is what this module ends.
 
-MEASURED, NOT ARGUED. On CaliData2010 - John's own five-county Los
-Angeles blocks, the data behind Osth, Clark and Malmberg (2015) - the
-package reproduces the published spatial isolation at k=100 to within
-0.001: African Americans 0.2752 against Figure 4's ~0.28, Asians
-0.3325 against ~0.33. Re-running with the origin block excluded:
+MEASURED IN THE FIELD BY JOHN, NOT BY CLAUDE. On CaliData2010 - his
+own five-county Los Angeles blocks, the data behind Osth, Clark and
+Malmberg (2015) - the `include` path REPRODUCES THE 2014 SOFTWARE
+EXACTLY. Run in Stata over 78,208 populated blocks, weighted by the
+group, against the R_ column already in the file:
 
-    group              include   exclude    shift
-    African American    0.2765    0.2394   -13.4%
-    Asian               0.3335    0.3024    -9.3%
-    White               0.6323    0.6267    -0.9%
+    2014 software     mean 0.2752264  sd 0.2464846  min 0.0004955
+    EquiPop 1.47      mean 0.2752264  sd 0.2464846  min 0.0004955
+    same, i!=j        mean 0.2378486  sd 0.2482518  min 0.0000000
+
+Identical to seven decimals on four statistics, and Figure 4 of the
+2015 paper reads ~0.28. Excluding the origin lowers African American
+isolation by 13.6%.
+
+THE MINIMUM IS THE PART TO NOTICE. Under i=j a block holding any
+African American residents CANNOT score zero, because its own people
+are inside its own neighbourhood. Under i!=j a block can hold them
+and have no African American neighbours, and that is a true zero.
+The rule changes which questions the number can answer, not just its
+size.
+
+(An earlier estimate in this file said 0.2765 and 13.4%. That was
+Claude's own run with the neighbour search capped at 48 cells, which
+never reached k for remote blocks. The evidence that the cap was the
+cause was already in the same measurement - a median per-block
+difference of 0.00000 with the index off by 0.0013 - and was read as
+a real difference instead. FIELD NUMBERS REPLACE BENCH NUMBERS.)
 
 THE SHIFT IS NOT UNIFORM AND THAT IS THE POINT. Minority members live
 disproportionately in blocks where their group is concentrated, so

@@ -19,7 +19,7 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-*Rewritten in full, 1.47.0. The list this replaces STOPPED AT ITEM
+*Rewritten in full, 1.47.1. The list this replaces STOPPED AT ITEM
 164: everything from 165 to 293 — machines 3, 4 and 5, the registry,
 all four providers, the OSM lattice work, the eight external-review
 HIGHs — never entered it. The file opens by promising that its top
@@ -2657,7 +2657,7 @@ not here. A list of completed work is not a plan.
   minute. From 14 onward the handover enters the repository root in
   the same act as the release.
 
-- ~~290~~ | DONE v1.47.0 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
+- ~~290~~ | DONE v1.47.1 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
   ruling: two rules, i=j and i!=j, and `include` STAYS THE DEFAULT.
   THE PACKAGE ALREADY HELD TWO ANSWERS and called both "the
   neighbourhood". autocorr.build_weights() has always excluded self -
@@ -2666,16 +2666,33 @@ not here. A list of completed work is not a plan.
   origin's people sit at distance 0. The Tartu slides say "self is
   never its own neighbour", which was true of the estimator and false
   of every other machine.
-  MEASURED ON CaliData2010, John's own five-county Los Angeles blocks
-  and the data behind Osth, Clark and Malmberg (2015). The package
-  reproduces the published isolation at k=100 to within 0.001 -
-  African Americans 0.2752 against Figure 4's ~0.28, Asians 0.3325
-  against ~0.33 - so the shift below is the RULE and not the
-  arithmetic:
-      group              include   exclude    shift
-      African American    0.2765    0.2394   -13.4%
-      Asian               0.3335    0.3024    -9.3%
-      White               0.6323    0.6267    -0.9%
+  CONFIRMED IN THE FIELD BY JOHN, session 12, and this is the
+  anchor the release turns on. Run in Stata on CaliData2010 over
+  78,208 populated blocks of five-county Los Angeles, weighted by the
+  group, against the R_ column the 2014 software left in the file:
+      2014 software  mean 0.2752264  sd 0.2464846  min 0.0004955
+      EquiPop 1.47   mean 0.2752264  sd 0.2464846  min 0.0004955
+      same, i!=j     mean 0.2378486  sd 0.2482518  min 0.0000000
+  IDENTICAL TO SEVEN DECIMALS on four statistics. Figure 4 of the
+  2015 paper reads ~0.28. Excluding the origin lowers the index
+  13.6%.
+  THE MINIMUM IS WHAT PROVES IT IS A COMPUTATION AND NOT A COPY. An
+  exact seven-digit match is also what a copied column looks like,
+  and 1.46.3 and 1.46.4 were both naming-and-writing faults in this
+  same path - names right on screen, wrong in the data - so the match
+  alone was not enough to bank. Under i=j a block with any African
+  American residents CANNOT score zero, because its own people are in
+  its own neighbourhood; under i!=j it can hold them and have none
+  among its neighbours, and that is a true zero. No copy produces
+  that.
+  CLAUDE'S OWN FIGURES WERE WRONG AND THE EVIDENCE WAS IN THEM. The
+  bench run said 0.2765 and -13.4%, measured with the neighbour
+  search capped at 48 cells, which never reaches k for remote blocks.
+  The same measurement reported a median per-block difference of
+  0.00000 alongside an index off by 0.0013 - which is the signature
+  of a cap, not of a real difference - and it was read as a real
+  difference anyway. FIELD NUMBERS REPLACE BENCH NUMBERS wherever
+  both exist, and a bench number should carry its cap.
   THE SHIFT IS NOT UNIFORM AND THAT IS THE POINT. Minority members
   live disproportionately where their group is concentrated, so their
   own block is a large part of their measured isolation; for a 63%
@@ -2719,7 +2736,7 @@ not here. A list of completed work is not a plan.
   that both look right while the total is a third of what it should
   be. Both reasons are in the test's docstring.
 
-- ~~291~~ | DONE v1.47.0 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
+- ~~291~~ | DONE v1.47.1 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
   REVIEW OF 1.46.4. Eight claims were checked against this tree
   before anything was changed; all eight held and ONE WAS WORSE THAN
   REPORTED.
@@ -2767,7 +2784,7 @@ not here. A list of completed work is not a plan.
   224 and 232. It is not a diagnosis of them - those still need
   John's logs - but it can no longer be the answer.
 
-- ~~292~~ | DONE v1.47.0 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
+- ~~292~~ | DONE v1.47.1 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
   run_fetch.py, run_raster_folder.py and run_osm_friction.py were all
   absent from equipop-1.46.4.tar.gz. MANIFEST.in had gained
   `include demo_*.py` for BACKLOG 107 and nothing for the runners, so
@@ -2779,8 +2796,71 @@ not here. A list of completed work is not a plan.
   Fixed by one line, and guarded by a test that reads the run_*.py
   files OFF DISK, so a runner added later is covered without anyone
   remembering to come back.
+  A SECOND THING THE ARCHIVE NEVER CARRIED, found the same way when
+  John's Pro tooltip came back empty: arcgis/EquiPop.<Tool>.pyt.xml,
+  the sidecars Pro reads for the comment beside every parameter box.
+  Never in MANIFEST.in, never in an sdist, never in a delivery. They
+  are build outputs, so they are kept OUT of the repository (45) and
+  put INTO the archive - both statements are correct and the
+  distinction is the point. See 34.
+  AND THE GUIDE THAT TELLS PEOPLE WHICH FILES TO KEEP WAS WRONG.
+  arcgis/ARCGIS_GUIDE.md said "Keep these FOUR files together" and
+  then listed THREE, under a heading stamped v1.16.8, and told the
+  reader that "Two tools appear" when four do. A user following it
+  replaces the toolbox and keeps the sidecars, which is EXACTLY what
+  happened to John at 1.47.1. The instruction, not the packaging, is
+  what produced the empty box.
 
-- 293 | OPEN, FOUND v1.47.0 | RunLog IS DEAD CODE, AND IT IS BACKLOG
+- ~~295~~ | DONE v1.47.1 | make_help_xml.py COULD NOT BE RUN WHERE IT
+  IS SHIPPED. It has been one of the five Pro files since 1.44.4 and
+  it imports test_arcgis_stub, which lives in the repository's tests/
+  directory and is NOT one of the five. ModuleNotFoundError,
+  immediately, every time, for the whole life of the delivery.
+  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.1 wrote the Pro
+  parameter comments as escaped HTML on an untested hypothesis (34)
+  and offered `--plain` as the ten-second way back. John pasted the
+  command, it failed, and only then did anyone check whether it could
+  have worked. It could not. THE ESCAPE HATCH FOR AN UNTESTED CHANGE
+  WAS ITSELF UNTESTED - which is worse than the change, because it
+  was the reason the change felt safe to ship.
+  He also pasted it into Pro's embedded Python WINDOW rather than the
+  Python Command Prompt, which is a separate and entirely reasonable
+  mistake: the guide said "run this from the repository root" to
+  somebody who has no repository.
+  FIXED by falling back to REAL arcpy, which is what Pro's Python
+  Command Prompt has, so the script now runs in the two places it is
+  ever run from and says so when it is in neither. The guide gives
+  both invocations and names the window that is not a prompt.
+  FOURTH INSTANCE THIS SESSION of shipped-but-unreachable, after
+  inventory.py, vectorjoin.py and RunLog (293). The first three were
+  capabilities nobody could get to. THIS ONE WAS THE RECOVERY PATH
+  FOR A KNOWN RISK, which makes it the one worth remembering.
+
+- 294 | OPEN, FOUND v1.47.1 | MACHINES 3 AND 4 HAVE NO HELP TEXT AT
+  ALL, IN ANY DOOR. ContinentalRasters and SpatialDemography are
+  registered in the Pro toolbox and executed by the suite, and
+  THIRTEEN of their parameters have no entry in doors/help.py:
+  folder, crs, weight, sumcohorts, pattern, tiles, out (machine 3)
+  and folder, indices, year, crs, settings, out (machine 4).
+  THIS IS WHY make_help_xml.py COVERS ONLY TWO OF THE FOUR TOOLS. It
+  refuses to write a sidecar with a gap in it - correctly - so rather
+  than a partial file it produces none, and the two tools have never
+  had an authored comment beside any box. Pro invents something from
+  the parameter names instead, which is where John's two extra
+  sidecar files come from.
+  FOUND while checking whether flipping SyncOnce (44) would regress
+  those tools. It cannot - SyncOnce lives INSIDE each XML and those
+  two have no XML - but the check found this instead.
+  THE TEST DID NOT MISS THIS SO MUCH AS DEFINE IT AWAY.
+  test_help_xml_covers_every_parameter generates the two files and
+  checks every parameter in THEM. It passes. Half the toolbox is
+  outside its question.
+  WORK: thirteen entries in doors/help.py in the house style, then
+  the two tools added to make_help_xml.py's list and to the delivery.
+  Bounded, and it is the last thing standing between Pro and a
+  complete set of in-dialog help.
+
+- 293 | OPEN, FOUND v1.47.1 | RunLog IS DEAD CODE, AND IT IS BACKLOG
   ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
   design as agreed)" - is complete, documented, exported in __all__,
   and CALLED BY NOTHING AND TESTED BY NOTHING. No door, no engine, no
@@ -4404,25 +4484,76 @@ not here. A list of completed work is not a plan.
   ("two rulers", "doubling it quarters the work", "a finding, not a
   nuisance") is the model the queued naming pass should copy.
 
-- 44 | open v1.18.0 | `make_help_xml.py` still writes
-  `SyncOnce=TRUE`, the suspected cause of item 34 (summary/usage
-  rendering empty in Pro). Untouched this round: it needs one field
-  cycle to confirm, and this was a refactor release. Now a one-line
-  change in a single place whenever that cycle happens.
+- ~~44~~ | DONE v1.47.1, CONFIRMATION PENDING | `make_help_xml.py`
+  still writes `SyncOnce=TRUE`, the suspected cause of item 34
+  (summary/usage rendering empty in Pro). Untouched this round: it
+  needs one field cycle to confirm, and this was a refactor release.
+  Now a one-line change in a single place whenever that cycle happens.
+  THE ONE-LINE CHANGE IS MADE in 1.47.1:
+  SyncOnce=FALSE, which tells Pro the metadata is authored and not to
+  synchronise its own over the top. Struck because the change this
+  item describes is done - but it was ONE OF THREE faults found in the
+  same breath, and the other two (an unshipped sidecar, plain text
+  where escaped HTML belongs) are at least as likely to have been the
+  cause. See 34. Do not read this as proof that SyncOnce was the
+  problem.
 
-- 34 | open v1.16.8 | Tool help page: summary/usage sections render empty in Pro. Suspect `SyncOnce=TRUE` letting Pro regenerate over the authored text, plus missing `datatype` attributes and plain text where escaped HTML is expected. The per-parameter comments (dialogReference) DO work | Needs one field cycle to confirm
+- 34 | OPEN, SYMPTOM FINALLY CHARACTERISED v1.47.1 | Tool help page:
+  summary/usage sections render empty in Pro. Suspect SyncOnce=TRUE
+  letting Pro regenerate over the authored text, plus missing
+  datatype attributes and plain text where escaped HTML is expected.
+  The per-parameter comments (dialogReference) DO work | Needed one
+  field cycle to confirm.
+  JOHN SENT ALL FOUR '?' PANELS, session 12, and after thirty
+  releases the symptom is finally known. THE HEADLINE OF THIS ITEM IS
+  WRONG. Summary and usage are NOT empty:
+      machine 1  Description YES  Usage YES  39 params listed
+      machine 2  Description YES  Usage YES  25 params listed
+      machine 3  Description EMPTY  Usage EMPTY  (no sidecar, see 294)
+      machine 4  Description EMPTY  Usage EMPTY  (no sidecar, see 294)
+  WHAT IS ACTUALLY EMPTY is the per-parameter EXPLANATION COLUMN of
+  the '?' panel. Every row reads "Dialog Reference" as a bare label
+  followed by "There is no python reference for this parameter." -
+  for all 39 parameters, INCLUDING the 38 whose dialogReference text
+  is present in the XML and renders perfectly in the flyout beside
+  the box. So the second sentence of this item is half right:
+  dialogReference DOES work IN THE DIALOG, and does not reach the
+  help page.
+  A SECOND CONFIRMATION OF THE STALE SIDECAR falls out of the same
+  files. The panel lists 39 parameters while John's XML holds 38:
+  Pro takes the parameter LIST from the toolbox and looks up the text
+  in the XML, so the box added in 1.47.1 appears with nothing beside
+  it. Two independent views of the same cause.
+  THE TWO CHANGES MADE IN 1.47.1 NOW POINT AT THE RIGHT TARGET, by
+  luck rather than by diagnosis: escaped <p> paragraphs (this item's
+  own guess, and the leading hypothesis for a column that ignores
+  plain text) and SyncOnce=FALSE. NEITHER IS VALIDATED. They were
+  made while mis-reading a stale sidecar as this item's symptom, and
+  the fact that they turn out to be aimed correctly does not make the
+  reasoning that produced them sound.
+  THE RISK THEY CARRY IS REAL AND IS INSURED. The flyout WORKS today
+  with plain text; if Pro does not interpret the escaped HTML, John
+  would see literal <p> tags where readable prose used to be - a
+  regression on the one thing known to work. So
+  make_help_xml.py --plain regenerates without the markup in ten
+  seconds, and the guide says so. Do not ship a guess without the
+  way back.
+  TO CLOSE THIS: install 1.47.1's sidecars, open the '?' panel, and
+  report whether the Explanation column now carries text. If it does,
+  say WHICH change to credit by regenerating with --plain and looking
+  again.
 
 - 49 | open | The reference covers counts and stats; friction,
   slope, fca and lisa are not in it. Now that a second door exists
   and the mechanism is proved, this is worth doing.
 
-- ~~45~~ | DONE v1.47.0 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
+- ~~45~~ | DONE v1.47.1 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
   the Windows-style catalog paths they pretend to use, so a test run
   on Linux leaves four literal files named `C:\Data\...csv` in the
   repo root (and one stray figure from the Book build). Harmless,
   untracked, and cleaned by hand this round - but they belong in
   pytest's tmp_path, and on Windows those paths are real. Small.
-  CLOSED v1.47.0, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
+  CLOSED v1.47.1, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
   running the suite on a clean tree: the four `C:\Data\...csv` files
   did NOT recur and appear to have been fixed earlier without anyone
   narrowing this entry. What DID recur was two files the item never

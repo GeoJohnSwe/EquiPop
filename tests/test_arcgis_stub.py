@@ -2389,3 +2389,33 @@ def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
     assert "treatcatfield" in ignored
     said = "\n".join(msg.log)
     assert "IGNORED" in said and "treatcatfield" in said
+
+
+def test_the_help_generator_explains_itself_where_john_keeps_it():
+    """v1.47.1. make_help_xml.py has shipped as one of the five Pro
+    files since 1.44.4 and, until now, could not be run from the
+    folder it ships to: it imported test_arcgis_stub, which lives in
+    the repository's tests/ directory and is not one of the five.
+    ModuleNotFoundError, immediately, every time.
+
+    FOUND BECAUSE THE ESCAPE HATCH WAS UNUSABLE. --plain was offered
+    as insurance against an untested HTML change, and the one person
+    who might have needed it could not run the command.
+
+    It now falls back to REAL arcpy - which is what Pro's Python
+    Command Prompt has - and when neither route exists it says which
+    two places it can run, and that Pro's embedded Python WINDOW is
+    not one of them.
+    """
+    import importlib.util
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "arcgis", "make_help_xml.py")
+    src = open(path, encoding="utf-8").read()
+    assert "def load_toolbox(" in src, (
+        "the generator no longer has a single place that loads the "
+        "toolbox, so the fallback cannot be relied on")
+    # the message must name the prompt that works and the one that
+    # does not - John pasted the command into the wrong one
+    assert "PYTHON COMMAND PROMPT" in src
+    assert "WINDOW is not a command prompt" in src
+    assert "python make_help_xml.py" in src

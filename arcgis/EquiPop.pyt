@@ -1901,8 +1901,8 @@ OVERSHOOT_VALUES = ["whole", "proportional", "sampled"]
 # tests/door_parity.py), and this one is worse than most because the
 # means barely move, so no user could notice the disagreement.
 ORIGIN_MODES = [
-    "include the origin (i=j) - as in every published EquiPop result",
-    "exclude the origin cell (i!=j) - needed for spatial regression",
+    "include the origin (i=j)",
+    "exclude the origin cell (i!=j)",
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 

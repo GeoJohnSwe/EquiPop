@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.47.0}{...}
+{* *! version 1.47.1}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.47.0)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.47.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -141,7 +141,7 @@ for Stata.
 {p_end}
 
 {phang}
-{opt originrule(string)} WHETHER THE ORIGIN COUNTS AS ITS OWN NEIGHBOUR. EquiPop grows a neighbourhood outward from each place until it holds k people, and it has always started counting AT THAT PLACE - your own cell's residents are your nearest neighbours, and they include you. 'Include' keeps that, and it is the rule behind EVERY PUBLISHED EquiPop result, so leave it alone if you are reproducing or extending published work. 'Exclude' leaves the origin cell out entirely - the w(ii)=0 convention that spatial regression requires (SAR, SDM, SLX), and what EquiPop's own spatial-weights builder has always used. Choose it when a place's own value must not appear inside its own context variable. HOW MUCH THIS MATTERS DEPENDS ON HOW BIG YOUR UNITS ARE. On US census blocks averaging 113 people, isolation at k=100 fell 13.4% for African Americans, 9.3% for Asians and 0.9% for Whites - the shift is largest for concentrated minorities, because their own block is a large part of their measured isolation, and smallest for the majority. On fine grids holding a handful of people it barely registers. BEWARE: the AVERAGES hardly move under either rule, so you cannot tell from the numbers which one produced them - the run says so in its log, and results under the two rules are not comparable with each other.
+{opt originrule(string)} WHETHER THE ORIGIN COUNTS AS ITS OWN NEIGHBOUR. EquiPop grows a neighbourhood outward from each place until it holds k people, and it has always started counting AT THAT PLACE - your own cell's residents are your nearest neighbours, and they include you. 'Include' keeps that, and it is the rule behind EVERY PUBLISHED EquiPop result, so leave it alone if you are reproducing or extending published work. 'Exclude' leaves the origin cell out entirely - the w(ii)=0 convention that spatial regression requires (SAR, SDM, SLX), and what EquiPop's own spatial-weights builder has always used. Choose it when a place's own value must not appear inside its own context variable. HOW MUCH THIS MATTERS DEPENDS ON HOW BIG YOUR UNITS ARE. On US census blocks averaging 113 people, isolation at k=100 fell 13.6% for African Americans and under 1% for Whites - the shift is largest for concentrated minorities, because their own block is a large part of their measured isolation, and smallest for the majority. On fine grids holding a handful of people it barely registers. BEWARE: the AVERAGES hardly move under either rule, so you cannot tell from the numbers which one produced them - the run says so in its log, and results under the two rules are not comparable with each other.
 {p_end}
 
 {phang}

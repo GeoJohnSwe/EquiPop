@@ -18,24 +18,79 @@ default one is locked. The supported route is a clone:
 
 4. Check: `python -c "import equipop; print(equipop.__version__)"`
 
-### Files to copy (v1.16.8)
-Keep these FOUR files together in one folder (e.g. `C:\Data\EQP`):
+### Files to copy (v1.47.1)
+
+**THREE files must sit together in one folder** (e.g. `C:\Data\EQP`),
+and all three must come from THE SAME RELEASE:
 
     EquiPop.pyt                     the toolbox
     EquiPop.CountsShares.pyt.xml    in-dialog help for machine 1
     EquiPop.ValueStatistics.pyt.xml in-dialog help for machine 2
 
-The .xml files are what puts the small explanation beside each
-parameter box. Pro caches toolboxes hard: after replacing them,
-remove the toolbox from the project and add it again, or restart
-Pro.
+Two more travel with them and live wherever you keep them:
+
+    ARCGIS_GUIDE.md                 this file
+    make_help_xml.py                regenerates the two .xml files
+
+REPLACE ALL THREE TOGETHER, EVERY TIME. The .xml files are what puts
+the small explanation beside each parameter box, and they are written
+from the toolbox's own parameter list. Keep an old .xml beside a new
+.pyt and every box added since that .xml was made has NO COMMENT AT
+ALL, while the older boxes look perfectly normal - so nothing seems
+wrong except one silent gap.
+
+That is not hypothetical. It is how v1.47.1's new box, *Is a place
+its own neighbour?*, arrived with an empty flyout in a real
+installation: the .pyt was replaced and the sidecars were not. This
+paragraph exists because the previous version of it said "FOUR
+files" and then listed three.
+
+If you ever need to rebuild the sidecars yourself - after any change
+to the toolbox - run `make_help_xml.py`. It works in two places and
+nowhere else:
+
+    Python Command Prompt      cd C:\Data\EQP
+    (Start menu -> ArcGIS)     python make_help_xml.py
+
+    repository root            python arcgis/make_help_xml.py
+
+Pro caches toolboxes hard: after replacing the files, remove the
+toolbox from the project and add it again, or restart Pro.
+
+### If the flyout beside a box shows literal `<p>` tags
+
+v1.47.1 writes the parameter comments as escaped HTML paragraphs.
+That is an attempt at a long-standing problem - the Explanation
+column of the '?' help page has always come up blank even though the
+same text renders fine in the dialog - and it is NOT CONFIRMED to
+work. If it misfires you will see the tags themselves. Undo it in ten seconds.
+
+**Use the Python Command Prompt, not Pro's Python window.** Start
+menu -> ArcGIS -> *Python Command Prompt* (it opens inside your
+active clone). Pro's embedded Python WINDOW is already an
+interpreter, so typing `python ...` there is a syntax error:
+
+    cd C:\Data\EQP
+    python make_help_xml.py --plain
+
+That writes both .xml files beside the toolbox. Nothing else
+changes.
+
+(Before v1.47.1 this script could not run from your folder at all -
+it needed a file from the repository's `tests/` directory. It now
+uses Pro's own arcpy instead, which is why the Python Command Prompt
+is the place to run it.)
 
 ## 2. Add the toolbox to a project
 
 Copy the `arcgis/EquiPop.pyt` file anywhere convenient (it can live
 in the project folder). In Pro's **Catalog** pane: right-click
-**Toolboxes -> Add Toolbox** -> pick the .pyt. Two tools appear
-under "EquiPop".
+**Toolboxes -> Add Toolbox** -> pick the .pyt. FOUR tools appear
+under "EquiPop": *Counts and Shares*, *Value Statistics*,
+*Continental Rasters* and *Spatial Demography*. The first two have
+in-dialog help from the .xml sidecars; the last two do not yet, and
+that gap is recorded as BACKLOG 294 rather than left to be
+discovered.
 
 ## 3. First run (Counts and Shares)
 
