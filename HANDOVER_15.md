@@ -1,9 +1,10 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.3**:
-1,144 tests, four machines in QGIS, four in ArcGIS Pro with complete
-in-dialog help for the first time, and one new analytical choice that
-is validated against a published paper rather than against itself.*
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.4**:
+1,228 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+help in Pro for the first time, one analytical choice validated
+against a published paper rather than against itself - and a test
+that asks, for the first time, whether anybody can reach any of it.*
 
 **THIS FILE IS LATE AND THAT IS THE FIRST LESSON.** BACKLOG 289 was
 written in this session, recording John's ruling on the lost
@@ -38,9 +39,22 @@ this tree before being changed, each with a test that fails when the
 old behaviour is restored.
 
 **The backlog's head is current.** It had stopped at item 164, so
-items 165–295 — three machines, the registry, every provider, the OSM
+items 165–299 — three machines, the registry, every provider, the OSM
 work — had never entered the ordered list. Rewritten, with a rule
 written into it: struck items leave the list.
+
+**Machine 6, *What is in this folder?*,** in QGIS and Pro. The engine
+shipped in 1.45.0, marked DONE, reachable from nowhere for two
+releases. One row per file, class vocabularies, and which rasters
+share a lattice.
+
+**Roads and land use join the lattice (298).** Machine 3's join took
+the CENTROID of every feature. Three fidelities now, default *each
+class once* - John's model, and the refinement that makes it work on
+OSM, where one street is many records.
+
+**tests/reachability.py** - one row per capability, one column per
+door, every gap carrying a reason. See §3.
 
 ---
 
@@ -74,7 +88,8 @@ stating in any write-up.
 
 ## 3. THE PATTERN THIS SESSION IS ABOUT
 
-**Five things were built, tested, and unreachable.**
+**SIX things were built, tested, and unreachable** - five found by
+accident, one by the tool written to find them.
 
 1. `doors/inventory.py` (269, shipped 1.45.0) — no GUI, no runner.
 2. `vectorjoin.py` (280/282) — reachable only from a script that the
@@ -85,15 +100,36 @@ stating in any write-up.
 4. The Pro help sidecars — generated, checked by a test, and never
    shipped to anyone.
 5. `make_help_xml.py` — one of the five Pro files since 1.44.4, and
-   until 1.47.3 it could not run from the folder it ships to.
+   until 1.47.4 it could not run from the folder it ships to.
 
 Number 5 is the one to remember. It was offered to John as the
 ten-second escape hatch from an untested change, he tried it, and it
 failed on the first line. **The recovery path for a known risk was
 itself unreachable, which is what made the risk feel acceptable.**
 
+6. The Stata command's friction and slope options - the BRIDGE
+   supports `engine="friction"` and `engine="slope"`; `equipop.ado`
+   mentions neither. Found by tests/reachability.py within a minute
+   of its first run, IN CLAUDE'S OWN DECLARATION of the matrix, which
+   claimed a Stata door from memory. Ruled out by John (296): those
+   are GIS questions.
+
 Every one of these passed its tests. The tests asked whether the
 thing worked, never whether anyone could get to it.
+
+**THE ANSWER IS tests/reachability.py**, and the check that matters
+is not the matrix but the LAST of its five guards: every module in
+the package must appear, either as a capability with its doors or in
+INTERNAL as machinery. A new module now forces the question. That
+single test would have caught all five of the accidental finds.
+
+It is DECLARED, not derived, and the first attempt proved why: a grep
+of each door for the engine function it calls was wrong in BOTH
+directions - machine 1 read as absent from QGIS and Pro (they reach
+it through stata_bridge.dispatch), and the lattice join read as
+present (alg_continental imports join_to_points for something else).
+A matrix that guesses is worse than none; that one said the doors
+were fine.
 
 ---
 
@@ -122,6 +158,26 @@ not a formality.
 ---
 
 ## 5. WHAT IS OPEN
+
+**299 — Pro's join box still takes the centroid only.** 298 gave
+QGIS three fidelities and left Pro with one, so the two GIS doors now
+disagree about what a box DOES. door_parity does not catch it: both
+doors have a box called `joinlayer`; only its behaviour differs. The
+engine is shared and geopandas-free, so this is dialog work. Recorded
+the moment it was created rather than found later.
+
+**FIVE SIMULATOR GAPS IN ONE RELEASE**, all real API the stub had
+never needed: QMetaType.Type.LongLong, the DETable datatype,
+QgsWkbTypes.NoGeometry, a line/polygon source, and - the worst pair -
+QgsCoordinateReferenceSystem without __eq__ and QgsGeometry without a
+copy constructor. Those two COMPOUNDED: identical EPSG:4326 objects
+compared unequal, so every join built a transform it did not need,
+and that needless reprojection turned every line into an empty
+geometry. The door then reported "no usable line or polygon geometry"
+about a layer full of them. A confident, wrong error message,
+produced entirely by the thing meant to catch wrong behaviour. When a
+door looks broken in a way that makes no sense, SUSPECT THE
+SIMULATOR.
 
 **Next, per the rewritten backlog head:** the Machine 5 browser arc
 (248–265, 268, 278, 284) as its own multi-release project, with the

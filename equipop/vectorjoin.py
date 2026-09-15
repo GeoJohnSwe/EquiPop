@@ -278,3 +278,111 @@ def areas_to_cells(gdf, like, class_col="fclass", groups=None,
         f"{len(value_cols)} class(es). Values are the SHARE of each "
         "cell covered, 0 to 1.")
     return wide
+
+
+# ======================================================================
+# v1.47.4 - VECTOR ONTO THE LATTICE, John's model (BACKLOG 298)
+# ======================================================================
+
+#: How much of a feature a cell has to hold before it counts.
+PRESENCE = "presence"     # any positive overlap; one FEATURE, once
+CLASS = "class"           # any positive overlap; one CLASS, once
+MEASURE = "measure"       # length in metres, or area in m2
+FIDELITIES = (PRESENCE, CLASS, MEASURE)
+
+#: John's ruling, session 12: class present, as the default.
+DEFAULT_FIDELITY = CLASS
+
+
+def paths_to_cells(features, values, classes=None, unit_size=100.0,
+                   fidelity=DEFAULT_FIDELITY, agg="sum"):
+    """Charge each cell for the vector features that occupy it.
+
+    THE MODEL IS JOHN'S, session 12, and it is about BARRIERS rather
+    than composition. A barrier's cost is the cost of CROSSING it: a
+    river that clips a corner still has to be crossed, and a river
+    running corner to corner is crossed once too. So presence, not
+    length, is the honest measure for friction - and length-weighting
+    would be the wrong rule wearing the clothes of precision.
+
+    WHY `class` AND NOT `presence` IS THE DEFAULT. OSM cuts one street
+    into many records wherever a tag changes - a speed limit, a
+    bridge, a name. John's Swedish extract holds 2,139,630 road
+    features, and his own screenshot shows `unclassified` three times
+    and `trunk_link` twice within one junction, all one street. Under
+    `presence` a cell containing five segments of one street is
+    charged five times, so the friction would be partly a fact about
+    HOW THE DATA WAS CUT rather than about the geography - worst in
+    cities, where segmentation is densest and where the artefact
+    would matter most. Under `class` a motorway crossing a cell in
+    forty pieces counts once.
+
+    `measure` keeps the length or area instead. It is the only
+    defensible rule for a COMPOSITION question - what share of this
+    cell is forest - and the wrong one for a barrier.
+
+    THE VALUE COMES FROM A FIELD THE USER PREPARED, not from a table
+    in a dialog: John's ruling, and it keeps the vocabulary problem
+    where the vocabulary is. Missing values are the caller's to fill;
+    the convention that goes with `agg` is 0 for additive and 1 for
+    multiplicative, both meaning "no effect".
+
+    features : as friction.paths_to_friction - dicts of
+        {"type": "line"|"polygon", "parts": [...]}.
+    values   : one number per feature, from that field.
+    classes  : one label per feature. REQUIRED for fidelity="class",
+        because there is nothing to collapse on without it.
+
+    Returns DataFrame(x, y, value) of charged cell MIDPOINTS.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from .friction import _agg_cells, feature_cells
+
+    fid = str(fidelity).strip().lower()
+    if fid not in FIDELITIES:
+        raise VectorJoinError(
+            f"[vectorjoin] '{fidelity}' is not one of "
+            f"{', '.join(FIDELITIES)}.")
+    n = len(features)
+    vals = np.asarray(values, float)
+    if len(vals) != n:
+        raise VectorJoinError(
+            f"[vectorjoin] {n} features but {len(vals)} values")
+    if np.isnan(vals).any():
+        raise VectorJoinError(
+            "[vectorjoin] missing values in the value field. Fill "
+            "them first - 0 leaves an additive run unchanged, 1 "
+            "leaves a multiplicative one unchanged - because a "
+            "silent 0 and a real 0 must not look alike.")
+    if fid == CLASS:
+        if classes is None:
+            raise VectorJoinError(
+                "[vectorjoin] fidelity='class' needs a class per "
+                "feature. Without one there is nothing to collapse "
+                "on, and the result would be per-feature counting "
+                "under another name.")
+        if len(classes) != n:
+            raise VectorJoinError(
+                f"[vectorjoin] {n} features but {len(classes)} "
+                "classes")
+
+    acc: dict = {}
+    seen: dict = {}                 # (cell, class) already charged
+    u = float(unit_size)
+    for idx in range(n):
+        cells = feature_cells(features[idx], u)
+        for (i, j), m in cells.items():
+            if m <= 1e-9:           # corner and edge kisses are free
+                continue
+            mid = (i * u + u / 2, j * u + u / 2)
+            if fid == CLASS:
+                key = (mid, str(classes[idx]))
+                if key in seen:
+                    continue        # THE COLLAPSE: one class, once
+                seen[key] = True
+            acc.setdefault(mid, []).append(
+                float(m) if fid == MEASURE else float(vals[idx]))
+    out = _agg_cells(acc, agg)
+    return out.rename(columns={"friction": "value"})

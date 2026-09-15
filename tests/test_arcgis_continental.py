@@ -90,7 +90,7 @@ def _params(tool, **vals):
 
 # --------------------------------------------------- the toolbox itself
 def test_the_toolbox_offers_every_registered_tool():
-    """v1.47.3 added FolderInventory (BACKLOG 269) - a capability
+    """v1.47.4 added FolderInventory (BACKLOG 269) - a capability
     that had shipped in 1.45.0 reachable from nowhere at all."""
     pyt = _pyt()
     names = [t.__name__ for t in pyt.Toolbox().tools]

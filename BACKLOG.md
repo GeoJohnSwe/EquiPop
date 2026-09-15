@@ -19,7 +19,7 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-*Rewritten in full, 1.47.3. The list this replaces STOPPED AT ITEM
+*Rewritten in full, 1.47.4. The list this replaces STOPPED AT ITEM
 164: everything from 165 to 293 — machines 3, 4 and 5, the registry,
 all four providers, the OSM lattice work, the eight external-review
 HIGHs — never entered it. The file opens by promising that its top
@@ -2286,7 +2286,7 @@ not here. A list of completed work is not a plan.
   the interface and must be tested against the shape the user
   actually sees, not the shape it has in the source.
 
-- ~~269~~ | ENGINE DONE v1.45.0, DOORS DONE v1.47.3 | THE INVENTORY:
+- ~~269~~ | ENGINE DONE v1.45.0, DOORS DONE v1.47.4 | THE INVENTORY:
   WHAT IS IN A FOLDER.
   IT WAS MARKED DONE FOR TWO RELEASES WHILE REACHABLE FROM NOWHERE.
   No GUI, no runner, no Stata - only by writing Python, which the
@@ -2295,7 +2295,7 @@ not here. A list of completed work is not a plan.
   in session 12 and the reason tests/reachability.py now exists: the
   suite asked whether the thing worked and never whether anyone could
   get to it.
-  v1.47.3 gives it TWO DOORS. "6. What is in this folder? (reads,
+  v1.47.4 gives it TWO DOORS. "6. What is in this folder? (reads,
   changes nothing)" in QGIS and in Pro - numbered 6 because machine 5
   is fetching and this reads a folder already on disk. One row per
   file or layer, and the LATTICE COLUMN is the point: a folder
@@ -2717,7 +2717,7 @@ not here. A list of completed work is not a plan.
   forgetting is impossible, and "in the same act as the release" was
   too vague to be followed by the session that wrote it.
 
-- ~~290~~ | DONE v1.47.3 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
+- ~~290~~ | DONE v1.47.4 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
   ruling: two rules, i=j and i!=j, and `include` STAYS THE DEFAULT.
   THE PACKAGE ALREADY HELD TWO ANSWERS and called both "the
   neighbourhood". autocorr.build_weights() has always excluded self -
@@ -2796,7 +2796,7 @@ not here. A list of completed work is not a plan.
   that both look right while the total is a third of what it should
   be. Both reasons are in the test's docstring.
 
-- ~~291~~ | DONE v1.47.3 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
+- ~~291~~ | DONE v1.47.4 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
   REVIEW OF 1.46.4. Eight claims were checked against this tree
   before anything was changed; all eight held and ONE WAS WORSE THAN
   REPORTED.
@@ -2844,7 +2844,7 @@ not here. A list of completed work is not a plan.
   224 and 232. It is not a diagnosis of them - those still need
   John's logs - but it can no longer be the answer.
 
-- ~~292~~ | DONE v1.47.3 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
+- ~~292~~ | DONE v1.47.4 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
   run_fetch.py, run_raster_folder.py and run_osm_friction.py were all
   absent from equipop-1.46.4.tar.gz. MANIFEST.in had gained
   `include demo_*.py` for BACKLOG 107 and nothing for the runners, so
@@ -2868,15 +2868,15 @@ not here. A list of completed work is not a plan.
   then listed THREE, under a heading stamped v1.16.8, and told the
   reader that "Two tools appear" when four do. A user following it
   replaces the toolbox and keeps the sidecars, which is EXACTLY what
-  happened to John at 1.47.3. The instruction, not the packaging, is
+  happened to John at 1.47.4. The instruction, not the packaging, is
   what produced the empty box.
 
-- ~~295~~ | DONE v1.47.3 | make_help_xml.py COULD NOT BE RUN WHERE IT
+- ~~295~~ | DONE v1.47.4 | make_help_xml.py COULD NOT BE RUN WHERE IT
   IS SHIPPED. It has been one of the five Pro files since 1.44.4 and
   it imports test_arcgis_stub, which lives in the repository's tests/
   directory and is NOT one of the five. ModuleNotFoundError,
   immediately, every time, for the whole life of the delivery.
-  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.3 wrote the Pro
+  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.4 wrote the Pro
   parameter comments as escaped HTML on an untested hypothesis (34)
   and offered `--plain` as the ten-second way back. John pasted the
   command, it failed, and only then did anyone check whether it could
@@ -2896,7 +2896,7 @@ not here. A list of completed work is not a plan.
   capabilities nobody could get to. THIS ONE WAS THE RECOVERY PATH
   FOR A KNOWN RISK, which makes it the one worth remembering.
 
-- ~~294~~ | DONE v1.47.3 | MACHINES 3 AND 4 HAD NO HELP TEXT AT ALL,
+- ~~294~~ | DONE v1.47.4 | MACHINES 3 AND 4 HAD NO HELP TEXT AT ALL,
   IN ANY DOOR. ContinentalRasters and SpatialDemography are
   registered in the Pro toolbox and executed by the suite, and
   THIRTEEN of their parameters had no entry in doors/help.py: folder,
@@ -2924,7 +2924,7 @@ not here. A list of completed work is not a plan.
   rather than expecting a number, so a fifth machine cannot ship
   unhelped the way these two did.
 
-- ~~295b~~ | DONE v1.47.3 | THE REACHABILITY MATRIX. John's request,
+- ~~295b~~ | DONE v1.47.4 | THE REACHABILITY MATRIX. John's request,
   session 12: "can a person get to this, and from which door?" - and
   his memory of a functions-by-doors table from the early Stata work.
   THAT TABLE DOES NOT SURVIVE. Every .md in the tree was searched;
@@ -2954,6 +2954,108 @@ not here. A list of completed work is not a plan.
   refused a same_as reference pointing at a door that exists.
   20 capabilities, 30 declared gaps, every one with a reason.
   Read it with: pytest tests/test_reachability.py -s -k report
+
+- ~~297~~ | DONE v1.47.4 | TWO DEFECTS JOHN'S REAL OSM FOLDER FOUND,
+  neither of which any fixture would have shown.
+  (a) A SHAPEFILE IS ONE THING IN FIVE FILES. His Swedish extract
+  inventoried as 109 rows, of which 91 were .cpg, .dbf, .prj, .shx
+  and .lock - eighteen of each - burying the eighteen layers that
+  were the answer. Sidecars are now folded into their .shp row and
+  counted in a `sidecars` column. A .dbf is only folded away when its
+  .shp is PRESENT; alone it is a vector with no geometry, because
+  John notes it sometimes holds the data and can be rebuilt.
+  (b) THE HEADLINE FEATURE WAS SILENTLY OPTIONAL. Reading the class
+  values - the fclass vocabulary, the entire point of this tool on an
+  OSM folder - went through pyogrio.read_dataframe, WHICH NEEDS
+  GEOPANDAS even with read_geometry=False. Without it the values
+  vanished into a per-record `warnings` key that no door displayed,
+  so a folder inventoried with no fclass column at all and nothing
+  said why. They now come through pyogrio's Arrow reader, which needs
+  only pyarrow; geopandas is a fallback rather than the way in.
+  THAT SECOND ONE MATTERS BEYOND THIS TOOL. The lattice-join door was
+  about to be designed around geopandas as an accepted dependency,
+  with a loud refusal and an install line, on the strength of machine
+  3's rasterio precedent. It turns out the dependency was never
+  needed: friction.paths_to_friction is explicitly "geopandas-FREE",
+  written for the Pro clone that cannot grow it. A DEPENDENCY WAS
+  ABOUT TO BE ADOPTED BECAUSE NOBODY CHECKED WHETHER THE PACKAGE
+  ALREADY DID THE JOB WITHOUT IT.
+  AND A LATTICE COLUMN THAT IS EMPTY FOR EVERY ROW. Machine 6 was
+  built around "which files share a grid", which is right for
+  machine 3's rasters and vacuous for OSM: John's folder reported 0
+  lattices, because only rasters have one. The column stays - it is
+  the point for rasters - but the tool is not only for them.
+
+- ~~298~~ | DONE v1.47.4 | VECTOR ONTO THE LATTICE, John's model.
+  MACHINE 3 ALREADY JOINED VECTOR TO THE RASTER GRID and took the
+  CENTROID of every feature - right for shops and stops, badly wrong
+  for a road network: a street crossing forty cells was counted once,
+  wherever its midpoint fell. The box also declared types=[0], so a
+  line layer could not even be chosen.
+  JOHN'S MODEL, session 12: presence, not length. A barrier's cost is
+  the cost of CROSSING it - a river that clips a corner still has to
+  be crossed, and one running corner to corner is crossed once too -
+  so length-weighting would be the wrong rule wearing the clothes of
+  precision. Values come from A FIELD THE USER PREPARES IN GIS, not
+  from a table in the dialog, which keeps the vocabulary where the
+  vocabulary is.
+  THE REFINEMENT THAT MADE IT WORK: each CLASS once, not each
+  FEATURE. OSM cuts one street into many records wherever a tag
+  changes; John's Swedish extract holds 2,139,630 road features and
+  his screenshot shows `unclassified` three times and `trunk_link`
+  twice inside ONE JUNCTION, all one street. Charged per feature that
+  junction costs 7; charged per class it costs 3, which is the number
+  John wrote by hand. Per-feature would have made the friction partly
+  a fact about how the data was cut - worst in cities, where
+  segmentation is densest.
+  THREE FIDELITIES, user's choice, class-present the default: centroid
+  only, each class once, length or share. Plus add / largest /
+  smallest / average for what happens when charges meet.
+  NO GEOPANDAS, AND THAT WAS NEARLY MISSED. The door was about to be
+  designed around geopandas as an accepted dependency, justified by
+  machine 3's rasterio precedent, with a loud refusal and an install
+  line. friction.paths_to_friction is explicitly "geopandas-FREE",
+  written for the Pro clone that cannot grow it. A DEPENDENCY WAS
+  ABOUT TO BE ADOPTED BECAUSE NOBODY CHECKED WHETHER THE PACKAGE
+  ALREADY DID THE JOB WITHOUT IT. The hundred lines of Liang-Barsky
+  clipping are now EXTRACTED as friction.feature_cells and shared,
+  rather than written a second time - BACKLOG 120's standing lesson.
+  THE LATTICE-SPACE TRICK. feature_cells cuts on a unit grid anchored
+  at zero; a raster lattice has an arbitrary origin and a negative e.
+  Rather than generalise the clipping and risk it drifting from the
+  barrier path that shares it, the COORDINATES are transformed so the
+  lattice becomes that unit grid. Cell (i, j) then IS (gx, gy), and a
+  clipped polygon area IS the share of the cell.
+  POINTS ARE DETECTED, NOT ASKED ABOUT. A point has no length and no
+  area, so the three rules coincide; demanding a class field for a
+  layer of bus stops would be a box asking a question the geometry
+  cannot answer. It also broke every existing point join the moment
+  the default changed, which is how it was found.
+  MACHINE 3 NOW READS THE INVENTORY machine 6 writes, reports which
+  classes were charged and what each was worth, and warns when one
+  class carries two values - because under class-collapse only the
+  first feature in a cell is charged, so which value wins would
+  otherwise depend on feature order.
+  TWO COMPOUNDING SIMULATOR GAPS FOUND HERE, the most consequential
+  of the five this release. QgsCoordinateReferenceSystem had no
+  __eq__, so two identical EPSG:4326 objects compared UNEQUAL and
+  every join built a transform it did not need; then QgsGeometry(other)
+  was not a copy constructor, so that needless reprojection turned
+  every line into an empty geometry and the door reported "no usable
+  line or polygon geometry" about a layer full of them. A confident,
+  wrong error message, produced entirely by the thing meant to catch
+  wrong behaviour.
+
+- 299 | OPEN, FOUND v1.47.4 | PRO'S JOIN BOX STILL TAKES THE CENTROID
+  ONLY. 298 gave QGIS three fidelities and left Pro with one, so the
+  two GIS doors now disagree about what a box does - which is the
+  thing tests/door_parity.py exists to prevent, and it does not catch
+  this because both doors DO have a box called `joinlayer`; only its
+  behaviour differs.
+  The engine is shared and geopandas-free, so this is dialog work
+  rather than capability: the four boxes, the geometry reader, and
+  the point auto-detection. Recorded the moment it was created rather
+  than found later, and the reachability matrix carries it.
 
 - 296 | ~~RULED OUT~~ SESSION 12, FOUND BY THE MATRIX | THE STATA
   COMMAND CANNOT REACH FRICTION OR SLOPE, THOUGH THE BRIDGE CAN.
@@ -2986,7 +3088,7 @@ not here. A list of completed work is not a plan.
   SO THE MATRIX NOW RECORDS A DOOR DELIBERATELY NOT BUILT rather than
   a capability missing, which is the distinction it exists to make.
 
-- 293 | OPEN, FOUND v1.47.3 | RunLog IS DEAD CODE, AND IT IS BACKLOG
+- 293 | OPEN, FOUND v1.47.4 | RunLog IS DEAD CODE, AND IT IS BACKLOG
   ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
   design as agreed)" - is complete, documented, exported in __all__,
   and CALLED BY NOTHING AND TESTED BY NOTHING. No door, no engine, no
@@ -4610,12 +4712,12 @@ not here. A list of completed work is not a plan.
   ("two rulers", "doubling it quarters the work", "a finding, not a
   nuisance") is the model the queued naming pass should copy.
 
-- ~~44~~ | DONE v1.47.3, CONFIRMATION PENDING | `make_help_xml.py`
+- ~~44~~ | DONE v1.47.4, CONFIRMATION PENDING | `make_help_xml.py`
   still writes `SyncOnce=TRUE`, the suspected cause of item 34
   (summary/usage rendering empty in Pro). Untouched this round: it
   needs one field cycle to confirm, and this was a refactor release.
   Now a one-line change in a single place whenever that cycle happens.
-  THE ONE-LINE CHANGE IS MADE in 1.47.3:
+  THE ONE-LINE CHANGE IS MADE in 1.47.4:
   SyncOnce=FALSE, which tells Pro the metadata is authored and not to
   synchronise its own over the top. Struck because the change this
   item describes is done - but it was ONE OF THREE faults found in the
@@ -4624,13 +4726,13 @@ not here. A list of completed work is not a plan.
   cause. See 34. Do not read this as proof that SyncOnce was the
   problem.
 
-- ~~34~~ | DONE v1.47.3, CONFIRMED IN THE FIELD | Tool help page:
+- ~~34~~ | DONE v1.47.4, CONFIRMED IN THE FIELD | Tool help page:
   summary/usage sections render empty in Pro. Suspect SyncOnce=TRUE
   letting Pro regenerate over the authored text, plus missing
   datatype attributes and plain text where escaped HTML is expected.
   The per-parameter comments (dialogReference) DO work | Needed one
   field cycle to confirm.
-  OPEN FROM v1.16.8 TO v1.47.3 - thirty releases - and closed by John
+  OPEN FROM v1.16.8 TO v1.47.4 - thirty releases - and closed by John
   in session 12: "all good, ? page is good".
   THE HEADLINE OF THIS ITEM WAS WRONG THE WHOLE TIME. Summary and
   usage were never empty for the tools that had a sidecar. What was
@@ -4663,13 +4765,13 @@ not here. A list of completed work is not a plan.
   slope, fca and lisa are not in it. Now that a second door exists
   and the mechanism is proved, this is worth doing.
 
-- ~~45~~ | DONE v1.47.3 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
+- ~~45~~ | DONE v1.47.4 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
   the Windows-style catalog paths they pretend to use, so a test run
   on Linux leaves four literal files named `C:\Data\...csv` in the
   repo root (and one stray figure from the Book build). Harmless,
   untracked, and cleaned by hand this round - but they belong in
   pytest's tmp_path, and on Windows those paths are real. Small.
-  CLOSED v1.47.3, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
+  CLOSED v1.47.4, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
   running the suite on a clean tree: the four `C:\Data\...csv` files
   did NOT recur and appear to have been fixed earlier without anyone
   narrowing this entry. What DID recur was two files the item never

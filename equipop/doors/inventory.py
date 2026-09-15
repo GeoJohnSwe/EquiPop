@@ -133,11 +133,17 @@ def _vector(path, deep=True):
                 if col not in fields:
                     continue
                 try:
-                    got = pyogrio.read_dataframe(
-                        path, layer=layer, columns=[col],
-                        read_geometry=False)
-                    vals = sorted(
-                        {str(v) for v in got[col].dropna().unique()})
+                    # pyogrio.read_dataframe NEEDS GEOPANDAS, even with
+                    # read_geometry=False - and without it the class
+                    # values, which are the whole point of this tool on
+                    # an OSM folder, vanished into a per-record
+                    # `warnings` key no door displayed. Silent
+                    # degradation of the headline feature.
+                    # read_arrow() has no such requirement: it returns
+                    # the column through pyarrow, which pyogrio already
+                    # depends on. geopandas is now a fallback, not the
+                    # only way in.
+                    vals = _distinct(path, layer, col)
                 except Exception as exc:            # pragma: no cover
                     entry.setdefault("warnings", []).append(
                         f"could not read {col}: {exc}")
@@ -159,6 +165,31 @@ def _vector(path, deep=True):
 
 
 # -------------------------------------------------------------- run
+def _distinct(path, layer, col):
+    """Every distinct value of one column, without geopandas.
+
+    Tried in order: pyogrio's Arrow reader (no geopandas), then
+    read_dataframe (needs it), then OGR directly. The first that works
+    wins; if none do, the caller records WHY rather than returning an
+    empty list that reads as "this column has no values".
+    """
+    import pyogrio
+    try:
+        import pyarrow as pa
+        kw = {"columns": [col], "read_geometry": False}
+        if layer:
+            kw["layer"] = layer
+        with pyogrio.open_arrow(path, **kw) as (_meta, stream):
+            tbl = pa.table(stream)
+        return sorted({str(v) for v in tbl.column(col).to_pylist()
+                       if v is not None})
+    except Exception:
+        pass
+    got = pyogrio.read_dataframe(path, layer=layer, columns=[col],
+                                 read_geometry=False)
+    return sorted({str(v) for v in got[col].dropna().unique()})
+
+
 def inventory(folder, say=print, deep=True, write=True):
     """Describe a folder's contents. Reads; changes nothing."""
     folder = str(folder)
@@ -184,10 +215,32 @@ def inventory(folder, say=print, deep=True, write=True):
     VECT = (".shp", ".gpkg", ".geojson", ".json", ".zip", ".gdb",
             ".fgb", ".parquet")
 
+    #: A SHAPEFILE IS ONE THING IN FIVE FILES. John's Swedish OSM
+    #: extract inventoried as 109 rows of which 91 were .cpg, .dbf,
+    #: .prj, .shx and .lock - eighteen of each - burying the eighteen
+    #: layers that were the answer. The sidecars are FOLDED INTO the
+    #: .shp row and counted there.
+    #: `.dbf` IS NOT ALWAYS A SIDECAR. John: "sometimes the shp is
+    #: missing and .dbf might hold the data". So a .dbf is only folded
+    #: away when its .shp is present; alone, it is listed as a vector
+    #: with no geometry - visible, without pretending to be a layer.
+    SIDECAR = (".cpg", ".dbf", ".prj", ".shx", ".qpj", ".sbn",
+               ".sbx", ".shp.xml", ".lock", ".atx", ".idm", ".ind")
+
     for root, _dirs, names in os.walk(folder):
+        here = {x.lower() for x in names}
+        sidecars = {}                    # shp stem -> [extensions]
+        for n in names:
+            stem, _, ext = n.rpartition(".")
+            if f".{ext.lower()}" in SIDECAR and f"{stem}.shp".lower() in here:
+                sidecars.setdefault(stem.lower(), []).append(ext.lower())
         for n in sorted(names):
             if n in (INVENTORY, "equipop_fetch.json"):
                 continue
+            stem, _, ext = n.rpartition(".")
+            if (f".{ext.lower()}" in SIDECAR
+                    and stem.lower() in sidecars):
+                continue                 # folded into its .shp row
             path = os.path.join(root, n)
             rel = os.path.relpath(path, folder)
             low = n.lower()
@@ -197,8 +250,20 @@ def inventory(folder, say=print, deep=True, write=True):
                 if low.endswith(RAST) and have_rio:
                     files.append({**base, **_raster(path)})
                 elif low.endswith(VECT) and have_pyogrio:
+                    kin = sorted(sidecars.get(
+                        os.path.splitext(n)[0].lower(), []))
                     for v in _vector(path, deep=deep):
-                        files.append({**base, **v})
+                        rec = {**base, **v}
+                        if kin:
+                            rec["sidecars"] = kin
+                        files.append(rec)
+                elif low.endswith(".dbf") and have_pyogrio:
+                    # A .dbf with no .shp beside it. John: rare, but it
+                    # holds real data and can be rebuilt - so it is a
+                    # vector WITHOUT GEOMETRY, not "other".
+                    for v in _vector(path, deep=deep):
+                        files.append({**base, **v,
+                                      "geometry": "(no geometry)"})
                 else:
                     files.append({**base, "kind": "other"})
             except Exception as exc:

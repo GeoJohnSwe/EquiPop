@@ -295,13 +295,87 @@ HELP = {
                "to reproduce results from before this setting "
                "existed.",
     # ---- machines 3 and 4, BACKLOG 294 -----------------------------
-    # Added v1.47.3. These THIRTEEN parameters had no entry, which is
+    # Added v1.47.4. These THIRTEEN parameters had no entry, which is
     # why make_help_xml.py covered only two of the four tools: it
     # refuses to write a sidecar with a gap, so it wrote none, and
     # both tools showed "There is no explanation for this parameter"
     # against every box. Their summary and usage text existed all
     # along and could not reach Pro for want of a file.
     # ---- machine 6, BACKLOG 269 -------------------------------------
+    # ---- the lattice join, BACKLOG 298 -------------------------------
+    "joinhow": "HOW MUCH OF A FEATURE A CELL HAS TO HOLD before it is "
+               "charged. 'Centroid only' takes the feature's midpoint "
+               "and charges one cell - right for shops, clinics and "
+               "bus stops, and badly wrong for a road, which is put "
+               "wherever its middle happens to fall. 'EACH CLASS "
+               "ONCE' (the default) charges every cell the feature "
+               "genuinely touches, and charges each CLASS in that "
+               "cell once however many features carry it - which "
+               "matters because OSM cuts one street into many records "
+               "wherever a tag changes, so a junction holding five "
+               "pieces of the same road would otherwise cost five "
+               "times and the friction would be partly a fact about "
+               "how the data was cut. 'Length or share' keeps the "
+               "measure instead: metres of line, or the fraction of "
+               "the cell a polygon covers. Use it for a COMPOSITION "
+               "question - what share of this cell is forest - and "
+               "not for a barrier, where what matters is that the "
+               "thing has to be crossed at all. Corner and edge "
+               "touches are free under every rule. POINT LAYERS are "
+               "detected and use the centroid rule, because a point "
+               "has no length and no area and the three are the same "
+               "thing for it.",
+    "joinclass": "THE FIELD THAT SAYS WHAT EACH FEATURE IS - fclass "
+                 "on an OSM extract, or highway, landuse, natural. "
+                 "Required by 'each class once', because without it "
+                 "there is nothing to collapse on and every segment "
+                 "would be charged separately. Run 'What is in this "
+                 "folder?' over the data first and it lists the "
+                 "distinct values of exactly these columns, so you "
+                 "never have to remember them.",
+    "joinfield": "THE VALUE EACH CHARGE IS WORTH - a number you "
+                 "prepared in GIS, one per feature. Give every road "
+                 "class its friction, every land use its cost, and "
+                 "the tool adds up what a cell holds. Left blank, "
+                 "each charge is worth 1, which counts rather than "
+                 "weighs. THE VALUES ARE YOURS TO SET AND THAT IS "
+                 "DELIBERATE: a table of class values inside this "
+                 "dialog would be a second vocabulary to maintain, "
+                 "and the one on the layer is already right. A NULL "
+                 "is read as 1 rather than 0, so a missing value "
+                 "leaves an additive run's total unchanged - fill "
+                 "them yourself if 0 is what you mean, because a "
+                 "silent 0 and a real 0 must not look alike.",
+    "joincombine": "WHAT HAPPENS WHEN SEVERAL CHARGES LAND IN ONE "
+                   "CELL. 'Add them up' is the default and the "
+                   "barrier model's rule since it began: a river "
+                   "crossed at a railway costs both. Largest, "
+                   "smallest and average are there for measures that "
+                   "should not stack - a slope does not get steeper "
+                   "because two polygons describe it.",
+    "joinname": "The name of the new column on the output points. It "
+                "joins on the LATTICE INDEX rather than by distance, "
+                "so a cell either holds the feature or it does not, "
+                "and cells the layer never touched carry a real 0.0 "
+                "- the same rule the rasters follow.",
+    "joinlayer": "A LAYER TO PUT ON THE SAME GRID as the rasters - "
+                 "points, roads, land use, water, railways. QGIS can "
+                 "join layers perfectly well; THE HARD PART IS THE "
+                 "LATTICE, because EquiPop knows the exact grid the "
+                 "raster points sit on and a join done outside is "
+                 "approximate at every cell boundary. Here it is "
+                 "exact, because the grid is ours. It must be in a "
+                 "coordinate system that can be converted to the "
+                 "rasters'; the conversion is done for you.",
+    "sidecars": "The companion files folded into this row. A "
+                "SHAPEFILE IS ONE THING IN FIVE FILES - .shp, .dbf, "
+                ".shx, .prj, .cpg - and listing all five buries the "
+                "layers you came to see: a Swedish OSM extract came "
+                "out as 109 rows of which 91 were companions. They "
+                "are counted here instead. A .dbf with NO .shp beside "
+                "it is not a companion and is listed on its own, as a "
+                "vector with no geometry, because it still holds real "
+                "data.",
     "deep": "ALSO LIST THE DISTINCT VALUES of any classification "
             "column - fclass, highway, landuse, natural, amenity. "
             "This is the part that saves typing later: the grouping "
@@ -510,7 +584,7 @@ LABELS = {
                        "k nearest)",
     "ContinentalRasters": "3. Raster Data Curation",
     "SpatialDemography": "4. Spatial Demographic Analysis",
-    # v1.47.3, BACKLOG 269. Numbered 6 rather than 5 because machine 5
+    # v1.47.4, BACKLOG 269. Numbered 6 rather than 5 because machine 5
     # is fetching; this reads a folder that is already on disk.
     "FolderInventory": "6. What is in this folder? (reads, changes "
                        "nothing)",

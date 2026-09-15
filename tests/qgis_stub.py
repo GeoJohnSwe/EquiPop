@@ -39,6 +39,17 @@ class QgsPointXY:
 
 class QgsGeometry:
     def __init__(self, pt=None):
+        # A COPY CONSTRUCTOR, as in real PyQGIS: QgsGeometry(other)
+        # duplicates. Without this, `QgsGeometry(g)` on a line stored
+        # the geometry OBJECT as a point and left _parts empty, so
+        # every reprojected line silently became an empty geometry and
+        # the door reported "no usable line or polygon geometry" about
+        # a layer full of them.
+        if isinstance(pt, QgsGeometry):
+            self._pt = pt._pt
+            self._parts = [list(part) for part in pt._parts]
+            self._wkb = pt._wkb
+            return
         self._pt = pt
         self._parts = []
         self._wkb = 1
@@ -136,7 +147,7 @@ class _MetaTypes:
     # The numbers are Qt's own QMetaType::Type values, so a door that
     # reads them gets what QGIS would give it.
     Double, Int, QString, Bool = 6, 2, 10, 1
-    # v1.47.3: LongLong was MISSING, and a door that used it - the
+    # v1.47.4: LongLong was MISSING, and a door that used it - the
     # right type for a feature count, which can exceed a 32-bit int -
     # died at import with AttributeError. TOO SPARSE IS ALSO A LIE:
     # the simulator was silently narrowing what a door is allowed to
@@ -276,6 +287,24 @@ class QgsCoordinateReferenceSystem:
     def mapUnits(self):
         return 6 if self.isGeographic() else 0   # 6 = degrees, 0 = m
 
+    # v1.47.4: REAL CRS OBJECTS COMPARE EQUAL when they are the same
+    # CRS. The stub had no __eq__, so `src.sourceCrs() != want` was
+    # True for two identical EPSG:4326 objects and every join built a
+    # transform it did not need - which then destroyed line geometry,
+    # because the stub's QgsGeometry had no copy constructor either.
+    # Two gaps compounding: the simulator said "reproject" where QGIS
+    # says "no need", and then mishandled the reprojection it had
+    # invented.
+    def __eq__(self, other):
+        return (isinstance(other, QgsCoordinateReferenceSystem)
+                and self._id == other._id)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self._id)
+
 
 class QgsCoordinateTransform:
     """Not a real reprojection - it marks that one happened, so the
@@ -338,6 +367,65 @@ class QgsProcessingException(Exception):
 
 
 # ------------------------------------------------------ the source
+class _ShapeSource:
+    """A source of LINE or POLYGON features.
+
+    v1.47.4. _Source below builds POINTS from x/y columns, which is
+    all any EquiPop door had ever consumed - so when machine 3's join
+    learned to cut lines and polygons at the cell boundaries, there
+    was no way to hand it one. FOURTH SPARSE-STUB GAP THIS RELEASE,
+    after QMetaType.LongLong, DETable and QgsWkbTypes.NoGeometry, and
+    the same shape every time: the simulator quietly limits what a
+    door can be TESTED with, which is worse than limiting what it can
+    ask for.
+
+    shapes : list of (parts, attributes) where parts is
+        [[(x, y), ...], ...] for a line, or
+        [[ring, hole, ...], ...] for a polygon.
+    """
+
+    def __init__(self, shapes, fields, kind="line", crs="EPSG:3006"):
+        self._shapes = list(shapes)
+        self._kind = kind
+        self._crs = QgsCoordinateReferenceSystem(crs)
+        self._fields = QgsFields()
+        for name, is_num in fields:
+            self._fields.append(QgsField(
+                name, QVariant.Double if is_num else QVariant.String))
+
+    def fields(self):
+        return self._fields
+
+    def sourceCrs(self):
+        return self._crs
+
+    def wkbType(self):
+        return (QgsWkbTypes.LineString if self._kind == "line"
+                else QgsWkbTypes.Polygon)
+
+    def featureCount(self):
+        return len(self._shapes)
+
+    def getFeatures(self, *a, **kw):
+        for parts, attrs in self._shapes:
+            g = QgsGeometry()
+            if self._kind == "line":
+                g._parts = [[QgsPointXY(x, y) for x, y in part]
+                            for part in parts]
+                g._wkb = 2
+            else:
+                # one part, its rings flattened the way asPolygon and
+                # asMultiPolygon expect
+                g._parts = [[QgsPointXY(x, y) for x, y in ring]
+                            for ring in parts[0]]
+                g._wkb = 3
+            f = QgsFeature(self._fields)
+            f.setGeometry(g)
+            f.setAttributes([attrs.get(fl.name())
+                             for fl in self._fields])
+            yield f
+
+
 class _Source:
     """What parameterAsSource hands back: features, fields, CRS."""
 
@@ -555,7 +643,7 @@ class QgsWkbTypes:
     Point = _WkbType(1)
     LineString = _WkbType(2)
     Polygon = _WkbType(3)
-    # v1.47.3: a table with NO GEOMETRY. Real PyQGIS has had
+    # v1.47.4: a table with NO GEOMETRY. Real PyQGIS has had
     # NoGeometry (WKB 100, geometry type 4) all along; the simulator
     # had never needed it because every EquiPop output until machine 6
     # carried points. An inventory has nothing to put on a map, and

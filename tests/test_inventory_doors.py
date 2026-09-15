@@ -175,3 +175,94 @@ def test_8_not_writing_leaves_the_folder_untouched(tmp_path):
     df, _ = _run(tmp_path, write=False)
     assert len(df) == 1
     assert set(os.listdir(tmp_path)) == before
+
+
+# ==== from John's real Swedish OSM folder, session 12 ================
+def _shp(path, classes):
+    """An OSM-shaped shapefile, written without geopandas."""
+    import struct
+    import numpy as np
+    from pyogrio.raw import write
+
+    def ln(i):
+        return (struct.pack("<BI", 1, 2) + struct.pack("<I", 2)
+                + struct.pack("<dddd", float(i), 0.0,
+                              float(i) + 1, 1.0))
+    n = len(classes) * 3
+    write(str(path),
+          geometry=np.array([ln(i) for i in range(n)], dtype=object),
+          field_data=[np.array([c for c in classes for _ in range(3)],
+                               dtype=object)],
+          fields=np.array(["fclass"], dtype=object),
+          geometry_type="LineString", crs="EPSG:3006")
+
+
+@pytest.fixture
+def osm_folder(tmp_path):
+    pytest.importorskip("pyogrio")
+    _shp(tmp_path / "gis_osm_roads_free_1.shp",
+         ["trunk", "trunk_link", "unclassified", "cycleway"])
+    _shp(tmp_path / "gis_osm_waterways_free_1.shp", ["river", "stream"])
+    (tmp_path / "README").write_text("x")
+    return tmp_path
+
+
+def test_9_a_shapefile_is_one_row_not_five(osm_folder):
+    """JOHN'S REAL FOLDER, session 12: a Swedish OSM extract came back
+    as 109 rows of which 91 were .cpg, .dbf, .prj, .shx and .lock -
+    eighteen of each - burying the eighteen layers that were the
+    answer. A shapefile is ONE THING IN FIVE FILES."""
+    on_disk = len(os.listdir(osm_folder))
+    df, _ = _run(osm_folder)
+    assert on_disk == 11, on_disk
+    assert len(df) == 3, df["file"].tolist()
+    shp = df[df["file"].str.endswith(".shp")]
+    assert len(shp) == 2
+    assert (shp["sidecars"] != "").all(), "the companions were not counted"
+
+
+def test_10_the_class_values_survive_without_geopandas(osm_folder):
+    """THE HEADLINE FEATURE WAS SILENTLY OPTIONAL. Reading the class
+    values went through pyogrio.read_dataframe, which needs geopandas
+    even with read_geometry=False - and when it was absent the values
+    vanished into a per-record `warnings` key that no door displayed.
+    An OSM folder inventoried with no fclass column at all, and
+    nothing said why.
+
+    They now come through pyogrio's Arrow reader, which needs only
+    pyarrow. geopandas is a fallback, not the way in.
+    """
+    df, _ = _run(osm_folder)
+    roads = df[df["file"].str.contains("roads")].iloc[0]
+    assert roads["class_column"] == "fclass"
+    for c in ("trunk", "trunk_link", "unclassified", "cycleway"):
+        assert c in roads["class_values"], roads["class_values"]
+
+
+def test_11_a_dbf_with_no_shp_is_still_listed(tmp_path):
+    """John: "sometimes the shp is missing and .dbf might hold the
+    data which can be built - but it is rare". Folded away when its
+    .shp is there; on its own it is a vector with NO GEOMETRY, which
+    is visible without pretending to be a layer."""
+    pytest.importorskip("pyogrio")
+    _shp(tmp_path / "roads.shp", ["trunk"])
+    os.remove(tmp_path / "roads.shp")
+    df, _ = _run(tmp_path)
+    # NOT just "the name appears" - the first version of this test
+    # asserted that and passed even when the .dbf fell through to
+    # kind="other", which is what every unrecognised file gets. The
+    # claim is that it is READ AS A TABLE, so check the kind.
+    dbf = df[df["file"].str.endswith(".dbf")]
+    assert len(dbf) == 1, df["file"].tolist()
+    assert dbf.iloc[0]["kind"] == "vector", dbf.iloc[0].to_dict()
+    assert dbf.iloc[0]["geometry"] == "(no geometry)"
+
+
+def test_12_the_log_says_the_json_feeds_the_other_tools(osm_folder):
+    """John, session 12. A user who does not know the file is an INPUT
+    to machine 3 has no reason to keep it."""
+    _, fb = _run(osm_folder, write=True)
+    said = " ".join(fb.info)
+    assert "READ BY THE OTHER TOOLS" in said, said[-400:]
+    _, fb = _run(osm_folder, write=False)
+    assert "READ BY THE OTHER TOOLS" not in " ".join(fb.info)

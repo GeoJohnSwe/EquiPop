@@ -47,6 +47,7 @@ COLUMNS = [
     ("lattice", QMetaType.Type.QString),
     ("cell_size", QMetaType.Type.QString),
     ("class_column", QMetaType.Type.QString),
+    ("sidecars", QMetaType.Type.QString),
     ("class_values", QMetaType.Type.QString),
     ("problem", QMetaType.Type.QString),
 ]
@@ -139,6 +140,15 @@ class FolderInventory(EquipopAlgorithm):
         lattices = {r["lattice"] for r in rows if r.get("lattice")}
         ch.info(f"{len(rows)} file(s) listed, {len(lattices)} distinct "
                 f"lattice(s).")
+        if write:
+            # John, session 12: say that the file is not just a record
+            # of this run but an INPUT to the next one. A user who does
+            # not know that has no reason to keep it.
+            ch.info(
+                "equipop_inventory.json written into the folder. IT IS "
+                "READ BY THE OTHER TOOLS: machine 3 fills its class "
+                "and grouping lists from it, so you never type class "
+                "names. Keep it with the data.")
         if len(lattices) > 1:
             ch.warning(
                 f"THE FOLDER HOLDS {len(lattices)} DIFFERENT LATTICES. "
@@ -179,6 +189,10 @@ def _rows(got):
             "cell_size": (f"{abs(float(px[0])):g} x "
                           f"{abs(float(px[1])):g}") if len(px) == 2 else "",
             "class_column": col,
+            # A shapefile is ONE thing in five files. John's Swedish
+            # OSM folder listed 109 rows of which 91 were sidecars.
+            "sidecars": (", ".join(rec["sidecars"])
+                         if rec.get("sidecars") else ""),
             # Truncated on purpose: an OSM extract holds dozens of
             # fclass values and a table cell is not where you read
             # them. The JSON keeps every one.

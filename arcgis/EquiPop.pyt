@@ -2536,6 +2536,12 @@ class FolderInventory:
         lattices = {r["lattice"] for r in rows if r.get("lattice")}
         ch.info(f"{len(rows)} file(s) listed, {len(lattices)} "
                 f"distinct lattice(s).")
+        if _flag_or(pm, "write", True):
+            ch.info(
+                "equipop_inventory.json written into the folder. IT "
+                "IS READ BY THE OTHER TOOLS: machine 3 fills its "
+                "class and grouping lists from it, so you never type "
+                "class names. Keep it with the data.")
         if len(lattices) > 1:
             ch.warning(
                 f"THE FOLDER HOLDS {len(lattices)} DIFFERENT "
@@ -2551,7 +2557,8 @@ INVENTORY_COLUMNS = [
     ("file", "TEXT"), ("kind", "TEXT"), ("layer", "TEXT"),
     ("crs", "TEXT"), ("geometry", "TEXT"), ("features", "LONG"),
     ("lattice", "TEXT"), ("cell_size", "TEXT"),
-    ("class_column", "TEXT"), ("class_values", "TEXT"),
+    ("class_column", "TEXT"), ("sidecars", "TEXT"),
+    ("class_values", "TEXT"),
     ("problem", "TEXT"),
 ]
 
@@ -2584,6 +2591,8 @@ def _inventory_rows(got):
                           f"{abs(float(px[1])):g}")
                          if len(px) == 2 else "",
             "class_column": col,
+            "sidecars": (", ".join(rec["sidecars"])
+                         if rec.get("sidecars") else ""),
             "class_values": (note if note else
                              ", ".join(map(str, vals[:12]))
                              + (" ..." if len(vals) > 12 else "")),

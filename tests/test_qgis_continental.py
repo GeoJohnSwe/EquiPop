@@ -315,3 +315,153 @@ def test_joining_during_a_NEIGHBOURHOOD_run_is_refused_with_the_fix():
     with pytest.raises(QgsProcessingException, match="leave box"):
         alg.processAlgorithm(_params(k="500", joinlayer=src,
                                      joinfield="", joinname="s"), {}, fb)
+
+
+# =====================================================================
+# v1.47.4, BACKLOG 298 - LINES AND POLYGONS ONTO THE LATTICE
+#
+# John, session 12: "the user (in GIS) will edit or add fields to the
+# shapefiles so that all roads get different friction values - and
+# each road/area that passes the unit receives the values ... and all
+# values help to build a sum."
+#
+# Each test verified by breaking it:
+#   * fidelity forced to "presence"            -> 1 fails
+#   * the lattice-space transform removed      -> 2, 3 fail
+#   * the class-collapse skipped               -> 1 fails
+#   * point auto-detection removed             -> 5 fails
+# =====================================================================
+def _lat():
+    from equipop.latticejoin import lattice_of
+    return lattice_of(str(FIX))
+
+
+def _cell_centre(gx, gy):
+    lat = _lat()
+    return (lat["c"] + (gx + 0.5) * lat["a"],
+            lat["f"] + (gy + 0.5) * lat["e"])
+
+
+def _roads(segments):
+    """segments: list of (fclass, value, [(x, y), (x, y)])."""
+    from qgis_stub import _ShapeSource
+    shapes = [([pts], {"fclass": c, "fr": v}) for c, v, pts in segments]
+    return _ShapeSource(shapes, [("fclass", False), ("fr", True)],
+                        kind="line", crs="EPSG:4326")
+
+
+def _joined(src, **over):
+    p = _params(k="", joinlayer=src, joinname="fric",
+                joinclass="fclass", joinfield="fr", **over)
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(p, {}, fb)
+    return p["_sinks"]["OUTPUT"].to_frame(), " ".join(fb.lines)
+
+
+def test_1_one_street_cut_into_segments_is_charged_once():
+    """THE DEFECT JOHN'S OWN SCREENSHOT SHOWS. OSM cuts a street
+    wherever a tag changes: his junction holds `unclassified` three
+    times and `trunk_link` twice, all one road. Charging per FEATURE
+    makes the friction partly a fact about how the data was cut."""
+    lat = _lat()
+    x0, y0 = _cell_centre(40, 40)
+    dx = lat["a"] / 8.0
+    segs = [("unclassified", 1.0, [(x0 - 3 * dx, y0), (x0 - dx, y0)]),
+            ("unclassified", 1.0, [(x0 - dx, y0), (x0 + dx, y0)]),
+            ("unclassified", 1.0, [(x0 + dx, y0), (x0 + 3 * dx, y0)]),
+            ("trunk_link", 2.0, [(x0, y0 - 3 * dx), (x0, y0)]),
+            ("trunk_link", 2.0, [(x0, y0), (x0, y0 + 3 * dx)])]
+    df, said = _joined(_roads(segs))
+    hit = df[df["fric"] > 0]
+    assert len(hit) == 1, hit[["fric"]].to_dict("records")
+    # 1 (unclassified, once) + 2 (trunk_link, once) = 3, not 7
+    assert hit.iloc[0]["fric"] == pytest.approx(3.0), hit.iloc[0]["fric"]
+    assert "each CLASS genuinely touches" in said
+
+
+def test_2_a_road_crossing_many_cells_charges_every_one():
+    """The centroid rule put a whole street in one cell. A road that
+    crosses four cells has to be crossed in all four."""
+    lat = _lat()
+    x0, y0 = _cell_centre(50, 50)
+    end_x = lat["c"] + (54.5) * lat["a"]
+    df, _ = _joined(_roads([("trunk", 5.0, [(x0, y0), (end_x, y0)])]))
+    hit = df[df["fric"] > 0]
+    assert len(hit) == 5, len(hit)
+    assert hit["fric"].to_numpy() == pytest.approx(5.0)
+
+
+def test_3_cells_the_layer_never_touched_carry_a_real_zero():
+    lat = _lat()
+    x0, y0 = _cell_centre(60, 60)
+    dx = lat["a"] / 4.0
+    df, _ = _joined(_roads([("trunk", 5.0, [(x0 - dx, y0),
+                                            (x0 + dx, y0)])]))
+    assert "fric" in df.columns
+    assert (df["fric"] == 0.0).sum() > 0
+    assert df["fric"].notna().all(), "a missed cell must be 0, not null"
+
+
+def test_4_the_class_field_is_demanded_when_it_is_needed():
+    """Without it, 'each class once' silently becomes per-segment."""
+    from qgis_stub import QgsProcessingException
+    lat = _lat()
+    x0, y0 = _cell_centre(40, 40)
+    dx = lat["a"] / 4.0
+    src = _roads([("trunk", 1.0, [(x0 - dx, y0), (x0 + dx, y0)])])
+    p = _params(k="", joinlayer=src, joinname="fric", joinclass="",
+                joinfield="fr")
+    with pytest.raises(QgsProcessingException, match="(?i)class field"):
+        _alg().processAlgorithm(p, {}, _Feedback())
+
+
+def test_5_a_point_layer_still_works_without_a_class_field():
+    """A point has no length and no area, so the three rules coincide.
+    Demanding a class field for a layer of bus stops would be a box
+    asking a question the geometry cannot answer - and it broke every
+    existing point join the moment the default changed."""
+    src, _ = _shops(n=8)
+    p = _params(k="", joinlayer=src, joinfield="", joinname="shops")
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(p, {}, fb)
+    names = [f.name() for f in p["_sinks"]["OUTPUT"]._fields]
+    assert "shops" in names, names
+
+
+def test_6_the_classes_charged_are_reported_with_their_values():
+    """A value field that misses a class is otherwise SILENT: the
+    cells still get a number, just the wrong one, and nothing says
+    which class was left at 1."""
+    lat = _lat()
+    x0, y0 = _cell_centre(45, 45)
+    dx = lat["a"] / 4.0
+    df, said = _joined(_roads([
+        ("trunk", 3.0, [(x0 - dx, y0), (x0 + dx, y0)]),
+        ("cycleway", 1.0, [(x0, y0 - dx), (x0, y0 + dx)])]))
+    assert "2 class(es) charged" in said, said[-400:]
+    assert "trunk=3.0" in said and "cycleway=1.0" in said, said[-400:]
+
+
+def test_7_one_class_with_two_values_is_flagged():
+    """Under 'each class once' only the FIRST feature of a class in a
+    cell is charged, so which value wins depends on feature order -
+    a result that would change between runs of the same data."""
+    lat = _lat()
+    x0, y0 = _cell_centre(46, 46)
+    dx = lat["a"] / 4.0
+    _, said = _joined(_roads([
+        ("trunk", 3.0, [(x0 - dx, y0), (x0, y0)]),
+        ("trunk", 9.0, [(x0, y0), (x0 + dx, y0)])]))
+    assert "MORE THAN ONE value" in said, said[-400:]
+
+
+def test_8_no_value_field_says_it_is_counting_not_weighing():
+    lat = _lat()
+    x0, y0 = _cell_centre(47, 47)
+    dx = lat["a"] / 4.0
+    src = _roads([("trunk", 1.0, [(x0 - dx, y0), (x0 + dx, y0)])])
+    p = _params(k="", joinlayer=src, joinname="fric",
+                joinclass="fclass", joinfield="")
+    alg, fb = _alg(), _Feedback()
+    alg.processAlgorithm(p, {}, fb)
+    assert "COUNTS classes rather than weighing" in " ".join(fb.lines)

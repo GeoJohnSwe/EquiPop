@@ -687,6 +687,74 @@ def _clip_ring(pts, X0, Y0, X1, Y1):
     return poly
 
 
+def feature_cells(feat, unit_size: float) -> dict:
+    """Which cells a feature genuinely occupies, and by how much.
+
+    Returns {(i, j): measure} - LENGTH in metres for a line, AREA in
+    square metres for a polygon - for every cell the feature has
+    positive presence in. Corner and edge kisses give 0 and are
+    absent.
+
+    EXTRACTED IN v1.47.4 SO NOTHING DUPLICATES IT. This is a hundred
+    lines of Liang-Barsky clipping and ring-area arithmetic, and it
+    was about to be written a second time for the lattice join.
+    BACKLOG 120 is the standing entry about exactly that: two copies
+    of a calculation drift, and the drift is invisible because both
+    look right. paths_to_friction and paths_to_cells now share it.
+    """
+    u = float(unit_size)
+    gtype = str(feat.get("type", "line")).lower()
+    parts = feat.get("parts") or []
+    measure: dict[tuple[int, int], float] = {}
+    if gtype.startswith("line"):
+        for part in parts:
+            pts = [(float(p[0]), float(p[1])) for p in part
+                   if p is not None]
+            for (x1, y1), (x2, y2) in zip(pts[:-1], pts[1:]):
+                i0 = int(np.floor(min(x1, x2) / u))
+                i1 = int(np.floor(max(x1, x2) / u))
+                j0 = int(np.floor(min(y1, y2) / u))
+                j1 = int(np.floor(max(y1, y2) / u))
+                for i in range(i0, i1 + 1):
+                    for j in range(j0, j1 + 1):
+                        L = _clip_len(x1, y1, x2, y2, i * u,
+                                      j * u, (i + 1) * u,
+                                      (j + 1) * u)
+                        if L > 0.0:
+                            measure[(i, j)] = measure.get(
+                                (i, j), 0.0) + L
+    elif gtype.startswith("poly"):
+        for part in parts:
+            rings = [[(float(p[0]), float(p[1])) for p in ring
+                      if p is not None] for ring in part]
+            rings = [r for r in rings if len(r) >= 3]
+            if not rings:
+                continue
+            for ri, ring in enumerate(rings):
+                a = _ring_area(ring)
+                if (ri == 0 and a < 0) or (ri > 0 and a > 0):
+                    rings[ri] = ring[::-1]     # ext +, holes -
+            allp = np.asarray([p for r in rings for p in r], float)
+            i0 = int(np.floor(allp[:, 0].min() / u))
+            i1 = int(np.floor(allp[:, 0].max() / u))
+            j0 = int(np.floor(allp[:, 1].min() / u))
+            j1 = int(np.floor(allp[:, 1].max() / u))
+            for i in range(i0, i1 + 1):
+                for j in range(j0, j1 + 1):
+                    A = 0.0
+                    for ring in rings:
+                        A += _ring_area(_clip_ring(
+                            ring, i * u, j * u, (i + 1) * u,
+                            (j + 1) * u))
+                    if A > 0.0:
+                        measure[(i, j)] = measure.get(
+                            (i, j), 0.0) + A
+    else:
+        raise ValueError(f"[friction] unknown feature type "
+                         f"'{gtype}' - line or polygon")
+    return measure
+
+
 def paths_to_friction(features, values=None, unit_size: float = 100.0,
                       default_value: float | None = None,
                       agg: str = "sum") -> pd.DataFrame:
@@ -727,55 +795,7 @@ def paths_to_friction(features, values=None, unit_size: float = 100.0,
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}
     for feat, v in zip(features, vals):
-        gtype = str(feat.get("type", "line")).lower()
-        parts = feat.get("parts") or []
-        measure: dict[tuple[int, int], float] = {}
-        if gtype.startswith("line"):
-            for part in parts:
-                pts = [(float(p[0]), float(p[1])) for p in part
-                       if p is not None]
-                for (x1, y1), (x2, y2) in zip(pts[:-1], pts[1:]):
-                    i0 = int(np.floor(min(x1, x2) / u))
-                    i1 = int(np.floor(max(x1, x2) / u))
-                    j0 = int(np.floor(min(y1, y2) / u))
-                    j1 = int(np.floor(max(y1, y2) / u))
-                    for i in range(i0, i1 + 1):
-                        for j in range(j0, j1 + 1):
-                            L = _clip_len(x1, y1, x2, y2, i * u,
-                                          j * u, (i + 1) * u,
-                                          (j + 1) * u)
-                            if L > 0.0:
-                                measure[(i, j)] = measure.get(
-                                    (i, j), 0.0) + L
-        elif gtype.startswith("poly"):
-            for part in parts:
-                rings = [[(float(p[0]), float(p[1])) for p in ring
-                          if p is not None] for ring in part]
-                rings = [r for r in rings if len(r) >= 3]
-                if not rings:
-                    continue
-                for ri, ring in enumerate(rings):
-                    a = _ring_area(ring)
-                    if (ri == 0 and a < 0) or (ri > 0 and a > 0):
-                        rings[ri] = ring[::-1]     # ext +, holes -
-                allp = np.asarray([p for r in rings for p in r], float)
-                i0 = int(np.floor(allp[:, 0].min() / u))
-                i1 = int(np.floor(allp[:, 0].max() / u))
-                j0 = int(np.floor(allp[:, 1].min() / u))
-                j1 = int(np.floor(allp[:, 1].max() / u))
-                for i in range(i0, i1 + 1):
-                    for j in range(j0, j1 + 1):
-                        A = 0.0
-                        for ring in rings:
-                            A += _ring_area(_clip_ring(
-                                ring, i * u, j * u, (i + 1) * u,
-                                (j + 1) * u))
-                        if A > 0.0:
-                            measure[(i, j)] = measure.get(
-                                (i, j), 0.0) + A
-        else:
-            raise ValueError(f"[friction] unknown feature type "
-                             f"'{gtype}' - line or polygon")
+        measure = feature_cells(feat, u)
         for (i, j), m in measure.items():
             if m > 1e-9:
                 acc.setdefault((i * u + u / 2, j * u + u / 2),
