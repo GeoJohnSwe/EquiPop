@@ -2153,6 +2153,51 @@ def _flag(pm, name):
     return str(_txt(pm, name)).lower() in ("true", "1", "yes")
 
 
+def _flag_or(pm, name, default):
+    """A tick-box whose default is TRUE.
+
+    _flag() reads an unset box as False, which is right for boxes
+    that default off and wrong for these two: leaving "list the class
+    values" untouched should list them. BACKLOG 116's family - an
+    idiom that eats a meaningful value - so the default is passed in
+    rather than assumed.
+    """
+    raw = _txt(pm, name)
+    if raw is None or str(raw).strip() == "":
+        return bool(default)
+    return str(raw).lower() in ("true", "1", "yes")
+
+
+def _write_table(rows, columns, target, messages):
+    """A list of dicts as a standalone table.
+
+    NOT a feature class: an inventory has no geometry, and inventing
+    a point for it would put ninety files at the origin of the map.
+    arcpy.da.NumPyArrayToTable is the one call for this.
+    """
+    import numpy as np
+    if not target:
+        raise arcpy.ExecuteError("Choose an output table.")
+    dt = []
+    for nm, kind in columns:
+        if kind == "LONG":
+            dt.append((nm, "<i8"))
+        else:
+            width = max([len(str(r.get(nm) or "")) for r in rows]
+                        + [1])
+            dt.append((nm, f"<U{width}"))
+    arr = np.empty(len(rows), dtype=dt)
+    for nm, kind in columns:
+        if kind == "LONG":
+            arr[nm] = [int(r.get(nm) or 0) for r in rows]
+        else:
+            arr[nm] = [str(r.get(nm) or "") for r in rows]
+    if arcpy.Exists(target):
+        arcpy.management.Delete(target)
+    arcpy.da.NumPyArrayToTable(arr, target)
+    messages.addMessage(f"[out] {len(rows)} row(s) -> {target}")
+
+
 def _num(pm, name, default=None):
     """Numbers from a dialog box, locale-proof (v1.16.7).
 
@@ -2433,6 +2478,120 @@ def _write_points(table, man, target, messages):
         f"{len(table):,} rows written to {target}.")
 
 
+class FolderInventory:
+    """MACHINE 6 for Pro. BACKLOG 269.
+
+    Thin, like machines 3 and 4. Everything about what an inventory
+    MEANS lives in equipop.doors.inventory, which the QGIS tool calls
+    with the same arguments. What is Pro's own here: picking a folder
+    and writing a table.
+
+    THE CAPABILITY SHIPPED IN 1.45.0 WITH NO DOOR ANYWHERE - not Pro,
+    not QGIS, not Stata, not a runner script. It was reachable only by
+    writing Python. First of the five unreachable things found in
+    session 12, and this is half of its answer.
+    """
+
+    def __init__(self):
+        self.label = "6. What is in this folder? (reads, changes nothing)"
+        from equipop.doors.help import SUMMARY
+        self.description = SUMMARY["FolderInventory"]
+
+    def getParameterInfo(self):
+        return [_p("folder", "The folder to look at (subfolders "
+                             "included)", "DEFolder"),
+                _p("deep", "Also list the distinct values of class "
+                           "columns (fclass, highway, landuse...)",
+                   "GPBoolean", required=False),
+                _p("write", "Save equipop_inventory.json in the "
+                            "folder, so other tools can read it",
+                   "GPBoolean", required=False),
+                _p("out", "Output table", "DETable",
+                   direction="Output")]
+
+    def isLicensed(self):
+        return True
+
+    def updateParameters(self, parameters):
+        return
+
+    def updateMessages(self, parameters):
+        return
+
+    def execute(self, parameters, messages):
+        from equipop.doors.inventory import inventory
+
+        pm = _byname(parameters)
+        ch = _channel(messages)
+        folder = _txt(pm, "folder")
+        if not folder:
+            raise arcpy.ExecuteError("Choose a folder to look at.")
+
+        got = inventory(folder, say=ch.info,
+                        deep=_flag_or(pm, "deep", True),
+                        write=_flag_or(pm, "write", True))
+        rows = _inventory_rows(got)
+        _write_table(rows, INVENTORY_COLUMNS, pm["out"].valueAsText,
+                     messages)
+        lattices = {r["lattice"] for r in rows if r.get("lattice")}
+        ch.info(f"{len(rows)} file(s) listed, {len(lattices)} "
+                f"distinct lattice(s).")
+        if len(lattices) > 1:
+            ch.warning(
+                f"THE FOLDER HOLDS {len(lattices)} DIFFERENT "
+                "LATTICES. Files on different lattices cannot be "
+                "merged by index without a resample - sort the table "
+                "by the lattice column to see which sets go together.")
+
+
+#: The inventory table's columns, in the order a person reads them.
+#: Shared with the QGIS door through tests/door_parity.py so the two
+#: cannot drift.
+INVENTORY_COLUMNS = [
+    ("file", "TEXT"), ("kind", "TEXT"), ("layer", "TEXT"),
+    ("crs", "TEXT"), ("geometry", "TEXT"), ("features", "LONG"),
+    ("lattice", "TEXT"), ("cell_size", "TEXT"),
+    ("class_column", "TEXT"), ("class_values", "TEXT"),
+    ("problem", "TEXT"),
+]
+
+
+def _inventory_rows(got):
+    """The package's records, one row each. The SAME shape the QGIS
+    door builds - pinned by a test, because a table whose columns
+    differ between doors is the oldest failure in this project."""
+    out = []
+    for rec in got.get("files", []):
+        classes = rec.get("classes") or {}
+        col = next(iter(classes), "")
+        info = classes.get(col) or {}
+        vals = info.get("values") or []
+        note = info.get("note") or ""
+        px = rec.get("pixel_size") or []
+        try:
+            n = int(rec.get("features"))
+        except (TypeError, ValueError):
+            n = None
+        out.append({
+            "file": rec.get("file") or "",
+            "kind": rec.get("kind") or "",
+            "layer": rec.get("layer") or "",
+            "crs": rec.get("crs") or "",
+            "geometry": rec.get("geometry") or "",
+            "features": n,
+            "lattice": rec.get("lattice") or "",
+            "cell_size": (f"{abs(float(px[0])):g} x "
+                          f"{abs(float(px[1])):g}")
+                         if len(px) == 2 else "",
+            "class_column": col,
+            "class_values": (note if note else
+                             ", ".join(map(str, vals[:12]))
+                             + (" ..." if len(vals) > 12 else "")),
+            "problem": rec.get("error") or "",
+        })
+    return out
+
+
 class ContinentalRasters:
     """BACKLOG 38. A folder of population rasters, at continental scale.
 
@@ -2662,7 +2821,8 @@ class Toolbox:
         # users on the strength of a reading. The simulator now covers
         # both, and tests/test_arcgis_continental.py EXECUTES them.
         self.tools = [CountsShares, ValueStatistics,
-                      ContinentalRasters, SpatialDemography]
+                      ContinentalRasters, SpatialDemography,
+                      FolderInventory]
         # two machines, one shared loader (v1.16). Friction/slope
         # stay DISTANCE INGREDIENTS on machine 1, not tools.
 

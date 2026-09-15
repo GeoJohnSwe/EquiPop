@@ -18,35 +18,36 @@ default one is locked. The supported route is a clone:
 
 4. Check: `python -c "import equipop; print(equipop.__version__)"`
 
-### Files to copy (v1.47.2)
+### Files to copy (v1.47.3)
 
-**FIVE files must sit together in one folder** (e.g. `C:\Data\EQP`),
-and all five must come from THE SAME RELEASE:
+**SIX files must sit together in one folder** (e.g. `C:\Data\EQP`),
+and all six must come from THE SAME RELEASE:
 
     EquiPop.pyt                          the toolbox
     EquiPop.CountsShares.pyt.xml         help for machine 1
     EquiPop.ValueStatistics.pyt.xml      help for machine 2
     EquiPop.ContinentalRasters.pyt.xml   help for machine 3
     EquiPop.SpatialDemography.pyt.xml    help for machine 4
+    EquiPop.FolderInventory.pyt.xml      help for machine 6
 
-The last two are NEW IN v1.47.2. Machines 3 and 4 had no help file
+The last THREE are new in v1.47.3. Machines 3 and 4 had no help file
 at all before it, which is why their '?' page said "There is no
 description for this item" and every parameter said "There is no
-explanation for this parameter".
+explanation for this parameter"; machine 6 is new in this release.
 
 Two more travel with them and live wherever you keep them:
 
     ARCGIS_GUIDE.md                 this file
     make_help_xml.py                regenerates the two .xml files
 
-REPLACE ALL FIVE TOGETHER, EVERY TIME. The .xml files are what puts
+REPLACE ALL SIX TOGETHER, EVERY TIME. The .xml files are what puts
 the small explanation beside each parameter box, and they are written
 from the toolbox's own parameter list. Keep an old .xml beside a new
 .pyt and every box added since that .xml was made has NO COMMENT AT
 ALL, while the older boxes look perfectly normal - so nothing seems
 wrong except one silent gap.
 
-That is not hypothetical. It is how v1.47.2's new box, *Is a place
+That is not hypothetical. It is how v1.47.3's new box, *Is a place
 its own neighbour?*, arrived with an empty flyout in a real
 installation: the .pyt was replaced and the sidecars were not. This
 paragraph exists because an earlier version of it said "FOUR files"
@@ -66,7 +67,7 @@ toolbox from the project and add it again, or restart Pro.
 
 ### If the flyout beside a box shows literal `<p>` tags
 
-v1.47.2 writes the parameter comments as escaped HTML paragraphs.
+v1.47.3 writes the parameter comments as escaped HTML paragraphs.
 That is an attempt at a long-standing problem - the Explanation
 column of the '?' help page has always come up blank even though the
 same text renders fine in the dialog - and it is NOT CONFIRMED to
@@ -83,7 +84,7 @@ interpreter, so typing `python ...` there is a syntax error:
 That writes both .xml files beside the toolbox. Nothing else
 changes.
 
-(Before v1.47.2 this script could not run from your folder at all -
+(Before v1.47.3 this script could not run from your folder at all -
 it needed a file from the repository's `tests/` directory. It now
 uses Pro's own arcpy instead, which is why the Python Command Prompt
 is the place to run it.)
@@ -92,10 +93,10 @@ is the place to run it.)
 
 Copy the `arcgis/EquiPop.pyt` file anywhere convenient (it can live
 in the project folder). In Pro's **Catalog** pane: right-click
-**Toolboxes -> Add Toolbox** -> pick the .pyt. FOUR tools appear
-under "EquiPop": *Counts and Shares*, *Value Statistics*,
-*Continental Rasters* and *Spatial Demography*. All four have in-dialog help and a
-'?' page, from v1.47.2 onward.
+**Toolboxes -> Add Toolbox** -> pick the .pyt. FIVE tools appear
+under "EquiPop": *Counts and Shares*, *Value Statistics*, *Raster
+Data Curation*, *Spatial Demographic Analysis* and *What is in this
+folder?*. All five have in-dialog help and a '?' page.
 
 ## 3. First run (Counts and Shares)
 

@@ -59,9 +59,11 @@ def test_the_provider_offers_both_tools():
     prov.loadAlgorithms()
     # BACKLOG 38 added the third tool. Sorted, because the order the
     # provider happens to register them in is not the contract.
+    # v1.47.3 added folderinventory (BACKLOG 269) - a capability that
+    # had shipped in 1.45.0 with no door of any kind.
     assert sorted(a.name() for a in prov.algorithms()) == [
-        "continentalrasters", "countsandshares", "spatialdatafetch",
-        "spatialdemography", "valuestatistics"]
+        "continentalrasters", "countsandshares", "folderinventory",
+        "spatialdatafetch", "spatialdemography", "valuestatistics"]
     assert prov.id() == "equipop"
 
 
@@ -847,7 +849,8 @@ prov = EquipopProvider()
 prov.loadAlgorithms()
 names = sorted(a.name() for a in prov._algs)
 assert sorted(names) == ["continentalrasters", "countsandshares",
-                         "spatialdatafetch", "spatialdemography",
+                         "folderinventory", "spatialdatafetch",
+                         "spatialdemography",
                          "valuestatistics"], names
 for alg in prov._algs:
     alg.initAlgorithm()
@@ -909,7 +912,7 @@ sys.meta_path.insert(0, _Old())
 from equipop_qgis.provider import EquipopProvider
 prov = EquipopProvider()
 prov.loadAlgorithms()
-assert len(prov._algs) == 5, prov._algs
+assert len(prov._algs) == 6, prov._algs
 for alg in prov._algs:
     alg.initAlgorithm()
     assert alg.parameterDefinitions(), "no boxes built"

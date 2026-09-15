@@ -133,7 +133,18 @@ class QVariant:
 
 
 class _MetaTypes:
+    # The numbers are Qt's own QMetaType::Type values, so a door that
+    # reads them gets what QGIS would give it.
     Double, Int, QString, Bool = 6, 2, 10, 1
+    # v1.47.3: LongLong was MISSING, and a door that used it - the
+    # right type for a feature count, which can exceed a 32-bit int -
+    # died at import with AttributeError. TOO SPARSE IS ALSO A LIE:
+    # the simulator was silently narrowing what a door is allowed to
+    # ask for, and the narrowing looked like a mistake in the door.
+    # Same family as the polygon barrier of 1.29.3 and the isAdvanced
+    # of 1.29.1, in the other direction.
+    LongLong, UInt, ULongLong = 4, 3, 5
+    QDate, QDateTime, QVariantMap = 14, 16, 8
 
 
 class _Null:
@@ -544,10 +555,20 @@ class QgsWkbTypes:
     Point = _WkbType(1)
     LineString = _WkbType(2)
     Polygon = _WkbType(3)
+    # v1.47.3: a table with NO GEOMETRY. Real PyQGIS has had
+    # NoGeometry (WKB 100, geometry type 4) all along; the simulator
+    # had never needed it because every EquiPop output until machine 6
+    # carried points. An inventory has nothing to put on a map, and
+    # inventing a point for it would stack ninety files on the origin.
+    # THIRD SPARSE-STUB GAP IN ONE RELEASE, after QMetaType.LongLong
+    # and DETable - and the pattern is the same each time: the
+    # simulator narrows what a door may ask for, and the narrowing
+    # reads as a mistake in the door.
+    NoGeometry = _WkbType(100)
 
     @staticmethod
     def geometryType(wkb):
-        return {1: 0, 2: 1, 3: 2, 100: 0}.get(int(wkb), 0)
+        return {1: 0, 2: 1, 3: 2, 100: 4}.get(int(wkb), 0)
 
 
 class _Block:

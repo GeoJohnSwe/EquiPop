@@ -320,7 +320,7 @@ def test_every_module_a_shipped_runner_imports_is_in_the_wheel():
 
 
 def test_the_pro_help_sidecars_are_shipped_beside_the_toolbox():
-    """v1.47.2. EquiPop.<Tool>.pyt.xml is where ArcGIS Pro reads the
+    """v1.47.3. EquiPop.<Tool>.pyt.xml is where ArcGIS Pro reads the
     comment beside each parameter box. They were NEVER SHIPPED - not
     in MANIFEST.in, not in the sdist, not in any delivery - so a Pro
     user has only ever had the help they generated themselves, one
@@ -360,10 +360,10 @@ def test_the_sidecars_are_not_committed_to_the_repository():
 
 
 def test_the_arcgis_guide_names_the_files_it_says_it_names():
-    """v1.47.2. The guide said "Keep these FOUR files together" and
+    """v1.47.3. The guide said "Keep these FOUR files together" and
     then listed THREE. A user following it replaces the toolbox and
     keeps the sidecars - which is exactly what happened in the field
-    at 1.47.2, and it is why the new parameter's help flyout came
+    at 1.47.3, and it is why the new parameter's help flyout came
     back empty while every older box looked fine.
 
     THE INSTRUCTION, NOT THE PACKAGING, produced that. So the count
@@ -375,10 +375,11 @@ def test_the_arcgis_guide_names_the_files_it_says_it_names():
     must = {"EquiPop.pyt", "EquiPop.CountsShares.pyt.xml",
             "EquiPop.ValueStatistics.pyt.xml",
             "EquiPop.ContinentalRasters.pyt.xml",
-            "EquiPop.SpatialDemography.pyt.xml"}
+            "EquiPop.SpatialDemography.pyt.xml",
+            "EquiPop.FolderInventory.pyt.xml"}
     assert must <= listed, f"the guide does not name {sorted(must - listed)}"
-    words = {"THREE": 3, "FOUR": 4, "FIVE": 5, "TWO": 2}
-    claim = re.search(r"\*\*(TWO|THREE|FOUR|FIVE) files must sit",
+    words = {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6}
+    claim = re.search(r"\*\*(TWO|THREE|FOUR|FIVE|SIX) files must sit",
                       guide)
     assert claim, "the guide no longer states how many files travel together"
     assert words[claim.group(1)] == len(must), (
@@ -394,14 +395,15 @@ def test_the_guide_does_not_undercount_the_toolbox():
                encoding="utf-8").read()
     registered = re.search(r"self\.tools = \[([^\]]+)\]", pyt).group(1)
     n = len([t for t in registered.split(",") if t.strip()])
-    claim = re.search(r"pick the \.pyt\. (TWO|THREE|FOUR|FIVE) tools "
-                      r"appear", guide)
+    claim = re.search(r"pick the \.pyt\. (TWO|THREE|FOUR|FIVE|SIX) "
+                      r"tools appear", guide)
     assert claim, "the guide no longer says how many tools appear"
-    assert {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}[claim.group(1)] == n
+    assert {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5,
+            "SIX": 6}[claim.group(1)] == n
 
 
 def test_the_handover_keeps_up_with_the_version():
-    """v1.47.2. BACKLOG 289 records John's ruling that a handover must
+    """v1.47.3. BACKLOG 289 records John's ruling that a handover must
     enter the repository in the same act as the release - and session
     12, which wrote that entry, then shipped three releases without
     one. "In the same act" was too vague to be followed by the people
@@ -421,7 +423,7 @@ def test_the_handover_keeps_up_with_the_version():
         r'^version\s*=\s*"([^"]+)"',
         open(os.path.join(ROOT, "pyproject.toml"),
              encoding="utf-8").read(), re.M).group(1)
-    series = ".".join(version.split(".")[:2])       # 1.47.2 -> 1.47
+    series = ".".join(version.split(".")[:2])       # 1.47.3 -> 1.47
     text = open(os.path.join(ROOT, newest), encoding="utf-8").read()
     assert series in text, (
         f"{newest} does not mention {series} - the handover is for an "

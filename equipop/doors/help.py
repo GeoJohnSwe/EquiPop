@@ -295,12 +295,36 @@ HELP = {
                "to reproduce results from before this setting "
                "existed.",
     # ---- machines 3 and 4, BACKLOG 294 -----------------------------
-    # Added v1.47.2. These THIRTEEN parameters had no entry, which is
+    # Added v1.47.3. These THIRTEEN parameters had no entry, which is
     # why make_help_xml.py covered only two of the four tools: it
     # refuses to write a sidecar with a gap, so it wrote none, and
     # both tools showed "There is no explanation for this parameter"
     # against every box. Their summary and usage text existed all
     # along and could not reach Pro for want of a file.
+    # ---- machine 6, BACKLOG 269 -------------------------------------
+    "deep": "ALSO LIST THE DISTINCT VALUES of any classification "
+            "column - fclass, highway, landuse, natural, amenity. "
+            "This is the part that saves typing later: the grouping "
+            "you want for an OSM extract is built FROM the values "
+            "actually present, and reading them here means no other "
+            "tool has to ask you to remember them. It reads the class "
+            "column only, never the geometry, so a 700 MB country "
+            "extract is inventoried without being loaded - but on a "
+            "folder of many large vector files it is still the slow "
+            "part, so untick it when you only want the lattices. A "
+            "column with thousands of distinct values is reported as "
+            "a COUNT rather than a list, because forty thousand "
+            "street names are an identifier and not a "
+            "classification.",
+    "write": "SAVE equipop_inventory.json IN THE FOLDER. Ticked by "
+             "default, because the file is what other tools read "
+             "instead of asking you to type class names into a "
+             "dropdown. It records everything, including the class "
+             "values this table truncates. Nothing else in the folder "
+             "is touched. Untick it when the folder is read-only, or "
+             "when you are looking at somebody else's data and would "
+             "rather leave no trace - the table still appears either "
+             "way.",
     "folder": "THE FOLDER OF POPULATION RASTERS (.tif). Subfolders "
               "are searched, so a download that arrived as one folder "
               "per country can stay exactly as it is - nothing needs "
@@ -486,10 +510,27 @@ LABELS = {
                        "k nearest)",
     "ContinentalRasters": "3. Raster Data Curation",
     "SpatialDemography": "4. Spatial Demographic Analysis",
+    # v1.47.3, BACKLOG 269. Numbered 6 rather than 5 because machine 5
+    # is fetching; this reads a folder that is already on disk.
+    "FolderInventory": "6. What is in this folder? (reads, changes "
+                       "nothing)",
 }
 
 
 SUMMARY = {
+    "FolderInventory":
+        "Looks at a folder of rasters and vector files and reports "
+        "what is in it: layers, fields, coordinate systems, extents, "
+        "feature counts, and the distinct values of the columns you "
+        "would group on - OSM's fclass above all. THE LATTICE COLUMN "
+        "IS THE POINT. Two files on the same lattice join by integer "
+        "index and the result is exact; different lattices force a "
+        "choice between resampling and keeping them apart, and this "
+        "tells you which you are facing BEFORE a merge combines "
+        "rasters that do not line up. Nothing is changed, and a file "
+        "that cannot be read is listed WITH ITS ERROR rather than "
+        "skipped - a file missing from an inventory without "
+        "explanation is worse than one marked unreadable.",
     "CountsShares":
         "Builds an egocentric neighbourhood around EVERY point and "
         "counts what is inside it. Two ways to draw it: k (the "
@@ -552,6 +593,17 @@ SUMMARY = {
 }
 
 USAGE = {
+    "FolderInventory":
+        "Point it at a folder - a country-per-folder download can "
+        "stay exactly as it is, subfolders are searched. The table "
+        "that comes back has one row per file or layer; SORT IT BY "
+        "THE LATTICE COLUMN to see which sets can be merged. Leave "
+        "box 3 ticked and equipop_inventory.json is written into the "
+        "folder, which is what the other tools read to fill their "
+        "grouping dropdowns instead of asking you to type class "
+        "names. Rasters need rasterio and vector files need pyogrio; "
+        "without them the files are still listed, by name only, and "
+        "the run says so.",
     "SpatialDataFetch":
         "Run it once with DOWNLOAD unticked: it lists what would be "
         "fetched, how many files and under which licence, and takes "

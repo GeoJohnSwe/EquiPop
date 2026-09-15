@@ -19,7 +19,7 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-*Rewritten in full, 1.47.2. The list this replaces STOPPED AT ITEM
+*Rewritten in full, 1.47.3. The list this replaces STOPPED AT ITEM
 164: everything from 165 to 293 — machines 3, 4 and 5, the registry,
 all four providers, the OSM lattice work, the eight external-review
 HIGHs — never entered it. The file opens by promising that its top
@@ -48,9 +48,12 @@ not here. A list of completed work is not a plan.
    no provenance record, which is why neither `overshoot` nor the new
    `originrule` can be written to one. Needs its own release and a
    decision about which door writes the sidecar.
-4. **205 + 118** — Stata cannot reach machine 2 at all, and the
-   statistics path still rounds weights and expands rows into persons
-   though the engine has carried fractional weights since 1.29.
+4. **118** — the statistics path still rounds weights and expands
+   rows into persons though the engine has carried fractional weights
+   since 1.29. (205, a Stata door for machine 2, was RULED OUT in
+   session 12: Stata does weighted statistics natively and better,
+   and what it cannot do is build the neighbourhood. Each tool does
+   its own part.)
 5. **119** — resume compares parameters but not input CONTENT. The
    same cell count and the same settings are not proof of the same
    data. Not ready for an unattended world-scale run.
@@ -751,7 +754,7 @@ not here. A list of completed work is not a plan.
   refuses the None-store pattern, and compiles every `python:` block;
   both guards were broken on purpose and both caught it.
 
-- 205 | OPEN, REAL GAP | THE STATA COMMAND CANNOT REACH MACHINE 2 AT
+- 205 | ~~RULED OUT~~ SESSION 12 | THE STATA COMMAND CANNOT REACH MACHINE 2 AT
   ALL. There is no stats() or values() option in equipop.ado's syntax
   line - mean, median, quantiles and Gini over a neighbourhood are
   unreachable from Stata except by hand-written python: blocks, which
@@ -761,6 +764,24 @@ not here. A list of completed work is not a plan.
   careless, they were reaching for the only handle the door offers. A
   user with a continuous variable has nowhere correct to put it. QGIS
   and Pro both expose machine 2. Sizeable, and NOT for this week.
+  JOHN'S RULING, SESSION 12: "machine 2 door from stata is not
+  necessary (at least for now) since stata is a statistics software
+  we can rely on the built in functions instead."
+  THE REASONING IS BETTER THAN THE FEATURE. Machine 2 computes
+  weighted means, medians, percentiles and Ginis over a
+  neighbourhood. Stata computes weighted statistics natively and
+  better than we will - `summarize [aweight=]`, `_pctile`, `ineqdeco`
+  - and what it CANNOT do is build the neighbourhood. So the right
+  division is: EquiPop hands Stata the neighbourhood (N_k, T_k, R_k,
+  Dist_k) and Stata does the statistics on it. That is not a gap
+  being tolerated; it is each tool doing the part it is good at.
+  "AT LEAST FOR NOW" IS THE OPERATIVE PHRASE. If a measure arrives
+  that Stata cannot express over a k-neighbourhood, this reopens.
+  NOTE FOR ANYONE COUNTING DOORS: machine 2 therefore has three doors
+  (Python, QGIS, Pro) BY DESIGN and not by omission. A reachability
+  check must record the ruling, or it will report this as a hole
+  every time it runs.
+
 
 - ~~118~~ | HALF DONE, engine side | FRACTIONAL WEIGHTS NO LONGER
   ROUND. build_cells(weights=...) carries a weight column into
@@ -2265,7 +2286,40 @@ not here. A list of completed work is not a plan.
   the interface and must be tested against the shape the user
   actually sees, not the shape it has in the source.
 
-- ~~269~~ | DONE | THE INVENTORY: WHAT IS IN A FOLDER. John's idea -
+- ~~269~~ | ENGINE DONE v1.45.0, DOORS DONE v1.47.3 | THE INVENTORY:
+  WHAT IS IN A FOLDER.
+  IT WAS MARKED DONE FOR TWO RELEASES WHILE REACHABLE FROM NOWHERE.
+  No GUI, no runner, no Stata - only by writing Python, which the
+  person this project is built for does not do. "DONE" meant the
+  engine worked. It is the first of the five unreachable things found
+  in session 12 and the reason tests/reachability.py now exists: the
+  suite asked whether the thing worked and never whether anyone could
+  get to it.
+  v1.47.3 gives it TWO DOORS. "6. What is in this folder? (reads,
+  changes nothing)" in QGIS and in Pro - numbered 6 because machine 5
+  is fetching and this reads a folder already on disk. One row per
+  file or layer, and the LATTICE COLUMN is the point: a folder
+  holding more than one lattice says so loudly.
+  THE TEST THAT MATTERS IS test_4. Three rasters, same CRS, same cell
+  size, one offset by HALF A CELL - indistinguishable in any file
+  listing, and merging them by index silently misaligns every value.
+  BACKLOG 239 is the version of that which merged rasters 3,300 km
+  apart.
+  THREE SPARSE-SIMULATOR GAPS FOUND BUILDING IT, all real API the
+  stub had never needed: QMetaType.Type.LongLong, the DETable
+  datatype, QgsWkbTypes.NoGeometry. Every EquiPop output until now
+  carried points, so a table with NO GEOMETRY had never been asked
+  for. Same family as the polygon barrier of 1.29.3: a sparse
+  simulator does not fail loudly, it narrows what a door may ask and
+  the narrowing reads as a mistake in the door.
+  AND make_help_xml.py's TOOL LIST WENT STALE A THIRD TIME - 294
+  replaced two names with four one release ago, and a fifth tool made
+  it wrong again at once. It reads Toolbox().tools now.
+  CLAUDE WROTE _rows() FROM MEMORY of what an inventory ought to look
+  like - nested layers, rec["path"], rec["pixel_x"] - when the
+  package returns FLAT records with rec["file"] and a two-element
+  rec["pixel_size"]. The engine was thirty lines away.
+  ORIGINAL ENTRY: John's idea -
   save a short description with each download so a later merge can
   offer dropdowns instead of making the user hunt.
   TWO OBJECTS, AND ONLY ONE IS MACHINE 5'S. The MANIFEST records
@@ -2663,7 +2717,7 @@ not here. A list of completed work is not a plan.
   forgetting is impossible, and "in the same act as the release" was
   too vague to be followed by the session that wrote it.
 
-- ~~290~~ | DONE v1.47.2 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
+- ~~290~~ | DONE v1.47.3 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
   ruling: two rules, i=j and i!=j, and `include` STAYS THE DEFAULT.
   THE PACKAGE ALREADY HELD TWO ANSWERS and called both "the
   neighbourhood". autocorr.build_weights() has always excluded self -
@@ -2742,7 +2796,7 @@ not here. A list of completed work is not a plan.
   that both look right while the total is a third of what it should
   be. Both reasons are in the test's docstring.
 
-- ~~291~~ | DONE v1.47.2 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
+- ~~291~~ | DONE v1.47.3 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
   REVIEW OF 1.46.4. Eight claims were checked against this tree
   before anything was changed; all eight held and ONE WAS WORSE THAN
   REPORTED.
@@ -2790,7 +2844,7 @@ not here. A list of completed work is not a plan.
   224 and 232. It is not a diagnosis of them - those still need
   John's logs - but it can no longer be the answer.
 
-- ~~292~~ | DONE v1.47.2 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
+- ~~292~~ | DONE v1.47.3 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
   run_fetch.py, run_raster_folder.py and run_osm_friction.py were all
   absent from equipop-1.46.4.tar.gz. MANIFEST.in had gained
   `include demo_*.py` for BACKLOG 107 and nothing for the runners, so
@@ -2814,15 +2868,15 @@ not here. A list of completed work is not a plan.
   then listed THREE, under a heading stamped v1.16.8, and told the
   reader that "Two tools appear" when four do. A user following it
   replaces the toolbox and keeps the sidecars, which is EXACTLY what
-  happened to John at 1.47.2. The instruction, not the packaging, is
+  happened to John at 1.47.3. The instruction, not the packaging, is
   what produced the empty box.
 
-- ~~295~~ | DONE v1.47.2 | make_help_xml.py COULD NOT BE RUN WHERE IT
+- ~~295~~ | DONE v1.47.3 | make_help_xml.py COULD NOT BE RUN WHERE IT
   IS SHIPPED. It has been one of the five Pro files since 1.44.4 and
   it imports test_arcgis_stub, which lives in the repository's tests/
   directory and is NOT one of the five. ModuleNotFoundError,
   immediately, every time, for the whole life of the delivery.
-  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.2 wrote the Pro
+  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.3 wrote the Pro
   parameter comments as escaped HTML on an untested hypothesis (34)
   and offered `--plain` as the ten-second way back. John pasted the
   command, it failed, and only then did anyone check whether it could
@@ -2842,7 +2896,7 @@ not here. A list of completed work is not a plan.
   capabilities nobody could get to. THIS ONE WAS THE RECOVERY PATH
   FOR A KNOWN RISK, which makes it the one worth remembering.
 
-- ~~294~~ | DONE v1.47.2 | MACHINES 3 AND 4 HAD NO HELP TEXT AT ALL,
+- ~~294~~ | DONE v1.47.3 | MACHINES 3 AND 4 HAD NO HELP TEXT AT ALL,
   IN ANY DOOR. ContinentalRasters and SpatialDemography are
   registered in the Pro toolbox and executed by the suite, and
   THIRTEEN of their parameters had no entry in doors/help.py: folder,
@@ -2870,7 +2924,69 @@ not here. A list of completed work is not a plan.
   rather than expecting a number, so a fifth machine cannot ship
   unhelped the way these two did.
 
-- 293 | OPEN, FOUND v1.47.2 | RunLog IS DEAD CODE, AND IT IS BACKLOG
+- ~~295b~~ | DONE v1.47.3 | THE REACHABILITY MATRIX. John's request,
+  session 12: "can a person get to this, and from which door?" - and
+  his memory of a functions-by-doors table from the early Stata work.
+  THAT TABLE DOES NOT SURVIVE. Every .md in the tree was searched;
+  the MANUAL narrates door parity at length and no matrix exists.
+  tests/door_parity.py is its living descendant - it holds the BOX
+  NAMES both GIS doors must offer, and it has earned itself twice
+  this session - but it compares two doors to each other and cannot
+  see a capability with no door at all.
+  SO: tests/reachability.py, one row per capability and one column
+  per door, every cell either evidence or an explicit reason. Five
+  checks, each verified by breaking it: a door's evidence must still
+  exist in the file it names; a capability must be reachable from
+  somewhere; a missing door must give a reason longer than a shrug; a
+  cited backlog number must exist; AND EVERY MODULE IN THE PACKAGE
+  MUST APPEAR - as a capability with doors, or in INTERNAL as
+  machinery. That last is the one that would have caught all five of
+  this session's finds.
+  IT IS DECLARED, NOT DERIVED, AND THE FIRST ATTEMPT PROVED WHY. A
+  grep of each door for the engine function it calls was WRONG IN
+  BOTH DIRECTIONS: machine 1 showed as absent from QGIS and Pro,
+  because both reach it through stata_bridge.dispatch rather than by
+  name, and the lattice join showed as PRESENT in QGIS because
+  alg_continental.py imports join_to_points for something else. A
+  matrix that guesses is worse than none - that one said the doors
+  were fine.
+  IT FOUND 296 WITHIN A MINUTE, in Claude's own declaration, and
+  refused a same_as reference pointing at a door that exists.
+  20 capabilities, 30 declared gaps, every one with a reason.
+  Read it with: pytest tests/test_reachability.py -s -k report
+
+- 296 | ~~RULED OUT~~ SESSION 12, FOUND BY THE MATRIX | THE STATA
+  COMMAND CANNOT REACH FRICTION OR SLOPE, THOUGH THE BRIDGE CAN.
+  `stata_bridge` takes `engine="friction"` with a friction_file and
+  `engine="slope"` with a DEM and a walking model. `stata/equipop.ado`
+  mentions `barrier` ZERO times, `friction` ZERO times, `slope` ZERO
+  times; the single `dem` in the file is the word "demands" in a
+  comment. So the effort engines are finished, tested, reachable from
+  Python, QGIS and Pro - and the Stata command simply never grew the
+  options.
+  THE SIXTH UNREACHABLE THING FOUND THIS SESSION AND THE FIRST FOUND
+  BY A TOOL. The other five - inventory.py, vectorjoin.py, RunLog,
+  the Pro sidecars, make_help_xml.py - all turned up by accident, one
+  at a time, in a session that was not looking for them. This one was
+  found by tests/reachability.py within a minute of its first run,
+  and it was found IN CLAUDE'S OWN DECLARATION: the matrix was
+  written claiming a Stata door for both, from memory, and the check
+  refused it.
+  JOHN'S RULING, SESSION 12: "stata doors for friction and slope is
+  not needed - those are GIS features, and not needed in statistics".
+  A DIFFERENT REASON FROM 205 AND WORTH KEEPING SEPARATE. 205 was
+  ruled out because Stata does the job BETTER - it computes weighted
+  statistics natively. This is ruled out because the job is not
+  Stata's AT ALL: barriers and terrain are about how a landscape is
+  crossed, which is a question you ask of a map. The two rulings
+  together describe the division of labour this project settles on -
+  EquiPop builds neighbourhoods, GIS handles geography, Stata handles
+  statistics - and a future session proposing either door should read
+  both before raising it again.
+  SO THE MATRIX NOW RECORDS A DOOR DELIBERATELY NOT BUILT rather than
+  a capability missing, which is the distinction it exists to make.
+
+- 293 | OPEN, FOUND v1.47.3 | RunLog IS DEAD CODE, AND IT IS BACKLOG
   ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
   design as agreed)" - is complete, documented, exported in __all__,
   and CALLED BY NOTHING AND TESTED BY NOTHING. No door, no engine, no
@@ -4494,12 +4610,12 @@ not here. A list of completed work is not a plan.
   ("two rulers", "doubling it quarters the work", "a finding, not a
   nuisance") is the model the queued naming pass should copy.
 
-- ~~44~~ | DONE v1.47.2, CONFIRMATION PENDING | `make_help_xml.py`
+- ~~44~~ | DONE v1.47.3, CONFIRMATION PENDING | `make_help_xml.py`
   still writes `SyncOnce=TRUE`, the suspected cause of item 34
   (summary/usage rendering empty in Pro). Untouched this round: it
   needs one field cycle to confirm, and this was a refactor release.
   Now a one-line change in a single place whenever that cycle happens.
-  THE ONE-LINE CHANGE IS MADE in 1.47.2:
+  THE ONE-LINE CHANGE IS MADE in 1.47.3:
   SyncOnce=FALSE, which tells Pro the metadata is authored and not to
   synchronise its own over the top. Struck because the change this
   item describes is done - but it was ONE OF THREE faults found in the
@@ -4508,62 +4624,52 @@ not here. A list of completed work is not a plan.
   cause. See 34. Do not read this as proof that SyncOnce was the
   problem.
 
-- 34 | OPEN, SYMPTOM FINALLY CHARACTERISED v1.47.2 | Tool help page:
+- ~~34~~ | DONE v1.47.3, CONFIRMED IN THE FIELD | Tool help page:
   summary/usage sections render empty in Pro. Suspect SyncOnce=TRUE
   letting Pro regenerate over the authored text, plus missing
   datatype attributes and plain text where escaped HTML is expected.
   The per-parameter comments (dialogReference) DO work | Needed one
   field cycle to confirm.
-  JOHN SENT ALL FOUR '?' PANELS, session 12, and after thirty
-  releases the symptom is finally known. THE HEADLINE OF THIS ITEM IS
-  WRONG. Summary and usage are NOT empty:
-      machine 1  Description YES  Usage YES  39 params listed
-      machine 2  Description YES  Usage YES  25 params listed
-      machine 3  Description EMPTY  Usage EMPTY  (no sidecar, see 294)
-      machine 4  Description EMPTY  Usage EMPTY  (no sidecar, see 294)
-  WHAT IS ACTUALLY EMPTY is the per-parameter EXPLANATION COLUMN of
-  the '?' panel. Every row reads "Dialog Reference" as a bare label
-  followed by "There is no python reference for this parameter." -
-  for all 39 parameters, INCLUDING the 38 whose dialogReference text
-  is present in the XML and renders perfectly in the flyout beside
-  the box. So the second sentence of this item is half right:
-  dialogReference DOES work IN THE DIALOG, and does not reach the
-  help page.
-  A SECOND CONFIRMATION OF THE STALE SIDECAR falls out of the same
-  files. The panel lists 39 parameters while John's XML holds 38:
-  Pro takes the parameter LIST from the toolbox and looks up the text
-  in the XML, so the box added in 1.47.2 appears with nothing beside
-  it. Two independent views of the same cause.
-  THE TWO CHANGES MADE IN 1.47.2 NOW POINT AT THE RIGHT TARGET, by
-  luck rather than by diagnosis: escaped <p> paragraphs (this item's
-  own guess, and the leading hypothesis for a column that ignores
-  plain text) and SyncOnce=FALSE. NEITHER IS VALIDATED. They were
-  made while mis-reading a stale sidecar as this item's symptom, and
-  the fact that they turn out to be aimed correctly does not make the
-  reasoning that produced them sound.
-  THE RISK THEY CARRY IS REAL AND IS INSURED. The flyout WORKS today
-  with plain text; if Pro does not interpret the escaped HTML, John
-  would see literal <p> tags where readable prose used to be - a
-  regression on the one thing known to work. So
-  make_help_xml.py --plain regenerates without the markup in ten
-  seconds, and the guide says so. Do not ship a guess without the
-  way back.
-  TO CLOSE THIS: install 1.47.2's sidecars, open the '?' panel, and
-  report whether the Explanation column now carries text. If it does,
-  say WHICH change to credit by regenerating with --plain and looking
-  again.
+  OPEN FROM v1.16.8 TO v1.47.3 - thirty releases - and closed by John
+  in session 12: "all good, ? page is good".
+  THE HEADLINE OF THIS ITEM WAS WRONG THE WHOLE TIME. Summary and
+  usage were never empty for the tools that had a sidecar. What was
+  empty was the per-parameter EXPLANATION COLUMN of the '?' page, for
+  text that was present in the XML and rendering perfectly in the
+  dialog flyout beside the same box. The item's own second sentence -
+  "dialogReference DOES work" - was half right and hid the other
+  half for thirty releases.
+  WHAT WAS CHANGED: SyncOnce TRUE -> FALSE (44), and the parameter
+  comments written as escaped <p> paragraphs instead of plain text -
+  which was this item's own guess, made in v1.16.8.
+  WHICH ONE FIXED IT IS NOT KNOWN. Both shipped together and John
+  reported the outcome, not the cause. `make_help_xml.py --plain`
+  regenerates without the markup and would settle it in one cycle if
+  anyone ever needs to know. RECORDED AS UNATTRIBUTED rather than
+  credited to the more interesting of the two - a fix whose cause is
+  guessed at is how 44 sat open for twenty-nine releases on a
+  suspicion nobody tested.
+  AND THE EVIDENCE THAT CLOSED IT ALMOST CLOSED THE WRONG ITEM.
+  John's first screenshot - an empty flyout - was recorded here as
+  the long-awaited field cycle. It was a STALE SIDECAR: his XML held
+  38 parameters and no `originrule`, because he had replaced the .pyt
+  and not the .xml, following a guide that said "FOUR files" and
+  listed three. His second - machine 3's '?' page, entirely blank -
+  was BACKLOG 294, a tool with no sidecar at all. Only the third
+  answered this item. THREE PIECES OF EVIDENCE, THREE DIFFERENT
+  CAUSES, and the first two both looked exactly like this one.
 
 - 49 | open | The reference covers counts and stats; friction,
   slope, fca and lisa are not in it. Now that a second door exists
   and the mechanism is proved, this is worth doing.
 
-- ~~45~~ | DONE v1.47.2 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
+- ~~45~~ | DONE v1.47.3 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
   the Windows-style catalog paths they pretend to use, so a test run
   on Linux leaves four literal files named `C:\Data\...csv` in the
   repo root (and one stray figure from the Book build). Harmless,
   untracked, and cleaned by hand this round - but they belong in
   pytest's tmp_path, and on Windows those paths are real. Small.
-  CLOSED v1.47.2, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
+  CLOSED v1.47.3, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
   running the suite on a clean tree: the four `C:\Data\...csv` files
   did NOT recur and appear to have been fixed earlier without anyone
   narrowing this entry. What DID recur was two files the item never

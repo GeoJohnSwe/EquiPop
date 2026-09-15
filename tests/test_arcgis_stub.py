@@ -222,7 +222,19 @@ def _install_fake_arcpy(table: pd.DataFrame):
                   # Pro datatypes; the simulator simply had never
                   # needed them, which is why the two tools could not
                   # be exercised and so were left unregistered.
-                  "DEFolder", "GPCoordinateSystem"}
+                  "DEFolder", "GPCoordinateSystem",
+                  # v1.47.3, machine 6. An inventory has NO GEOMETRY,
+                  # so its output is a standalone table and not a
+                  # feature class - inventing a point for ninety files
+                  # would stack them all on the map's origin. DETable
+                  # is an ordinary Pro datatype the simulator had
+                  # simply never needed, which is the SAME reason
+                  # DEFolder was missing until 235 and QMetaType had
+                  # no LongLong until this release. A sparse
+                  # simulator does not fail loudly; it narrows what a
+                  # door is allowed to ask for, and the narrowing
+                  # reads as a mistake in the door.
+                  "DETable"}
 
     class Parameter:
         def __init__(self, **kw):
@@ -2400,7 +2412,7 @@ def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
 
 
 def test_the_help_generator_explains_itself_where_john_keeps_it():
-    """v1.47.2. make_help_xml.py has shipped as one of the five Pro
+    """v1.47.3. make_help_xml.py has shipped as one of the five Pro
     files since 1.44.4 and, until now, could not be run from the
     folder it ships to: it imported test_arcgis_stub, which lives in
     the repository's tests/ directory and is not one of the five.

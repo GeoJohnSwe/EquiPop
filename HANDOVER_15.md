@@ -1,6 +1,6 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.2**:
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.3**:
 1,144 tests, four machines in QGIS, four in ArcGIS Pro with complete
 in-dialog help for the first time, and one new analytical choice that
 is validated against a published paper rather than against itself.*
@@ -85,7 +85,7 @@ stating in any write-up.
 4. The Pro help sidecars — generated, checked by a test, and never
    shipped to anyone.
 5. `make_help_xml.py` — one of the five Pro files since 1.44.4, and
-   until 1.47.2 it could not run from the folder it ships to.
+   until 1.47.3 it could not run from the folder it ships to.
 
 Number 5 is the one to remember. It was offered to John as the
 ten-second escape hatch from an untested change, he tried it, and it
