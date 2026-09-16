@@ -241,3 +241,4 @@ def test_a_projected_lattice_still_uses_plain_geometry():
                                   [(50, 950), (300, 950)])]),
                          LAT, say=_quiet)
     assert got["length_total"].sum() == pytest.approx(250.0)
+

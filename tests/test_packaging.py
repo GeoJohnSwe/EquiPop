@@ -320,7 +320,7 @@ def test_every_module_a_shipped_runner_imports_is_in_the_wheel():
 
 
 def test_the_pro_help_sidecars_are_shipped_beside_the_toolbox():
-    """v1.47.4. EquiPop.<Tool>.pyt.xml is where ArcGIS Pro reads the
+    """v1.47.6. EquiPop.<Tool>.pyt.xml is where ArcGIS Pro reads the
     comment beside each parameter box. They were NEVER SHIPPED - not
     in MANIFEST.in, not in the sdist, not in any delivery - so a Pro
     user has only ever had the help they generated themselves, one
@@ -360,10 +360,10 @@ def test_the_sidecars_are_not_committed_to_the_repository():
 
 
 def test_the_arcgis_guide_names_the_files_it_says_it_names():
-    """v1.47.4. The guide said "Keep these FOUR files together" and
+    """v1.47.6. The guide said "Keep these FOUR files together" and
     then listed THREE. A user following it replaces the toolbox and
     keeps the sidecars - which is exactly what happened in the field
-    at 1.47.4, and it is why the new parameter's help flyout came
+    at 1.47.6, and it is why the new parameter's help flyout came
     back empty while every older box looked fine.
 
     THE INSTRUCTION, NOT THE PACKAGING, produced that. So the count
@@ -403,7 +403,7 @@ def test_the_guide_does_not_undercount_the_toolbox():
 
 
 def test_the_handover_keeps_up_with_the_version():
-    """v1.47.4. BACKLOG 289 records John's ruling that a handover must
+    """v1.47.6. BACKLOG 289 records John's ruling that a handover must
     enter the repository in the same act as the release - and session
     12, which wrote that entry, then shipped three releases without
     one. "In the same act" was too vague to be followed by the people
@@ -423,8 +423,109 @@ def test_the_handover_keeps_up_with_the_version():
         r'^version\s*=\s*"([^"]+)"',
         open(os.path.join(ROOT, "pyproject.toml"),
              encoding="utf-8").read(), re.M).group(1)
-    series = ".".join(version.split(".")[:2])       # 1.47.4 -> 1.47
+    series = ".".join(version.split(".")[:2])       # 1.47.6 -> 1.47
     text = open(os.path.join(ROOT, newest), encoding="utf-8").read()
     assert series in text, (
         f"{newest} does not mention {series} - the handover is for an "
         "older release, which is how sessions 9 and 10 were lost")
+
+
+def test_every_required_dependency_is_named_in_the_install_guide():
+    """v1.47.6. `--no-deps` is rule one of INSTALL.md, and rightly -
+    without it pip upgrades the host's numpy or scipy. But it also
+    skips the dependencies that are NOT already there, and nobody
+    wrote that down: QGIS, Pro and Stata all ship numpy, pandas and
+    scipy, and NONE of them ships pyproj.
+
+    A student lost an evening to it in September 2026. Three of the
+    four verification imports worked and the fourth did not, and no
+    guide had ever named pyproj - while the student guide's own
+    verification step told her to import it.
+
+    So every name in pyproject's `dependencies` must appear in
+    INSTALL.md. Read from pyproject rather than listed here, so a
+    dependency added later cannot go unmentioned the same way.
+    """
+    toml = open(os.path.join(ROOT, "pyproject.toml"),
+                encoding="utf-8").read()
+    block = re.search(r"^dependencies\s*=\s*\[(.*?)\]", toml,
+                      re.S | re.M).group(1)
+    names = re.findall(r'"([A-Za-z0-9_.-]+)', block)
+    assert names, "no dependencies found in pyproject.toml"
+    guide = open(os.path.join(ROOT, "INSTALL.md"),
+                 encoding="utf-8").read().lower()
+    missing = [n for n in names if n.lower() not in guide]
+    assert not missing, (
+        f"{missing} are required by the package and never mentioned "
+        "in INSTALL.md. With `--no-deps` - which is rule one - a "
+        "dependency the host does not already ship is simply absent, "
+        "and the first a user knows is an ImportError")
+
+
+def test_the_status_documents_keep_up_with_the_version():
+    """v1.47.6. TEACHING.md and PROPOSALS.md carry a version line, and
+    it must match the package.
+
+    THIS IS THE PRIORITY-LIST LESSON APPLIED IN ADVANCE. The backlog's
+    "what next" section stopped at item 164 and nobody noticed for
+    eleven releases; item 257's "STILL NEEDED" asked for samples
+    already supplied; item 43 sat open five releases after it was
+    done. A planning document with no check on it rots, and a rotten
+    TEACHING.md is worse than none - a student follows it.
+
+    Only the version is checked. Nothing here can tell whether the
+    PROSE is still true; that remains a human job, and the version
+    line is the prompt to do it.
+    """
+    version = re.search(
+        r'^version\s*=\s*"([^"]+)"',
+        open(os.path.join(ROOT, "pyproject.toml"),
+             encoding="utf-8").read(), re.M).group(1)
+    for name in ("TEACHING.md", "PROPOSALS.md"):
+        path = os.path.join(ROOT, name)
+        assert os.path.exists(path), f"{name} is missing"
+        text = open(path, encoding="utf-8").read()
+        m = re.search(r"\*\*Last updated:\s*([0-9][^,]*),", text)
+        assert m, (
+            f"{name} has no '**Last updated: <version>, <date>**' "
+            "line - without one nothing can tell whether it has "
+            "drifted")
+        assert m.group(1).strip() == version, (
+            f"{name} says {m.group(1).strip()}, the package is "
+            f"{version}. Either it was reviewed this release and the "
+            "line needs bumping, or it was NOT reviewed and that is "
+            "the thing worth noticing")
+
+
+def test_the_proposals_file_does_not_ship():
+    """Funding strategy, consortium thinking and draft positioning are
+    not things to publish on PyPI by accident. TEACHING.md ships
+    because it helps a user; this one does not."""
+    manifest = open(os.path.join(ROOT, "MANIFEST.in"),
+                    encoding="utf-8").read()
+    assert re.search(r"^exclude PROPOSALS\.md", manifest, re.M), (
+        "MANIFEST.in must exclude PROPOSALS.md explicitly - a default "
+        "that happens to leave it out is not a decision")
+
+
+def test_the_bump_tool_refuses_to_touch_the_status_documents():
+    """v1.47.6. The version-line guard on TEACHING.md and
+    PROPOSALS.md was DEFEATED BY THE ROUTINE that raises the question.
+
+    Versions were moved with a blanket sed over every file holding the
+    old string - which included the "Last updated" lines. The check
+    could never fire: the one thing meant to prove a human had looked
+    was answered by the same command that asked.
+
+    A CHECK THAT THE ROUTINE UPDATES AUTOMATICALLY IS NOT A CHECK.
+    tools/bump_version.py makes the exclusion executable rather than
+    remembered, and this asserts it stays that way.
+    """
+    src = open(os.path.join(ROOT, "tools", "bump_version.py"),
+               encoding="utf-8").read()
+    m = re.search(r"NEVER\s*=\s*\(([^)]*)\)", src)
+    assert m, "bump_version.py no longer has a NEVER list"
+    for name in ("TEACHING.md", "PROPOSALS.md"):
+        assert name in m.group(1), (
+            f"{name} is not in bump_version.py's NEVER list, so the "
+            "next routine bump will silence its own guard")

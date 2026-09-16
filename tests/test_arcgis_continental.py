@@ -90,7 +90,7 @@ def _params(tool, **vals):
 
 # --------------------------------------------------- the toolbox itself
 def test_the_toolbox_offers_every_registered_tool():
-    """v1.47.4 added FolderInventory (BACKLOG 269) - a capability
+    """v1.47.6 added FolderInventory (BACKLOG 269) - a capability
     that had shipped in 1.45.0 reachable from nowhere at all."""
     pyt = _pyt()
     names = [t.__name__ for t in pyt.Toolbox().tools]
@@ -278,3 +278,45 @@ def test_the_two_doors_agree_on_every_tool_name():
         label = cls().label
         assert label in LABELS.values(), (
             f"Pro calls a tool {label!r}, which is not in the shared list")
+
+
+# ===== v1.47.6, BACKLOG 299 - the join arrives in Pro =================
+def test_pro_has_the_join_boxes_qgis_has():
+    """1.47.6 gave QGIS three fidelities and Pro had NO JOIN BOX AT
+    ALL - nine parameters, none of them a layer. Claude recorded that
+    as "Pro's join box still takes the centroid only", written from
+    the QGIS door's shape on the assumption the two machines matched
+    because they ARE the same machine. John opened the dialog and
+    asked."""
+    pyt = _pyt()
+    names = {p.name for p in pyt.ContinentalRasters().getParameterInfo()}
+    for box in ("joinlayer", "joinhow", "joinclass", "joinfield",
+                "joincombine", "joinname"):
+        assert box in names, f"Pro's machine 3 has no {box!r}: {names}"
+
+
+def test_the_two_doors_word_the_join_identically():
+    """A box the two doors word differently is this project's oldest
+    failure. These lists are separate code in separate files."""
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "qgis"))
+    import qgis_stub as _q
+    _q.install()
+    from equipop_qgis import alg_continental as Q
+    pyt = _pyt()
+    assert Q.JOIN_MODES == pyt.JOIN_MODES
+    assert Q.JOIN_VALUES == pyt.JOIN_VALUES
+    assert Q.JOIN_COMBINE == pyt.JOIN_COMBINE
+    assert Q.JOIN_AGG == pyt.JOIN_AGG
+
+
+def test_pro_defaults_to_each_class_once():
+    """John's ruling. An unset box must NOT fall to rung 0 and take
+    the centroid instead - which is what _mode did before it learned
+    a default."""
+    pyt = _pyt()
+    pm = {p.name: p for p in pyt.ContinentalRasters().getParameterInfo()}
+    assert pyt.JOIN_VALUES[pyt._mode(pm, "joinhow",
+                                     pyt.JOIN_MODES, 1)] == "class"
+    assert pyt.JOIN_AGG[pyt._mode(pm, "joincombine",
+                                  pyt.JOIN_COMBINE, 0)] == "sum"

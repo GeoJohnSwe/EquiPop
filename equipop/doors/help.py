@@ -295,7 +295,7 @@ HELP = {
                "to reproduce results from before this setting "
                "existed.",
     # ---- machines 3 and 4, BACKLOG 294 -----------------------------
-    # Added v1.47.4. These THIRTEEN parameters had no entry, which is
+    # Added v1.47.6. These THIRTEEN parameters had no entry, which is
     # why make_help_xml.py covered only two of the four tools: it
     # refuses to write a sidecar with a gap, so it wrote none, and
     # both tools showed "There is no explanation for this parameter"
@@ -303,6 +303,13 @@ HELP = {
     # along and could not reach Pro for want of a file.
     # ---- machine 6, BACKLOG 269 -------------------------------------
     # ---- the lattice join, BACKLOG 298 -------------------------------
+    "joincombine": "WHAT HAPPENS WHEN SEVERAL CHARGES LAND IN ONE "
+                   "CELL. 'Add them up' is the default and the "
+                   "barrier model's rule since it began: a river "
+                   "crossed at a railway costs both. Largest, "
+                   "smallest and average are there for measures that "
+                   "should not stack - a slope does not get steeper "
+                   "because two polygons describe it.",
     "joinhow": "HOW MUCH OF A FEATURE A CELL HAS TO HOLD before it is "
                "charged. 'Centroid only' takes the feature's midpoint "
                "and charges one cell - right for shops, clinics and "
@@ -346,13 +353,6 @@ HELP = {
                  "leaves an additive run's total unchanged - fill "
                  "them yourself if 0 is what you mean, because a "
                  "silent 0 and a real 0 must not look alike.",
-    "joincombine": "WHAT HAPPENS WHEN SEVERAL CHARGES LAND IN ONE "
-                   "CELL. 'Add them up' is the default and the "
-                   "barrier model's rule since it began: a river "
-                   "crossed at a railway costs both. Largest, "
-                   "smallest and average are there for measures that "
-                   "should not stack - a slope does not get steeper "
-                   "because two polygons describe it.",
     "joinname": "The name of the new column on the output points. It "
                 "joins on the LATTICE INDEX rather than by distance, "
                 "so a cell either holds the feature or it does not, "
@@ -584,7 +584,7 @@ LABELS = {
                        "k nearest)",
     "ContinentalRasters": "3. Raster Data Curation",
     "SpatialDemography": "4. Spatial Demographic Analysis",
-    # v1.47.4, BACKLOG 269. Numbered 6 rather than 5 because machine 5
+    # v1.47.6, BACKLOG 269. Numbered 6 rather than 5 because machine 5
     # is fetching; this reads a folder that is already on disk.
     "FolderInventory": "6. What is in this folder? (reads, changes "
                        "nothing)",

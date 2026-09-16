@@ -16,6 +16,14 @@ from those, never from a folder and never from PyPI while testing.
 
 1. **`--no-deps`, always.** Without it pip upgrades the host's numpy,
    scipy or pyproj. That is what broke QGIS's scipy and Stata's pyproj.
+   **AND IT LEAVES A HOLE THAT NOBODY WROTE DOWN UNTIL 1.47.6.**
+   `--no-deps` also skips the dependencies that are NOT already there,
+   and there is exactly one: **pyproj**. QGIS, Pro and Stata all ship
+   numpy, pandas and scipy; none of them ships pyproj, which EquiPop
+   requires. So the rule is right and incomplete - install pyproj
+   deliberately, per host, below. A student lost an evening to this in
+   September 2026: three of the four verification imports worked and
+   the fourth did not, and nothing in any guide had ever named it.
 2. **`--force-reinstall` only alongside `--no-deps`.** Same version
    number can mean different code; without force, pip skips the
    install and you test the old one.
@@ -53,11 +61,17 @@ route in section 2.
    Must print a path under `C:\OSGeo4W\`.
 3. Install:
    ```
-   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.41.1-py3-none-any.whl"
+   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.47.6-py3-none-any.whl"
    ```
 4. Verify (see below), then **restart QGIS**.
 5. Plugin: **Plugins → Manage and Install Plugins → Install from ZIP**,
-   choose `equipop_qgis-1.41.1.zip`, then restart QGIS again.
+   choose `equipop_qgis-1.47.6.zip`, then restart QGIS again.
+
+**pyproj is REQUIRED and QGIS does not ship it.** Install it in the
+same shell, before verifying:
+```
+python -m pip install --user --no-deps pyproj
+```
 
 Rasterio and pyarrow are needed once, for the raster tools:
 ```
@@ -75,7 +89,8 @@ numpy into your user folder that shadows QGIS's own and breaks scipy.
 is not loaded, so nothing is memory-mapped. Prefix with `shell`:
 
 ```
-shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.41.1-py3-none-any.whl
+shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.47.6-py3-none-any.whl
+shell C:\Users\...\python.exe -m pip install pyproj
 ```
 
 **No quotes** if the paths have no spaces — Stata mangles them. If a
@@ -105,13 +120,25 @@ py = os.path.join(sys.exec_prefix, "python.exe")
 env = dict(os.environ, PYTHONNOUSERSITE="1")
 subprocess.run([py, "-m", "pip", "install", "--no-deps",
                 "--force-reinstall",
-                r"C:\path\to\equipop-1.47.4-py3-none-any.whl"], env=env)
+                r"C:\path\to\equipop-1.47.6-py3-none-any.whl"], env=env)
 ```
+
+**Then pyproj, which Pro does not ship and `--no-deps` skipped.** Same
+window, same pattern - the environment variable matters here for the
+same reason:
+
+```python
+subprocess.run([py, "-m", "pip", "install", "pyproj"], env=env)
+```
+
+Or, entirely without typing: **Project → Package Manager → Add
+Packages → pyproj**, with the clone active.
 
 Then **restart Pro** and check, in the same window:
 
 ```python
 import equipop; print(equipop.__version__)
+import numpy, pandas, scipy, pyproj; print("Core imports OK")
 ```
 
 **Why this works where a shell did not**, and it is worth knowing:
@@ -128,7 +155,7 @@ import equipop; print(equipop.__version__)
   is not writing over its own loaded DLLs.
 
 To take a release from PyPI instead of a local wheel, replace the path
-with `"equipop==1.47.4"` and drop `--no-deps --force-reinstall`.
+with `"equipop==1.47.6"` and drop `--no-deps --force-reinstall`.
 
 **If Pro still cannot see it**, the environment is read-only: Project
 → Package Manager → gear → **Clone**, activate the clone, restart Pro,

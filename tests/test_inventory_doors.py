@@ -266,3 +266,41 @@ def test_12_the_log_says_the_json_feeds_the_other_tools(osm_folder):
     assert "READ BY THE OTHER TOOLS" in said, said[-400:]
     _, fb = _run(osm_folder, write=False)
     assert "READ BY THE OTHER TOOLS" not in " ".join(fb.info)
+
+
+def test_13_a_file_geodatabase_is_one_dataset_not_its_internals(tmp_path):
+    """A .gdb IS A DIRECTORY, and os.walk yields files. Without
+    pruning, the walk descended INTO John's CalidataOSM.gdb and listed
+    its 86 internal a00000001.gdbtable parts as "other", while the
+    four layers - the only thing anyone wanted - were never seen.
+
+    Found the first time machine 6 met the format John actually uses
+    in ArcGIS Pro. Every fixture until then was shapefiles and
+    GeoTIFFs, and both of those are files.
+
+    THE FIRST VERSION OF THIS TEST WROTE A REAL .gdb WITH pyogrio AND
+    SKIPPED, because there is no OpenFileGDB write support here - so
+    it could not fail, and the deliberate break sailed past it. What
+    is being fixed is the WALK, not the reading, so the fixture is a
+    directory with the right name and plausible internals. Whether
+    GDAL can then open it is a separate question, and the answer here
+    is no - which is why the row carries an error and is still ONE
+    ROW.
+    """
+    gdb = tmp_path / "test.gdb"
+    gdb.mkdir()
+    for n in ("a00000001.gdbtable", "a00000001.gdbtablx",
+              "a00000002.gdbtable", "gdb", "timestamps",
+              "roads.UUC-HXT9264.7076.55608.sr.lock"):
+        (gdb / n).write_bytes(b"\x00" * 64)
+
+    out, _ = _run(tmp_path)
+    assert len(out) == 1, (
+        f"{len(out)} rows: {out['file'].tolist()[:6]} - the walk went "
+        "INTO the geodatabase")
+    assert out.iloc[0]["file"] == "test.gdb"
+    assert out.iloc[0]["kind"] == "vector"
+    assert not any(".gdbtable" in f for f in out["file"]), \
+        "the geodatabase internals leaked into the listing"
+    # unreadable here, and that is reported rather than hidden
+    assert out.iloc[0]["problem"] != ""

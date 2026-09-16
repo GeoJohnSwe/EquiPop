@@ -1,6 +1,6 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.4**:
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.6**:
 1,228 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself - and a test
@@ -100,7 +100,7 @@ accident, one by the tool written to find them.
 4. The Pro help sidecars — generated, checked by a test, and never
    shipped to anyone.
 5. `make_help_xml.py` — one of the five Pro files since 1.44.4, and
-   until 1.47.4 it could not run from the folder it ships to.
+   until 1.47.6 it could not run from the folder it ships to.
 
 Number 5 is the one to remember. It was offered to John as the
 ten-second escape hatch from an untested change, he tried it, and it
@@ -156,6 +156,32 @@ what it should be. Run the breakage check on every new guard; it is
 not a formality.
 
 ---
+
+## 4b. TWO STREAMS BESIDE THE CODE, FROM SESSION 12
+
+**TEACHING.md** and **PROPOSALS.md**, at the repository root, each
+carrying a version line a test checks against pyproject.toml.
+
+WHY THEY EXIST AT ALL, rather than living in conversation: this
+project loses things between sessions. The priority list stopped at
+item 164 for eleven releases; item 257 asked for samples already
+supplied; five capabilities shipped that nobody could reach. A stream
+that is not written down is a stream that will be rediscovered.
+
+**Teaching is not a by-product - it is the best acceptance test here.**
+Session 12 proved it twice in one afternoon: John's CaliData2010 run
+validated the origin rule against a PUBLISHED PAPER, and his Swedish
+OSM folder found two defects no fixture would have shown. Both came
+from USING the software the way a stranger will.
+
+**The proposal is a question put to the code.** HORIZON-HLTH-2027-01-
+ENVHLTH-02, John coordinating. The dates moved - opens 29 Oct 2026,
+closes 17 Feb 2027, four months earlier than he remembered - so check
+the portal, not any file. EquiPop is a WORK PACKAGE there, not the
+proposal.
+
+EVERY HANDOVER FROM 16 ONWARD should carry two lines on where each
+stands. Both files say what only John can decide; neither is started.
 
 ## 5. WHAT IS OPEN
 

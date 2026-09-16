@@ -19,7 +19,7 @@ appeared twice; the weaker copy is gone.*
 
 ## What next — in priority order
 
-*Rewritten in full, 1.47.4. The list this replaces STOPPED AT ITEM
+*Rewritten in full, 1.47.6. The list this replaces STOPPED AT ITEM
 164: everything from 165 to 293 — machines 3, 4 and 5, the registry,
 all four providers, the OSM lattice work, the eight external-review
 HIGHs — never entered it. The file opens by promising that its top
@@ -2286,7 +2286,7 @@ not here. A list of completed work is not a plan.
   the interface and must be tested against the shape the user
   actually sees, not the shape it has in the source.
 
-- ~~269~~ | ENGINE DONE v1.45.0, DOORS DONE v1.47.4 | THE INVENTORY:
+- ~~269~~ | ENGINE DONE v1.45.0, DOORS DONE v1.47.6 | THE INVENTORY:
   WHAT IS IN A FOLDER.
   IT WAS MARKED DONE FOR TWO RELEASES WHILE REACHABLE FROM NOWHERE.
   No GUI, no runner, no Stata - only by writing Python, which the
@@ -2295,7 +2295,7 @@ not here. A list of completed work is not a plan.
   in session 12 and the reason tests/reachability.py now exists: the
   suite asked whether the thing worked and never whether anyone could
   get to it.
-  v1.47.4 gives it TWO DOORS. "6. What is in this folder? (reads,
+  v1.47.6 gives it TWO DOORS. "6. What is in this folder? (reads,
   changes nothing)" in QGIS and in Pro - numbered 6 because machine 5
   is fetching and this reads a folder already on disk. One row per
   file or layer, and the LATTICE COLUMN is the point: a folder
@@ -2717,7 +2717,7 @@ not here. A list of completed work is not a plan.
   forgetting is impossible, and "in the same act as the release" was
   too vague to be followed by the session that wrote it.
 
-- ~~290~~ | DONE v1.47.4 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
+- ~~290~~ | DONE v1.47.6 | IS THE ORIGIN ITS OWN NEIGHBOUR? John's
   ruling: two rules, i=j and i!=j, and `include` STAYS THE DEFAULT.
   THE PACKAGE ALREADY HELD TWO ANSWERS and called both "the
   neighbourhood". autocorr.build_weights() has always excluded self -
@@ -2796,7 +2796,7 @@ not here. A list of completed work is not a plan.
   that both look right while the total is a third of what it should
   be. Both reasons are in the test's docstring.
 
-- ~~291~~ | DONE v1.47.4 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
+- ~~291~~ | DONE v1.47.6 | THE DOWNLOAD DEFECTS FROM THE EXTERNAL
   REVIEW OF 1.46.4. Eight claims were checked against this tree
   before anything was changed; all eight held and ONE WAS WORSE THAN
   REPORTED.
@@ -2844,7 +2844,7 @@ not here. A list of completed work is not a plan.
   224 and 232. It is not a diagnosis of them - those still need
   John's logs - but it can no longer be the answer.
 
-- ~~292~~ | DONE v1.47.4 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
+- ~~292~~ | DONE v1.47.6 | THE SOURCE ARCHIVE SHIPPED NO RUNNERS.
   run_fetch.py, run_raster_folder.py and run_osm_friction.py were all
   absent from equipop-1.46.4.tar.gz. MANIFEST.in had gained
   `include demo_*.py` for BACKLOG 107 and nothing for the runners, so
@@ -2868,15 +2868,15 @@ not here. A list of completed work is not a plan.
   then listed THREE, under a heading stamped v1.16.8, and told the
   reader that "Two tools appear" when four do. A user following it
   replaces the toolbox and keeps the sidecars, which is EXACTLY what
-  happened to John at 1.47.4. The instruction, not the packaging, is
+  happened to John at 1.47.6. The instruction, not the packaging, is
   what produced the empty box.
 
-- ~~295~~ | DONE v1.47.4 | make_help_xml.py COULD NOT BE RUN WHERE IT
+- ~~295~~ | DONE v1.47.6 | make_help_xml.py COULD NOT BE RUN WHERE IT
   IS SHIPPED. It has been one of the five Pro files since 1.44.4 and
   it imports test_arcgis_stub, which lives in the repository's tests/
   directory and is NOT one of the five. ModuleNotFoundError,
   immediately, every time, for the whole life of the delivery.
-  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.4 wrote the Pro
+  FOUND BECAUSE THE INSURANCE WAS UNINSURED. 1.47.6 wrote the Pro
   parameter comments as escaped HTML on an untested hypothesis (34)
   and offered `--plain` as the ten-second way back. John pasted the
   command, it failed, and only then did anyone check whether it could
@@ -2896,7 +2896,7 @@ not here. A list of completed work is not a plan.
   capabilities nobody could get to. THIS ONE WAS THE RECOVERY PATH
   FOR A KNOWN RISK, which makes it the one worth remembering.
 
-- ~~294~~ | DONE v1.47.4 | MACHINES 3 AND 4 HAD NO HELP TEXT AT ALL,
+- ~~294~~ | DONE v1.47.6 | MACHINES 3 AND 4 HAD NO HELP TEXT AT ALL,
   IN ANY DOOR. ContinentalRasters and SpatialDemography are
   registered in the Pro toolbox and executed by the suite, and
   THIRTEEN of their parameters had no entry in doors/help.py: folder,
@@ -2924,7 +2924,7 @@ not here. A list of completed work is not a plan.
   rather than expecting a number, so a fifth machine cannot ship
   unhelped the way these two did.
 
-- ~~295b~~ | DONE v1.47.4 | THE REACHABILITY MATRIX. John's request,
+- ~~295b~~ | DONE v1.47.6 | THE REACHABILITY MATRIX. John's request,
   session 12: "can a person get to this, and from which door?" - and
   his memory of a functions-by-doors table from the early Stata work.
   THAT TABLE DOES NOT SURVIVE. Every .md in the tree was searched;
@@ -2955,7 +2955,7 @@ not here. A list of completed work is not a plan.
   20 capabilities, 30 declared gaps, every one with a reason.
   Read it with: pytest tests/test_reachability.py -s -k report
 
-- ~~297~~ | DONE v1.47.4 | TWO DEFECTS JOHN'S REAL OSM FOLDER FOUND,
+- ~~297~~ | DONE v1.47.6 | TWO DEFECTS JOHN'S REAL OSM FOLDER FOUND,
   neither of which any fixture would have shown.
   (a) A SHAPEFILE IS ONE THING IN FIVE FILES. His Swedish extract
   inventoried as 109 rows, of which 91 were .cpg, .dbf, .prj, .shx
@@ -2986,7 +2986,7 @@ not here. A list of completed work is not a plan.
   lattices, because only rasters have one. The column stays - it is
   the point for rasters - but the tool is not only for them.
 
-- ~~298~~ | DONE v1.47.4 | VECTOR ONTO THE LATTICE, John's model.
+- ~~298~~ | DONE v1.47.6 | VECTOR ONTO THE LATTICE, John's model.
   MACHINE 3 ALREADY JOINED VECTOR TO THE RASTER GRID and took the
   CENTROID of every feature - right for shops and stops, badly wrong
   for a road network: a street crossing forty cells was counted once,
@@ -3046,16 +3046,137 @@ not here. A list of completed work is not a plan.
   wrong error message, produced entirely by the thing meant to catch
   wrong behaviour.
 
-- 299 | OPEN, FOUND v1.47.4 | PRO'S JOIN BOX STILL TAKES THE CENTROID
-  ONLY. 298 gave QGIS three fidelities and left Pro with one, so the
-  two GIS doors now disagree about what a box does - which is the
-  thing tests/door_parity.py exists to prevent, and it does not catch
-  this because both doors DO have a box called `joinlayer`; only its
-  behaviour differs.
-  The engine is shared and geopandas-free, so this is dialog work
-  rather than capability: the four boxes, the geometry reader, and
-  the point auto-detection. Recorded the moment it was created rather
-  than found later, and the reachability matrix carries it.
+- ~~299~~ | DONE v1.47.6, RECORD CORRECTED BY JOHN | PRO'S
+  MACHINE 3 HAD NO JOIN BOX AT ALL.
+  THE FIRST VERSION OF THIS ENTRY SAID "Pro's join box still takes
+  the centroid only", which implies a box exists. It does not.
+  ContinentalRasters in the toolbox has NINE parameters - folder, k,
+  unit, crs, weight, sumcohorts, pattern, tiles, out - and not one of
+  them is a layer to join. John opened the dialog on his first test
+  and asked; the answer took one grep.
+  CLAUDE WROTE THE ENTRY FROM THE QGIS DOOR'S SHAPE, assuming the two
+  machines matched because they are the same machine. Same fault as
+  _rows(), as lat["pixel"], and as the Stata friction door in the
+  reachability matrix: FOUR TIMES THIS SESSION a claim was written
+  from what the code OUGHT to look like with the answer a grep away.
+  The matrix caught one of those. It could not catch this one,
+  because a reason is prose and prose is not checked.
+  WHAT IS ACTUALLY TRUE: the join is QGIS-only and always has been.
+  298 gave QGIS three fidelities; Pro has zero, so the gap is a whole
+  capability rather than a difference of behaviour. The engine is
+  shared and geopandas-free, so this is dialog work - the layer box,
+  four settings, the geometry reader, the point auto-detection.
+  door_parity does not catch it because the box is absent from BOTH
+  its CORE lists; it was never part of the shared contract.
+  FIXED IN v1.47.6. Six boxes, worded identically to QGIS and pinned
+  by a test that compares the two modules' lists directly. The arcpy
+  geometry reader was EXTRACTED from the barrier path, which had done
+  multipart lines and polygon-rings-split-on-None since 1.15 and was
+  about to be written a second time - BACKLOG 120 again. _mode()
+  learned a `default` argument, because machine 3's join defaults to
+  rung 1 and an unset box would otherwise have fallen silently to
+  rung 0 and taken the centroid.
+  AND THE FIRST ATTEMPT AT THE PARAMETERS DID NOTHING. The edit used
+  replace() WITHOUT AN ASSERT against an anchor that did not match,
+  so it reported success and changed nothing; the boxes were absent
+  until the test asked the toolbox what it actually had. Assert the
+  anchor, then check the result - not one or the other.
+
+- ~~303~~ | DONE v1.47.6 | THE GUARD WAS DEFEATED BY THE ROUTINE
+  THAT RAISES THE QUESTION. TEACHING.md and PROPOSALS.md each carry
+  `**Last updated: <version>**`, and a test compares it against
+  pyproject.toml so a release cannot pass while a planning document
+  has drifted. It was written this same session, with the priority
+  list's eleven stale releases as the reason.
+  IT COULD NEVER FIRE. Versions are moved with a blanket sed over
+  every file containing the old string - and that includes the "Last
+  updated" line. The one thing meant to prove A HUMAN HAD LOOKED was
+  being answered by the same command that asked the question. Found
+  when the bump to 1.47.6 left the test green on documents nobody had
+  read.
+  A CHECK THAT THE ROUTINE UPDATES AUTOMATICALLY IS NOT A CHECK.
+  Before trusting a guard, ask what the normal workflow does to it -
+  which is a different question from whether the guard is correct,
+  and this one was correct.
+  FIXED BY MAKING THE RULE EXECUTABLE: tools/bump_version.py moves
+  the version everywhere it must move and skips the status documents
+  by name, so their line moves only when somebody reads them. A test
+  asserts the NEVER list still holds both. The old blanket sed also
+  rewrote BACKLOG.md and MANUAL.md, where "DONE v1.29.5" is a FACT
+  ABOUT THE PAST and must not be rewritten; the tool skips those too.
+
+- ~~301~~ | DONE v1.47.6 | MACHINE 6 COULD NOT SEE A FILE
+  GEODATABASE. John supplied CalidataOSM.gdb - four OSM layers for LA
+  County, the format he actually uses in ArcGIS Pro - and the
+  inventory returned EIGHTY-SIX ROWS OF GARBAGE: a00000001.gdbtable,
+  a00000001.gdbtablx, the .lock files, all listed as "other", while
+  the four layers were never seen at all.
+  A .gdb IS A DIRECTORY AND os.walk YIELDS FILES. `.gdb` was already
+  in the VECT tuple, so the code LOOKED right; the check simply never
+  ran against a directory. Now matched from _dirs, pruned so the
+  internals are not walked, and sized by summing the folder. Four
+  rows instead of eighty-six.
+  EVERY FIXTURE UNTIL NOW WAS SHAPEFILES AND GEOTIFFS, and both of
+  those are files. The tool was built, tested, documented and shipped
+  in TWO DOORS without once meeting the format its author uses daily.
+  THE FIRST VERSION OF THE TEST COULD NOT FAIL. It wrote a real .gdb
+  with pyogrio and SKIPPED - no OpenFileGDB write support in this
+  environment - so the deliberate break sailed straight past. What is
+  being fixed is the WALK, not the reading, so the fixture is now a
+  directory with the right name and plausible internals. Whether GDAL
+  can open it is a separate question, and the answer being "no" is
+  part of the assertion: the row must still be ONE row and must carry
+  its error.
+
+- ~~302~~ | DONE v1.47.6 | THE GEOPANDAS-FREE JOIN WAS ONLY TESTED
+  WHERE GEOPANDAS WAS PRESENT. tests/test_vectorjoin.py calls
+  pytest.importorskip("geopandas") at MODULE level, so every test in
+  it - including two written for paths_to_cells, which needs neither
+  geopandas nor shapely - was skipped on exactly the machine where
+  the freedom matters.
+  A TEST THAT ONLY RUNS WHEN THE DEPENDENCY IS PRESENT CANNOT SHOW
+  THAT THE DEPENDENCY IS UNNECESSARY. Moved to
+  tests/test_vectorjoin_free.py, which imports neither, plus a guard
+  that reads its OWN imports with ast. The first version of that
+  guard scanned the source for the string "import geopandas" and
+  failed on its own list of banned words - a small lesson about
+  checking for a name by looking for its letters.
+  THE TESTS THEMSELVES ARE THE COURSE'S. John's exercise 3 has a
+  motorway BLOCKING WALKING and CARRYING REGIONAL TRAFFIC - same
+  feature, opposite signs - so the value field takes negatives, and
+  nothing had ever tried one. They work: +8/+8/+1 collapses to 9,
+  -5/-5/+1 to -4, and a cell whose charges cancel to exactly 0 KEEPS
+  ITS ROW rather than vanishing.
+
+- ~~300~~ | DONE v1.47.6 | pyproj WAS NEVER MENTIONED IN ANY INSTALL
+  GUIDE, and a student lost an evening to it.
+  INSTALL.md's rule ONE is "--no-deps, always", and it is right:
+  without it pip upgrades the host's numpy or scipy, which is what
+  broke QGIS's scipy and Stata's pyproj. THE RULE HAS A CONSEQUENCE
+  NOBODY WROTE DOWN: --no-deps also skips the dependencies that are
+  not already there, and there is exactly one - pyproj. ArcGIS Pro,
+  QGIS and Stata all ship numpy, pandas and scipy; none ships pyproj,
+  which the package requires.
+  THE STUDENT GUIDE MADE IT WORSE by verifying `import numpy, pandas,
+  scipy, pyproj` at the end of an install that never fetched pyproj,
+  and saying only that "the instructor must prepare those
+  separately" - without naming which. So the instructor could not
+  prepare it either. Mercy Lanz hit exactly this on 1.46.4: three
+  imports fine, the fourth missing, and she did the right thing and
+  asked before installing anything.
+  FIXED in INSTALL.md (all three hosts), in the student guide, and
+  guarded by a test that reads `dependencies` from pyproject and
+  requires every name to appear in INSTALL.md - so a dependency added
+  later cannot go unmentioned the same way.
+  A CLAIMED CONTRADICTION THAT WAS NOT ONE. Claude reported that
+  INSTALL.md told students to use --user while ARCGIS_GUIDE said
+  --user strands packages where Pro never reads. Both statements
+  exist; they are in DIFFERENT SECTIONS for DIFFERENT HOSTS - --user
+  is correct for QGIS's OSGeo4W and wrong for Pro, and the Pro
+  section already uses PYTHONNOUSERSITE and explains why. Claimed
+  from a grep hit without checking which section the line was in.
+  Fifth time in one session that a claim was written from what the
+  code ought to look like with the answer a line away.
 
 - 296 | ~~RULED OUT~~ SESSION 12, FOUND BY THE MATRIX | THE STATA
   COMMAND CANNOT REACH FRICTION OR SLOPE, THOUGH THE BRIDGE CAN.
@@ -3088,7 +3209,7 @@ not here. A list of completed work is not a plan.
   SO THE MATRIX NOW RECORDS A DOOR DELIBERATELY NOT BUILT rather than
   a capability missing, which is the distinction it exists to make.
 
-- 293 | OPEN, FOUND v1.47.4 | RunLog IS DEAD CODE, AND IT IS BACKLOG
+- 293 | OPEN, FOUND v1.47.6 | RunLog IS DEAD CODE, AND IT IS BACKLOG
   ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
   design as agreed)" - is complete, documented, exported in __all__,
   and CALLED BY NOTHING AND TESTED BY NOTHING. No door, no engine, no
@@ -4712,12 +4833,12 @@ not here. A list of completed work is not a plan.
   ("two rulers", "doubling it quarters the work", "a finding, not a
   nuisance") is the model the queued naming pass should copy.
 
-- ~~44~~ | DONE v1.47.4, CONFIRMATION PENDING | `make_help_xml.py`
+- ~~44~~ | DONE v1.47.6, CONFIRMATION PENDING | `make_help_xml.py`
   still writes `SyncOnce=TRUE`, the suspected cause of item 34
   (summary/usage rendering empty in Pro). Untouched this round: it
   needs one field cycle to confirm, and this was a refactor release.
   Now a one-line change in a single place whenever that cycle happens.
-  THE ONE-LINE CHANGE IS MADE in 1.47.4:
+  THE ONE-LINE CHANGE IS MADE in 1.47.6:
   SyncOnce=FALSE, which tells Pro the metadata is authored and not to
   synchronise its own over the top. Struck because the change this
   item describes is done - but it was ONE OF THREE faults found in the
@@ -4726,13 +4847,13 @@ not here. A list of completed work is not a plan.
   cause. See 34. Do not read this as proof that SyncOnce was the
   problem.
 
-- ~~34~~ | DONE v1.47.4, CONFIRMED IN THE FIELD | Tool help page:
+- ~~34~~ | DONE v1.47.6, CONFIRMED IN THE FIELD | Tool help page:
   summary/usage sections render empty in Pro. Suspect SyncOnce=TRUE
   letting Pro regenerate over the authored text, plus missing
   datatype attributes and plain text where escaped HTML is expected.
   The per-parameter comments (dialogReference) DO work | Needed one
   field cycle to confirm.
-  OPEN FROM v1.16.8 TO v1.47.4 - thirty releases - and closed by John
+  OPEN FROM v1.16.8 TO v1.47.6 - thirty releases - and closed by John
   in session 12: "all good, ? page is good".
   THE HEADLINE OF THIS ITEM WAS WRONG THE WHOLE TIME. Summary and
   usage were never empty for the tools that had a sidecar. What was
@@ -4765,13 +4886,13 @@ not here. A list of completed work is not a plan.
   slope, fca and lisa are not in it. Now that a second door exists
   and the mechanism is proved, this is worth doing.
 
-- ~~45~~ | DONE v1.47.4 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
+- ~~45~~ | DONE v1.47.6 | (1.29.0 note: the BOOK build does it too - docs/book/build.sh leaves gamma_decay_figure.png in the repo ROOT, because examples/cookbook_01 writes relative to the working directory. Same fix, same item.) The simulated-arcpy tests write their output to
   the Windows-style catalog paths they pretend to use, so a test run
   on Linux leaves four literal files named `C:\Data\...csv` in the
   repo root (and one stray figure from the Book build). Harmless,
   untracked, and cleaned by hand this round - but they belong in
   pytest's tmp_path, and on Windows those paths are real. Small.
-  CLOSED v1.47.4, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
+  CLOSED v1.47.6, AND ONLY HALF OF IT WAS STILL TRUE. Measured by
   running the suite on a clean tree: the four `C:\Data\...csv` files
   did NOT recur and appear to have been fixed earlier without anyone
   narrowing this entry. What DID recur was two files the item never

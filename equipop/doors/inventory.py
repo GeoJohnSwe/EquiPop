@@ -165,6 +165,18 @@ def _vector(path, deep=True):
 
 
 # -------------------------------------------------------------- run
+def _dir_bytes(path):
+    """Total size of a dataset that is a folder."""
+    n = 0
+    for root, _d, names in os.walk(path):
+        for f in names:
+            try:
+                n += os.path.getsize(os.path.join(root, f))
+            except OSError:                          # pragma: no cover
+                pass
+    return n
+
+
 def _distinct(path, layer, col):
     """Every distinct value of one column, without geopandas.
 
@@ -224,10 +236,38 @@ def inventory(folder, say=print, deep=True, write=True):
     #: missing and .dbf might hold the data". So a .dbf is only folded
     #: away when its .shp is present; alone, it is listed as a vector
     #: with no geometry - visible, without pretending to be a layer.
+    #: Vector datasets that are DIRECTORIES. Everything else in VECT
+    #: is a single file; these are folders full of parts, and the
+    #: parts are never what a person wants listed.
+    DIR_VECT = (".gdb",)
+
     SIDECAR = (".cpg", ".dbf", ".prj", ".shx", ".qpj", ".sbn",
                ".sbx", ".shp.xml", ".lock", ".atx", ".idm", ".ind")
 
     for root, _dirs, names in os.walk(folder):
+        # A FILE GEODATABASE IS A DIRECTORY, NOT A FILE, and os.walk
+        # yields files. Without this the walk descended INTO a .gdb
+        # and listed its eighty-odd internal a00000001.gdbtable parts
+        # as "other", while the geodatabase itself - the only thing
+        # anyone wanted - was never seen at all. Found the first time
+        # this tool met the format John actually uses in ArcGIS Pro.
+        #
+        # Pruned from _dirs as well, so the internals are not walked.
+        for d in list(_dirs):
+            if not d.lower().endswith(DIR_VECT):
+                continue
+            _dirs.remove(d)
+            path = os.path.join(root, d)
+            base = {"file": os.path.relpath(path, folder)
+                             .replace("\\", "/"),
+                    "kind": "vector",
+                    "bytes": _dir_bytes(path)}
+            try:
+                for v in _vector(path, deep=deep):
+                    files.append({**base, **v})
+            except Exception as exc:
+                files.append({**base, "error":
+                              f"{exc.__class__.__name__}: {exc}"})
         here = {x.lower() for x in names}
         sidecars = {}                    # shp stem -> [extensions]
         for n in names:

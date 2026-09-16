@@ -1906,16 +1906,39 @@ ORIGIN_MODES = [
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 
+#: v1.47.6, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
+#: a box the two doors word differently is this project's oldest
+#: failure, and this one arrived a release late in Pro because nobody
+#: checked whether the box existed here at all.
+JOIN_MODES = [
+    "centroid only - the feature's midpoint, one cell",
+    "each class once - any cell the feature genuinely touches",
+    "length or share - metres of line, or fraction of cell covered",
+]
+JOIN_VALUES = ["centroid", "class", "measure"]
+JOIN_COMBINE = [
+    "add them up (a river AND a railway cost both)",
+    "keep the largest",
+    "keep the smallest",
+    "average them",
+]
+JOIN_AGG = ["sum", "max", "min", "mean"]
 
-def _mode(pm, name, modes):
+
+def _mode(pm, name, modes, default=0):
     """Which rung of the ladder the user is on. Matching is on the
     leading words so the wording can be improved later without
-    breaking a saved tool."""
-    txt = (_txt(pm, name) or modes[0]).strip().lower()
+    breaking a saved tool.
+
+    `default` exists because machine 3's join defaults to rung 1 -
+    "each class once", John's ruling - and an unset box must not
+    silently fall to rung 0 and take the centroid instead.
+    """
+    txt = (_txt(pm, name) or modes[default]).strip().lower()
     for i, m in enumerate(modes):
         if txt.startswith(m.split(" -")[0][:18].lower()):
             return i
-    return 0
+    return default
 
 
 def _check_output_target(parameters, i_layer, desc):
@@ -2563,6 +2586,221 @@ INVENTORY_COLUMNS = [
 ]
 
 
+def _join_layer(pm, table, ch, messages):
+    """Put a vector layer onto the raster lattice (BACKLOG 299).
+
+    ARRIVED A RELEASE LATE. 1.47.6 gave QGIS three fidelities and Pro
+    had no join box AT ALL - nine parameters, none of them a layer.
+    Claude recorded that gap as "Pro's join box still takes the
+    centroid only", written from the QGIS door's shape on the
+    assumption the two machines matched because they ARE the same
+    machine. John opened the dialog on his first test and asked; the
+    answer took one grep.
+
+    The engine is shared and geopandas-free, so this is dialog work:
+    read the geometries, hand them to the same paths_to_cells QGIS
+    calls, and join on the lattice INDEX.
+    """
+    layer = _txt(pm, "joinlayer")
+    if not layer:
+        return table
+    import numpy as np
+    import pandas as pd
+
+    from equipop.latticejoin import (join_to_points, lattice_of,
+                                     snap_to_lattice)
+    from equipop.vectorjoin import VectorJoinError, paths_to_cells
+
+    if "gx" not in getattr(table, "columns", []):
+        raise arcpy.ExecuteError(
+            "The lattice join needs the point table, so leave the "
+            "neighbourhood sizes empty. Run the join first, then feed "
+            "the result to machine 1.")
+    how = JOIN_VALUES[_mode(pm, "joinhow", JOIN_MODES, 1)]
+    agg = JOIN_AGG[_mode(pm, "joincombine", JOIN_COMBINE, 0)]
+    klass = _txt(pm, "joinclass")
+    field = _txt(pm, "joinfield")
+    name = _txt(pm, "joinname") or "joined"
+    lat = lattice_of(_txt(pm, "folder"))
+    sr = arcpy.SpatialReference(lat["crs"].split(":")[-1]) \
+        if ":" in str(lat["crs"]) else None
+
+    feats, vals, classes, _ = read_shapes(layer, klass, field, sr,
+                                          messages)
+    if feats is None:
+        # A POINT HAS NO LENGTH AND NO AREA, so the three rules mean
+        # the same thing for it. Detected, not asked - the same rule
+        # QGIS follows.
+        return _join_points(layer, sr, field, name, lat, table,
+                            messages, join_to_points, snap_to_lattice)
+    if how == "centroid":
+        return _join_points(layer, sr, field, name, lat, table,
+                            messages, join_to_points, snap_to_lattice,
+                            centroids=True)
+    if how == "class" and not klass:
+        raise arcpy.ExecuteError(
+            "'Each class once' needs the class field - fclass on an "
+            "OSM layer. Without one there is nothing to collapse on, "
+            "and every SEGMENT would be charged separately: OSM cuts "
+            "one street into many records wherever a tag changes, so "
+            "a junction holding five pieces of the same road would "
+            "cost five times.")
+
+    # Into LATTICE SPACE, exactly as the QGIS door does: the cutter
+    # works on a unit grid anchored at zero and a raster lattice has
+    # an arbitrary origin and a negative e.
+    c, f_, a, e = (float(lat["c"]), float(lat["f"]),
+                   float(lat["a"]), float(lat["e"]))
+    for shape in feats:
+        if shape["type"] == "line":
+            shape["parts"] = [[((x - c) / a, (y - f_) / e)
+                               for x, y in part]
+                              for part in shape["parts"]]
+        else:
+            shape["parts"] = [[[((x - c) / a, (y - f_) / e)
+                                for x, y in ring] for ring in part]
+                              for part in shape["parts"]]
+    try:
+        charged = paths_to_cells(feats, vals, classes=classes,
+                                 unit_size=1.0, fidelity=how, agg=agg)
+    except VectorJoinError as exc:
+        raise arcpy.ExecuteError(str(exc))
+
+    if how == "measure" and feats[0]["type"] == "line" \
+            and abs(abs(a) - abs(e)) < 1e-12:
+        charged["value"] = charged["value"] * abs(a)
+    snapped = pd.DataFrame({
+        "gx": np.floor(charged["x"]).astype("int64"),
+        "gy": np.floor(charged["y"]).astype("int64"),
+        name: charged["value"].astype(float)})
+    out = join_to_points(table, snapped, name)
+    messages.addMessage(
+        f"[join] {len(feats):,} features -> {len(snapped):,} cells, "
+        f"column {name!r}. Joined on the LATTICE INDEX, not by "
+        "distance, so cells the layer never touched carry a real 0.0.")
+    if klass and classes:
+        worth = {}
+        for cl, v in zip(classes, vals):
+            worth.setdefault(cl, set()).add(round(float(v), 6))
+        split = [cl for cl, w in worth.items() if len(w) > 1]
+        messages.addMessage(
+            f"[join] {len(worth)} class(es) charged.")
+        if split:
+            messages.addWarningMessage(
+                f"{len(split)} class(es) carry MORE THAN ONE value. "
+                "Under 'each class once' only the first feature of a "
+                "class in a cell is charged, so which value wins "
+                "depends on the order the features come in. Give each "
+                "class ONE value, or use 'length or share'.")
+    return out
+
+
+def _join_points(layer, sr, field, name, lat, table, messages,
+                 join_to_points, snap_to_lattice, centroids=False):
+    """Points, or anything reduced to its midpoint."""
+    cols = ["SHAPE@XY"] if not centroids else ["SHAPE@TRUECENTROID"]
+    cols += [field] if field else []
+    xs, ys, vals = [], [], []
+    with arcpy.da.SearchCursor(layer, cols,
+                               spatial_reference=sr) as cur:
+        for row in cur:
+            xy = row[0]
+            if xy is None:
+                continue
+            xs.append(float(xy[0]))
+            ys.append(float(xy[1]))
+            if field:
+                v = row[1]
+                vals.append(0.0 if v is None else float(v))
+    if not xs:
+        raise arcpy.ExecuteError("That layer has no usable geometry.")
+    snapped = snap_to_lattice(xs, ys, lattice=lat, name=name,
+                              values=vals if field else None,
+                              how="sum" if field else "count")
+    messages.addMessage(
+        f"[join] {len(xs):,} features -> {len(snapped):,} cells, "
+        f"column {name!r}.")
+    return join_to_points(table, snapped, name)
+
+
+def read_shapes(layer, class_field, value_field, sr, messages):
+    """A feature layer as friction.feature_cells' `parts` shape.
+
+    EXTRACTED IN v1.47.6 from the barrier reader above, which had
+    done exactly this since 1.15 - multipart lines, polygon rings
+    split on None - and was about to be written a second time for the
+    lattice join. BACKLOG 120's standing lesson: two copies of a
+    reader drift, and the drift is invisible because both look right.
+
+    Returns (features, values, classes, n_skipped). A NULL value is
+    read as 1.0, which leaves an additive run's total unchanged; a
+    non-numeric one is refused by name rather than coerced.
+    """
+    kind = str(arcpy.Describe(layer).shapeType).lower()
+    if kind.startswith("point"):
+        return None, None, None, 0          # the centroid path
+    kind = "polygon" if kind.startswith("polygon") else "line"
+    cols = ["SHAPE@"]
+    cols += [class_field] if class_field else []
+    cols += [value_field] if value_field else []
+    feats, vals, classes, bad = [], [], [], 0
+    with arcpy.da.SearchCursor(layer, cols,
+                               spatial_reference=sr) as cur:
+        for row in cur:
+            geom = row[0]
+            if geom is None:
+                bad += 1
+                continue
+            parts = []
+            for part in geom:               # MULTIPART: every part
+                if kind == "line":
+                    pts = [(p.X, p.Y) for p in part if p is not None]
+                    if len(pts) >= 2:
+                        parts.append(pts)
+                else:
+                    rings, ring = [], []
+                    for p in part:
+                        if p is None:
+                            rings.append(ring)
+                            ring = []
+                        else:
+                            ring.append((p.X, p.Y))
+                    if ring:
+                        rings.append(ring)
+                    rings = [r for r in rings if len(r) >= 3]
+                    if rings:
+                        parts.append(rings)
+            if not parts:
+                bad += 1
+                continue
+            feats.append({"type": kind, "parts": parts})
+            at = 1
+            if class_field:
+                c = row[at]
+                classes.append("" if c is None else str(c))
+                at += 1
+            if value_field:
+                v = row[at]
+                if v is None:
+                    vals.append(1.0)
+                else:
+                    try:
+                        vals.append(float(v))
+                    except (TypeError, ValueError):
+                        raise arcpy.ExecuteError(
+                            f"Field '{value_field}' holds a value "
+                            f"that is not a number ({v!r}). The join "
+                            "needs one number per feature - fix or "
+                            "filter the layer first.")
+            else:
+                vals.append(1.0)
+    if bad:
+        messages.addWarningMessage(
+            f"{bad} feature(s) had a geometry this join cannot use "
+            "and were left out.")
+    return feats, vals, (classes or None), bad
+
+
 def _inventory_rows(got):
     """The package's records, one row each. The SAME shape the QGIS
     door builds - pinned by a test, because a table whose columns
@@ -2639,9 +2877,38 @@ class ContinentalRasters:
               _p("tiles", "Folder for a TILED, resumable run (blank "
                  "= run in memory)", "DEFolder", required=False,
                  category="Advanced"),
+              # v1.47.6, BACKLOG 299. Pro had NO join box at all -
+              # nine parameters, none of them a layer - while QGIS
+              # had had one since 1.16 and gained three fidelities in
+              # 1.47.6. Worded identically to the QGIS door.
+              _p("joinlayer", "A layer to put on the same grid - "
+                              "points, roads, land use, water...",
+                 "GPFeatureLayer", required=False,
+                 category="Advanced"),
+              _p("joinhow", "How a feature charges a cell",
+                 "GPString", required=False, category="Advanced"),
+              _p("joinclass", "The class field (fclass, highway, "
+                              "landuse) - needed for 'each class "
+                              "once'", "Field", required=False,
+                 category="Advanced"),
+              _p("joinfield", "The value field you prepared (blank "
+                              "= 1 per charge)", "Field",
+                 required=False, category="Advanced"),
+              _p("joincombine", "When several charges land in one "
+                                "cell", "GPString", required=False,
+                 category="Advanced"),
+              _p("joinname", "Name for the new column", "GPString",
+                 required=False, category="Advanced"),
               _p("out", "Output feature class", "DEFeatureClass",
                  direction="Output")]
         ps[2].value = 1000.0
+        pmj = {q.name: q for q in ps}
+        pmj["joinhow"].filter.type = "ValueList"
+        pmj["joinhow"].filter.list = JOIN_MODES
+        pmj["joinhow"].value = JOIN_MODES[1]
+        pmj["joincombine"].filter.type = "ValueList"
+        pmj["joincombine"].filter.list = JOIN_COMBINE
+        pmj["joincombine"].value = JOIN_COMBINE[0]
         return ps
 
     def execute(self, parameters, messages):
@@ -2677,6 +2944,7 @@ class ContinentalRasters:
             table = load_tiled(_txt(pm, "tiles"))
         else:
             table = man["results"]
+        table = _join_layer(pm, table, ch, messages)
         _write_points(table, man, pm["out"].valueAsText, messages)
 
 

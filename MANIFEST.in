@@ -82,6 +82,13 @@ include demo_*.py
 # test_packaging now does for every run_*.py at the root.
 include run_*.py
 
+# TEACHING.md ships: it tells a user what the worked example is and
+# where its data comes from. PROPOSALS.md does NOT - funding strategy
+# and consortium thinking are not for PyPI, and an exclusion written
+# down is a decision where a default is an accident.
+include TEACHING.md
+exclude PROPOSALS.md
+
 # Worked examples, and the Book's sources.
 graft examples
 graft docs

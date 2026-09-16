@@ -111,7 +111,7 @@ def load_toolbox():
     inside Pro's Python Command Prompt, where arcpy is real.
 
     Only the first ever worked. This file has been shipped as one of
-    the five since 1.44.4 and, until 1.47.4, could not be run by the
+    the five since 1.44.4 and, until 1.47.6, could not be run by the
     person it was shipped to - ModuleNotFoundError on
     test_arcgis_stub, immediately, every time. Found when the --plain
     escape hatch offered as insurance turned out to be unusable by
@@ -157,7 +157,7 @@ def main(out_dir=None, plain=False):
     pyt = load_toolbox()
     here = out_dir or os.path.dirname(os.path.abspath(__file__))
     os.makedirs(here, exist_ok=True)
-    # BACKLOG 294. ALL FOUR TOOLS, from v1.47.4. Machines 3 and 4
+    # BACKLOG 294. ALL FOUR TOOLS, from v1.47.6. Machines 3 and 4
     # were absent from this list for as long as it has existed - not
     # by choice but because thirteen of their parameters had no help
     # text, and this script refuses to write a sidecar with a gap in
@@ -167,7 +167,7 @@ def main(out_dir=None, plain=False):
     # tools, in every release.
     # Their summary and usage text existed the whole time. It could
     # not reach Pro for want of a file.
-    # EVERY REGISTERED TOOL, read from the Toolbox itself (v1.47.4).
+    # EVERY REGISTERED TOOL, read from the Toolbox itself (v1.47.6).
     # BACKLOG 294 replaced a two-tool list with a four-tool list, and
     # the very next release added a fifth - at which point the
     # four-tool list was wrong again and machine 6 would have shipped
