@@ -615,3 +615,46 @@ def test_a_replaced_archive_is_not_read_from_a_stale_extraction(tmp_path):
         z.writestr("two.gpkg", "y")
     with pytest.raises(ValueError, match="will not guess"):
         read_table(str(zpath2))
+
+
+def test_a_rounding_error_must_not_bring_back_a_zero_distance():
+    """BACKLOG 304, found building the LA County teaching material.
+
+    Under `proportional` the crossing cell contributes a FRACTION, so
+    the neighbourhood total comes back as 99.99999999999999 rather
+    than 100. The self-potential guard read `n_k >= k`, which is
+    FALSE for that float - so the correction never fired and Dist_k
+    stayed 0.0.
+
+    THAT IS BACKLOG 191's DEFECT RETURNING THROUGH A DIFFERENT DOOR.
+    A zero distance makes k stop distinguishing origins: every dense
+    block reports "the hundred nearest people are zero metres away".
+
+    It needed DENSE data to show. On John's Los Angeles County blocks
+    - mean 131 people each, 41% of origins reaching k inside a single
+    cell - it hit 1,213 of 75,109. No fixture in the suite was dense
+    enough to produce the rounding, which is why five releases of
+    self-potential work never saw it.
+    """
+    import numpy as np
+    from equipop.cells import CellData
+    from equipop.fastcounts import run_knn_counts
+
+    # one cell holding far more than k, so the whole neighbourhood is
+    # inside it and the crossing fraction does the rounding
+    E = np.array([0.0, 500.0, 1000.0])
+    N = np.zeros(3)
+    pop = np.array([195.0, 195.0, 195.0])
+    grp = np.array([50.0, 50.0, 50.0])
+    cd = CellData(E=E, N=N, n=pop, binary_sums={"g": grp},
+                  unit_size=100.0)
+    out = run_knn_counts(cd, k_values=[100], report=False,
+                         overshoot_mode="proportional")
+
+    assert (out["N_100"].values < 100.0).any(), (
+        "this fixture is meant to produce the rounding - if N_100 is "
+        "exactly 100 the test is no longer testing anything")
+    assert (out["Dist_100"].values > 0).all(), (
+        "a distance of zero is back: the self-potential guard is "
+        "comparing a fraction-summed total against k without a "
+        "tolerance")

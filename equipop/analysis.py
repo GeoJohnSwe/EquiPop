@@ -247,7 +247,19 @@ def run_knn(
             rec[col("T", k)] = t
             rec[col("R", k)] = t / n if n else np.nan
             d_k = dist_m if d is None else d
-            if d_k <= 0.0 and n >= k:
+# BACKLOG 304. `>= k` IS A FLOATING-POINT TRAP HERE.
+            # Under `proportional` the crossing cell contributes a
+            # FRACTION, and the sum comes back 99.99999999999999
+            # for k=100 - so the guard was False, the
+            # self-potential never fired, and Dist_k stayed 0.
+            # That is BACKLOG 191's defect returning through a
+            # different door: a distance of zero, which makes k
+            # stop distinguishing origins.
+            # Found on John's LA County teaching data: 1,213 of
+            # 75,109 blocks, all of them dense enough that the
+            # whole neighbourhood sits inside one cell. No test
+            # fixture was dense enough to produce the rounding.
+            if d_k <= 0.0 and n >= k - 1e-9:
                 # the whole neighbourhood IS the origin cell, so the
                 # radius is not zero - it is unmeasured (BACKLOG 153)
                 # the share reported is `n`; the equal-area radius
@@ -604,7 +616,19 @@ def run_knn_stats(
             rec[f"N_{suffix}"] = n_use
             if with_dist:
                 d_k = dist_m if partial is None else partial["d"]
-                if d_k <= 0.0 and n_use >= k:
+# BACKLOG 304. `>= k` IS A FLOATING-POINT TRAP HERE.
+                # Under `proportional` the crossing cell contributes a
+                # FRACTION, and the sum comes back 99.99999999999999
+                # for k=100 - so the guard was False, the
+                # self-potential never fired, and Dist_k stayed 0.
+                # That is BACKLOG 191's defect returning through a
+                # different door: a distance of zero, which makes k
+                # stop distinguishing origins.
+                # Found on John's LA County teaching data: 1,213 of
+                # 75,109 blocks, all of them dense enough that the
+                # whole neighbourhood sits inside one cell. No test
+                # fixture was dense enough to produce the rounding.
+                if d_k <= 0.0 and n_use >= k - 1e-9:
                     # whole neighbourhood inside the origin cell
                     # (BACKLOG 95) - same rule as the fast engine
                     # the equal-area radius needs the people STANDING

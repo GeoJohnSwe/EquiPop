@@ -281,7 +281,7 @@ def areas_to_cells(gdf, like, class_col="fclass", groups=None,
 
 
 # ======================================================================
-# v1.47.6 - VECTOR ONTO THE LATTICE, John's model (BACKLOG 298)
+# v1.47.7 - VECTOR ONTO THE LATTICE, John's model (BACKLOG 298)
 # ======================================================================
 
 #: How much of a feature a cell has to hold before it counts.

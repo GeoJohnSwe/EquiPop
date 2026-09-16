@@ -223,7 +223,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
                   # needed them, which is why the two tools could not
                   # be exercised and so were left unregistered.
                   "DEFolder", "GPCoordinateSystem",
-                  # v1.47.6, machine 6. An inventory has NO GEOMETRY,
+                  # v1.47.7, machine 6. An inventory has NO GEOMETRY,
                   # so its output is a standalone table and not a
                   # feature class - inventing a point for ninety files
                   # would stack them all on the map's origin. DETable
@@ -2412,7 +2412,7 @@ def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
 
 
 def test_the_help_generator_explains_itself_where_john_keeps_it():
-    """v1.47.6. make_help_xml.py has shipped as one of the five Pro
+    """v1.47.7. make_help_xml.py has shipped as one of the five Pro
     files since 1.44.4 and, until now, could not be run from the
     folder it ships to: it imported test_arcgis_stub, which lives in
     the repository's tests/ directory and is not one of the five.

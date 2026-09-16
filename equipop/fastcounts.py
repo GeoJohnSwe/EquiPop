@@ -367,7 +367,19 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                         rec[f"RD_{v}_{k}"] = (grpd_k[v] / dend_k[v]
                                               if dend_k[v] > 0
                                               else np.nan)
-                if d_k <= 0.0 and n_k >= k:
+# BACKLOG 304. `>= k` IS A FLOATING-POINT TRAP HERE.
+                # Under `proportional` the crossing cell contributes a
+                # FRACTION, and the sum comes back 99.99999999999999
+                # for k=100 - so the guard was False, the
+                # self-potential never fired, and Dist_k stayed 0.
+                # That is BACKLOG 191's defect returning through a
+                # different door: a distance of zero, which makes k
+                # stop distinguishing origins.
+                # Found on John's LA County teaching data: 1,213 of
+                # 75,109 blocks, all of them dense enough that the
+                # whole neighbourhood sits inside one cell. No test
+                # fixture was dense enough to produce the rounding.
+                if d_k <= 0.0 and n_k >= k - 1e-9:
                     # BACKLOG 290. Under i!=j this CANNOT be the origin
                     # cell - its mass was removed. A zero radius here
                     # means a DIFFERENT cell sharing the origin's

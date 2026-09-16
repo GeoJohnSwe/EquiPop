@@ -147,7 +147,7 @@ class _MetaTypes:
     # The numbers are Qt's own QMetaType::Type values, so a door that
     # reads them gets what QGIS would give it.
     Double, Int, QString, Bool = 6, 2, 10, 1
-    # v1.47.6: LongLong was MISSING, and a door that used it - the
+    # v1.47.7: LongLong was MISSING, and a door that used it - the
     # right type for a feature count, which can exceed a 32-bit int -
     # died at import with AttributeError. TOO SPARSE IS ALSO A LIE:
     # the simulator was silently narrowing what a door is allowed to
@@ -287,7 +287,7 @@ class QgsCoordinateReferenceSystem:
     def mapUnits(self):
         return 6 if self.isGeographic() else 0   # 6 = degrees, 0 = m
 
-    # v1.47.6: REAL CRS OBJECTS COMPARE EQUAL when they are the same
+    # v1.47.7: REAL CRS OBJECTS COMPARE EQUAL when they are the same
     # CRS. The stub had no __eq__, so `src.sourceCrs() != want` was
     # True for two identical EPSG:4326 objects and every join built a
     # transform it did not need - which then destroyed line geometry,
@@ -370,7 +370,7 @@ class QgsProcessingException(Exception):
 class _ShapeSource:
     """A source of LINE or POLYGON features.
 
-    v1.47.6. _Source below builds POINTS from x/y columns, which is
+    v1.47.7. _Source below builds POINTS from x/y columns, which is
     all any EquiPop door had ever consumed - so when machine 3's join
     learned to cut lines and polygons at the cell boundaries, there
     was no way to hand it one. FOURTH SPARSE-STUB GAP THIS RELEASE,
@@ -643,7 +643,7 @@ class QgsWkbTypes:
     Point = _WkbType(1)
     LineString = _WkbType(2)
     Polygon = _WkbType(3)
-    # v1.47.6: a table with NO GEOMETRY. Real PyQGIS has had
+    # v1.47.7: a table with NO GEOMETRY. Real PyQGIS has had
     # NoGeometry (WKB 100, geometry type 4) all along; the simulator
     # had never needed it because every EquiPop output until machine 6
     # carried points. An inventory has nothing to put on a map, and

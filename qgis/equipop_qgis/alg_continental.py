@@ -33,7 +33,7 @@ from qgis.PyQt.QtCore import QMetaType
 
 from .base import EquipopAlgorithm
 
-#: v1.47.6, BACKLOG 298. How much of a feature a cell has to hold.
+#: v1.47.7, BACKLOG 298. How much of a feature a cell has to hold.
 #: Order fixed: the DEFAULT is "each class once", John's ruling.
 JOIN_MODES = [
     "centroid only - the feature's midpoint, one cell",
@@ -116,7 +116,7 @@ class ContinentalRasters(EquipopAlgorithm):
         # raster points sit on and QGIS does not, so a join done
         # outside is approximate at cell boundaries. Here it is exact,
         # because the grid is ours.
-        # v1.47.6: POINTS, LINES OR POLYGONS. types=[0] meant points
+        # v1.47.7: POINTS, LINES OR POLYGONS. types=[0] meant points
         # only, and every non-point layer was silently reduced to its
         # centroid - which for a 2.1-million-feature road network puts
         # a whole street in whichever cell its midpoint happened to
@@ -257,7 +257,7 @@ class ContinentalRasters(EquipopAlgorithm):
     def _join(self, parameters, context, man, ch):
         """Put a vector layer onto the raster lattice.
 
-        v1.47.6, BACKLOG 298. Until now this took the CENTROID of
+        v1.47.7, BACKLOG 298. Until now this took the CENTROID of
         every feature, which is right for shops and stops and badly
         wrong for a road network: a street crossing forty cells was
         counted once, wherever its midpoint fell.
@@ -345,7 +345,7 @@ class ContinentalRasters(EquipopAlgorithm):
     # -----------------------------------------------------------------
     def _join_centroid(self, src, tr, field, name, lat, table, man, ch,
                        join_to_points, snap_to_lattice):
-        """The rule this box had before 1.47.6 - kept, because for
+        """The rule this box had before 1.47.7 - kept, because for
         shops, clinics and bus stops a centroid IS the feature."""
         xs, ys, vals = [], [], []
         for f in src.getFeatures():

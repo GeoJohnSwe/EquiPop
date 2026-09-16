@@ -695,7 +695,7 @@ def feature_cells(feat, unit_size: float) -> dict:
     positive presence in. Corner and edge kisses give 0 and are
     absent.
 
-    EXTRACTED IN v1.47.6 SO NOTHING DUPLICATES IT. This is a hundred
+    EXTRACTED IN v1.47.7 SO NOTHING DUPLICATES IT. This is a hundred
     lines of Liang-Barsky clipping and ring-area arithmetic, and it
     was about to be written a second time for the lattice join.
     BACKLOG 120 is the standing entry about exactly that: two copies

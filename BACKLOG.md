@@ -3082,6 +3082,32 @@ not here. A list of completed work is not a plan.
   until the test asked the toolbox what it actually had. Assert the
   anchor, then check the result - not one or the other.
 
+- ~~304~~ | DONE v1.47.7 | A ROUNDING ERROR BROUGHT BACK Dist_k = 0.
+  FOUND BY BUILDING THE TEACHING MATERIAL, on John's LA County
+  blocks: 1,213 of 75,109 reported the hundred nearest people as ZERO
+  METRES AWAY.
+  Under `proportional` the crossing cell contributes a FRACTION, so
+  the neighbourhood total arrives as 99.99999999999999 rather than
+  100. All three self-potential guards read `n >= k`, which is FALSE
+  for that float - so the correction never fired and the distance
+  stayed 0.
+  THIS IS BACKLOG 191's DEFECT RETURNING THROUGH A DIFFERENT DOOR.
+  A zero distance makes k stop distinguishing origins, which is the
+  whole reason self-potential was built in 1.29.5.
+  IT NEEDED DENSE DATA. LA County averages 131 people per block and
+  41% of origins reach k INSIDE A SINGLE CELL; no fixture in the
+  suite was dense enough to produce the rounding, which is why five
+  releases of self-potential work never saw it. The exercise asks a
+  student to sort by Dist_100 and find the smallest - they would have
+  found a zero on the first try.
+  Fixed in all three places (fastcounts, and twice in analysis) with
+  a 1e-9 tolerance, and guarded by a fixture whose FIRST assertion is
+  that it still produces the rounding - a test for a float problem
+  that stops producing the float stops being a test.
+  THE GENERAL SHAPE, AND IT IS THIS SESSION'S SIXTH: `>=` against a
+  value that arrives by summation is a comparison against a number
+  nobody computed exactly.
+
 - ~~303~~ | DONE v1.47.6 | THE GUARD WAS DEFEATED BY THE ROUTINE
   THAT RAISES THE QUESTION. TEACHING.md and PROPOSALS.md each carry
   `**Last updated: <version>**`, and a test compares it against

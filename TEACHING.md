@@ -1,6 +1,6 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.47.6, 16 September 2026.**
+**Last updated: 1.47.7, 16 September 2026.**
 *Reviewed at 1.47.6: the OSM geodatabase and the InsideAirbnb
 extract both arrived and are described above; the .gdb finding
 (BACKLOG 301) came out of them.
@@ -266,6 +266,25 @@ network and a locked-down laptop are all outside this container.
 
 ---
 
+## What building it found in the software
+
+**BACKLOG 304 — a rounding error brought back Dist_k = 0**, on 1,213
+of 75,109 LA blocks. Under `proportional` the crossing cell
+contributes a fraction, the total arrives as 99.99999999999999, and
+`n >= k` is false for that float, so the self-potential correction
+never fired. It needed data dense enough that the whole neighbourhood
+sits inside one cell - 41% of LA County - and no fixture in the suite
+was.
+
+**Exercise 1 step 3 asks a student to sort by `Dist_100` and find the
+smallest. They would have found a zero on the first attempt.**
+
+That is the third defect this dataset has found, after the geodatabase
+and the shapefile sidecars. The pattern is consistent enough to state
+as a rule: THE TEACHING MATERIAL IS NOT A CONSUMER OF THE SOFTWARE,
+IT IS A TEST OF IT, and it finds things fixtures cannot because
+fixtures are written by the person who wrote the code.
+
 ## Status
 
     [x]  OSM supplied: CalidataOSM.gdb, four layers, LA County
@@ -275,7 +294,16 @@ network and a locked-down laptop are all outside this container.
     [x]  insideairbnb supplied: LA County, 43,751 listings,
          CC BY 4.0, 150 m anonymisation understood and turned into
          the lesson of exercise 5
-    [ ]  Runtime on an ordinary laptop, measured
-    [ ]  LA-County anchor figure computed and stated
-    [ ]  Exercise 1 drafted
+    [x]  Runtime measured: 31 s for 75,109 blocks x 4 k-values x
+         3 groups. A minute or two on a student laptop.
+    [x]  LA-County anchor computed: African American isolation
+         0.3357 / 0.3290 / 0.3201 / 0.3105 at k = 100/200/400/800;
+         Asian 0.3613 falling to 0.3369; White alone 0.5963 to
+         0.5830. HIGHER than the five-county published figure, and
+         correctly so - dropping the low-minority suburbs makes
+         everyone look more isolated, which is the spine of the
+         course arriving before the software does.
+    [x]  Exercise 1 drafted and every number in it verified
+    [x]  Dataset built: la_blocks.gpkg (9 MB), la_osm.gpkg (230 MB),
+         la_airbnb.gpkg (6 MB), all EPSG:26945
     [ ]  Run end to end by somebody who is not its author

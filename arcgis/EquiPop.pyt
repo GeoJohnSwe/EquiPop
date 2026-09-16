@@ -1906,7 +1906,7 @@ ORIGIN_MODES = [
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 
-#: v1.47.6, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
+#: v1.47.7, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
 #: a box the two doors word differently is this project's oldest
 #: failure, and this one arrived a release late in Pro because nobody
 #: checked whether the box existed here at all.
@@ -2589,7 +2589,7 @@ INVENTORY_COLUMNS = [
 def _join_layer(pm, table, ch, messages):
     """Put a vector layer onto the raster lattice (BACKLOG 299).
 
-    ARRIVED A RELEASE LATE. 1.47.6 gave QGIS three fidelities and Pro
+    ARRIVED A RELEASE LATE. 1.47.7 gave QGIS three fidelities and Pro
     had no join box AT ALL - nine parameters, none of them a layer.
     Claude recorded that gap as "Pro's join box still takes the
     centroid only", written from the QGIS door's shape on the
@@ -2726,7 +2726,7 @@ def _join_points(layer, sr, field, name, lat, table, messages,
 def read_shapes(layer, class_field, value_field, sr, messages):
     """A feature layer as friction.feature_cells' `parts` shape.
 
-    EXTRACTED IN v1.47.6 from the barrier reader above, which had
+    EXTRACTED IN v1.47.7 from the barrier reader above, which had
     done exactly this since 1.15 - multipart lines, polygon rings
     split on None - and was about to be written a second time for the
     lattice join. BACKLOG 120's standing lesson: two copies of a
@@ -2877,10 +2877,10 @@ class ContinentalRasters:
               _p("tiles", "Folder for a TILED, resumable run (blank "
                  "= run in memory)", "DEFolder", required=False,
                  category="Advanced"),
-              # v1.47.6, BACKLOG 299. Pro had NO join box at all -
+              # v1.47.7, BACKLOG 299. Pro had NO join box at all -
               # nine parameters, none of them a layer - while QGIS
               # had had one since 1.16 and gained three fidelities in
-              # 1.47.6. Worded identically to the QGIS door.
+              # 1.47.7. Worded identically to the QGIS door.
               _p("joinlayer", "A layer to put on the same grid - "
                               "points, roads, land use, water...",
                  "GPFeatureLayer", required=False,
