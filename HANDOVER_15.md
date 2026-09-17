@@ -1,6 +1,6 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.7**:
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.10**:
 1,228 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself - and a test
@@ -100,7 +100,7 @@ accident, one by the tool written to find them.
 4. The Pro help sidecars — generated, checked by a test, and never
    shipped to anyone.
 5. `make_help_xml.py` — one of the five Pro files since 1.44.4, and
-   until 1.47.7 it could not run from the folder it ships to.
+   until 1.47.10 it could not run from the folder it ships to.
 
 Number 5 is the one to remember. It was offered to John as the
 ten-second escape hatch from an untested change, he tried it, and it

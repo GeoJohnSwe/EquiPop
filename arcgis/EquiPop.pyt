@@ -246,6 +246,36 @@ def _table_fields(value):
     return [f.name for f in arcpy.ListFields(value)]
 
 
+def _fields_after_writing(layer, where):
+    """The field list, with Pro's schema cache dropped first.
+
+    BACKLOG 309. arcpy.ListFields() reads a CACHED schema, and on a
+    GeoPackage or SQLite workspace Pro caches hard enough that fields
+    written moments earlier are invisible. John hit it on the course
+    data: the run reported "7 result fields are NOT in the target",
+    and removing the file and re-importing showed all seven present.
+    THE WRITE HAD SUCCEEDED AND THE VERIFICATION WAS WRONG - which is
+    worse than no verification, because it tells a user their results
+    are missing when they are not.
+
+    ClearWorkspaceCache drops it. Then the fields are read from the
+    CATALOG PATH rather than the layer object, because the layer
+    carries its own stale view.
+    """
+    try:
+        arcpy.management.ClearWorkspaceCache()
+    except Exception:                                # pragma: no cover
+        pass
+    for target in (where, layer):
+        try:
+            got = {f.name for f in arcpy.ListFields(target)}
+            if got:
+                return got
+        except Exception:
+            continue
+    return set()
+
+
 def _utm_from_lonlat(lon, lat):
     """Fitting metric CRS straight from coordinate VALUES - the table
     path has no CRS object to ask (field-test gap: degree tables were
@@ -1556,15 +1586,25 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         sub = out[[c for c in out.dtype.names if c in keep]]
         with _stage(messages, "writing results to the layer", stages):
             _add_columns(layer, oid, sub, fresh, messages)
-    after = {f.name for f in arcpy.ListFields(layer)}
-    missing = [c for c in names.values() if c not in after]
     where = _catalog_of(layer) or str(layer)
+    after = _fields_after_writing(layer, where)
+    missing = [c for c in names.values() if c not in after]
     if missing:
         messages.addWarningMessage(
             f"{len(missing)} result fields are NOT in the target "
             f"after writing ({', '.join(missing[:6])}). The dataset "
             f"written to was: {where}. If your map shows something "
-            "else, that is the mismatch - check the layer's source.")
+            "else, that is the mismatch - check the layer's source."
+            + ("\n\nTHEY MAY WELL BE THERE. This target is not a file "
+               "geodatabase, and on GeoPackage or SQLite workspaces "
+               "Pro caches the schema - the fields are written and "
+               "the check cannot see them yet. Remove the layer and "
+               "add the dataset again; if the columns are present, "
+               "the write succeeded and only this message was wrong. "
+               "Writing to a FILE GEODATABASE avoids both the cache "
+               "and the speed penalty."
+               if not str(where).lower().endswith((".gdb",))
+               and ".gdb" not in str(where).lower() else ""))
     else:
         messages.addMessage(
             f"EquiPop: {len(res)} fields written and VERIFIED present "
@@ -1906,7 +1946,7 @@ ORIGIN_MODES = [
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 
-#: v1.47.7, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
+#: v1.47.10, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
 #: a box the two doors word differently is this project's oldest
 #: failure, and this one arrived a release late in Pro because nobody
 #: checked whether the box existed here at all.
@@ -2317,7 +2357,13 @@ def _trio_update(parameters, i_layer, i_src, i_x, i_y):
         try:
             is_table = _kind(arcpy.Describe(val)) == "table"
         except Exception:
-            pass
+            # BACKLOG 308: UNREADABLE IS NOT "A TABLE". Falling
+            # through with is_table False leaves the X/Y boxes
+            # disabled, which is right - the error belongs on the
+            # layer box, and _shared_messages puts it there. What
+            # must not happen is treating a dangling CIMPATH as a
+            # table and demanding coordinate columns for it.
+            is_table = False
         try:
             names = set(_table_fields(val))
             for i in (i_x, i_y):
@@ -2386,6 +2432,23 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
         desc = arcpy.Describe(val)
         kind = _kind(desc)
     except Exception:
+        # BACKLOG 308. THE LAYER CANNOT BE RESOLVED AT ALL, which is
+        # not the same as "it has no geometry" and must not be
+        # reported as one. Pro holds map layers as
+        # CIMPATH=Map/<name>.json, and that reference DANGLES once the
+        # layer leaves the map - which happens when a run rewrites
+        # the dataset the layer points at. The box still shows a
+        # plausible name.
+        # Without this the failure surfaced as "X field (easting) is
+        # required", sending the user to look for coordinate columns
+        # in a dataset that has geometry and needs none. John hit it
+        # re-running on the previous lecture's output.
+        parameters[i_layer].setErrorMessage(
+            "This layer cannot be read. If the name looks right, it "
+            "is probably a MAP LAYER THAT IS NO LONGER IN THE MAP - "
+            "Pro keeps the reference after the layer is gone. Pick "
+            "the dataset again from the Catalog pane, or browse to it "
+            "on disk, rather than choosing it from the drop-down.")
         return
     txt = _geographic_text(desc, "The input")
     if txt:
@@ -2589,7 +2652,7 @@ INVENTORY_COLUMNS = [
 def _join_layer(pm, table, ch, messages):
     """Put a vector layer onto the raster lattice (BACKLOG 299).
 
-    ARRIVED A RELEASE LATE. 1.47.7 gave QGIS three fidelities and Pro
+    ARRIVED A RELEASE LATE. 1.47.10 gave QGIS three fidelities and Pro
     had no join box AT ALL - nine parameters, none of them a layer.
     Claude recorded that gap as "Pro's join box still takes the
     centroid only", written from the QGIS door's shape on the
@@ -2726,7 +2789,7 @@ def _join_points(layer, sr, field, name, lat, table, messages,
 def read_shapes(layer, class_field, value_field, sr, messages):
     """A feature layer as friction.feature_cells' `parts` shape.
 
-    EXTRACTED IN v1.47.7 from the barrier reader above, which had
+    EXTRACTED IN v1.47.10 from the barrier reader above, which had
     done exactly this since 1.15 - multipart lines, polygon rings
     split on None - and was about to be written a second time for the
     lattice join. BACKLOG 120's standing lesson: two copies of a
@@ -2877,10 +2940,10 @@ class ContinentalRasters:
               _p("tiles", "Folder for a TILED, resumable run (blank "
                  "= run in memory)", "DEFolder", required=False,
                  category="Advanced"),
-              # v1.47.7, BACKLOG 299. Pro had NO join box at all -
+              # v1.47.10, BACKLOG 299. Pro had NO join box at all -
               # nine parameters, none of them a layer - while QGIS
               # had had one since 1.16 and gained three fidelities in
-              # 1.47.7. Worded identically to the QGIS door.
+              # 1.47.10. Worded identically to the QGIS door.
               _p("joinlayer", "A layer to put on the same grid - "
                               "points, roads, land use, water...",
                  "GPFeatureLayer", required=False,
@@ -3395,6 +3458,24 @@ class CountsShares:
         idx = {p.name: i for i, p in enumerate(parameters)}
         _shared_messages(parameters, 0, 1, 2, 3, idx["outtable"],
                          idx["autoproj"])
+        # BACKLOG 305. NEITHER k NOR r, WHICH PRO LETS YOU RUN.
+        # Both are declared optional and they are - EITHER will do,
+        # and a radius-only run is a perfectly good question. What is
+        # not optional is having one of them, and nothing said so
+        # until the engine refused forty lines into a traceback with
+        # "give k_values and/or r_values" - words that name ENGINE
+        # ARGUMENTS rather than boxes, so the message does not even
+        # point at the dialog.
+        # John hit this teaching: his k values vanished while he
+        # worked down the dialog, Pro was content, and the failure
+        # arrived after Run.
+        if not _txt(pm, "k") and not _txt(pm, "r"):
+            pm["k"].setErrorMessage(
+                "Give a neighbourhood size here, or a radius in the "
+                "box below - EquiPop needs one of the two to know "
+                "what a neighbourhood is. Either alone is fine; both "
+                "together is also fine and gives you both sets of "
+                "columns.")
         target = (_txt(pm, "outfc")
                   if _txt(pm, "outmode").startswith("New")
                   and _txt(pm, "outfc")

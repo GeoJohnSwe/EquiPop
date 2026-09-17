@@ -250,3 +250,29 @@ def test_7b_a_run_that_keeps_every_row_still_reports_normally():
                    treatmode=[1], treat=["Grp"])
     said = " ".join(fb.info)
     assert "Wrote 60 rows" in said, said[:300]
+
+
+# ---------- BACKLOG 305: refuse before Run, not after -----------------
+def test_8_neither_k_nor_r_is_refused_in_the_dialog():
+    """John hit this teaching Exercise 1: his k values vanished while
+    he worked down Pro's dialog, Pro was content to run, and the
+    failure arrived forty lines into a traceback saying "give k_values
+    and/or r_values" - words naming ENGINE ARGUMENTS, not boxes.
+
+    NEITHER BOX IS REQUIRED and that is his ruling: a radius-only run
+    is a perfectly good question. What is required is one of the two.
+    """
+    alg = CountsAndShares()
+    alg.initAlgorithm()
+    ctx = None
+    ok, msg = alg.checkParameterValues(
+        {"layer": _towns(), "unit": 100.0, "k": "", "r": ""}, ctx)
+    assert ok is False
+    assert "neighbourhood size" in msg and "radius" in msg, msg
+
+    for good in ({"k": "100", "r": ""}, {"k": "", "r": "500"},
+                 {"k": "100", "r": "500"}):
+        p = {"layer": _towns(), "unit": 100.0}
+        p.update(good)
+        res = alg.checkParameterValues(p, ctx)
+        assert res[0] is True, (good, res)

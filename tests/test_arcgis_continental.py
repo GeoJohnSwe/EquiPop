@@ -90,7 +90,7 @@ def _params(tool, **vals):
 
 # --------------------------------------------------- the toolbox itself
 def test_the_toolbox_offers_every_registered_tool():
-    """v1.47.7 added FolderInventory (BACKLOG 269) - a capability
+    """v1.47.10 added FolderInventory (BACKLOG 269) - a capability
     that had shipped in 1.45.0 reachable from nowhere at all."""
     pyt = _pyt()
     names = [t.__name__ for t in pyt.Toolbox().tools]
@@ -280,9 +280,9 @@ def test_the_two_doors_agree_on_every_tool_name():
             f"Pro calls a tool {label!r}, which is not in the shared list")
 
 
-# ===== v1.47.7, BACKLOG 299 - the join arrives in Pro =================
+# ===== v1.47.10, BACKLOG 299 - the join arrives in Pro =================
 def test_pro_has_the_join_boxes_qgis_has():
-    """1.47.7 gave QGIS three fidelities and Pro had NO JOIN BOX AT
+    """1.47.10 gave QGIS three fidelities and Pro had NO JOIN BOX AT
     ALL - nine parameters, none of them a layer. Claude recorded that
     as "Pro's join box still takes the centroid only", written from
     the QGIS door's shape on the assumption the two machines matched

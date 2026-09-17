@@ -318,7 +318,7 @@ def test_joining_during_a_NEIGHBOURHOOD_run_is_refused_with_the_fix():
 
 
 # =====================================================================
-# v1.47.7, BACKLOG 298 - LINES AND POLYGONS ONTO THE LATTICE
+# v1.47.10, BACKLOG 298 - LINES AND POLYGONS ONTO THE LATTICE
 #
 # John, session 12: "the user (in GIS) will edit or add fields to the
 # shapefiles so that all roads get different friction values - and

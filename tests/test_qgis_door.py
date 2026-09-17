@@ -59,7 +59,7 @@ def test_the_provider_offers_both_tools():
     prov.loadAlgorithms()
     # BACKLOG 38 added the third tool. Sorted, because the order the
     # provider happens to register them in is not the contract.
-    # v1.47.7 added folderinventory (BACKLOG 269) - a capability that
+    # v1.47.10 added folderinventory (BACKLOG 269) - a capability that
     # had shipped in 1.45.0 with no door of any kind.
     assert sorted(a.name() for a in prov.algorithms()) == [
         "continentalrasters", "countsandshares", "folderinventory",

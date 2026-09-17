@@ -223,7 +223,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
                   # needed them, which is why the two tools could not
                   # be exercised and so were left unregistered.
                   "DEFolder", "GPCoordinateSystem",
-                  # v1.47.7, machine 6. An inventory has NO GEOMETRY,
+                  # v1.47.10, machine 6. An inventory has NO GEOMETRY,
                   # so its output is a standalone table and not a
                   # feature class - inventing a point for ninety files
                   # would stack them all on the map's origin. DETable
@@ -1272,6 +1272,11 @@ def test_pyt_dialog_time_validation_blocks_run():
                for e in all_errors)          # coordA/B not guessable
     ps2 = tool.getParameterInfo()            # a fine point layer:
     ps2[0].value = "people"
+    # v1.47.10: and a neighbourhood, because BACKLOG 305 added a check
+    # that a run has one. This test is about the COORDINATE trio; it
+    # has to satisfy the unrelated requirements or it stops testing
+    # what its name says.
+    {p.name: p for p in ps2}["k"].value = "100"
     tool.updateParameters(ps2)
     tool.updateMessages(ps2)
     assert not [1 for p in ps2 for k, _ in p.messages if k == "ERROR"]
@@ -2412,7 +2417,7 @@ def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
 
 
 def test_the_help_generator_explains_itself_where_john_keeps_it():
-    """v1.47.7. make_help_xml.py has shipped as one of the five Pro
+    """v1.47.10. make_help_xml.py has shipped as one of the five Pro
     files since 1.44.4 and, until now, could not be run from the
     folder it ships to: it imported test_arcgis_stub, which lives in
     the repository's tests/ directory and is not one of the five.
@@ -2439,3 +2444,134 @@ def test_the_help_generator_explains_itself_where_john_keeps_it():
     assert "PYTHON COMMAND PROMPT" in src
     assert "WINDOW is not a command prompt" in src
     assert "python make_help_xml.py" in src
+
+
+def test_pro_refuses_a_run_with_neither_k_nor_r():
+    """BACKLOG 305, the Pro half. updateMessages checked shapefile
+    field limits and null handling and never checked that the tool had
+    a neighbourhood to measure - so Pro was happy to Run and the
+    engine refused afterwards.
+
+    Both boxes stay OPTIONAL, which is John's ruling: a radius-only
+    run is a perfectly good question.
+    """
+    import pandas as pd
+    t = pd.DataFrame({"OBJECTID": [1, 2], "SHAPE@X": [0.0, 100.0],
+                      "SHAPE@Y": [0.0, 0.0], "pop": [50.0, 50.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "lyr"
+    pm["pop"].value = "pop"
+
+    pm["k"].value = ""
+    pm["r"].value = ""
+    tool.updateMessages(ps)
+    said = " ".join(t for _kind, t in pm["k"].messages)
+    assert said, "Pro allowed a run with no neighbourhood"
+    assert "radius" in said.lower(), said
+
+    for k, r in (("100", ""), ("", "500"), ("100", "500")):
+        for p in ps:
+            try:
+                p.clearMessage()
+            except Exception:
+                pass
+        pm["k"].value, pm["r"].value = k, r
+        tool.updateMessages(ps)
+        assert not pm["k"].messages, (k, r, pm["k"].messages)
+
+
+def test_a_layer_pro_cannot_read_is_reported_as_itself():
+    """BACKLOG 308. Pro holds map layers as CIMPATH=Map/<name>.json,
+    and that reference DANGLES once the layer leaves the map - which
+    happens when a run rewrites the dataset the layer points at. The
+    box still shows a plausible name.
+
+    Describe() then fails, _kind() was never reached, and the dialog
+    fell through to "tables/attribute mode" - demanding X and Y
+    columns for a dataset that has geometry and needs none. John hit
+    this re-running on the previous lecture's output: the message sent
+    him looking for coordinate columns that do not exist.
+
+    UNREADABLE IS NOT "NO GEOMETRY". The error must name the layer.
+    """
+    import pandas as pd
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0], "pop": [10.0]})
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+
+    import arcpy as fake
+    real_describe = fake.Describe
+
+    def dangling(v):
+        if isinstance(v, str) and v.startswith("CIMPATH="):
+            raise RuntimeError("cannot open dataset")
+        return real_describe(v)
+
+    fake.Describe = dangling
+    try:
+        pm["layer"].value = "CIMPATH=Map/Lecture1Output.json"
+        pm["k"].value = "100"
+        tool.updateParameters(ps)
+        tool.updateMessages(ps)
+        said = " ".join(txt for _k, txt in pm["layer"].messages)
+        assert said, "an unreadable layer produced no message at all"
+        assert "no longer in the map" in said.lower(), said
+        # and the coordinate boxes must NOT be the thing complained at
+        for box in ("xfield", "yfield"):
+            assert not pm[box].messages, (box, pm[box].messages)
+    finally:
+        fake.Describe = real_describe
+
+
+def test_the_field_check_drops_pros_schema_cache_first():
+    """BACKLOG 309. arcpy.ListFields reads a CACHED schema. On a
+    GeoPackage or SQLite workspace Pro caches hard enough that fields
+    written seconds earlier are invisible, and the run then reported
+    "7 result fields are NOT in the target" for seven fields that were
+    all present - John confirmed by removing the file and re-importing
+    it.
+
+    A WRONG VERIFICATION IS WORSE THAN NONE: it tells a user their
+    results are missing when they are not, and the obvious next move
+    is to run the whole thing again.
+    """
+    import pandas as pd
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    import arcpy as fake
+
+    cleared = []
+    if not hasattr(fake.management, "ClearWorkspaceCache"):
+        fake.management.ClearWorkspaceCache = lambda *a, **k: None
+    real_clear = fake.management.ClearWorkspaceCache
+    fake.management.ClearWorkspaceCache = (
+        lambda *a, **k: cleared.append(True))
+
+    real_list = fake.ListFields
+    stale = {"lyr"}
+
+    def caching(target):
+        # the LAYER object serves a stale view until the cache is
+        # dropped; the catalog path is always current
+        if target in stale and not cleared:
+            return []
+        return real_list(target)
+
+    fake.ListFields = caching
+    try:
+        got = pyt._fields_after_writing("lyr", "C:/x/y.gpkg/main.t")
+        assert cleared, "the workspace cache was never cleared"
+        assert got, "no fields found even after clearing the cache"
+    finally:
+        fake.ListFields = real_list
+        fake.management.ClearWorkspaceCache = real_clear

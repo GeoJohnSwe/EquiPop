@@ -237,14 +237,34 @@ def auto_m_neighbors(cd, k_values=None, r_values=None,
     mean_n = max(float(np.sum(cd.n)) / n_cells, 1e-9)
     need = max((float(k) / mean_n for k in (k_values or [])),
                default=0.0)
-    if r_values or trunc_m:
+    if r_values:
         e, n = np.asarray(cd.E, float), np.asarray(cd.N, float)
         area = max((e.max() - e.min()) * (n.max() - n.min()),
                    float(cd.unit_size) ** 2)
         dens = n_cells / area                      # cells per m^2
-        for r in (list(r_values or []) + ([trunc_m] if trunc_m else [])):
-            # a DECAYED sum must reach its truncation distance, which
-            # is usually far beyond what k needs - ignoring it made
-            # every origin climb the ladder twice (field-test v1.16.5)
+        for r in r_values:
             need = max(need, np.pi * float(r) ** 2 * dens)
+    # BACKLOG 307. `trunc_m` USED TO BE IN THAT LOOP, sizing the
+    # window to the decay TRUNCATION RADIUS on the reasoning that "a
+    # DECAYED sum must reach its truncation distance". That was true
+    # until BACKLOG 185 removed the unbounded sums (ND_inf and its
+    # siblings) in v1.40: the decayed totals are now accumulated to
+    # THE RAW k OR RADIUS, exactly like the plain ones, so nothing
+    # reads past k any more.
+    #
+    # The deferral test in fastcounts was corrected then. THIS WAS
+    # NOT, so every decay run still fetched a window sized for a
+    # distance it would never look at. On LA County at half-life
+    # 2000 m and eps 1e-3 the truncation radius is about 20 km, and
+    # the window came out at 11,159 cells where 697 satisfied k=800 -
+    # 138 seconds against 14, all of it fetching neighbours nobody
+    # would read.
+    #
+    # Found by John, who asked why a decay run's TIME should depend on
+    # the half-life at all when the neighbourhood is fixed by k. It
+    # should not, and now it does not.
+    _ = trunc_m                       # kept in the signature: callers
+                                      # pass it, and a decayed run may
+                                      # want it again if an unbounded
+                                      # sum ever returns.
     return int(min(n_cells, max(64, round(safety * need))))

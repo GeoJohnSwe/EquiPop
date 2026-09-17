@@ -3082,6 +3082,131 @@ not here. A list of completed work is not a plan.
   until the test asked the toolbox what it actually had. Assert the
   anchor, then check the result - not one or the other.
 
+- ~~307~~ | DONE v1.47.9 | A DECAY RUN'S TIME DEPENDED ON THE
+  HALF-LIFE, WHICH IT SHOULD NOT. John, session 12, reading the
+  exercise-3 timings: "the time difference worries me".
+  HE WAS RIGHT AND THE REASONING IS HIS. The neighbourhood is fixed
+  by PLAIN k - reach 800 actual people - and decay only re-weights
+  what is inside it. So the work is the same whatever the half-life.
+  auto_m_neighbors still sized the fetch window from the decay
+  TRUNCATION RADIUS, carrying a comment that said "a DECAYED sum must
+  reach its truncation distance". That was TRUE UNTIL BACKLOG 185
+  removed the unbounded sums (ND_inf and siblings) in v1.40. After
+  that nothing reads past k - and fastcounts' deferral test was
+  corrected at the time. THE WINDOW SIZING WAS NOT, and nothing
+  compared the two.
+  MEASURED ON LA COUNTY, half-life 2000 m, eps 1e-3: truncation
+  radius about 20 km, window 11,159 cells where 697 satisfied k=800.
+  138 seconds against 14, every second of it fetching neighbours that
+  would never be read.
+  AFTER: 9.5 s at half-life 2000 m and 9.8 s at 500 m - the time no
+  longer depends on the half-life at all - and EVERY NUMBER
+  IDENTICAL. RD 0.3109, R 0.3105, ND median 753.6 before and after.
+  ALSO CONFIRMED, because John asked: N_k stays EXACTLY k, ND_k is
+  the decayed sum over those same people and never exceeds it, and
+  RD - R has mean -0.00014 with sd 0.011 - so decay is very slightly
+  NEGATIVE on average, which is the opposite of the naive
+  expectation, and moves individual blocks by about a percentage
+  point either way. Both now have tests.
+  THE SHAPE: a fix landed in one place and a second place kept the
+  old assumption alive in a COMMENT that read as a justification.
+  185 corrected the consumer and left the producer.
+
+- ~~309~~ | DONE v1.47.10 | THE FIELD VERIFICATION READ A CACHED
+  SCHEMA AND REPORTED RESULTS MISSING THAT WERE THERE. John, teaching:
+  "the run is successful, but there is no data appended... BUT when I
+  remove the file and reimport it - the material has been generated".
+  arcpy.ListFields() reads a CACHED field list. On a GeoPackage or
+  SQLite workspace Pro caches hard enough that fields written seconds
+  earlier are invisible, so the run announced "7 result fields are NOT
+  in the target" about seven fields that were all present.
+  A WRONG VERIFICATION IS WORSE THAN NONE. It tells a user their
+  results are missing when they are not, and the obvious next move is
+  to run the whole thing again - 5 minutes 24 seconds, in this case.
+  FIXED: ClearWorkspaceCache first, then read the fields from the
+  CATALOG PATH rather than the layer object, which carries its own
+  stale view. And when the target is NOT a file geodatabase the
+  warning now says the fields may well be there and how to confirm,
+  instead of implying failure.
+  THE GEOPACKAGE ITSELF IS SOUND, checked rather than assumed:
+  gpkg_contents with data_type 'features', the geometry column
+  registered as POINT in EPSG:26945, an rtree spatial index and the
+  extension registered. John noticed it "missing the typical icon in
+  ArcCatalog" - the tell is the `main.` prefix Pro puts on the layer
+  name, which is how it names tables in a GENERIC SQLITE workspace.
+  Pro is not treating it as a GeoPackage feature class at all, and
+  that explains the icon, the five-minute write and the cache.
+  THE TEACHING MATERIAL NOW SAYS SO: read from the GeoPackage, write
+  to a file geodatabase. 48 seconds against 5 minutes on the same
+  data.
+
+- 306 | OPEN, FOUND v1.47.8 BUILDING EXERCISE 4 | MACHINE 1'S BARRIER
+  CHARGES PER FEATURE, NOT PER CLASS - so it still has the defect
+  298 removed from machine 3's join.
+  John's ruling in session 12 was that a cell should be charged once
+  per CLASS, because OSM cuts one street into a new record wherever a
+  tag changes. paths_to_cells() implements that and machine 3's join
+  uses it. Machine 1's barrier goes through barrier_to_friction() ->
+  paths_to_friction(), which charges ONCE PER FEATURE.
+  MEASURED ON REAL DOWNTOWN LA ROADS: 3,975 costed features in a 5 km
+  box produce cell costs from 1 to 166, where the friction table tops
+  out at 8. The number is mostly a fact about how OSM fragmented the
+  roads.
+  IT MATTERS BECAUSE EXERCISE 4 IS THE COURSE'S CENTREPIECE - a
+  motorway that blocks walking and carries driving - and it runs
+  through this path, not through machine 3's.
+  THE WORKAROUND WORKS AND IS IN THE EXERCISE: dissolve the roads by
+  fclass first, so each class is one multipart feature and is charged
+  once. That is a real GIS step and arguably worth teaching. But it
+  is a workaround.
+  THE FIX: a class-field box on the barrier input, routing to
+  paths_to_cells(fidelity="class") when it is set. The engine already
+  exists and is geopandas-free; this is door wiring plus the same box
+  in Pro.
+  WHY IT WAS MISSED: 298 was written against machine 3's join because
+  that is where John's question arrived. Nobody asked which OTHER
+  paths charge vector features onto cells. The reachability matrix
+  lists CAPABILITIES against DOORS; it has no notion of two paths
+  that do the same thing by different rules.
+
+- ~~305~~ | DONE v1.47.8 | NEITHER DOOR REFUSED A RUN WITH NO
+  NEIGHBOURHOOD, AND PRO DID NOT REFUSE IT AT ALL. John hit this on
+  the first run of Exercise 1: his k values had gone by the time he
+  reached the foot of Pro's dialog, Pro was content, and the failure
+  arrived forty lines into a traceback reading "give k_values and/or
+  r_values" - words naming ENGINE ARGUMENTS rather than boxes, so the
+  message did not even point at the dialog.
+  BOTH BOXES STAY OPTIONAL, John's ruling: "no need to restrict
+  missing k, think that there may be only r". A radius-only run is a
+  perfectly good question. What is required is ONE OF THE TWO, and
+  nothing said so.
+  Pro's updateMessages checked shapefile field limits and null
+  handling and never checked that the tool had a neighbourhood to
+  measure. QGIS did refuse - but inside processAlgorithm, AFTER Run,
+  so the answer came as a red exception rather than a blocked button;
+  it now implements checkParameterValues, which QGIS offers for
+  exactly this and which no door had ever used.
+  WHY THE VALUES VANISHED IS NOT OURS, as far as can be told. Every
+  place the Pro door clears a parameter was checked: the coordinate
+  trio when the layer changes, and machine 2's `measures`. Neither
+  touches k, which sits at index 14 and is read by name. The likely
+  cause is Pro resetting a cached dialog because THE PARAMETER LIST
+  CHANGED - originrule was added in 1.47.4 - which is what the
+  ArcGIS guide's "remove the toolbox and add it again" exists for.
+  Recorded as unexplained rather than guessed.
+  AND THE EXERCISE NAMED THE WRONG BOX. It said "Neighbourhood sizes,
+  in people", which is MACHINE 3's label; machine 1 in Pro says "k
+  values (space-separated, e.g. 200 1600)" and in QGIS "3 - k -
+  neighbourhood sizes in people". THREE NAMES FOR ONE CONCEPT across
+  two doors and two machines, which is how the wrong one got into the
+  document. door_parity checks that both doors HAVE a box called `k`;
+  it does not check that they call it the same thing to a human.
+  That gap is real and is not closed here.
+  ALSO: the simulator had no checkParameterValues at all, so a door
+  overriding it could not be tested - and one calling super() would
+  have died with AttributeError in the field while every test passed.
+  Sixth sparse-stub gap this release series.
+
 - ~~304~~ | DONE v1.47.7 | A ROUNDING ERROR BROUGHT BACK Dist_k = 0.
   FOUND BY BUILDING THE TEACHING MATERIAL, on John's LA County
   blocks: 1,213 of 75,109 reported the hundred nearest people as ZERO
