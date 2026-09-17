@@ -3140,6 +3140,58 @@ not here. A list of completed work is not a plan.
   to a file geodatabase. 48 seconds against 5 minutes on the same
   data.
 
+- ~~310~~ | DONE v1.47.11 | catalogPath POINTED AT A DATASET THAT
+  DOES NOT EXIST, AND WE HANDED IT STRAIGHT TO ExtendTable. Confirmed
+  by John at the Pro prompt: ListFeatureClasses on his GeoPackage
+  returns ['main.la_blocks'], and Describe("la_blocks_1") raises
+  OSError "does not exist". Yet the layer in his map is called
+  main.la_blocks_1 - the _1 appended on the FIRST drag, against no
+  duplicate - and Describe(layer).catalogPath follows the LAYER name.
+  Pro opens a GeoPackage as a GENERIC SQLITE workspace (the `main.`
+  prefix is the tell) and this is one of the consequences.
+  TRUST, THEN VERIFY. catalogPath stays the first choice - for a
+  GeoPackage it is the only workable form, which 1.22.1 established
+  the hard way - but a path arcpy.Exists denies is not an answer.
+  Three recovery routes, each independently tested: the dataSource
+  connection string, which carries Dataset=main.la_blocks, the one
+  fact catalogPath got wrong; stripping a trailing _N; and asking the
+  workspace, accepting only a SINGLE unambiguous match.
+  AND "cannot open" IS NO LONGER A LOCK. It matched none of the lock
+  patterns yet John got the full lock message - attribute tables, edit
+  sessions, OneDrive - after a five-minute run. Missing target is now
+  its own case.
+  THREE OWN GOALS WRITING THE FIX, all the same shape: a test that
+  passed through the WRONG ROUTE (two recovery paths, one fixture, so
+  deleting either left it green); os.path.dirname, which does not
+  split Windows paths on the Linux test machine, so the whole recovery
+  was dead and invisible; and then `import ntpath as os` followed by
+  os.path.dirname, an AttributeError swallowed by the same broad
+  except. A BROAD `except` TURNED A BUG INTO A PLAUSIBLE RESULT three
+  times in one fix.
+
+- ~~311~~ | DONE v1.47.11 | AN UNREADABLE LAYER EMPTIED THE FIELD
+  BOXES, AND THE TOOL THEN BLAMED THE USER. John filled the dialog,
+  pressed Run, and was told "the treatment population ... needs the
+  group count fields - but that box is empty". It was empty because
+  we had cleared it between his filling it and his pressing Run.
+  _clear_stale_fields drops field picks Pro remembered from ANOTHER
+  layer, by comparing them against the layer's field list. It guarded
+  the case where reading RAISES - and treated an EMPTY LIST as "none
+  of these fields exist" rather than "I could not read this layer".
+  ListFields returns [] rather than raising for a layer Pro cannot
+  resolve (310), so the except never fired.
+  NOT READABLE IS NOT NOT-PRESENT. Nothing is cleared when the layer
+  cannot be enumerated.
+  THIS IS PROBABLY ALSO THE VANISHING k VALUES of 305, which were
+  recorded as unexplained.
+  THE FAMILY, NOW THREE DEEP AND WORTH AN AXIOM: 309 read a stale
+  schema and said the fields were not written; 310 read a bad path
+  and said something was holding the data; 311 read an empty field
+  list and said the user's choices were invalid. EVERY TIME A FAILED
+  OR EMPTY READ WAS REPORTED AS A DEFINITIVE FACT ABOUT THE USER'S
+  DATA. The engine was right in all three. A READ THAT FAILS TELLS
+  YOU ABOUT THE READ, NOT ABOUT THE DATA.
+
 - 306 | OPEN, FOUND v1.47.8 BUILDING EXERCISE 4 | MACHINE 1'S BARRIER
   CHARGES PER FEATURE, NOT PER CLASS - so it still has the defect
   298 removed from machine 3's join.

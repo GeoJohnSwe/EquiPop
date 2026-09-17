@@ -438,6 +438,73 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
                       note=f"attribute fields ({how})")
 
 
+def _target_exists(path):
+    """arcpy.Exists, never raising. A missing target is a fact worth
+    knowing BEFORE a write, not a RuntimeError after one."""
+    try:
+        return bool(arcpy.Exists(path))
+    except Exception:                                # pragma: no cover
+        return False
+
+
+def _recover_dataset(value, bad_path):
+    """Find the real dataset when catalogPath points at nothing.
+
+    Two routes, in order of how much they assume:
+
+    1. `dataSource`. For a GeoPackage this is the connection
+       description arcpy itself refuses as a path -
+       `Instance=...\\la_blocks.gpkg,Dataset=main.la_blocks` - but it
+       carries the TRUE table name, which is the one thing
+       catalogPath got wrong. Compose it with the workspace.
+    2. Ask the workspace what it holds, and take a single obvious
+       match. Only when there is exactly one candidate: guessing
+       between two datasets is worse than reporting the problem.
+    """
+    # ntpath, NOT os.path. This file only ever RUNS on Windows, where
+    # the two are the same - but the test suite runs on Linux, where
+    # ntpath.dirname(r"C:\x\y.gpkg\main.t") returns "" and the whole
+    # recovery silently does nothing. That is exactly how this route
+    # passed its first test while being deleted: the fixture recovered
+    # by another path and nobody could see that this one was dead.
+    # ntpath splits both separators and is right in both places.
+    import ntpath
+    import re
+
+    ws = ntpath.dirname(str(bad_path))
+    src = getattr(value, "dataSource", None)
+    if isinstance(src, str) and src:
+        m = re.search(r"Dataset\s*=\s*([^,;]+)", src)
+        if m:
+            cand = ntpath.join(ws, m.group(1).strip())
+            if _target_exists(cand):
+                return cand
+    name = ntpath.basename(str(bad_path))
+    stripped = re.sub(r"_\d+$", "", name)
+    if stripped != name:
+        cand = ntpath.join(ws, stripped)
+        if _target_exists(cand):
+            return cand
+    try:
+        old_ws = arcpy.env.workspace
+        arcpy.env.workspace = ws
+        try:
+            held = list(arcpy.ListFeatureClasses() or [])
+            held += list(arcpy.ListTables() or [])
+        finally:
+            arcpy.env.workspace = old_ws
+    except Exception:                                # pragma: no cover
+        return None
+    hits = [h for h in held
+            if re.sub(r"_\d+$", "", str(h)) == stripped
+            or str(h) == stripped]
+    if len(hits) == 1:
+        cand = ntpath.join(ws, str(hits[0]))
+        if _target_exists(cand):
+            return cand
+    return None
+
+
 def _ref(value):
     """arcpy is inconsistent: Describe() and cursors accept a Layer
     OBJECT, while RasterToNumPyArray insists on a path or a Raster
@@ -467,8 +534,27 @@ def _ref(value):
     # so this is safe for both and is the only route that reaches a
     # GeoPackage's workable path.
     try:
-        p = getattr(arcpy.Describe(value), "catalogPath", None)
+        desc = arcpy.Describe(value)
+        p = getattr(desc, "catalogPath", None)
         if isinstance(p, str) and p:
+            # BACKLOG 310. TRUST, THEN VERIFY. catalogPath is normally
+            # authoritative and for a GeoPackage it is the ONLY
+            # workable form (see above) - but Pro opens a GeoPackage
+            # as a GENERIC SQLITE workspace, and there it reports a
+            # path that does not exist: John's `main.la_blocks` drags
+            # into the map as a layer called `main.la_blocks_1`, with
+            # the _1 appended on the FIRST drag, against no duplicate,
+            # and catalogPath follows the LAYER name rather than the
+            # table. Catalog shows one table; Contents showed two
+            # layers both called ..._1.
+            # Handed to ExtendTable that path gives "cannot open",
+            # which then read as a LOCK and sent John hunting for an
+            # open attribute table after a five-minute run.
+            if _target_exists(p):
+                return p
+            better = _recover_dataset(value, p)
+            if better:
+                return better
             return p
     except Exception:
         pass
@@ -840,7 +926,21 @@ def _write_failure(exc, what, target):
     text = str(exc)
     low = text.lower()
     path = str(target)
-    if "lock" in low or "000852" in low or "schema" in low:
+    if ("cannot open" in low or "does not exist" in low
+            or "000732" in low):
+        # BACKLOG 310. A MISSING TARGET IS NOT A LOCK, and saying so
+        # cost John a hunt for an open attribute table after a
+        # five-minute run. "cannot open" means the path is wrong or
+        # the dataset is gone - waiting, closing tables and leaving
+        # OneDrive will not help.
+        why = ("That dataset could not be opened. The path above does "
+               "not point at anything ArcGIS can find. If it ends in "
+               "an underscore and a number, it is probably a LAYER "
+               "NAME rather than a table name - Pro does that to "
+               "GeoPackage layers - so pick the dataset from the "
+               "Catalog pane instead of the map, or write to a file "
+               "geodatabase.")
+    elif "lock" in low or "000852" in low or "schema" in low:
         why = ("Something is holding this data, so new fields cannot "
                "be added. Usual causes: an open ATTRIBUTE TABLE for "
                "this layer, an active edit session, the file open in "
@@ -1946,7 +2046,7 @@ ORIGIN_MODES = [
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 
-#: v1.47.10, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
+#: v1.47.11, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
 #: a box the two doors word differently is this project's oldest
 #: failure, and this one arrived a release late in Pro because nobody
 #: checked whether the box existed here at all.
@@ -2405,6 +2505,20 @@ def _clear_stale_fields(parameters, i_layer, idxs):
         have = set(_table_fields(val))
     except Exception:
         return
+    if not have:
+        # BACKLOG 311. AN EMPTY FIELD LIST IS NOT EVIDENCE THAT THE
+        # PICKS ARE STALE - it is evidence that the layer could not be
+        # enumerated, which is a different thing and must not be acted
+        # on. ListFields returns [] rather than raising for a layer
+        # Pro cannot properly resolve (see 310: a GeoPackage layer
+        # whose catalogPath names a dataset that does not exist), so
+        # the `except` above never fired and every field box was
+        # emptied instead.
+        # John lost the group field between filling the dialog and
+        # pressing Run, and the tool then refused with "the treatment
+        # population ... needs the group count fields - but that box
+        # is empty". It was empty because we had cleared it.
+        return
     for i in idxs:
         txt = parameters[i].valueAsText
         if not txt:
@@ -2652,7 +2766,7 @@ INVENTORY_COLUMNS = [
 def _join_layer(pm, table, ch, messages):
     """Put a vector layer onto the raster lattice (BACKLOG 299).
 
-    ARRIVED A RELEASE LATE. 1.47.10 gave QGIS three fidelities and Pro
+    ARRIVED A RELEASE LATE. 1.47.11 gave QGIS three fidelities and Pro
     had no join box AT ALL - nine parameters, none of them a layer.
     Claude recorded that gap as "Pro's join box still takes the
     centroid only", written from the QGIS door's shape on the
@@ -2789,7 +2903,7 @@ def _join_points(layer, sr, field, name, lat, table, messages,
 def read_shapes(layer, class_field, value_field, sr, messages):
     """A feature layer as friction.feature_cells' `parts` shape.
 
-    EXTRACTED IN v1.47.10 from the barrier reader above, which had
+    EXTRACTED IN v1.47.11 from the barrier reader above, which had
     done exactly this since 1.15 - multipart lines, polygon rings
     split on None - and was about to be written a second time for the
     lattice join. BACKLOG 120's standing lesson: two copies of a
@@ -2940,10 +3054,10 @@ class ContinentalRasters:
               _p("tiles", "Folder for a TILED, resumable run (blank "
                  "= run in memory)", "DEFolder", required=False,
                  category="Advanced"),
-              # v1.47.10, BACKLOG 299. Pro had NO join box at all -
+              # v1.47.11, BACKLOG 299. Pro had NO join box at all -
               # nine parameters, none of them a layer - while QGIS
               # had had one since 1.16 and gained three fidelities in
-              # 1.47.10. Worded identically to the QGIS door.
+              # 1.47.11. Worded identically to the QGIS door.
               _p("joinlayer", "A layer to put on the same grid - "
                               "points, roads, land use, water...",
                  "GPFeatureLayer", required=False,

@@ -223,7 +223,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
                   # needed them, which is why the two tools could not
                   # be exercised and so were left unregistered.
                   "DEFolder", "GPCoordinateSystem",
-                  # v1.47.10, machine 6. An inventory has NO GEOMETRY,
+                  # v1.47.11, machine 6. An inventory has NO GEOMETRY,
                   # so its output is a standalone table and not a
                   # feature class - inventing a point for ninety files
                   # would stack them all on the map's origin. DETable
@@ -1272,7 +1272,7 @@ def test_pyt_dialog_time_validation_blocks_run():
                for e in all_errors)          # coordA/B not guessable
     ps2 = tool.getParameterInfo()            # a fine point layer:
     ps2[0].value = "people"
-    # v1.47.10: and a neighbourhood, because BACKLOG 305 added a check
+    # v1.47.11: and a neighbourhood, because BACKLOG 305 added a check
     # that a run has one. This test is about the COORDINATE trio; it
     # has to satisfy the unrelated requirements or it stops testing
     # what its name says.
@@ -2417,7 +2417,7 @@ def test_a_box_the_rung_does_not_read_is_announced_not_obeyed():
 
 
 def test_the_help_generator_explains_itself_where_john_keeps_it():
-    """v1.47.10. make_help_xml.py has shipped as one of the five Pro
+    """v1.47.11. make_help_xml.py has shipped as one of the five Pro
     files since 1.44.4 and, until now, could not be run from the
     folder it ships to: it imported test_arcgis_stub, which lives in
     the repository's tests/ directory and is not one of the five.
@@ -2575,3 +2575,179 @@ def test_the_field_check_drops_pros_schema_cache_first():
     finally:
         fake.ListFields = real_list
         fake.management.ClearWorkspaceCache = real_clear
+
+
+def test_a_catalog_path_that_points_at_nothing_is_recovered():
+    """BACKLOG 310, from John's field test.
+
+    Pro opens a GeoPackage as a GENERIC SQLITE workspace. His
+    `main.la_blocks` drags into the map as a layer called
+    `main.la_blocks_1` - the _1 appended on the FIRST drag, against no
+    duplicate - and Describe().catalogPath follows the LAYER name
+    rather than the table. Catalog showed one table; Contents showed
+    two layers both called ..._1.
+
+    Handed to ExtendTable, that path gives "cannot open", which our
+    classifier then read as a LOCK. John spent a five-minute run and
+    a hunt for an open attribute table on a dataset that was never
+    locked and never named what we thought.
+
+    TRUST, THEN VERIFY: catalogPath stays the first choice, because
+    for a GeoPackage it is the only workable form - but a path that
+    does not exist is not an answer.
+    """
+    import pandas as pd
+    t = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                      "SHAPE@Y": [0.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    import arcpy as fake
+
+    REAL = r"C:\x\la_blocks.gpkg\main.la_blocks"
+    BAD = r"C:\x\la_blocks.gpkg\main.la_blocks_1"
+
+    class Layer:
+        dataSource = (r"Instance=C:\x\la_blocks.gpkg,"
+                      r"Dataset=main.la_blocks")
+
+    lyr = Layer()
+    real_describe, real_exists = fake.Describe, getattr(
+        fake, "Exists", None)
+    fake.Describe = lambda v: types.SimpleNamespace(catalogPath=BAD)
+    fake.Exists = lambda p: str(p) == REAL
+    try:
+        got = pyt._ref(lyr)
+        assert got == REAL, (
+            f"_ref returned {got!r} - a path Pro cannot open, taken "
+            "on trust from catalogPath")
+    finally:
+        fake.Describe = real_describe
+        if real_exists is not None:
+            fake.Exists = real_exists
+
+
+def test_a_missing_target_is_not_reported_as_a_lock():
+    """The other half of 310. "cannot open" means the path is wrong
+    or the dataset is gone; waiting, closing attribute tables and
+    leaving OneDrive cannot help, and saying so wastes the user's
+    time in the least recoverable way - after a long run."""
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    err = pyt._write_failure(
+        RuntimeError(r"cannot open 'C:\x\la_blocks.gpkg\main.la_blocks_1'"),
+        "add the result fields", r"C:\x\la_blocks.gpkg\main.la_blocks_1")
+    text = str(err)
+    assert "could not be opened" in text.lower(), text
+    assert "attribute table" not in text.lower(), (
+        "a missing dataset is still being reported as a lock")
+
+
+def test_the_dataset_name_is_recovered_from_the_connection_string():
+    """The dataSource route of BACKLOG 310, ON ITS OWN.
+
+    The first version of the test above passed even with this route
+    deleted, because the layer was called `main.la_blocks_1` and
+    stripping `_1` also lands on the truth. Two routes, one fixture,
+    and the deliberate break sailed past.
+
+    Here the layer name gives NO clue - stripping its suffix lands on
+    a dataset that does not exist - so only the connection string can
+    say what the table really is. For a GeoPackage that string is the
+    thing arcpy refuses as a path while carrying the one fact
+    catalogPath got wrong.
+    """
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    import arcpy as fake
+
+    REAL = r"C:\x\la_blocks.gpkg\main.la_blocks"
+    BAD = r"C:\x\la_blocks.gpkg\Exercise1Points_3"
+
+    class Layer:
+        dataSource = (r"Instance=C:\x\la_blocks.gpkg,"
+                      r"Dataset=main.la_blocks")
+
+    real_describe, real_exists = fake.Describe, getattr(fake, "Exists", None)
+    fake.Describe = lambda v: types.SimpleNamespace(catalogPath=BAD)
+    fake.Exists = lambda p: str(p) == REAL
+    try:
+        assert pyt._ref(Layer()) == REAL
+    finally:
+        fake.Describe = real_describe
+        if real_exists is not None:
+            fake.Exists = real_exists
+
+
+def test_a_layer_with_no_connection_string_still_recovers():
+    """The third route of BACKLOG 310: strip a trailing _N from the
+    name. It is a HEURISTIC, so it only ever returns a path that
+    arcpy.Exists confirms - but it is what saves a layer object that
+    exposes no dataSource at all, and both fixtures above recover
+    through the connection string instead, so nothing tested it."""
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    import arcpy as fake
+
+    REAL = r"C:\x\la_blocks.gpkg\main.la_blocks"
+    BAD = r"C:\x\la_blocks.gpkg\main.la_blocks_1"
+
+    class Bare:                      # no dataSource at all
+        pass
+
+    real_describe, real_exists = fake.Describe, getattr(fake, "Exists", None)
+    fake.Describe = lambda v: types.SimpleNamespace(catalogPath=BAD)
+    fake.Exists = lambda p: str(p) == REAL
+    try:
+        assert pyt._ref(Bare()) == REAL
+    finally:
+        fake.Describe = real_describe
+        if real_exists is not None:
+            fake.Exists = real_exists
+
+
+def test_an_unreadable_layer_does_not_empty_the_field_boxes():
+    """BACKLOG 311. _clear_stale_fields exists to drop field picks
+    Pro remembered from ANOTHER layer. It decides by comparing the
+    picks against the layer's field list - and treated an EMPTY list
+    as "none of these fields exist" rather than "I could not read
+    this layer".
+
+    ListFields returns [] rather than raising for a layer Pro cannot
+    properly resolve (BACKLOG 310), so the except never fired and
+    every field box was silently emptied. John filled the dialog,
+    pressed Run, and was told the group-count box was empty - because
+    we had cleared it between his filling it and his pressing Run.
+
+    NOT READABLE IS NOT NOT-PRESENT.
+    """
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0],
+                                      "black_alone": [1.0]}))
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    pm["layer"].value = "lyr"
+    pm["pop"].value = "total_pop"
+    pm["treat"].value = "black_alone"
+
+    import arcpy as fake
+    real_list = fake.ListFields
+    fake.ListFields = lambda v: []          # unreadable, not empty-of-fields
+    try:
+        idxs = [i for i, p in enumerate(ps)
+                if p.name in ("pop", "treat", "catfield")]
+        pyt._clear_stale_fields(ps, 0, idxs)
+        assert pm["treat"].value == "black_alone", (
+            "the group field was cleared because the layer could not "
+            "be read")
+        assert pm["pop"].value == "total_pop"
+    finally:
+        fake.ListFields = real_list

@@ -295,7 +295,7 @@ HELP = {
                "to reproduce results from before this setting "
                "existed.",
     # ---- machines 3 and 4, BACKLOG 294 -----------------------------
-    # Added v1.47.10. These THIRTEEN parameters had no entry, which is
+    # Added v1.47.11. These THIRTEEN parameters had no entry, which is
     # why make_help_xml.py covered only two of the four tools: it
     # refuses to write a sidecar with a gap, so it wrote none, and
     # both tools showed "There is no explanation for this parameter"
@@ -584,7 +584,7 @@ LABELS = {
                        "k nearest)",
     "ContinentalRasters": "3. Raster Data Curation",
     "SpatialDemography": "4. Spatial Demographic Analysis",
-    # v1.47.10, BACKLOG 269. Numbered 6 rather than 5 because machine 5
+    # v1.47.11, BACKLOG 269. Numbered 6 rather than 5 because machine 5
     # is fetching; this reads a folder that is already on disk.
     "FolderInventory": "6. What is in this folder? (reads, changes "
                        "nothing)",

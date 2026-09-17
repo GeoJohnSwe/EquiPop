@@ -2,13 +2,13 @@
 """bump_version.py - move the version everywhere it must move, and
 NOWHERE IT MUST NOT.
 
-    python tools/bump_version.py 1.47.10
-    python tools/bump_version.py 1.47.10 --check   # say, change nothing
+    python tools/bump_version.py 1.47.11
+    python tools/bump_version.py 1.47.11 --check   # say, change nothing
 
-WHY THIS EXISTS (v1.47.10). The version lived in a dozen files and was
+WHY THIS EXISTS (v1.47.11). The version lived in a dozen files and was
 moved with a blanket sed:
 
-    for f in $(grep -rl "1.47.5" .); do sed -i 's/1.47.5/1.47.10/g' $f; done
+    for f in $(grep -rl "1.47.5" .); do sed -i 's/1.47.5/1.47.11/g' $f; done
 
 That works and it quietly destroyed a guard. TEACHING.md and
 PROPOSALS.md each carry `**Last updated: <version>, <date>**`, and a
@@ -78,7 +78,7 @@ def main(argv):
         return 0
     new = argv[0]
     if not re.fullmatch(r"\d+\.\d+\.\d+", new):
-        print(f"[bump] '{new}' is not a version like 1.47.10")
+        print(f"[bump] '{new}' is not a version like 1.47.11")
         return 2
     check = "--check" in argv
     old = current()

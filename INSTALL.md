@@ -16,7 +16,7 @@ from those, never from a folder and never from PyPI while testing.
 
 1. **`--no-deps`, always.** Without it pip upgrades the host's numpy,
    scipy or pyproj. That is what broke QGIS's scipy and Stata's pyproj.
-   **AND IT LEAVES A HOLE THAT NOBODY WROTE DOWN UNTIL 1.47.10.**
+   **AND IT LEAVES A HOLE THAT NOBODY WROTE DOWN UNTIL 1.47.11.**
    `--no-deps` also skips the dependencies that are NOT already there,
    and there is exactly one: **pyproj**. QGIS, Pro and Stata all ship
    numpy, pandas and scipy; none of them ships pyproj, which EquiPop
@@ -61,11 +61,11 @@ route in section 2.
    Must print a path under `C:\OSGeo4W\`.
 3. Install:
    ```
-   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.47.10-py3-none-any.whl"
+   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.47.11-py3-none-any.whl"
    ```
 4. Verify (see below), then **restart QGIS**.
 5. Plugin: **Plugins → Manage and Install Plugins → Install from ZIP**,
-   choose `equipop_qgis-1.47.10.zip`, then restart QGIS again.
+   choose `equipop_qgis-1.47.11.zip`, then restart QGIS again.
 
 **pyproj is REQUIRED and QGIS does not ship it.** Install it in the
 same shell, before verifying:
@@ -89,7 +89,7 @@ numpy into your user folder that shadows QGIS's own and breaks scipy.
 is not loaded, so nothing is memory-mapped. Prefix with `shell`:
 
 ```
-shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.47.10-py3-none-any.whl
+shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.47.11-py3-none-any.whl
 shell C:\Users\...\python.exe -m pip install pyproj
 ```
 
@@ -120,7 +120,7 @@ py = os.path.join(sys.exec_prefix, "python.exe")
 env = dict(os.environ, PYTHONNOUSERSITE="1")
 subprocess.run([py, "-m", "pip", "install", "--no-deps",
                 "--force-reinstall",
-                r"C:\path\to\equipop-1.47.10-py3-none-any.whl"], env=env)
+                r"C:\path\to\equipop-1.47.11-py3-none-any.whl"], env=env)
 ```
 
 **Then pyproj, which Pro does not ship and `--no-deps` skipped.** Same
@@ -155,7 +155,7 @@ import numpy, pandas, scipy, pyproj; print("Core imports OK")
   is not writing over its own loaded DLLs.
 
 To take a release from PyPI instead of a local wheel, replace the path
-with `"equipop==1.47.10"` and drop `--no-deps --force-reinstall`.
+with `"equipop==1.47.11"` and drop `--no-deps --force-reinstall`.
 
 **If Pro still cannot see it**, the environment is read-only: Project
 → Package Manager → gear → **Clone**, activate the clone, restart Pro,
