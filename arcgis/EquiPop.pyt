@@ -570,7 +570,82 @@ def _ref(value):
         return value
 
 
-def _raster_payload(value, messages):
+#: The version of THIS FILE. Declared, not inferred.
+#:
+#: BACKLOG 314. Pro CACHES .pyt MODULES: replacing the file does not
+#: replace what is running, and only a full restart reloads it. John
+#: lost most of an evening to that - the file on disk had the fix, the
+#: module in memory did not, and the only way either of us could tell
+#: was by counting lines in a traceback.
+#: The manifest has always recorded the PACKAGE version and never the
+#: TOOLBOX version, and this whole episode is the gap between those
+#: two. Now every run says both, and says so loudly when they differ.
+TOOLBOX_VERSION = "1.47.12"
+
+
+def _announce_version(messages):
+    """Say which toolbox and which package are actually running."""
+    try:
+        import equipop
+        pkg = getattr(equipop, "__version__", "unknown")
+    except Exception:                                # pragma: no cover
+        pkg = "not installed"
+    messages.addMessage(
+        f"EquiPop toolbox {TOOLBOX_VERSION}, package {pkg}.")
+    if pkg not in ("unknown", "not installed") and pkg != TOOLBOX_VERSION:
+        messages.addWarningMessage(
+            f"THE TOOLBOX AND THE PACKAGE ARE DIFFERENT VERSIONS - "
+            f"toolbox {TOOLBOX_VERSION}, package {pkg}. They are "
+            "released together and should match. If you have just "
+            "replaced EquiPop.pyt, RESTART PRO: it caches toolbox "
+            "modules, and removing the toolbox from the project is "
+            "not enough. If you have just upgraded the package, "
+            "replace EquiPop.pyt and its .pyt.xml files too.")
+    return pkg
+
+
+def _same_crs(a, b):
+    """Do two spatial references describe the same system?
+
+    Compared by factoryCode where both have one, else by name. A
+    missing or 0 code means UNDEFINED, which is never "the same as"
+    anything - see _require_crs.
+    """
+    ca = getattr(a, "factoryCode", 0) or 0
+    cb = getattr(b, "factoryCode", 0) or 0
+    if ca and cb:
+        return int(ca) == int(cb)
+    na = (getattr(a, "name", "") or "").strip()
+    nb = (getattr(b, "name", "") or "").strip()
+    return bool(na) and na == nb
+
+
+def _require_crs(desc, what):
+    """An undefined coordinate system is refused, never assumed.
+
+    BACKLOG 313, John's ruling: "no crs should not be silent - a loud
+    error there". A dataset with no .prj has coordinates that mean
+    nothing on their own, and arcpy's `spatial_reference=` can only
+    TRANSFORM - it cannot invent a source. So the numbers pass through
+    untouched and land wherever they land, with nothing to notice.
+    """
+    sr = getattr(desc, "spatialReference", None)
+    name = (getattr(sr, "name", "") or "").strip()
+    code = getattr(sr, "factoryCode", 0) or 0
+    if sr is None or not name or name.lower() == "unknown" or (
+            not code and name.lower().startswith("unknown")):
+        raise arcpy.ExecuteError(
+            f"{what} has NO COORDINATE SYSTEM. Its numbers cannot be "
+            "placed on the earth, and nothing downstream can detect "
+            "that - the coordinates would simply be used as they are "
+            "and land somewhere wrong. Define the projection on the "
+            "dataset (Define Projection, if you know what it is) and "
+            "run again. EquiPop refuses rather than guess, because a "
+            "guess here is invisible.")
+    return sr
+
+
+def _raster_payload(value, messages, main_sr=None):
     """Read a raster HERE (arcpy) and hand the package plain numbers.
     The package must never open GIS files itself - installing
     rasterio into a Pro clone means two GDALs fighting over DLLs
@@ -578,6 +653,28 @@ def _raster_payload(value, messages):
     src = _ref(value)
     d = arcpy.Describe(src)
     _check_metric(d, "The elevation raster")
+    dem_sr = _require_crs(d, "The elevation raster")
+    if main_sr is not None and not _same_crs(dem_sr, main_sr):
+        # BACKLOG 313, John's ruling: "DEM should not [be
+        # auto-projected], add a loud error". Reprojecting a raster
+        # means RESAMPLING - a method, a cell size, and interpolation
+        # error - and a slope computed from a resampled DEM is not the
+        # slope of the original. That is an analytical decision, not a
+        # formatting step, and not ours to make silently.
+        # Vector barriers are different and ARE projected on read, by
+        # arcpy's cursor, because transforming a coordinate is exact.
+        raise arcpy.ExecuteError(
+            f"The elevation raster is in "
+            f"{getattr(dem_sr, 'name', '?')} but the analysis is "
+            f"running in {getattr(main_sr, 'name', '?')}. EquiPop "
+            "will not reproject it for you: resampling a DEM changes "
+            "the elevations, and a slope computed from a resampled "
+            "raster is not the slope of the original - that is your "
+            "decision, not ours. Project the raster yourself "
+            "(Project Raster, choosing the resampling you want), or "
+            "run the analysis in the raster's coordinate system. "
+            "Vector barriers need no such step; they are converted on "
+            "read, which is exact.")
     arr = arcpy.RasterToNumPyArray(src)
     ext = d.extent
     pay = {"array": np.asarray(arr, float),
@@ -589,6 +686,32 @@ def _raster_payload(value, messages):
         f"Elevation raster read by ArcGIS: {pay['array'].shape[0]} x "
         f"{pay['array'].shape[1]} pixels at {pay['cell_w']:g} m.")
     return pay
+
+
+def _report_values(vals, field, messages):
+    """Say what the barrier was actually worth.
+
+    BACKLOG 312. A value field with a typo, a class left out, or a
+    Calculate Field that did not take produces a barrier that is
+    quietly weaker than intended - and the run looks identical. Naming
+    the distinct values costs one line and makes a wrong table
+    visible before the several minutes, not after.
+    """
+    import math
+    seen = {}
+    for v in vals:
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            seen["(empty -> 0)"] = seen.get("(empty -> 0)", 0) + 1
+        else:
+            key = f"{float(v):g}"
+            seen[key] = seen.get(key, 0) + 1
+    if not seen:
+        return
+    bits = ", ".join(f"{k} x{n:,}" for k, n in
+                     sorted(seen.items(), key=lambda kv: -kv[1])[:10])
+    messages.addMessage(
+        f"Barrier values in '{field}': {bits}"
+        + ("" if len(seen) <= 10 else f" (+{len(seen) - 10} more)"))
 
 
 def _barrier_frame(value, friction_field, agg, unit, main_sr,
@@ -697,13 +820,29 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
                     n_bad += 1
                     continue
                 feats.append({"type": kind, "parts": parts})
+                # BACKLOG 312. EMPTY IS NOT AN ERROR; it means NO
+                # OBSTACLE. Friction is additive and a cell costs
+                # 1 + friction, so 0 is unambiguously "nothing here" -
+                # and requiring 700,000 road features to say so was a
+                # tax for a purity that helped nobody. All-empty is
+                # still refused, downstream, because that means the
+                # field was never populated.
+                # The old message said "non-numeric OR missing", which
+                # led John to think fractions were being refused. They
+                # are not: -0.9 is a motorway.
+                if v is None or (isinstance(v, float) and v != v):
+                    vals.append(float("nan"))
+                    continue
                 try:
                     vals.append(float(v))
                 except (TypeError, ValueError):
                     raise arcpy.ExecuteError(
-                        f"The barrier layer: field '{friction_field}'"
-                        " has non-numeric or missing values - fix or "
-                        "filter them first.")
+                        f"The barrier layer: field '{friction_field}' "
+                        f"holds {v!r}, which is not a number. "
+                        "FRACTIONS ARE FINE - -0.9 is a motorway, 0 is "
+                        "open ground, 3 is a river. What cannot be "
+                        "used is text. Empty cells are read as 0 (no "
+                        "obstacle) and need no fixing.")
         if n_bad:
             messages.addWarningMessage(
                 f"{n_bad} empty/invalid barrier geometries skipped.")
@@ -712,7 +851,8 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
                 "The barrier layer holds no usable geometries "
                 "(empty selection?).")
         fr = paths_to_friction(feats, vals, unit_size=float(unit),
-                               agg=aggk)
+                               agg=aggk, say=messages.addMessage)
+        _report_values(vals, friction_field, messages)
         messages.addMessage(
             f"Barrier {kind}s: {len(feats)} features -> {len(fr)} "
             f"grid cells (EVERY cell genuinely crossed/covered; "
@@ -1148,6 +1288,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               half_life_from_dist=None, decay_bins: int = 10,
               seed=None, overshoot=None, originrule=None):
     """The single glue path both machines share (stub-validated)."""
+    _announce_version(messages)        # BACKLOG 314, first line of
+                                       # every run: which code is this?
     import pandas as pd
     from equipop.stata_bridge import dispatch
 
@@ -1474,7 +1616,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             if extra_dem:
                 with _stage(messages, "reading elevation raster",
                             stages):
-                    kw["dem"] = _raster_payload(extra_dem, messages)
+                    kw["dem"] = _raster_payload(
+                        extra_dem, messages,
+                        getattr(_read_input, "last_sr", None))
             kw["roundtrip"] = bool(roundtrip)
             kw.pop("r_values", None)      # r on effort: not defined
             if half_life and half_life > 0:
@@ -2046,7 +2190,7 @@ ORIGIN_MODES = [
 ]
 ORIGIN_VALUES = ["include", "exclude"]
 
-#: v1.47.11, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
+#: v1.47.6, BACKLOG 299. Machine 3's join, worded exactly as in QGIS -
 #: a box the two doors word differently is this project's oldest
 #: failure, and this one arrived a release late in Pro because nobody
 #: checked whether the box existed here at all.
@@ -3054,7 +3198,7 @@ class ContinentalRasters:
               _p("tiles", "Folder for a TILED, resumable run (blank "
                  "= run in memory)", "DEFolder", required=False,
                  category="Advanced"),
-              # v1.47.11, BACKLOG 299. Pro had NO join box at all -
+              # v1.47.6, BACKLOG 299. Pro had NO join box at all -
               # nine parameters, none of them a layer - while QGIS
               # had had one since 1.16 and gained three fidelities in
               # 1.47.11. Worded identically to the QGIS door.

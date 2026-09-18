@@ -2751,3 +2751,119 @@ def test_an_unreadable_layer_does_not_empty_the_field_boxes():
         assert pm["pop"].value == "total_pop"
     finally:
         fake.ListFields = real_list
+
+
+def test_a_dem_in_the_wrong_crs_is_refused_not_reprojected():
+    """BACKLOG 313, John's ruling: "DEM should not [be
+    auto-projected], add a loud error".
+
+    Reprojecting a raster means RESAMPLING - a method, a cell size,
+    and interpolation error - and a slope computed from a resampled
+    DEM is not the slope of the original. That is an analytical
+    decision disguised as a formatting step, and not ours to make
+    silently. Vector barriers ARE converted on read, because
+    transforming a coordinate is exact; a raster is not.
+    """
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    import arcpy as fake
+
+    work = types.SimpleNamespace(factoryCode=26945,
+                                 name="NAD83_California_V")
+    dem = types.SimpleNamespace(factoryCode=32611, name="WGS_1984_UTM_11N")
+    d = types.SimpleNamespace(spatialReference=dem, extent=None)
+
+    real_describe = fake.Describe
+    fake.Describe = lambda v: d
+    try:
+        with pytest.raises(Exception, match="(?i)will not reproject"):
+            pyt._raster_payload("dem.tif", _Msg(), work)
+    finally:
+        fake.Describe = real_describe
+
+
+def test_a_dataset_with_no_coordinate_system_is_refused():
+    """BACKLOG 313, John: "no crs should not be silent - a loud error
+    there". arcpy's spatial_reference= can only TRANSFORM; it cannot
+    invent a source. An undefined .prj means the coordinates pass
+    through untouched and land wherever they land, and nothing
+    downstream can tell."""
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    for sr in (None,
+               types.SimpleNamespace(factoryCode=0, name=""),
+               types.SimpleNamespace(factoryCode=0, name="Unknown")):
+        d = types.SimpleNamespace(spatialReference=sr)
+        with pytest.raises(Exception, match="(?i)no coordinate system"):
+            pyt._require_crs(d, "The barrier layer")
+    # a defined one passes straight through
+    good = types.SimpleNamespace(factoryCode=26945, name="NAD83_CA_V")
+    assert pyt._require_crs(
+        types.SimpleNamespace(spatialReference=good), "x") is good
+
+
+class _Msg:
+    def __init__(self):
+        self.log = []
+
+    def addMessage(self, m):
+        self.log.append(str(m))
+
+    addWarningMessage = addMessage
+    addErrorMessage = addMessage
+
+
+def test_every_run_says_which_toolbox_and_package_are_live():
+    """BACKLOG 314. Pro CACHES .pyt modules: replacing the file does
+    not replace what runs, and only a full restart reloads it. John
+    lost most of an evening to that - the file on disk had the fix,
+    the module in memory did not, and the only way either of us could
+    tell was by counting lines in a traceback.
+
+    The manifest recorded the PACKAGE version and never the TOOLBOX
+    version, and this whole episode is the gap between those two.
+    """
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    assert hasattr(pyt, "TOOLBOX_VERSION")
+
+    m = _Msg()
+    pyt._announce_version(m)
+    said = " ".join(m.log)
+    assert "EquiPop toolbox" in said and pyt.TOOLBOX_VERSION in said, said
+
+    # and it must SHOUT when the two disagree, because that is the
+    # state a stale cached module leaves you in
+    import equipop
+    real = equipop.__version__
+    equipop.__version__ = "0.0.1"
+    try:
+        m2 = _Msg()
+        pyt._announce_version(m2)
+        said2 = " ".join(m2.log)
+        assert "DIFFERENT VERSIONS" in said2, said2
+        assert "RESTART PRO" in said2, said2
+    finally:
+        equipop.__version__ = real
+
+
+def test_the_toolbox_version_matches_the_package():
+    """They are released together. A mismatch in the repository means
+    someone bumped one and not the other."""
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "arcgis", "EquiPop.pyt"),
+               encoding="utf-8").read()
+    tb = re.search(r'^TOOLBOX_VERSION\s*=\s*"([^"]+)"', src, re.M)
+    assert tb, "the toolbox no longer declares its version"
+    ver = re.search(r'^version\s*=\s*"([^"]+)"',
+                    open(os.path.join(root, "pyproject.toml"),
+                         encoding="utf-8").read(), re.M).group(1)
+    assert tb.group(1) == ver, (
+        f"toolbox says {tb.group(1)}, package says {ver}")

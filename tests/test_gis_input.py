@@ -90,8 +90,26 @@ def test_points_paths_raster_converters_and_overlap():
         assert float(q.friction.iloc[0]) == want
     with pytest.raises(ValueError, match="overlap rule"):
         points_to_friction([1], [1], [1], 100, agg="median")
-    with pytest.raises(ValueError, match="missing"):
+    # v1.47.12, John's ruling: AN EMPTY VALUE MEANS NO OBSTACLE.
+    # Friction is additive and a cell costs 1 + friction, so 0 is
+    # unambiguously "nothing here" - and requiring 700,000 OSM roads
+    # to say so was a tax nobody benefited from.
+    # far enough apart to land in DIFFERENT cells - the first version
+    # put both at (1,1) and (2,2), which snap to the same 100 m cell
+    # and aggregate, so the empty one was never visible on its own
+    q = points_to_friction([50.0, 250.0], [50.0, 250.0],
+                           [np.nan, 3.0], 100)
+    assert float(q.friction.min()) == 0.0
+    assert float(q.friction.max()) == 3.0
+    # ALL empty is still refused: that means the field was never
+    # populated, and a barrier of nothing costs a full run to return
+    # exactly what no barrier returns.
+    with pytest.raises(ValueError, match="EVERY feature"):
         points_to_friction([1.0], [1.0], [np.nan], 100)
+    # a missing COORDINATE stays fatal - a point with no place is not
+    # a barrier anywhere
+    with pytest.raises(ValueError, match="missing coordinates"):
+        points_to_friction([np.nan], [1.0], [3.0], 100)
     # v1.27: costs may go BELOW zero - a facilitator is a fraction of
     # a round - but never to -1, where a cell becomes free and there
     # is no neighbourhood left to speak of

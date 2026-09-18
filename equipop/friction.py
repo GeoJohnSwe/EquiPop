@@ -494,6 +494,45 @@ def run_knn_friction(
 # shares one tested rasterizer.
 # ===================================================================
 
+def _fill_missing(vals, where, say=print):
+    """Empty friction means NO OBSTACLE, so fill it with 0 - unless
+    ALL of it is empty, which means the field was never populated.
+
+    JOHN'S RULING, session 12. The old behaviour refused any null,
+    on the reasoning that a silent 0 and a real 0 must not look
+    alike. That is true and it was still the wrong trade: friction is
+    additive, cost is 1 + friction, so 0 is UNAMBIGUOUSLY "nothing
+    here" - and making somebody populate 700,000 road features to say
+    "nothing here" is a tax we were charging for a purity that helped
+    nobody. John hit it on 735,098 OSM roads with six classes filled.
+
+    THE CASE THE STRICTNESS WAS REALLY PROTECTING AGAINST IS KEPT.
+    Create the field, forget to populate it, run: every value null,
+    every value 0, no barrier at all - and the tool reports "barrier
+    applied", takes its several minutes, and returns exactly what a
+    plain run would. Nothing would say the friction did nothing. So
+    ALL-EMPTY IS STILL REFUSED, and how many were filled is always
+    reported.
+    """
+    v = np.asarray(vals, float)
+    n_missing = int(np.isnan(v).sum())
+    if not n_missing:
+        return v
+    if n_missing == len(v):
+        raise ValueError(
+            f"[friction] {where}: the value field is empty on EVERY "
+            f"feature ({len(v):,}). Filling them all with 0 would "
+            "mean no barrier at all, and the run would take just as "
+            "long to return exactly what a run without a barrier "
+            "returns. Populate the field, or leave the barrier out.")
+    v = np.where(np.isnan(v), 0.0, v)
+    if say:
+        say(f"[friction] {where}: {n_missing:,} of {len(v):,} "
+            f"features had no value and were read as 0 (no "
+            f"obstacle). {len(v) - n_missing:,} carry a value.")
+    return v
+
+
 def _check_cost_range(vals, where):
     """Costs may go BELOW zero, but never to -1 or past it.
 
@@ -556,6 +595,7 @@ def features_to_friction(features, value_field: str = "friction",
     else:
         raise ValueError(f"[friction] features need a '{value_field}' "
                          "column or a default_value")
+    vals = _fill_missing(vals, "feature values")
     _check_cost_range(vals, "feature values")
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}
@@ -757,7 +797,7 @@ def feature_cells(feat, unit_size: float) -> dict:
 
 def paths_to_friction(features, values=None, unit_size: float = 100.0,
                       default_value: float | None = None,
-                      agg: str = "sum") -> pd.DataFrame:
+                      agg: str = "sum", say=print) -> pd.DataFrame:
     """
     Geopandas-FREE geometry-to-grid: coordinate paths -> friction
     cells, for hosts whose Python cannot grow geopandas (the ArcGIS
@@ -788,9 +828,7 @@ def paths_to_friction(features, values=None, unit_size: float = 100.0,
     else:
         raise ValueError("[friction] paths_to_friction needs values "
                          "or a default_value")
-    if np.isnan(vals).any():
-        raise ValueError("[friction] missing (null) friction values - "
-                         "fill or filter the value field first")
+    vals = _fill_missing(vals, "feature values", say)
     _check_cost_range(vals, "feature values")
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}
@@ -818,11 +856,17 @@ def points_to_friction(x, y, values, unit_size: float = 100.0,
     if len(x) != len(y) or len(x) != len(v):
         raise ValueError("[friction] x, y and values must be equal "
                          "length")
-    bad = ~(np.isfinite(x) & np.isfinite(y) & np.isfinite(v))
+    # A MISSING COORDINATE IS STILL FATAL - a point with no place is
+    # not a barrier anywhere. A missing VALUE is not: 0 means "no
+    # obstacle" and that is almost always what an empty cell means
+    # (John's ruling, session 12).
+    bad = ~(np.isfinite(x) & np.isfinite(y))
     if bad.any():
         raise ValueError(f"[friction] {int(bad.sum())} rows with "
-                         "missing coordinates or friction values - "
-                         "fill or filter them first")
+                         "missing coordinates - a point with no place "
+                         "is not a barrier anywhere. Fill or filter "
+                         "them first.")
+    v = _fill_missing(v, "point values")
     _check_cost_range(v, "point values")
     u = float(unit_size)
     acc: dict[tuple[float, float], list] = {}

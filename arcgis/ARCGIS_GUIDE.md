@@ -76,8 +76,12 @@ nowhere else:
 
     repository root            python arcgis/make_help_xml.py
 
-Pro caches toolboxes hard: after replacing the files, remove the
-toolbox from the project and add it again, or restart Pro.
+**Pro caches toolbox MODULES, not just their listing. RESTART PRO
+after replacing the files** - removing the toolbox from the project
+and adding it back does NOT reload a cached module, and you will go
+on running the old code while the new file sits on disk. From
+v1.47.12 every run opens by naming the toolbox and package versions,
+so you can always see which is live.
 
 ### If the flyout beside a box shows literal `<p>` tags
 

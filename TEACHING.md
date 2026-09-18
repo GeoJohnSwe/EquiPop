@@ -1,6 +1,6 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.47.11, 16 September 2026.**
+**Last updated: 1.47.12, 16 September 2026.**
 *Reviewed at 1.47.6: the OSM geodatabase and the InsideAirbnb
 extract both arrived and are described above; the .gdb finding
 (BACKLOG 301) came out of them.

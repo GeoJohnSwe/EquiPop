@@ -3192,6 +3192,92 @@ not here. A list of completed work is not a plan.
   DATA. The engine was right in all three. A READ THAT FAILS TELLS
   YOU ABOUT THE READ, NOT ABOUT THE DATA.
 
+- ~~312~~ | DONE v1.47.12 | AN EMPTY FRICTION VALUE NOW MEANS NO
+  OBSTACLE. John's ruling, after hitting it on 735,098 OSM roads with
+  six classes filled: "perhaps we should allow missing values and
+  assign these the default = 0 value automatically".
+  He is right and the old strictness was the wrong trade. Friction is
+  additive and a cell costs 1 + friction, so 0 is UNAMBIGUOUSLY
+  "nothing here" - and requiring seven hundred thousand features to
+  say so was a tax charged for a purity that helped nobody.
+  THE CASE THE STRICTNESS WAS REALLY PROTECTING AGAINST IS KEPT, and
+  it is Claude's addition rather than John's: create the field, forget
+  to populate it, run. Every value empty, every value 0, NO BARRIER AT
+  ALL - and the tool reports "barrier applied", takes its several
+  minutes, and returns exactly what a plain run returns. ALL-EMPTY IS
+  REFUSED; some-empty is filled and counted.
+  AND THE RUN NOW SAYS WHAT IT CHARGED: the distinct values found and
+  how many features carry each, so a typo or a missed class is visible
+  BEFORE the several minutes rather than after.
+  THE MESSAGE WAS ALSO MISLEADING. "non-numeric or missing values"
+  led John to ask whether floats were forbidden. They are not - -0.9
+  is a motorway. It now names which fault it found and says fractions
+  are fine.
+  A MISSING COORDINATE STAYS FATAL. A point with no place is not a
+  barrier anywhere.
+
+- ~~313~~ | DONE v1.47.12 | TWO COORDINATE-SYSTEM GUARDS, John's
+  rulings. "vector projected on read, DEM should not, add a loud
+  error to that; no crs should not be silent - a loud error there".
+  VECTORS ALREADY DID THE RIGHT THING and nobody knew: the barrier
+  reader passes spatial_reference=main_sr to the cursor, so arcpy
+  converts on read, exactly. That is why it is right for vectors and
+  wrong for rasters - transforming a coordinate is exact, resampling
+  a raster is not.
+  THE DEM NOW REFUSES a coordinate system that differs from the
+  analysis. Reprojecting a raster means choosing a resampling method
+  and a cell size and accepting interpolation error, and a slope
+  computed from a resampled DEM is not the slope of the original.
+  That is an analytical decision disguised as a formatting step and
+  it is the user's, not ours.
+  AN UNDEFINED COORDINATE SYSTEM IS REFUSED rather than assumed.
+  arcpy's spatial_reference= can only TRANSFORM; it cannot invent a
+  source. A dataset with no .prj has its numbers passed through
+  untouched to land wherever they land, and NOTHING DOWNSTREAM CAN
+  DETECT IT - which is the whole argument for refusing.
+  ON DATUMS, which John asked about: a CRS has a datum (where the
+  earth is anchored) and a projection (how it is flattened).
+  Transforming between different datums has several published
+  methods. NAD83 to WGS84 differ by about a metre; NAD27 to NAD83 by
+  up to a hundred, which would put a barrier a block away. Silent is
+  fine when the datums match and not when they differ - naming the
+  transformation used is the remaining piece, and is NOT built here.
+
+- ~~314~~ | DONE v1.47.12 | THE TOOLBOX NOW SAYS ITS OWN VERSION, AND
+  SHOUTS WHEN IT DISAGREES WITH THE PACKAGE.
+  Pro CACHES .pyt MODULES. Replacing the file does not replace what
+  runs; only a full restart reloads it. John lost most of an evening
+  to that: the file on disk had the 311 fix, the module in memory did
+  not, and THE ONLY WAY EITHER OF US COULD TELL WAS BY COUNTING LINES
+  IN A TRACEBACK - 3503 against 3617.
+  The manifest has always recorded the PACKAGE version and never the
+  TOOLBOX version, and this entire episode is the gap between those
+  two. Every run now opens with both, and warns loudly when they
+  differ, naming the restart as the fix.
+  THE GUIDE SAID "remove the toolbox from the project and add it
+  again, OR restart Pro". The "or" is wrong: removing and re-adding
+  does NOT reload a cached module. Tightened.
+
+- ~~315~~ | DONE v1.47.12 | THE BUMP TOOL WAS FALSIFYING THE HISTORY
+  IT PASSED OVER - and it is the tool written six items ago to stop a
+  different kind of drift.
+  It did a blanket string replace of the old version with the new
+  across every file. A code comment written during 1.47.4 saying
+  "v1.47.4, BACKLOG 299" became 1.47.5, then .6, and by 1.47.11 the
+  toolbox claimed item 299 landed in 1.47.11 when it landed in
+  1.47.6.
+  BACKLOG.md AND MANUAL.md WERE ALREADY EXCLUDED FOR EXACTLY THIS
+  REASON - "historical version numbers are facts about the past" -
+  and the same reasoning was never applied to CODE COMMENTS, which
+  are full of them. WORSE THAN THE ORIGINAL PROBLEM, because the
+  backlog drift was visible and this was not.
+  Now targeted: eleven declaration sites, each with a pattern that
+  matches the declaration and nothing else, and it REPORTS A
+  DECLARATION IT COULD NOT FIND rather than passing over it.
+  The two falsified comments were repaired from the backlog's own
+  record, which is the only surviving account of when each item
+  actually landed.
+
 - 306 | OPEN, FOUND v1.47.8 BUILDING EXERCISE 4 | MACHINE 1'S BARRIER
   CHARGES PER FEATURE, NOT PER CLASS - so it still has the defect
   298 removed from machine 3's join.

@@ -1,7 +1,7 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.47.11, 16 September 2026.**
-*Reviewed at 1.47.11: nothing has changed. The dates still need
+**Last updated: 1.47.12, 16 September 2026.**
+*Reviewed at 1.47.12: nothing has changed. The dates still need
 John's confirmation from the portal, and no concept note exists.
 Bumped because it was READ, which is the only thing the version
 line is allowed to mean.

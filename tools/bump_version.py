@@ -32,18 +32,44 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#: WHERE A VERSION IS DECLARED. One entry per place, with the pattern
+#: that matches the DECLARATION and nothing else.
+#:
+#: BACKLOG 315. This used to be a blanket string replace over every
+#: file containing the old version - and it quietly falsified the
+#: history it passed over. A comment written during 1.47.4 saying
+#: "v1.47.4, BACKLOG 299" became 1.47.5, then .6, and by 1.47.11 the
+#: .pyt claimed item 299 landed in 1.47.11 when it landed in 1.47.6.
+#: Five such comments in that file alone.
+#: BACKLOG.md and MANUAL.md were already excluded for exactly this
+#: reason - "historical version numbers are facts about the past" -
+#: and the same reasoning was never applied to CODE COMMENTS, which
+#: are full of them. The tool written to stop one kind of drift was
+#: causing another, and a worse one: the backlog drift was visible.
+DECLARATIONS = [
+    ("pyproject.toml", r'^(version\s*=\s*")[^"]+(")'),
+    ("equipop/__init__.py", r'^(__version__\s*=\s*")[^"]+(")'),
+    ("qgis/equipop_qgis/__init__.py", r'^(__version__\s*=\s*")[^"]+(")'),
+    ("qgis/equipop_qgis/metadata.txt", r'^(version=)\S+()'),
+    ("arcgis/EquiPop.pyt", r'^(TOOLBOX_VERSION\s*=\s*")[^"]+(")'),
+    ("stata/equipop.pkg", r'^(d EquiPop )\S+( )'),
+    ("stata/equipop.ado", r'^(\*! equipop v)\S+(\s)'),
+    ("stata/equipop.ado", r'^(\s*local eqp_ado_version\s+")[^"]+(")'),
+    ("CITATION.cff", r'^(version:\s*)\S+()'),
+    ("equipop_test_pass.do", r'^(\*! EquiPop )\S+(\s)'),
+    ("equipop_test_pass.do", r'^(global EQP_EXPECT\s+")[^"]+(")'),
+]
+
+#: Files where the version appears inside a FILENAME the reader is
+#: told to type - equipop-1.47.12-py3-none-any.whl and friends. Those
+#: must move, and they are unambiguous, so a plain replace is right
+#: for the filename pattern only.
+FILENAMES = ["INSTALL.md", "arcgis/ARCGIS_GUIDE.md"]
+
 #: Documents whose version line asserts A HUMAN REVIEWED THEM. Never
-#: touched here. If the suite then complains that they are stale, that
-#: is the guard working and the answer is to READ THEM, not to bump
-#: them.
+#: touched. If the suite then complains that they are stale, that is
+#: the guard working and the answer is to READ THEM.
 NEVER = ("TEACHING.md", "PROPOSALS.md")
-
-#: Not code, and full of historical version numbers that must not be
-#: rewritten: "DONE v1.29.5" is a fact about the past.
-SKIP_ALSO = ("BACKLOG.md", "MANUAL.md", "CHANGELOG.md")
-
-SKIP_DIRS = {".git", "dist", "build", "__pycache__", ".pytest_cache",
-             "node_modules", "fixtures"}
 
 
 def current():
@@ -52,7 +78,7 @@ def current():
                          re.M).group(1)
 
 
-def files_with(old):
+def _unused_files_with(old):
     out = []
     for root, dirs, names in os.walk(ROOT):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
@@ -78,32 +104,60 @@ def main(argv):
         return 0
     new = argv[0]
     if not re.fullmatch(r"\d+\.\d+\.\d+", new):
-        print(f"[bump] '{new}' is not a version like 1.47.11")
+        print(f"[bump] '{new}' is not a version like 1.47.12")
         return 2
     check = "--check" in argv
     old = current()
     if old == new:
         print(f"[bump] already {new}")
         return 0
-    hits = files_with(old)
-    print(f"[bump] {old} -> {new}, {len(hits)} file(s)"
+    print(f"[bump] {old} -> {new}"
           + (" (check only, nothing written)" if check else ""))
-    for p in hits:
-        rel = os.path.relpath(p, ROOT)
-        print("   ", rel)
-        if check:
+
+    missed = []
+    for rel, pat in DECLARATIONS:
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            missed.append(f"{rel} (file missing)")
             continue
-        with open(p, encoding="utf-8") as f:
-            s = f.read()
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(s.replace(old, new))
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        fixed, n = re.subn(pat, lambda m: m.group(1) + new + m.group(2),
+                           text, flags=re.M)
+        if not n:
+            missed.append(f"{rel} ({pat})")
+            continue
+        print(f"    {rel}  x{n}")
+        if not check:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(fixed)
+
+    for rel in FILENAMES:
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        fixed = text.replace(f"equipop-{old}", f"equipop-{new}")
+        fixed = fixed.replace(f"equipop_qgis-{old}", f"equipop_qgis-{new}")
+        if fixed != text:
+            print(f"    {rel}  (filenames)")
+            if not check:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(fixed)
+
+    if missed:
+        print("\n[bump] NOT FOUND - a declaration moved or was "
+              "renamed, and a version is now stale:")
+        for m in missed:
+            print("   ", m)
+        return 1
+
     print()
     print("[bump] NOT TOUCHED, on purpose: " + ", ".join(NEVER))
-    print("       Their version line says a HUMAN HAS READ THEM. If")
-    print("       the suite now reports them stale, read them - do")
-    print("       not bump them to silence it.")
-    print("[bump] also skipped: " + ", ".join(SKIP_ALSO)
-          + " (historical version numbers are facts about the past)")
+    print("       Their version line says a HUMAN HAS READ THEM.")
+    print("[bump] code comments, BACKLOG.md and MANUAL.md are left")
+    print("       alone: a version in prose is a FACT ABOUT THE PAST.")
     if not check:
         print("\n[bump] regenerate what is derived:")
         print("       python tools/make_sthlp.py")
