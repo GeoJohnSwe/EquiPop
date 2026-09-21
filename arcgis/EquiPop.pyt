@@ -580,7 +580,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.47.12"
+TOOLBOX_VERSION = "1.48.0"
 
 
 def _announce_version(messages):
@@ -602,6 +602,48 @@ def _announce_version(messages):
             "not enough. If you have just upgraded the package, "
             "replace EquiPop.pyt and its .pyt.xml files too.")
     return pkg
+
+
+def _calibration(pm):
+    """The box's text -> the engine's name. Blank or unknown falls to
+    half-life, the default, rather than guessing."""
+    try:
+        from equipop.doors.decaynames import calibration_value
+        return calibration_value(_txt(pm, "calibration") or None)
+    except Exception:                                # pragma: no cover
+        return "half-life"
+
+
+def _report_calibration(model, calibration, half_life, messages):
+    """Which reading of the half-life runs, and BOTH betas (317).
+
+    Shown on every decaying run so the difference is visible even to a
+    user who kept the default and never saw the choice.
+    """
+    try:
+        from equipop.decay import Decay
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()):
+            d = Decay(model=model, half_life_m=float(half_life or 1000.0),
+                      calibration=calibration)
+    except Exception:                                # pragma: no cover
+        return
+    note = ""
+    if d.calibration != d.calibration_requested:
+        note = (" Power has no half-life - its curve never encloses a "
+                "finite area - so half-probability was used.")
+    messages.addMessage(
+        f"Decay {model}: the half-life distance is read as "
+        f"{d.calibration.upper()}.{note}")
+    if half_life and half_life > 0:
+        hl, hp = d.both_betas()
+        used = d.calibration
+        messages.addMessage(
+            f"  at {float(half_life):g} m:  half-life beta = "
+            + ("not defined" if hl is None else f"{hl:.6g}")
+            + ("  <- used" if used == "half-life" else "")
+            + f";  half-probability beta = {hp:.6g}"
+            + ("  <- used" if used == "half-probability" else ""))
 
 
 def _same_crs(a, b):
@@ -1269,7 +1311,8 @@ def _add_columns(layer, oid, sub, fresh, messages):
 def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               weight_field=None, k_text="", r_text="", tau_text="",
               stats_list=(), pct_text="", half_life=0.0,
-              decay_model="negexp", unit=100.0,
+              decay_model="negexp", decay_calibration="half-life",
+              unit=100.0,
               self_potential=1.0,
               coord_source=None, x_field=None, y_field=None,
               barrier=None, barrier_field=None, barrier_agg="",
@@ -1645,9 +1688,21 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "so urban form sets the kernel.")
     if seed is not None:
         kw["seed"] = int(seed)
+    # BACKLOG 318. THE MODEL WAS DROPPED ON THE VARIABLE ROUTES. It was
+    # only forwarded when a FIXED half-life was given, so a half-life
+    # taken from a field or from hlfromdist ran as NEGEXP whatever
+    # model the user had chosen - silently. Found wiring 317, when
+    # the calibration needed the same forwarding and the gap showed.
+    # Now set once, for every route that decays.
+    if engine == "counts" and ((half_life and half_life > 0)
+                               or half_life_field
+                               or half_life_from_dist):
+        kw["decay_model"] = decay_model
+        kw["decay_calibration"] = decay_calibration
+        _report_calibration(decay_model, decay_calibration,
+                            half_life, messages)
     if engine == "counts" and half_life and half_life > 0:
         kw["half_life_m"] = float(half_life)
-        kw["decay_model"] = decay_model
         kw["decay_eps"] = float(decay_eps)
         messages.addMessage(
             f"Distance decay: {decay_model}, half-life "
@@ -3498,6 +3553,12 @@ class CountsShares:
                _p("hlbins", "Bandwidth bins (variable half-life "
                   "only; more bins = finer, slower)", "GPLong",
                   required=False),
+               # BACKLOG 317. John, session 12: offered only when a
+               # user DELIBERATELY picks a model where it matters.
+               # Unlike QGIS, Pro can grey a box on the fly, so it is
+               # enabled only for expnormal, expsqrt and lognormal.
+               _p("calibration", "Your distance is...", "GPString",
+                  required=False),
                _p("decayeps", "Decay cutoff - ignore weights below "
                   "this (smaller = wider search = slower; the "
                   "truncation distance is reported in the messages)",
@@ -3596,6 +3657,7 @@ class CountsShares:
             "model": "Neighbourhood",
             "halflife": "Neighbourhood", "hlfield": "Neighbourhood",
             "hlfromdist": "Neighbourhood", "hlbins": "Neighbourhood",
+            "calibration": "Neighbourhood",      # BACKLOG 317
             "decayeps": "Neighbourhood",
             # TWO POPULATIONS (v1.22.0, John's design). EquiPop
             # measures one population against another: the REFERENCE
@@ -3647,6 +3709,13 @@ class CountsShares:
             pm["model"].filter.list = ["no decay", "negexp"]
         pm["model"].value = "no decay"
         pm["decayeps"].value = 1e-6
+        try:
+            from equipop.doors.decaynames import CALIBRATION_CHOICES
+            pm["calibration"].filter.type = "ValueList"
+            pm["calibration"].filter.list = list(CALIBRATION_CHOICES)
+            pm["calibration"].value = CALIBRATION_CHOICES[0]
+        except Exception:                            # pragma: no cover
+            pass
         pm["barrieragg"].filter.type = "ValueList"
         pm["barrieragg"].filter.list = _AGG_CHOICES
         pm["barrieragg"].value = _AGG_CHOICES[0]
@@ -3702,6 +3771,12 @@ class CountsShares:
         decaying = _decay_model(pm) is not None      # BACKLOG 151
         pm["halflife"].enabled = decaying
         pm["decayeps"].enabled = decaying
+        try:
+            from equipop.doors.decaynames import calibration_matters
+            pm["calibration"].enabled = (
+                decaying and calibration_matters(_decay_model(pm)))
+        except Exception:                            # pragma: no cover
+            pm["calibration"].enabled = decaying
         bar_on = bool(_vt_rows(pm["barriertable"])
                       or _txt(pm, "barrierrasters"))
         pm["barrieragg"].enabled = bar_on
@@ -3772,6 +3847,7 @@ class CountsShares:
                   half_life=(_num(pm, "halflife", 0.0) or 0.0)
                   if decaying else 0.0,
                   decay_model=model if decaying else "negexp",
+                  decay_calibration=_calibration(pm),
                   decay_eps=_num(pm, "decayeps", 1e-6) or 1e-6,
                   half_life_field=_txt(pm, "hlfield") or None,
                   half_life_from_dist=_num(pm, "hlfromdist") or None,

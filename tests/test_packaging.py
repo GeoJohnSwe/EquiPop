@@ -529,3 +529,41 @@ def test_the_bump_tool_refuses_to_touch_the_status_documents():
         assert name in m.group(1), (
             f"{name} is not in bump_version.py's NEVER list, so the "
             "next routine bump will silence its own guard")
+
+
+def test_the_ssc_package_lists_every_ado_and_a_current_date():
+    """v1.47.12. SSC shows Distribution-Date to users and uses it to
+    decide what is new. It sat at 20260830 through twelve releases
+    because the blanket version replace never matched a date and
+    nothing checked.
+
+    Also: a file missing from the .pkg simply does not install, and
+    the user finds out when a command is not found.
+    """
+    pkg = open(os.path.join(ROOT, "stata", "equipop.pkg"),
+               encoding="utf-8").read()
+    listed = set(re.findall(r"^f (\S+)", pkg, re.M))
+    on_disk = {f for f in os.listdir(os.path.join(ROOT, "stata"))
+               if f.endswith(".ado")}
+    missing = on_disk - listed
+    assert not missing, (
+        f"{sorted(missing)} are in stata/ but not in equipop.pkg - "
+        "they will not install, and the user finds out when a command "
+        "is not found")
+    assert "equipop.sthlp" in listed, "the help file must install too"
+
+    ver = re.search(r'^version\s*=\s*"([^"]+)"',
+                    open(os.path.join(ROOT, "pyproject.toml"),
+                         encoding="utf-8").read(), re.M).group(1)
+    assert re.search(rf"^d EquiPop {re.escape(ver)} ", pkg, re.M), (
+        f"equipop.pkg does not announce {ver}")
+
+    m = re.search(r"^d Distribution-Date: (\d{8})", pkg, re.M)
+    assert m, "no Distribution-Date - SSC needs one"
+    import datetime
+    d = datetime.datetime.strptime(m.group(1), "%Y%m%d").date()
+    age = (datetime.date.today() - d).days
+    assert 0 <= age <= 120, (
+        f"Distribution-Date is {m.group(1)}, {age} days old. It is "
+        "bumped with the version; if this fails, a release went out "
+        "without one")

@@ -24,6 +24,23 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
 DECAY_FALLBACK = ["no decay"]
 
 
+def _calibration_choices():
+    """BACKLOG 317. From the engine, NEVER RAISING - the rule
+    _decay_choices below learned the hard way (v1.29.2): initAlgorithm
+    runs at plugin load, and an import that fails there takes the
+    whole plugin down before any guard can explain why. The fallback
+    is the same wording, written out."""
+    try:
+        from equipop.doors.decaynames import (CALIBRATION_CHOICES,
+                                              CALIBRATION_LABEL)
+        return list(CALIBRATION_CHOICES), CALIBRATION_LABEL
+    except Exception:
+        return (["half of all trips are shorter than this "
+                 "(half-life - use for a survey median)",
+                 "a neighbour at this distance counts half as much "
+                 "(half-probability)"], "Your distance is...")
+
+
 def _decay_choices():
     """From the ENGINE, never from memory (v1.28): the old list
     offered 'gauss' and 'linear', neither of which exists.
@@ -190,10 +207,21 @@ class CountsAndShares(EquipopAlgorithm):
             "model", "4 \u25b8 distance decay",
             options=_decay_choices(), defaultValue=0))
         self.add(QgsProcessingParameterNumber(
-            "halflife", "4a \u25b8 ...half-life in metres (the "
-            "distance at which weight halves)", defaultValue=0.0,
-            optional=True,
+            "halflife", "4a \u25b8 ...half-life distance in metres "
+            "(a survey median commute goes straight in)",
+            defaultValue=0.0, optional=True,
             type=QgsProcessingParameterNumber.Double))
+        # BACKLOG 317. WHAT THAT DISTANCE MEANS. John, session 12: show
+        # it when a user deliberately picks a model where it matters.
+        # QGIS cannot hide a box on the fly, so it sits right beside
+        # the half-life, labelled for when it applies, and defaults to
+        # the reading that needs no thought - half-life. For negexp and
+        # power it changes nothing and the messages say so.
+        labels, head = _calibration_choices()
+        self.add(QgsProcessingParameterEnum(
+            "calibration", "4b \u25b8 ..." + head +
+            " (only for expnormal, expsqrt, lognormal)",
+            options=labels, defaultValue=0, optional=True))
 
         # --- barriers and terrain: distance becomes EFFORT ---------
         # The whole block goes into QGIS's Advanced area (v1.28,
@@ -385,8 +413,12 @@ class CountsAndShares(EquipopAlgorithm):
                       (self.parameterAsEnums(parameters, "selfpot",
                                              context) or [2])[0]])
         if decaying:
+            from equipop.doors.decaynames import calibration_value
             kw["decay_model"] = model
             kw["half_life_m"] = float(half)
+            kw["decay_calibration"] = calibration_value(
+                (self.parameterAsEnums(parameters, "calibration",
+                                       context) or [0])[0])
             eps = self.parameterAsDouble(parameters, "decayeps",
                                          context)
             kw["decay_eps"] = float(eps) if eps > 0 else 1e-6

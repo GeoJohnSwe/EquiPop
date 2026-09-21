@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.47.12}{...}
+{* *! version 1.48.0}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.47.12)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.48.0)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -54,9 +54,10 @@ Install or update the calculating engine, into the Python this Stata is using. A
 {synopt:{opt missing(numlist)}}Values that mean NO DATA rather than a number, listed...{p_end}
 {syntab:Distance weighting}
 {synopt:{opt decay(string)}}Weights each neighbour by how far away it is, and...{p_end}
-{synopt:{opt halflife(#)}}The distance at which a neighbour counts half as much,...{p_end}
+{synopt:{opt halflife(#)}}A distance, in the same units as your coordinates, that...{p_end}
 {synopt:{opt halflifevar(varname)}}A variable holding each place's own half-life, so...{p_end}
 {synopt:{opt bins(#)}}How many bands of similar bandwidth halflifevar() is...{p_end}
+{synopt:{opt calibration(string)}}What the halflife() distance MEANS.{p_end}
 {synopt:{opt overshoot(string)}}What happens to the ring of cells that CROSSES k.{p_end}
 {synopt:{opt selfpotname(string)}}How far a place is from itself - the same three choices...{p_end}
 {syntab:Coordinates}
@@ -157,7 +158,7 @@ for Stata.
 {p_end}
 
 {phang}
-{opt halflife(#)} The distance at which a neighbour counts half as much, in the same units as your coordinates. Required by decay(), unless halflifevar() gives one per place instead.
+{opt halflife(#)} A distance, in the same units as your coordinates, that anchors the decay curve. WHAT IT MEANS is set by calibration(): by default, half of all trips are shorter than this - so a median commute from a survey goes straight in. Required by decay(), unless halflifevar() gives one per place instead.
 {p_end}
 
 {phang}
@@ -166,6 +167,10 @@ for Stata.
 
 {phang}
 {opt bins(#)} How many bands of similar bandwidth halflifevar() is grouped into. More bands follow the variation more closely and take longer. Ignored without halflifevar(). Default 10.
+{p_end}
+
+{phang}
+{opt calibration(string)} What the halflife() distance MEANS. halflife, the default: half of all trips are shorter than it - use this for a survey median. halfprob: a neighbour at that distance counts half as much. Östh, Lyhagen and Reggiani (2016) name both readings and advocate the first, which old EquiPop used; versions 1.30 to 1.47 had silently switched to the second. The two give the same result for decay(negexp), so the choice only matters for the other models. decay(power) has no half-life - its curve never encloses a finite area, so no median exists - and uses halfprob whatever you ask, saying so. Both betas are printed, so the difference is visible whichever you choose.
 {p_end}
 
 {phang}
@@ -199,6 +204,8 @@ for Stata.
 {synopt:{cmd:r(selfpot)}}self-potential used{p_end}
 {synopt:{cmd:r(N_origins)}}rows in the sample{p_end}
 {synopt:{cmd:r(N_missing)}}rows that received no result{p_end}
+{synopt:{cmd:r(halflife)}}half-life distance, with decay(){p_end}
+{synopt:{cmd:r(beta)}}decay parameter actually used{p_end}
 {p2col 5 20 24 2: Macros}{p_end}
 {synopt:{cmd:r(cmd)}}equipop{p_end}
 {synopt:{cmd:r(cmdline)}}command as typed{p_end}
@@ -206,6 +213,8 @@ for Stata.
 {synopt:{cmd:r(treat)}}treatment variables used{p_end}
 {synopt:{cmd:r(k)}}k values requested{p_end}
 {synopt:{cmd:r(r)}}radii requested{p_end}
+{synopt:{cmd:r(decay)}}decay model, with decay(){p_end}
+{synopt:{cmd:r(calibration)}}half-life or half-probability, as APPLIED{p_end}
 {p2colreset}{...}
 
 {pstd}

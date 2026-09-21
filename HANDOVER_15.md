@@ -1,10 +1,46 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.47.11**:
-1,228 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.48.0**:
+1,264 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
-against a published paper rather than against itself - and a test
-that asks, for the first time, whether anybody can reach any of it.*
+against a published paper rather than against itself, a test that
+asks whether anybody can reach any of it - and the published
+distance-decay method restored after twelve releases of silent
+departure.*
+
+## THE MOST IMPORTANT THING IN THIS FILE - 1.48.0, BACKLOG 317
+
+**A half-life distance means two different things, and EquiPop had
+quietly swapped one for the other.** Read this before touching decay.
+
+- **Half-life**: half of all trips are shorter than the distance. What
+  a survey median commute means. Östh, Lyhagen and Reggiani (2016,
+  EJTIR 16(2)) advocate it and old EquiPop used it.
+- **Half-probability**: a neighbour at that distance counts half as
+  much. Versions 1.30-1.47 used this for EVERY model, unrecorded.
+
+They coincide only for `negexp`. 1.48.0 makes half-life the default
+again (John's ruling), offers the choice only for `expnormal`,
+`expsqrt` and `lognormal`, and keeps `power` on half-probability
+because its area never converges.
+
+**The paper's log-normal was wrong.** It set erf = 0.5, which is the
+three-quarter point once the log-space integral runs from minus
+infinity; its two published roots put 75% and 25% of the area before
+the median. The corrected half-life is solved exactly on `ln(d+1)`.
+John accepted the correction. Whether it goes anywhere public is his.
+
+**"Area" means the 1-D area on the x/y diagram**, as in the paper. On
+a disc the coincidence moves to the Gaussian. Recorded, deliberately
+not built.
+
+**A test had encoded the departure**: it asserted weight(h) = 0.5 for
+every model, defining half-life AS half-probability. It is now two
+tests plus one that integrates the area. If you find yourself wanting
+`weight(h) == 0.5` back for all models, that is the old mistake.
+
+**318, found building it**: Pro dropped the decay MODEL whenever the
+half-life came from a field, and ran `negexp`. Fixed; tested.
 
 **THIS FILE IS LATE AND THAT IS THE FIRST LESSON.** BACKLOG 289 was
 written in this session, recording John's ruling on the lost

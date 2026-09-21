@@ -85,8 +85,16 @@ def _binned_decay_counts(cd, cells, k_values, r_values, decay,
                           if (e, n) in key_to_pos})
         # build a FRESH Decay: beta is derived in __post_init__, so
         # mutating half_life_m on a copy would leave the old kernel
+        # BACKLOG 317: COPY THE CALIBRATION TOO. A fresh Decay takes
+        # the DEFAULT for anything not passed, so a varying-bandwidth
+        # run asked for half-probability would silently get half-life
+        # in every bin - the exact shape of the decay-window bug (307),
+        # where a setting was honoured in one place and dropped in
+        # another.
         dec_b = Decay(model=decay.model, half_life_m=hb,
-                      gamma=getattr(decay, "gamma", None))
+                      gamma=getattr(decay, "gamma", None),
+                      calibration=getattr(decay, "calibration_requested",
+                                          decay.calibration))
         print(f"[decay]   bin {int(b) + 1}: half-life {hb:,.0f} m, "
               f"{int(sel.sum())} rows, {len(origins)} origin cells")
         part = run_knn_counts(cd, k_values, decay_eps=decay_eps,
@@ -655,7 +663,9 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             # placeholder - every bin builds its own kernel
             dec = Decay(model=extra.get("decay_model", "negexp"),
                         half_life_m=float(half_life_m or 1000.0),
-                        gamma=extra.get("gamma"))
+                        gamma=extra.get("gamma"),
+                        calibration=extra.get("decay_calibration")
+                        or None)
         hl = half_life_field
         if hl is None and half_life_from_dist and dec is not None:
             # SELF-CALIBRATING bandwidth (v1.17): each row's own

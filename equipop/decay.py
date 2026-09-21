@@ -35,8 +35,43 @@ MODELS = {
     "power":     lambda d, b: (d + 1.0) ** b,
 }
 
-# beta = f(half_life_m) such that weight(half_life) = 0.5 for each model
-HALF_LIFE_BETA = {
+# ---------------------------------------------------------------------
+# TWO MEANINGS OF "HALF-LIFE"  -  BACKLOG 317
+#
+# Östh, Lyhagen and Reggiani (2016, EJTIR 16(2): 344-363, Appendix D)
+# name both, and old EquiPop implemented the first:
+#
+#   HALF-LIFE          the median m splits the AREA under the decay
+#                      curve in half: half the trips are shorter than
+#                      m, half longer. THE PAPER ADVOCATES THIS, and it
+#                      is what a survey median commute means.
+#   HALF-PROBABILITY   the weight is 0.5 at m: a neighbour at distance
+#                      m counts half as much as one next door.
+#
+# They coincide ONLY for the exponential. EquiPop 1.30 to 1.47 used
+# half-probability for every model, silently - a departure from the
+# published method that nobody chose and nobody recorded. From 1.48
+# half-life is the default again, as John ruled in session 12.
+#
+# THE AREA IS THE 1-D AREA under the curve on an x/y diagram, exactly
+# as in the paper. On a DISC the coincidence moves to the Gaussian;
+# that is recorded in BACKLOG 317 and deliberately not offered.
+# ---------------------------------------------------------------------
+
+CALIBRATIONS = ("half-life", "half-probability")
+DEFAULT_CALIBRATION = "half-life"
+
+#: erfinv(0.5), computed by bisection on math.erf so this module needs
+#: no scipy. The paper prints 0.47693628.
+_ERFINV_HALF = 0.4769362762044698
+
+#: The exp-sqrt constant: s solves (1 + s) e^(-s) = 0.5 exactly. The
+#: paper's 1.67835 is this, correctly rounded.
+_EXPSQRT_S = 1.6783469900166603
+
+#: HALF-PROBABILITY: w(m) = 0.5. The formula EquiPop used for every
+#: model from 1.30 to 1.47, and the only one power has.
+HALF_PROBABILITY_BETA = {
     "negexp":    lambda h: math.log(0.5) / h,
     "expnormal": lambda h: math.log(0.5) / (h * h),
     "expsqrt":   lambda h: math.log(0.5) / math.sqrt(h),
@@ -45,14 +80,75 @@ HALF_LIFE_BETA = {
 }
 
 
+def _lognormal_half_life_beta(m):
+    """Half-life beta for w(d) = exp(beta * ln(d+1)^2).
+
+    THE PUBLISHED FORMULA WAS WRONG. Östh, Lyhagen and Reggiani (2016)
+    Eq. A16 set erf(z) = 0.5, carrying over the exp-normal's logic. But
+    there the integral starts at x = 0, the CENTRE of a half-Gaussian,
+    so the area share is erf(z) itself. For the log-normal, u = ln(x)
+    sends x = 0 to u = -infinity: the integral starts at the FAR LEFT
+    of a full Gaussian and the share is (1 + erf(z))/2. erf = 0.5 is
+    therefore the THREE-QUARTER point, and the published +/- roots put
+    75% and 25% of the area before m. Verified exactly in session 12;
+    both roots reproduce the paper's Table 1 to the last digit.
+
+    For ln(d) the half point has one closed-form root, -1/(2 ln m).
+    EquiPop uses ln(d+1) - John's choice, since ln(d) puts the weight
+    at ZERO when d = 0 - and with the +1 the log-space integral starts
+    at u = 0 instead of -infinity. So it is a TRUNCATED Gaussian and
+    the closed form is only approximate: 0.94% out at m = 100 m, 0.07%
+    at 6010 m. Solved exactly here instead; with u = ln(d+1),
+    a = sqrt(-beta) and U = ln(m+1), the share of area before m is
+
+        [erf(a U - 1/(2a)) + erf(1/(2a))] / [1 + erf(1/(2a))]
+
+    which rises monotonically with a, so bisection is safe.
+    """
+    U = math.log(m + 1.0)
+
+    def share(a):
+        c = 1.0 / (2.0 * a)
+        return (math.erf(a * U - c) + math.erf(c)) / (1.0 + math.erf(c))
+
+    lo, hi = 1e-6, 50.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if share(mid) < 0.5:
+            lo = mid
+        else:
+            hi = mid
+    a = 0.5 * (lo + hi)
+    return -(a * a)
+
+
+#: HALF-LIFE: the median splits the 1-D area in half. POWER HAS NONE -
+#: its area diverges for any beta > -1, so no median exists; the paper
+#: says so too, and power keeps half-probability only.
+HALF_LIFE_BETA = {
+    "negexp":    lambda h: math.log(0.5) / h,
+    "expnormal": lambda h: -((_ERFINV_HALF / h) ** 2),
+    "expsqrt":   lambda h: -_EXPSQRT_S / math.sqrt(h),
+    "lognormal": _lognormal_half_life_beta,
+}
+
+
 @dataclass
 class Decay:
     """
     Decay specification passed to run_knn(decay=...).
 
-    Give EITHER beta directly OR half_life_m (the distance at which
-    the weight should be 0.5); half_life_m is usually the natural
-    choice for a researcher.
+    Give EITHER beta directly OR half_life_m. half_life_m is usually
+    the natural choice for a researcher, and `calibration` says what it
+    MEANS:
+
+      "half-life"         (default) half the trips are shorter than
+                          half_life_m. Use for a survey median.
+      "half-probability"  a neighbour at half_life_m counts half as much.
+
+    The two coincide for negexp. For power only half-probability
+    exists, and asking for half-life on power uses half-probability
+    and says so. See BACKLOG 317.
 
     Examples
     --------
@@ -64,6 +160,7 @@ class Decay:
     beta: float | None = None
     half_life_m: float | None = None
     gamma: float | None = None
+    calibration: str = DEFAULT_CALIBRATION
 
     def __post_init__(self):
         if self.model not in MODELS:
@@ -72,6 +169,32 @@ class Decay:
                 f"Available: {list(MODELS)}. "
                 f"Add your own to equipop.decay.MODELS."
             )
+        cal = str(self.calibration or DEFAULT_CALIBRATION).strip().lower()
+        cal = {"hl": "half-life", "halflife": "half-life",
+               "life": "half-life", "median": "half-life",
+               "hp": "half-probability", "halfprob": "half-probability",
+               "probability": "half-probability",
+               "value": "half-probability"}.get(cal, cal)
+        if cal not in CALIBRATIONS:
+            raise ValueError(
+                f"calibration must be one of {CALIBRATIONS}, "
+                f"got {self.calibration!r}")
+        #: What was ASKED for, kept so a forced change is on the record
+        self.calibration_requested = cal
+        if self.model == "power" and cal == "half-life":
+            # POWER HAS NO HALF-LIFE: its area diverges for any
+            # beta > -1, so no median exists. John, session 12: "the
+            # power model will of course stay (but only as
+            # half-probability)". Used, not refused - the default is
+            # half-life, and refusing would break every power run
+            # that did not think to change it.
+            cal = "half-probability"
+            if self.half_life_m is not None and self.beta is None:
+                print("[decay] power has no half-life - its area never "
+                      "converges, so no median exists. Using "
+                      "HALF-PROBABILITY: the weight is 0.5 at "
+                      f"{self.half_life_m:g} m.")
+        self.calibration = cal
         if self.beta is None:
             if self.half_life_m is None:
                 raise ValueError("Give either beta or half_life_m.")
@@ -87,7 +210,9 @@ class Decay:
                 print(f"[decay] power, gamma = {self.gamma:g}, exact "
                       f"half-life {self.half_life_m:g} m (shifted form)")
                 return
-            self.beta = HALF_LIFE_BETA[self.model](self.half_life_m)
+            table = (HALF_LIFE_BETA if self.calibration == "half-life"
+                     else HALF_PROBABILITY_BETA)
+            self.beta = table[self.model](self.half_life_m)
         if self.beta > 0:
             print("[decay] WARNING: beta is positive - weights will GROW "
                   "with distance. For decay, beta should be negative "
@@ -100,8 +225,24 @@ class Decay:
         return MODELS[self.model](dist_m, self.beta)
 
     def describe(self) -> str:
-        hl = f", half-life {self.half_life_m} m" if self.half_life_m else ""
+        hl = (f", {self.calibration} {self.half_life_m:g} m"
+              if self.half_life_m else "")
         return f"{self.model} (beta = {self.beta:.6g}{hl})"
+
+    def both_betas(self):
+        """(half-life beta, half-probability beta) for this model and
+        distance - the half-life one is None for power, which has none.
+
+        BACKLOG 317: every run reports BOTH, so the difference between
+        the two readings is visible even to a user who kept the
+        default and never saw the choice.
+        """
+        if self.half_life_m is None:
+            return None, None
+        h = float(self.half_life_m)
+        hl = (HALF_LIFE_BETA[self.model](h)
+              if self.model in HALF_LIFE_BETA else None)
+        return hl, HALF_PROBABILITY_BETA[self.model](h)
 
 
 # ---- vectorised weights + truncation radius (for unbounded decayed sums)

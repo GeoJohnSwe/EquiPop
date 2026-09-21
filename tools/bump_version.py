@@ -53,6 +53,11 @@ DECLARATIONS = [
     ("qgis/equipop_qgis/metadata.txt", r'^(version=)\S+()'),
     ("arcgis/EquiPop.pyt", r'^(TOOLBOX_VERSION\s*=\s*")[^"]+(")'),
     ("stata/equipop.pkg", r'^(d EquiPop )\S+( )'),
+    # SSC shows this date to users and uses it to decide what is new.
+    # It sat at 20260830 through twelve releases because the blanket
+    # replace never matched it and nothing checked.
+    ("stata/equipop.pkg", r'^(d Distribution-Date: )\d+()',
+     "TODAY"),
     ("stata/equipop.ado", r'^(\*! equipop v)\S+(\s)'),
     ("stata/equipop.ado", r'^(\s*local eqp_ado_version\s+")[^"]+(")'),
     ("CITATION.cff", r'^(version:\s*)\S+()'),
@@ -115,14 +120,19 @@ def main(argv):
           + (" (check only, nothing written)" if check else ""))
 
     missed = []
-    for rel, pat in DECLARATIONS:
+    for entry in DECLARATIONS:
+        rel, pat = entry[0], entry[1]
         path = os.path.join(ROOT, rel)
         if not os.path.exists(path):
             missed.append(f"{rel} (file missing)")
             continue
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        fixed, n = re.subn(pat, lambda m: m.group(1) + new + m.group(2),
+        repl = new
+        if len(entry) > 2 and entry[2] == "TODAY":
+            import datetime
+            repl = datetime.date.today().strftime("%Y%m%d")
+        fixed, n = re.subn(pat, lambda m: m.group(1) + repl + m.group(2),
                            text, flags=re.M)
         if not n:
             missed.append(f"{rel} ({pat})")

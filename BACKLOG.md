@@ -3278,6 +3278,201 @@ not here. A list of completed work is not a plan.
   record, which is the only surviving account of when each item
   actually landed.
 
+- ~~318~~ | DONE v1.48.0, FOUND BUILDING 317 | PRO DROPPED THE DECAY
+  MODEL WHENEVER THE HALF-LIFE CAME FROM A FIELD.
+  _run_tool forwarded decay_model into the engine's keywords ONLY when
+  a fixed half-life was given. A half-life taken from a field
+  (hlfield) or from each point's own Dist_k (hlfromdist) went down a
+  different branch that never set it - so the engine fell back to its
+  default and RAN NEGEXP, whatever model the user had chosen, with
+  nothing in the messages to say so.
+  PROVED BEFORE FIXING: expsqrt through a half-life field gave exactly
+  the negexp result (0.354512 both), and 0.358794 once the model was
+  passed.
+  FOUND ONLY BECAUSE 317 NEEDED THE SAME FORWARDING. Adding the
+  calibration meant asking where the model travels, and the variable
+  branches turned out not to carry it at all.
+  THE SHAPE IS NOW FAMILIAR: 307 fetched a window sized for a setting
+  that no longer applied, the 317 bin loop would have dropped the
+  calibration had it not been caught, and here the model itself was
+  dropped. A SETTING HONOURED ON ONE ROUTE AND LOST ON ANOTHER. The
+  fix sets model and calibration once, for every route that decays,
+  instead of per branch.
+  PRO ONLY. Stata passes the whole Decay object, so the model rides
+  with it; QGIS has no variable half-life. It had no test at all -
+  now it has one, and breaking the fix fails it.
+
+- ~~317~~ | DONE v1.48.0 | HALF-LIFE vs
+  HALF-PROBABILITY: CURRENT EquiPop SILENTLY DEPARTED FROM THE
+  PUBLISHED METHOD, AND THE PUBLISHED LOG-NORMAL WAS WRONG.
+  John had carried this for several sessions: "it has been bugging
+  me". Settled in session 12 against the paper itself - Östh, Lyhagen
+  and Reggiani (2016), EJTIR 16(2):344-363, which old EquiPop
+  implemented.
+
+  THE TWO READINGS, named in the paper's own Appendix D:
+    HALF-LIFE (HLM)        the median splits the 1-D AREA under the
+                           decay curve in half. THE PAPER ADVOCATES
+                           THIS, and old EquiPop used it.
+    HALF-PROBABILITY (HPM) the weight is 0.5 at the median. CURRENT
+                           EquiPop does this, for every model.
+  They coincide ONLY for the exponential. For the other models current
+  EquiPop does not replicate old EquiPop - a departure nobody chose
+  and nobody recorded.
+  CLAUDE GOT THIS WRONG ONCE ON THE WAY: before the paper arrived it
+  told John that w(h)=0.5 "already implements your median
+  calibration". Appendix D shows that is the reading the paper
+  considered and set aside.
+
+  VERIFIED AGAINST THE PAPER: all five published betas reproduce
+  Table 1 to the last printed digit (m = 6010 m). Then the test the
+  method rests on - share of the 1-D area before the median:
+      exponential   50.00%   correct
+      exp-normal    50.00%   correct
+      exp-sqrt      50.00%   correct
+      log-normal +  75.00%   NOT a half-life
+      log-normal -  25.00%   NOT a half-life
+
+  THE LOG-NORMAL ERROR, and it is easy to see how it happened. For the
+  exp-normal the integral starts at x = 0, the CENTRE of a half-
+  Gaussian, so the area share is erf(.) directly and erf = 0.5 IS the
+  half point. That logic was carried to the log-normal - but there
+  u = ln x sends x = 0 to u = -infinity, the integral starts at the
+  FAR LEFT of a full Gaussian, and the share is (1+erf)/2. Setting
+  erf = 0.5 finds the THREE-QUARTER point; the +/- gives its mirror at
+  one quarter. The half point is erf = 0, which has ONE root:
+      beta = -1 / (2 ln m)            (exact, for ln(d))
+  The plus/minus pair were never two solutions to the half-life
+  problem; they are the quartiles either side of it.
+  THE EMPIRICAL RESULTS STAND. Log-normal (plus) had the best
+  correlation in both datasets (0.631, 0.737): a good kernel, just a
+  three-quarter-life rather than a half-life one. The paper's case for
+  half-life models does not rest on the log-normal.
+
+  JOHN'S DECISIONS, session 12:
+    - DEFAULT: HALF-LIFE. It is what the paper advocates, it matches
+      what users actually hold - a median from a survey - and it
+      restores what old EquiPop did.
+    - THE CHOICE APPEARS ONLY WHEN IT MATTERS. For negexp (the
+      default) the two readings give the same beta, so no box. It
+      appears when a user DELIBERATELY picks expnormal, expsqrt or
+      lognormal - someone already making a methodological choice.
+    - THE QUESTION, verbatim, as agreed:
+          Your distance is...
+          half of all trips are shorter than this
+              (half-life - use for a survey median)
+          a neighbour at this distance counts half as much
+              (half-probability)
+    - LOG-NORMAL: THE CORRECTED FORM, not the published roots.
+    - LOG-NORMAL USES ln(d+1), as now. ln(d) puts the weight at zero
+      when d = 0; the +1 avoids that.
+    - POWER: EXCLUDED FROM HALF-LIFE. Its area diverges for any
+      beta > -1 - the paper says so too - so no median exists.
+
+  THE FORMULAS TO BUILD (half-life, 1-D area, m the median):
+      negexp      beta = ln(0.5) / m                 (= half-prob)
+      expnormal   beta = -( erfinv(0.5) / m )^2      erfinv(0.5) =
+                                                     0.4769362762
+      expsqrt     beta = -s / sqrt(m),   s = 1.678346990
+                  s solves (1+s)e^(-s) = 0.5 exactly; the paper's
+                  1.67835 is this, correctly rounded
+      lognormal   SOLVE NUMERICALLY with ln(d+1). The closed form
+                  -1/(2 ln(m+1)) is exact only for ln(d); with the +1
+                  the log-space integral starts at 0, not -infinity.
+                  Measured error of the closed form: 0.94% at
+                  m = 100 m, 0.32% at 500 m, 0.07% at 6010 m. Use it
+                  as the root-finder's starting guess, never as the
+                  answer.
+      power       not defined - refuse, and say why.
+
+  AND ALWAYS: REPORT BOTH BETAS in the run messages, so the difference
+  is visible even to a user who kept the default.
+
+  RELEASE NOTE REQUIRED. For expnormal, expsqrt and lognormal,
+  results CHANGE from current versions. Say so plainly: the current
+  behaviour was itself an unrecorded departure from the published
+  method, so this restores the record rather than breaking it - but
+  anyone who ran those models on 1.30-1.47 needs to know.
+
+  BUILT, v1.48.0: engine (decay.py, both tables, the exact
+  log-normal solver on math.erf, power forced to half-probability with
+  a message); Stata (calibration(halflife|halfprob), both betas in the
+  log, r(decay) r(calibration) r(halflife) r(beta), the help file in
+  synopsis, options and stored results); QGIS (the box beside the
+  half-life, guarded so a missing package cannot kill the plugin);
+  Pro (greyed unless expnormal, expsqrt or lognormal). The bin loop
+  now copies the calibration, and has a test. halflife()'s own help
+  text in both Stata and QGIS said "the distance at which a neighbour
+  counts half as much" - the half-probability meaning, WRONG under the
+  new default - and was rewritten.
+  THE TEST THAT HAD ENCODED THE DEPARTURE. test_decay_half_life_
+  property asserted weight(h) == 0.5 for EVERY model: it defined
+  half-life AS half-probability, and would have failed any attempt to
+  restore the published method. Split into one test per reading, plus
+  one that checks each half-life by INTEGRATING the area rather than
+  trusting the formula - since the published formula was itself wrong.
+  Six fixes, each broken deliberately; each failed a test.
+
+  RECORDED, NOT BUILT - THE DISC. All of the above is the 1-D area
+  (the x/y diagram), as in the paper. On the DISC, where a ring at
+  distance d has circumference 2*pi*d, the coincidence MOVES: there
+  it is the Gaussian (expnormal) whose half-probability equals its
+  half-life, not the exponential. There is a real argument that an
+  OBSERVED median commute corresponds to the disc - trips reach real
+  ground, and ground grows with d - but it only holds if
+  opportunities are spread evenly, which they never are. A third
+  option would make the tool harder to use for a distinction few
+  users could act on. Kept as a methodological note.
+
+- 316 | OPEN, SPECIFIED BY JOHN, READY TO BUILD | KEEP BOTH: A THIRD
+  CHOICE FOR "if result fields already exist".
+  THE GAP IS REAL AND EXERCISE 4 WALKS INTO IT. The box offers
+  "Overwrite" or "Stop with a message", so running the same k twice
+  with two different friction fields - walk and drive, which is the
+  whole point of that exercise - cannot be done in one file. The
+  second run destroys the first.
+  JOHN'S DESIGN, session 12: a third option, and the columns get
+  LETTER SUFFIXES. The first keeps its canonical name, the second
+  takes `b`, the third `c`:
+      R_black_alone_333, R_black_alone_333b, R_black_alone_333c
+  HE RULED AGAINST A RUN-LABEL BOX, which Claude argued for on the
+  grounds that `b` is not self-describing and is order-dependent.
+  His reasoning is better: "it might be that we are running several -
+  walk, it may be very complex quickly, user that calls the option
+  will be sure to take note, and the log would tell the story". A
+  label box charges EVERY run a decision to solve a problem that
+  arises occasionally, and the provenance already has two homes - the
+  log and the manifest.
+  WHAT IT MUST DO, or it becomes this week's failure a seventh time:
+  SAY SO. "R_black_alone_333 already exists; wrote R_black_alone_333b
+  instead." A user who looks for their column, does not find it, and
+  concludes the run failed is exactly the pattern of 309, 310 and
+  311. And record the mapping in the manifest, beside the
+  shortened-name mapping already written to <output>_EquiPop_fields.
+  csv.
+  USER'S CHOICE, NOT AUTOMATIC. Claude offered comparing the recorded
+  settings and adding a column only when they differ; John chose the
+  explicit option. Re-running the same analysis to fix a typo is
+  normal and should overwrite, and deciding that by inference is the
+  kind of cleverness this project has been punished for.
+  BOTH REMAINING DETAILS RULED BY JOHN, session 12:
+    - SHAPEFILES CUT, and that is fine. The suffix is added FIRST and
+      the existing shortener then treats the suffixed name as any
+      other over-length name - which matters, because it already
+      resolves collisions with a disambiguating digit (1.46.3). So
+      R_black_alone_333 and R_black_alone_333b truncating to the same
+      ten characters is a case the shortener already knows how to
+      handle, PROVIDED it sees the suffixed name rather than being
+      run before the suffix is applied. ORDER OF OPERATIONS IS THE
+      WHOLE OF THIS DETAIL.
+    - PAST z, USE aa. Then ab, ac. No ceiling, no refusal. John:
+      "aa is a good solution". It costs nothing and removes a wall
+      somebody would otherwise hit at the least convenient moment.
+  NOTE THE EXISTING SCHEME IT MUST NOT BE CONFUSED WITH: 1.46.3
+  appends a DIGIT for collisions after shortening
+  (h72004_africanamericanalo1_100). Letters here keep the two
+  distinguishable, which is a point in favour of John's choice.
+
 - 306 | OPEN, FOUND v1.47.8 BUILDING EXERCISE 4 | MACHINE 1'S BARRIER
   CHARGES PER FEATURE, NOT PER CLASS - so it still has the defect
   298 removed from machine 3's join.

@@ -1,9 +1,11 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.47.12, 16 September 2026.**
-*Reviewed at 1.47.6: the OSM geodatabase and the InsideAirbnb
-extract both arrived and are described above; the .gdb finding
-(BACKLOG 301) came out of them.
+**Last updated: 1.48.0, 16 September 2026.**
+*Reviewed at 1.48.0: the half-life change (BACKLOG 317) does NOT
+touch the course. Exercise 3 uses negexp, where half-life and
+half-probability are identical, so its figures stand. A student who
+switches to expnormal, expsqrt or lognormal will now meet the
+calibration choice - worth a sentence in class.
 A test checks that version against pyproject.toml. If they disagree
 the suite fails, because a teaching document that has drifted from the
 software is worse than none — a student follows it.*
@@ -265,6 +267,48 @@ inventory JSON, has to be uploaded.
 network and a locked-down laptop are all outside this container.
 
 ---
+
+## Runtime: the barrier exercise is not like the others
+
+MEASURED on the real data, k=332, downtown LA roads:
+
+| box | blocks | seconds | ms per origin |
+|---|---|---|---|
+| 4 km | 437 | 0.3 | 0.69 |
+| 8 km | 1,856 | 5.1 | 2.75 |
+| 16 km | 7,456 | 61.4 | 8.23 |
+
+**Cost per origin GROWS WITH THE STUDY AREA.** At k=332 each
+neighbourhood is local, so the expansion should cost the same
+wherever it sits - but the effort engines build a movement graph over
+the WHOLE BOUNDING BOX, empty ground included, and per-origin cost
+tracks the size of that graph.
+
+LA County at 100 m is **2.5 million graph cells**: 97 times the 16 km
+box for 10 times the origins. Extrapolated, hours rather than
+minutes.
+
+AND THE BOUNDING BOX IS WORSE THAN THE COUNTY. LA County is about
+120 km tall on the mainland; **Catalina and San Clemente stretch the
+extent 90 km further south**, and the graph covers all that ocean.
+
+### Three levers, best first
+
+1. **RAISE THE CELL SIZE.** 250 m takes the graph from 2.5M cells to
+   400,000 and collapses blocks into fewer origins. For a barrier
+   question at k=332 it is defensible anyway - you are asking which
+   side of a motorway somebody is on, not resolving buildings.
+2. **SELECT A SUBSET IN PRO AND RUN ON THE SELECTION.** John's note,
+   session 12, and it is the neatest of the three: the tool reads
+   through the LAYER, so a selection is honoured with no settings
+   changed and nothing clipped or exported. Checked rather than
+   assumed - the reader passes the layer to
+   FeatureClassToNumPyArray, not the catalog path, so BACKLOG 310's
+   change to the WRITE target did not affect it.
+3. **Drop the islands**, which nearly halves the graph for free.
+
+Exercises 1 to 3 run county-wide in seconds and need none of this.
+Only the effort engines do.
 
 ## What building it found in the software
 

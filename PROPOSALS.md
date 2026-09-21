@@ -1,10 +1,10 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.47.12, 16 September 2026.**
-*Reviewed at 1.47.12: nothing has changed. The dates still need
-John's confirmation from the portal, and no concept note exists.
-Bumped because it was READ, which is the only thing the version
-line is allowed to mean.
+**Last updated: 1.48.0, 16 September 2026.**
+*Reviewed at 1.48.0: nothing in either proposal rests on decay
+calibration. Worth knowing for the methods work package, though:
+the 2016 paper's log-normal formula places 75% of the area before
+the median, not half, and anything citing it inherits that.
 A test checks that version against pyproject.toml.*
 
 **NOT SHIPPED.** This file stays in the repository and out of the

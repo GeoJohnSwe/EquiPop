@@ -87,9 +87,27 @@ HELP = {
          "k: the area is fixed and the population floats (N_r###).",
     "model": "Distance decay weighting. 'no decay' counts every "
              "neighbour equally inside the neighbourhood.",
-    "halflife": "The distance in metres at which a neighbour counts "
-                "half as much. Only used when a decay model is "
-                "chosen.",
+    "halflife": "A distance in metres that anchors the decay curve. "
+                "WHAT IT MEANS is set by the calibration box: by "
+                "default, half of all trips are shorter than this, so "
+                "a median commute from a survey goes straight in. Only "
+                "used when a decay model is chosen.",
+    # BACKLOG 317 -----------------------------------------------------
+    "calibration": "WHAT THE HALF-LIFE DISTANCE MEANS. Only matters for "
+                   "expnormal, expsqrt and lognormal - for negexp the two "
+                   "readings give the same answer, and power has only "
+                   "one. HALF-LIFE (the default): half of all trips are "
+                   "shorter than this distance, so a survey median goes "
+                   "straight in. This is the reading Östh, Lyhagen and "
+                   "Reggiani (2016) advocate and that old EquiPop used. "
+                   "HALF-PROBABILITY: a neighbour at this distance counts "
+                   "half as much as one next door. EquiPop 1.30 to 1.47 "
+                   "used this for every model without saying so. Power "
+                   "has no half-life - its curve never encloses a finite "
+                   "area, so no median exists - and uses half-probability "
+                   "whatever is chosen, saying so in the messages. Both "
+                   "betas are always printed, so the difference is "
+                   "visible.",
     "decayeps": "Where the decayed sum is cut off: neighbours whose "
                 "weight falls below this are ignored. A decayed sum "
                 "has no natural edge, so this is what bounds the "

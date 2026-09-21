@@ -99,12 +99,77 @@ def test_partial_results_when_k_unreachable():
 
 
 # ------------------------------------------------------------- decay
-def test_decay_half_life_property():
+def test_decay_half_probability_property():
+    """HALF-PROBABILITY: the weight is exactly 0.5 at the distance.
+
+    THIS TEST USED TO BE CALLED test_decay_half_life_property, and it
+    asserted weight(h) == 0.5 for EVERY model - so it defined half-life
+    AS half-probability. That was the silent departure from Östh,
+    Lyhagen and Reggiani (2016) written down as a test: it would have
+    failed any attempt to restore the published method. BACKLOG 317.
+    The property it checks is real; it now checks it under the
+    calibration it belongs to.
+    """
     for m in MODELS:
-        d = Decay(model=m, half_life_m=8000)
+        d = Decay(model=m, half_life_m=8000, calibration="half-probability")
         assert abs(d.weight(0) - 1) < 1e-12
         assert abs(d.weight(8000) - 0.5) < 1e-12
         assert d.weight(16000) < 0.5
+
+
+def test_decay_half_life_splits_the_area():
+    """HALF-LIFE, the default: half the 1-D area under the curve lies
+    before the distance - the paper's definition, and what a survey
+    median commute means. Checked by integrating, not by trusting the
+    formula, because the published log-normal formula was itself wrong
+    (it put 75% of the area before the median)."""
+    from scipy import integrate
+    h = 8000.0
+    for m in ("negexp", "expnormal", "expsqrt", "lognormal"):
+        d = Decay(model=m, half_life_m=h)          # default: half-life
+        assert d.calibration == "half-life"
+        w = lambda x: d.weight(x)
+        inside, _ = integrate.quad(w, 0, h, limit=800)
+        total, _ = integrate.quad(w, 0, np.inf, limit=800)
+        assert abs(inside / total - 0.5) < 1e-6, (m, inside / total)
+
+
+def test_the_two_readings_coincide_only_for_negexp():
+    h = 8000.0
+    for m in ("negexp", "expnormal", "expsqrt", "lognormal"):
+        hl = Decay(m, half_life_m=h, calibration="half-life").beta
+        hp = Decay(m, half_life_m=h, calibration="half-probability").beta
+        same = abs(hl - hp) <= 1e-12 * abs(hp)
+        assert same == (m == "negexp"), (m, hl, hp)
+
+
+def test_power_has_no_half_life_and_uses_half_probability():
+    """John, session 12: "the power model will of course stay (but only
+    as half-probability)". Its area diverges for any beta > -1, so no
+    median exists. Used, not refused - the default is half-life, and
+    refusing would break every power run that kept it."""
+    d = Decay("power", half_life_m=8000)
+    assert d.calibration == "half-probability"
+    assert d.calibration_requested == "half-life"
+    assert abs(d.weight(8000) - 0.5) < 1e-12
+
+
+def test_the_published_betas_are_reproduced():
+    """Östh, Lyhagen and Reggiani (2016), Table 1, median 6010 m. The
+    three correct half-life models must match to the printed digit;
+    the log-normal must NOT match either published root, because both
+    were wrong."""
+    m = 6010.0
+    assert abs(abs(Decay("negexp", half_life_m=m).beta) - .0001153) < 1e-7
+    assert abs(abs(Decay("expnormal", half_life_m=m).beta)
+               - 6.297552e-9) < 1e-14
+    assert abs(abs(Decay("expsqrt", half_life_m=m).beta) - .0216493) < 1e-6
+    ln = abs(Decay("lognormal", half_life_m=m).beta)
+    for published in (.0721908, .0457406):
+        assert abs(ln - published) > 1e-3, (
+            f"the log-normal beta {ln} matches a published root "
+            f"{published} - but both roots are the quartile points, not "
+            "the median")
 
 
 def test_decay_leq_raw():
@@ -237,3 +302,37 @@ def test_stata_bridge_row_alignment():
     miss = (df["X_local"].isna() | df["Y_local"].isna()).to_numpy()
     assert np.isnan(res["R_HighEdu_50"][miss]).all()
     assert np.nanmin(res["N_50"]) >= 50
+
+
+def test_a_varying_half_life_keeps_its_calibration_in_every_bin():
+    """BACKLOG 317. A varying half-life is split into bins and each bin
+    builds a FRESH Decay - which takes the DEFAULT for anything not
+    passed. Before this was fixed, a half-probability run with a
+    half-life variable would have silently become half-life in every
+    bin. The same shape as the decay-window bug (307): a setting
+    honoured in one place and dropped in another.
+
+    Tested by consequence: on expsqrt the two readings give different
+    results, so if a bin drops the calibration, they collapse."""
+    import contextlib, io
+    from equipop.stata_bridge import knn_to_rows
+    rng = np.random.default_rng(11)
+    n = 300
+    x, y = rng.uniform(0, 4000, n), rng.uniform(0, 4000, n)
+    pop = rng.integers(20, 200, n).astype(float)
+    grp = np.minimum(pop, rng.integers(0, 80, n).astype(float))
+    hlv = rng.uniform(400, 900, n)
+    got = {}
+    for cal in ("half-life", "half-probability"):
+        with contextlib.redirect_stdout(io.StringIO()):
+            r = knn_to_rows(x, y, [150], treat={"g": grp}, weight=pop,
+                            unit_size=100.0, treat_are_counts=True,
+                            decay=Decay("expsqrt", half_life_m=600.0,
+                                        calibration=cal),
+                            decay_half_life=hlv, decay_bins=3,
+                            decay_eps=1e-3)
+        col = [c for c in r if c.startswith("RD_g")][0]
+        got[cal] = np.nanmean(np.asarray(r[col], float))
+    assert abs(got["half-life"] - got["half-probability"]) > 1e-6, (
+        "half-life and half-probability gave the same answer with a "
+        "varying half-life - the bins are dropping the calibration")

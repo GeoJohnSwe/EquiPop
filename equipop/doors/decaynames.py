@@ -73,3 +73,55 @@ def curve_in_plain_numbers(model, half_life_m):
                 + " of full weight.")
     except Exception:
         return f"Decay '{model}' with a half-life of {half_life_m:g} m."
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 317 - WHAT THE HALF-LIFE DISTANCE MEANS
+#
+# Worded by John in session 12, verbatim, and shared here so QGIS and
+# Pro cannot word it differently - a box two doors word differently is
+# this project's oldest failure (door_parity exists because of it).
+# The label asks about the NUMBER THE USER HOLDS, not about the
+# mathematics: they have one distance, and the only question is what
+# it means. Index 0 is the default.
+# ---------------------------------------------------------------------
+CALIBRATION_LABEL = "Your distance is..."
+
+CALIBRATION_CHOICES = [
+    "half of all trips are shorter than this "
+    "(half-life - use for a survey median)",
+    "a neighbour at this distance counts half as much "
+    "(half-probability)",
+]
+
+#: The engine's names, in the same order as CALIBRATION_CHOICES.
+CALIBRATION_VALUES = ["half-life", "half-probability"]
+
+
+def calibration_matters(model):
+    """Whether the choice changes anything for this model.
+
+    False for negexp (the two readings give the same beta), for power
+    (it has only half-probability) and for no decay at all. John,
+    session 12: show the choice only when a user DELIBERATELY picks a
+    model where it matters - anyone doing that is already making a
+    methodological choice, and everyone else is spared a box that
+    would do nothing.
+    """
+    key = str(model or "").split(" ")[0].strip().lower()
+    return key in ("expnormal", "expsqrt", "lognormal")
+
+
+def calibration_value(choice):
+    """A door's selected text -> the engine's name. Unknown or blank
+    falls to the default rather than guessing."""
+    if choice is None:
+        return CALIBRATION_VALUES[0]
+    if isinstance(choice, int):
+        return CALIBRATION_VALUES[choice] if 0 <= choice < 2 \
+            else CALIBRATION_VALUES[0]
+    txt = str(choice).strip()
+    for label, value in zip(CALIBRATION_CHOICES, CALIBRATION_VALUES):
+        if txt == label or txt.lower() == value:
+            return value
+    return CALIBRATION_VALUES[0]

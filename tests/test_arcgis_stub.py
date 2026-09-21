@@ -2867,3 +2867,79 @@ def test_the_toolbox_version_matches_the_package():
                          encoding="utf-8").read(), re.M).group(1)
     assert tb.group(1) == ver, (
         f"toolbox says {tb.group(1)}, package says {ver}")
+
+
+# ---------------- BACKLOG 317 / 318: what the half-life means --------
+def _decay_tool():
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                                      "SHAPE@Y": [0.0]}))
+    pyt = _load_pyt()
+    tool = pyt.CountsShares()
+    ps = tool.getParameterInfo()
+    return pyt, tool, ps, {p.name: p for p in ps}
+
+
+def test_the_calibration_box_appears_only_where_it_matters():
+    """John, session 12: offer the choice only when a user DELIBERATELY
+    picks a model where it matters. negexp gives the same beta either
+    way, power has only half-probability, so the box is greyed for
+    those - and for no decay at all."""
+    pyt, tool, ps, pm = _decay_tool()
+    assert "calibration" in pm
+    for model, want in (("no decay", False), ("negexp", False),
+                        ("power", False), ("expnormal", True),
+                        ("expsqrt", True), ("lognormal", True)):
+        pm["model"].value = model
+        tool.updateParameters(ps)
+        assert bool(pm["calibration"].enabled) is want, (model,
+                                                          pm["calibration"].enabled)
+
+
+def test_the_calibration_defaults_to_half_life():
+    pyt, tool, ps, pm = _decay_tool()
+    assert pyt._calibration(pm) == "half-life"
+    from equipop.doors.decaynames import CALIBRATION_CHOICES
+    pm["calibration"].value = CALIBRATION_CHOICES[1]
+    assert pyt._calibration(pm) == "half-probability"
+
+
+def test_a_variable_half_life_keeps_the_chosen_model():
+    """BACKLOG 318, found wiring 317. The model was forwarded only when
+    a FIXED half-life was given, so a half-life from a field ran as
+    NEGEXP whatever the user chose - silently. The calibration needed
+    the same forwarding, and the gap showed.
+
+    Checked on the keywords _run_tool builds, because that is where the
+    model was being dropped."""
+    import pandas as pd
+    t = pd.DataFrame({"OBJECTID": [1, 2, 3], "SHAPE@X": [0.0, 90.0, 180.0],
+                      "SHAPE@Y": [0.0, 0.0, 0.0], "pop": [50.0, 60.0, 70.0],
+                      "hl": [500.0, 500.0, 500.0]})
+    _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    seen = {}
+    real = pyt.dispatch if hasattr(pyt, "dispatch") else None
+    import equipop.stata_bridge as sb
+    orig = sb.dispatch
+
+    def spy(engine, x, y, **kw):
+        seen.update(kw)
+        raise RuntimeError("stop here - the keywords are what we test")
+
+    sb.dispatch = spy
+    try:
+        try:
+            pyt._run_tool("counts", "lyr", _Msg(), weight_field="pop",
+                          k_text="2", half_life=0.0,
+                          decay_model="expsqrt",
+                          decay_calibration="half-probability",
+                          half_life_field="hl", decay_bins=1)
+        except Exception:
+            pass
+    finally:
+        sb.dispatch = orig
+    assert seen.get("decay_model") == "expsqrt", (
+        f"a half-life from a field ran with model {seen.get('decay_model')!r}"
+        " - the chosen model was dropped on the variable route")
+    assert seen.get("decay_calibration") == "half-probability"

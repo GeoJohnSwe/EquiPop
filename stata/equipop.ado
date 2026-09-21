@@ -1,4 +1,4 @@
-*! equipop v1.47.12  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.48.0  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -76,7 +76,7 @@ program define equipop, rclass
             DECAY(string) HALFlife(real 0) HALFlifevar(varname numeric) ///
             SELFPOTName(string) ///
             BINS(integer 10) OVERshoot(string) ///
-            ORIGINrule(string) REPLACE]
+            ORIGINrule(string) CALibration(string) REPLACE]
 
     * ---- projection -------------------------------------------
     * Design rule: a professional spatial analyst has their
@@ -171,6 +171,40 @@ program define equipop, rclass
         display as error "halflife() sets the bandwidth for decay(), " ///
             "so it needs decay() as well"
         exit 198
+    }
+
+    * ---- what the half-life MEANS  (BACKLOG 317) ---------------
+    * Östh, Lyhagen and Reggiani (2016) name two readings and
+    * advocate the first; old EquiPop used it, and 1.30-1.47 had
+    * silently switched to the second. halflife is the default again.
+    *   halflife  half of all trips are shorter than halflife()
+    *             - use for a survey median
+    *   halfprob  a neighbour at halflife() counts half as much
+    * They coincide for negexp. power has no half-life, only halfprob.
+    local calibration = lower(strtrim("`calibration'"))
+    if "`calibration'" != "" {
+        if "`decay'" == "" {
+            display as error "calibration() says what halflife() " ///
+                "means, so it needs decay() as well"
+            exit 198
+        }
+        if inlist("`calibration'", "halflife", "half-life", "hl", "life", "median") {
+            local calibration "half-life"
+        }
+        else if inlist("`calibration'", "halfprob", "half-probability", "hp", "probability") {
+            local calibration "half-probability"
+        }
+        else {
+            display as error "calibration() must be halflife or halfprob"
+            display as text "  halflife  half of all trips are shorter " ///
+                "than halflife() - use for a survey median (default)"
+            display as text "  halfprob  a neighbour at halflife() " ///
+                "counts half as much"
+            exit 198
+        }
+    }
+    else if "`decay'" != "" {
+        local calibration "half-life"
     }
 
     * ---- the overshoot: the ring of cells that crosses k ---------
@@ -365,7 +399,8 @@ program define equipop, rclass
         project="`project'", epsg=`epsg', treatmode="`treatmode'",  ///
         missing="`missing'", decay="`decay'", halflife=`halflife',   ///
         halflifevar="`halflifevar'", bins=`bins',                    ///
-        overshoot="`overshoot'", originrule="`originrule'")
+        overshoot="`overshoot'", originrule="`originrule'",           ///
+        calibration="`calibration'")
 
     * ---- returned results -------------------------------------
     * r(varlist) is the one that changes how the
@@ -393,6 +428,16 @@ program define equipop, rclass
     return local r       "`r'"
     return scalar unit      = `unit'
     return scalar selfpot   = `selfpot'
+    * BACKLOG 317: which kernel actually ran, so a do-file can check
+    * it rather than a reader having to trust the log. calibration is
+    * what was APPLIED - power asked for halflife still reports
+    * half-probability, because that is what it used.
+    if "`decay'" != "" {
+        return local decay       "`decay'"
+        return local calibration "`eqp_calibration'"
+        return scalar halflife   = `halflife'
+        return scalar beta       = `eqp_beta'
+    }
     return scalar N_origins = `n_origins'
     return scalar N_missing = `n_missing'
     if "`eqp_crs'" != "" {
@@ -422,7 +467,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.47.12"
+    local eqp_ado_version "1.48.0"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -451,19 +496,57 @@ def _wrap_for_stata(text, width=72):
     return out
 
 
-def _decay_spec(model, half_life):
+def _decay_spec(model, half_life, calibration=""):
     """Build the engine's Decay object, or None for no decay.
 
     A variable bandwidth passes its own half-life per row, so the
     single number here is only the fixed case; the engine takes the
-    model from this object either way.
+    model AND THE CALIBRATION from this object either way - the bin
+    loop copies both (BACKLOG 317).
     """
     if not model:
         return None
     from equipop.decay import Decay
     return Decay(model=model,
                  half_life_m=(float(half_life) if half_life > 0
-                              else 1.0))
+                              else 1.0),
+                 calibration=calibration or None)
+
+
+def _report_calibration(dec, halflife, halflifevar):
+    """Say which kernel runs, and show BOTH betas (BACKLOG 317).
+
+    Printed so it lands in a `log using` file - John's ruling on Stata
+    provenance - and handed back as locals so the ado can return them.
+    Showing both betas makes the difference between the two readings
+    visible even to a user who never set calibration().
+    """
+    SFIToolkit.displayln(
+        "{txt}decay: {res}" + dec.model + "{txt}, calibration "
+        "{res}" + dec.calibration)
+    if halflifevar:
+        SFIToolkit.displayln(
+            "{txt}  the half-life varies by row ({res}" + halflifevar +
+            "{txt}); every bin uses " + dec.calibration + ".")
+    elif halflife and halflife > 0:
+        hl, hp = dec.both_betas()
+        SFIToolkit.displayln(
+            "{txt}  at halflife({res}%g{txt}):" % float(halflife))
+        if hl is None:
+            SFIToolkit.displayln(
+                "{txt}    half-life         {res}not defined{txt} - "
+                "power has no median")
+        else:
+            SFIToolkit.displayln(
+                "{txt}    half-life         beta = {res}%.6g" % hl
+                + ("{txt}   <- used" if dec.calibration == "half-life"
+                   else ""))
+        SFIToolkit.displayln(
+            "{txt}    half-probability  beta = {res}%.6g" % hp
+            + ("{txt}   <- used" if dec.calibration == "half-probability"
+               else ""))
+    Macro.setLocal("eqp_calibration", dec.calibration)
+    Macro.setLocal("eqp_beta", repr(float(dec.beta)))
 
 
 def _col(v):
@@ -477,7 +560,7 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                       project="", epsg=0, treatmode="counts",
                       missing="", decay="", halflife=0.0,
                       halflifevar="", bins=10, overshoot="",
-                      originrule=""):
+                      originrule="", calibration=""):
     # KEYWORD-ONLY on purpose: a positional call raises TypeError
     # rather than quietly meaning something else.
     try:
@@ -534,13 +617,16 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
     # uncaught exception here shows a Python stack to a Stata user,
     # who cannot act on it and cannot tell our fault from theirs.
     try:
+        dec = _decay_spec(decay, halflife, calibration)
+        if dec is not None:
+            _report_calibration(dec, halflife, halflifevar)
         res = knn_to_rows(xs, ys, ks, treat=treats, weight=w,
                           unit_size=float(unit), r_values=rs,
                           self_potential=float(selfpot),
                           treat_are_counts=(treatmode != "flags"),
                           missing_codes=[float(c)
                                          for c in missing.split()],
-                          decay=_decay_spec(decay, halflife),
+                          decay=dec,
                           decay_half_life=(_col(halflifevar)
                                            if halflifevar else None),
                           decay_bins=int(bins),
