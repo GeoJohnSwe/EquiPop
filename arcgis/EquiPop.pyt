@@ -580,7 +580,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.48.2"
+TOOLBOX_VERSION = "1.49.1"
 
 
 def _announce_version(messages):
@@ -757,7 +757,7 @@ def _report_values(vals, field, messages):
 
 
 def _barrier_frame(value, friction_field, agg, unit, main_sr,
-                   bxf, byf, messages):
+                   bxf, byf, messages, class_field=None):
     """Geometry-aware barrier ingredient (v1.16): route by WHAT the
     input is - never through an X/Y-column resolver for spatial
     data. Returns DataFrame(x, y, friction) ready for the engine."""
@@ -830,11 +830,18 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
 
     if kind in ("line", "polygon"):
         feats, vals, n_bad = [], [], 0
+        classes = [] if class_field else None        # BACKLOG 306
+        _cols = ["SHAPE@", friction_field]
+        if class_field:
+            _check_fields_exist(value, [class_field],
+                                "The barrier layer")
+            _cols.append(class_field)
         with arcpy.da.SearchCursor(
-                value, ["SHAPE@", friction_field],
+                value, _cols,
                 spatial_reference=main_sr) as cur:
             for row in cur:
                 geom, v = row[0], row[1]
+                _cl = row[2] if class_field else None
                 if geom is None:
                     n_bad += 1
                     continue
@@ -862,6 +869,8 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
                     n_bad += 1
                     continue
                 feats.append({"type": kind, "parts": parts})
+                if classes is not None:
+                    classes.append("" if _cl is None else str(_cl))
                 # BACKLOG 312. EMPTY IS NOT AN ERROR; it means NO
                 # OBSTACLE. Friction is additive and a cell costs
                 # 1 + friction, so 0 is unambiguously "nothing here" -
@@ -892,13 +901,48 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
             raise arcpy.ExecuteError(
                 "The barrier layer holds no usable geometries "
                 "(empty selection?).")
+        _report_values(vals, friction_field, messages)
+        if classes is not None:
+            # BACKLOG 306. EACH CLASS ONCE, not each feature - the
+            # same rule 298 gave machine 3's join, reaching machine
+            # 1's barrier at last. OSM cuts one street into a new
+            # record wherever a tag changes, so per-feature counting
+            # charges a junction as many times as it has records: on
+            # downtown LA, 3,975 costed features produced cell costs
+            # from 1 to 166 where the friction table tops out at 8.
+            # That number was mostly a fact about how OSM fragmented
+            # the roads.
+            from equipop.vectorjoin import paths_to_cells, CLASS
+            fr = paths_to_cells(feats, vals, classes,
+                                unit_size=float(unit),
+                                fidelity=CLASS, agg=aggk)
+            # paths_to_cells names its column "value" (it serves
+            # machine 3's join, where the quantity is not friction);
+            # everything downstream of a barrier expects "friction".
+            fr = fr.rename(columns={"value": "friction"})
+            if "friction" not in fr.columns:         # pragma: no cover
+                raise arcpy.ExecuteError(
+                    "the class-collapsing join returned "
+                    f"{list(fr.columns)} - expected a value column")
+            n_cls = len({c for c in classes})
+            messages.addMessage(
+                f"Barrier {kind}s: {len(feats)} features in "
+                f"{n_cls} {_plural_en(n_cls, 'class')} -> {len(fr)} "
+                f"grid cells, EACH CLASS CHARGED ONCE per cell "
+                f"(overlap rule: {aggk}). Without the class field "
+                f"every feature would be charged separately, which "
+                f"on fragmented road data is a fact about the data "
+                f"rather than about the world.")
+            return fr
         fr = paths_to_friction(feats, vals, unit_size=float(unit),
                                agg=aggk, say=messages.addMessage)
-        _report_values(vals, friction_field, messages)
         messages.addMessage(
             f"Barrier {kind}s: {len(feats)} features -> {len(fr)} "
             f"grid cells (EVERY cell genuinely crossed/covered; "
-            f"overlap rule: {aggk}).")
+            f"overlap rule: {aggk}). NO CLASS FIELD WAS GIVEN, so "
+            f"each FEATURE is charged separately - on OSM roads, "
+            f"where one street is many records, set the class field "
+            f"or dissolve first.")
         return fr
 
     raise arcpy.ExecuteError(
@@ -923,6 +967,172 @@ def _predict_result_fields(engine, k_text, r_text, tau_text,
     return predict_result_fields(engine, k_text, r_text, tau_text,
                                  treat_names, value_fields,
                                  stats_wanted, decaying, efforting)
+
+
+def _save_name_map(cat, rows, messages):
+    """The field-name mapping, beside the output.
+
+    A mapping that lives only in a run log is useless a year later.
+    Rows are (name_asked_for, name_written, why) - so a reader can
+    tell a shapefile truncation from a keep-both rename without
+    guessing.
+    """
+    if not rows:
+        return
+    try:
+        import csv as _csv
+        side, moved = _sidecar_path(cat, "_EquiPop_fields.csv")
+        if moved:
+            os.makedirs(os.path.dirname(side), exist_ok=True)
+        with open(side, "w", newline="", encoding="utf-8-sig") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["name_asked_for", "name_written", "why"])
+            for r in rows:
+                w.writerow(list(r))
+        messages.addMessage(f"Name mapping also saved to {side}")
+    except Exception as exc:
+        messages.addWarningMessage(
+            f"Could not save the name mapping next to the output "
+            f"({exc}) - it is printed above.")
+
+
+#: BACKLOG 316. "Keep both" is a THIRD choice, not a new default:
+#: Overwrite stays first so re-running to fix a typo behaves as it
+#: always has. John ruled the choice explicit rather than inferred
+#: from the settings - "Re-running the same analysis to fix a typo is
+#: normal and should overwrite, and deciding that by inference is the
+#: kind of cleverness this project has been punished for."
+KEEP_MODES = ["Overwrite",
+              "Keep both - add a new column (b, c, d...)",
+              "Stop with a message"]
+
+
+def _plural_en(n, word):
+    return word if n == 1 else (word + "es" if word.endswith("s")
+                                else word + "s")
+
+
+def _keep_both_names(names, taken, messages=None):
+    """BACKLOG 316. THE LOGIC LIVES IN equipop.doors.fields so both
+    doors reach one implementation - the lesson of 320, where Pro had
+    a locale-proof number reader from 1.16.7 and QGIS never got one
+    because the code sat in the .pyt. This is the Pro-side wrapper:
+    it reports through `messages`, and falls back to leaving the names
+    alone if the package is older than the toolbox."""
+    try:
+        from equipop.doors.fields import keep_both, keep_both_message
+    except Exception:                                # pragma: no cover
+        return dict(names), {}
+    out, renamed = keep_both(names, taken)
+    if renamed and messages is not None:
+        messages.addMessage(keep_both_message(renamed))
+    return out, renamed
+
+
+def _save_name_map(cat, rows, messages):
+    """The field-name mapping, beside the output.
+
+    A mapping that lives only in a run log is useless a year later.
+    Rows are (name_asked_for, name_written, why) - so a reader can
+    tell a shapefile truncation from a keep-both rename without
+    guessing.
+    """
+    if not rows:
+        return
+    try:
+        import csv as _csv
+        side, moved = _sidecar_path(cat, "_EquiPop_fields.csv")
+        if moved:
+            os.makedirs(os.path.dirname(side), exist_ok=True)
+        with open(side, "w", newline="", encoding="utf-8-sig") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["name_asked_for", "name_written", "why"])
+            for r in rows:
+                w.writerow(list(r))
+        messages.addMessage(f"Name mapping also saved to {side}")
+    except Exception as exc:
+        messages.addWarningMessage(
+            f"Could not save the name mapping next to the output "
+            f"({exc}) - it is printed above.")
+
+
+#: BACKLOG 316. "Keep both" is a THIRD choice, not a new default:
+#: Overwrite stays first so re-running to fix a typo behaves as it
+#: always has. John ruled the choice explicit rather than inferred
+#: from the settings - "Re-running the same analysis to fix a typo is
+#: normal and should overwrite, and deciding that by inference is the
+#: kind of cleverness this project has been punished for."
+KEEP_MODES = ["Overwrite",
+              "Keep both - add a new column (b, c, d...)",
+              "Stop with a message"]
+
+
+def _letter_suffix(n):
+    """0 -> "", 1 -> "b", 2 -> "c", ... 25 -> "z", 26 -> "aa", 27 -> "ab".
+
+    BACKLOG 316, John's design. The FIRST column keeps its canonical
+    name, so a single run is unchanged and every existing result still
+    reads the same. Only a second column of the same name takes a
+    letter.
+    PAST z IT IS aa, then ab - John: "aa is a good solution". No
+    ceiling and no refusal: it costs nothing and removes a wall
+    somebody would otherwise meet at the least convenient moment.
+    """
+    if n <= 0:
+        return ""
+    # n=1 is "b", so shift past "a" - the unsuffixed name IS the "a"
+    n += 1
+    out = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        out = chr(ord("a") + r) + out
+    return out
+
+
+def _keep_both_names(names, taken, messages=None):
+    """Rename any result whose field already exists, instead of
+    overwriting it or refusing.
+
+    BACKLOG 316. The box offered Overwrite or Stop, so running the
+    same k twice with two different friction fields - walk and drive,
+    which is the whole point of exercise 4 - could not be done in one
+    file: the second run destroyed the first.
+    THE SUFFIX IS APPLIED HERE, BEFORE SHORTENING, and that ordering
+    is the whole of the shapefile question John raised. The shortener
+    already resolves over-length collisions with a disambiguating
+    digit (1.46.3), so R_black_alone_333 and R_black_alone_333b
+    truncating to the same ten characters is a case it knows how to
+    handle - PROVIDED it is handed the suffixed name. Shorten first
+    and the suffix is cut away into a silent collision.
+    `taken` is the set of field names already on the target.
+    """
+    out, used, moved = {}, set(taken), {}
+    for col, want in names.items():
+        if want not in used:
+            out[col] = want
+            used.add(want)
+            continue
+        i = 1
+        while True:
+            cand = want + _letter_suffix(i)
+            if cand not in used:
+                break
+            i += 1
+        out[col] = cand
+        used.add(cand)
+        moved[want] = cand
+    if moved and messages is not None:
+        # SAY SO. A user who looks for their column, does not find it
+        # and concludes the run failed is the pattern of 309, 310 and
+        # 311 - a silent rename is the same failure wearing a
+        # different coat.
+        messages.addMessage(
+            "Keeping both: these already existed, so new columns were "
+            "written beside them - "
+            + "; ".join(f"{k} -> {v}" for k, v in
+                        list(moved.items())[:6])
+            + (f" (+{len(moved) - 6} more)" if len(moved) > 6 else ""))
+    return out, moved
 
 
 def _shorten_names(names, cap: int = 10):
@@ -1079,8 +1289,11 @@ def _collect_barriers(rows, agg, unit, main_sr, messages):
     for row in rows:
         src = row[0]
         fld = row[1] if len(row) > 1 else None
+        cls = row[2] if len(row) > 2 else None       # BACKLOG 306
         parts.append(_barrier_frame(src, fld or None, agg, unit,
-                                    main_sr, None, None, messages))
+                                    main_sr, None, None, messages,
+                                    class_field=(str(cls) or None)
+                                    if cls else None))
     acc: dict = {}
     for p in parts:
         for xx, yy, ff in zip(p["x"], p["y"], p["friction"]):
@@ -1781,6 +1994,18 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         return
 
     names = {c: _field(c) for c in res}
+    # BACKLOG 316. KEEP BOTH, and do it HERE - before the shortener,
+    # for the reason in _keep_both_names.
+    kept_both = {}
+    if existing.startswith("Keep both"):
+        try:
+            _already = {f.name for f in arcpy.ListFields(layer)}
+        except Exception:                            # pragma: no cover
+            _already = set()
+        # AN EMPTY FIELD LIST IS NOT EVIDENCE THAT NOTHING EXISTS
+        # (BACKLOG 311): with nothing read, nothing is renamed and the
+        # run behaves as Overwrite would, which is the safe direction.
+        names, kept_both = _keep_both_names(names, _already, messages)
     cat = getattr(arcpy.Describe(layer), "catalogPath", "")
     txt = _refuse_shp_overflow(cat, list(names.values()))
     if txt and not short_names:    # safety net: exact names
@@ -1792,21 +2017,20 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "characters (collision-free). Mapping: "
             + "; ".join(f"{k} -> {v}" for k, v in short.items()))
         names = {c: short[n] for c, n in names.items()}
-        try:    # a mapping that lives only in a run log is useless
-            import csv as _csv
-            side, _moved = _sidecar_path(cat, "_EquiPop_fields.csv")
-            if _moved:
-                os.makedirs(os.path.dirname(side), exist_ok=True)
-            with open(side, "w", newline="", encoding="utf-8-sig") as fh:
-                w = _csv.writer(fh)
-                w.writerow(["full_name", "shapefile_name"])
-                for k, v in short.items():
-                    w.writerow([k, v])
-            messages.addMessage(f"Name mapping also saved to {side}")
-        except Exception as exc:
-            messages.addWarningMessage(
-                f"Could not save the name mapping next to the "
-                f"output ({exc}) - it is printed above.")
+        _save_name_map(cat, [(k, v, "shortened for a shapefile")
+                             for k, v in short.items()]
+                       + [(k, v, "kept both - a column of this name "
+                                 "already existed")
+                          for k, v in kept_both.items()], messages)
+    elif kept_both:
+        # BACKLOG 316, John: record the mapping in the manifest,
+        # beside the shortened-name mapping. The CSV used to be
+        # written ONLY when a shapefile forced a shortening; a
+        # keep-both rename is the same kind of fact and needs the same
+        # record, so it is written whenever there is a mapping at all.
+        _save_name_map(cat, [(k, v, "kept both - a column of this "
+                                    "name already existed")
+                             for k, v in kept_both.items()], messages)
     dtype = [(str(oid), np.int64)] + [(names[c], np.float64)
                                       for c in res]
     out = np.empty(len(x), dtype=dtype)
@@ -1815,10 +2039,12 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         out[names[c]] = v
     flds = {f.name: f for f in arcpy.ListFields(layer)}
     clash = [c for c in names.values() if c in flds]
-    if clash and not existing.startswith("Overwrite"):
+    if clash and not existing.startswith("Overwrite") \
+            and not existing.startswith("Keep both"):
         raise arcpy.ExecuteError(
             f"Result fields already exist ({', '.join(clash[:4])}...). "
-            "Choose Overwrite, or write to a new feature class.")
+            "Choose Overwrite, Keep both, or write to a new feature "
+            "class.")
     reusable = [c for c in clash
                 if str(getattr(flds[c], "type", "")).lower()
                 in ("double", "single", "float")]
@@ -2808,11 +3034,24 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
     _warn_if_geopackage(parameters, i_layer, desc)
     _check_output_target(parameters, i_layer, desc)
     src = parameters[i_src].valueAsText or _COORD_AUTO
-    if kind == "table" and not (parameters[i_outtable].valueAsText):
+    # BACKLOG 327. THE CHECK IGNORED THE OUTPUT MODE. It demanded a
+    # .csv path whenever the INPUT was a table, so asking a CSV input
+    # for a NEW FEATURE CLASS - the obvious thing to do with a table
+    # of coordinates, and what John did with the Northern Ireland grid
+    # - was refused with "Table input has no feature class to append
+    # to" while the New feature class box sat filled in right above
+    # it. The message was true of appending and false of the run.
+    # A .csv output is needed only when there is nowhere else for the
+    # results to go: a table input APPENDED to, which cannot be done,
+    # because a CSV on disk is not a feature class.
+    _om = _txt(_byname(parameters), "outmode")
+    if kind == "table" and not parameters[i_outtable].valueAsText \
+            and _om in ("", "Append to input"):
         parameters[i_outtable].setErrorMessage(
-            "Table input has no feature class to append to - set the "
-            "output table (.csv). The results arrive there with your "
-            "coordinates.")
+            "A table input cannot be appended to - a .csv on disk is "
+            "not a feature class. Either set the output table (.csv), "
+            "where the results arrive with your coordinates, or "
+            "choose Output = New feature class and give it a path.")
     if kind == "table" or src == _COORD_ATTR:
         xf = parameters[i_x].valueAsText
         yf = parameters[i_y].valueAsText
@@ -3661,7 +3900,16 @@ class CountsShares:
         # own parameter below.
         pm["barriertable"].columns = [
             ["GPTableView", "Barrier layer or table"],
-            ["Field", "Friction field"]]     # dropdown per row
+            ["Field", "Friction field"],     # dropdown per row
+            # BACKLOG 306. OPTIONAL CLASS FIELD. Without it a cell is
+            # charged ONCE PER FEATURE, and OSM cuts one street into a
+            # new record wherever a tag changes - measured on downtown
+            # LA, 3,975 costed features gave cell costs from 1 to 166
+            # where the table tops out at 8. With it, each CLASS is
+            # charged once, which is John's ruling from 298 and what
+            # machine 3's join has done since 1.47.4.
+            ["Field", "Class field (optional) - charge each class "
+                      "once, not each feature"]]
         pm["hlfield"].parameterDependencies = ["layer"]
         pm["hlbins"].value = 10
         # v1.17: collapsible sections instead of 29 boxes at once
@@ -3736,8 +3984,8 @@ class CountsShares:
         pm["barrieragg"].filter.list = _AGG_CHOICES
         pm["barrieragg"].value = _AGG_CHOICES[0]
         pm["existing"].filter.type = "ValueList"
-        pm["existing"].filter.list = ["Overwrite", "Stop with a message"]
-        pm["existing"].value = "Overwrite"
+        pm["existing"].filter.list = KEEP_MODES
+        pm["existing"].value = KEEP_MODES[0]
         pm["outmode"].filter.type = "ValueList"
         pm["outmode"].filter.list = ["Append to input",
                                      "New feature class"]
@@ -4040,9 +4288,11 @@ class ValueStatistics:
         # default trio, stated in the label.
         pm2["measures"].value = None
         pm2["existing"].filter.type = "ValueList"
-        pm2["existing"].filter.list = ["Overwrite",
-                                       "Stop with a message"]
-        pm2["existing"].value = "Overwrite"
+        # BACKLOG 316: the SAME list as machine 1, from one place. A
+        # box the two machines word differently is this project's
+        # oldest failure.
+        pm2["existing"].filter.list = KEEP_MODES
+        pm2["existing"].value = KEEP_MODES[0]
         pm2["outmode"].filter.type = "ValueList"
         pm2["outmode"].filter.list = ["Append to input",
                                       "New feature class"]

@@ -242,6 +242,16 @@ class CountsAndShares(EquipopAlgorithm):
             "carries: 3 is a river, -0.9 a motorway)",
             parentLayerParameterName="barrier", optional=True),
             advanced=True)
+        # BACKLOG 306. Same box as Pro's third value-table column:
+        # without it a cell is charged ONCE PER FEATURE, and OSM cuts
+        # one street into a new record wherever a tag changes.
+        self.add(QgsProcessingParameterField(
+            "barrierclass", "5a\u2032 \u25b8 ...and its CLASS field "
+            "(optional) - charge each class once per cell instead of "
+            "each feature; on OSM roads this is the difference "
+            "between a cost of 8 and a cost of 166",
+            parentLayerParameterName="barrier", optional=True),
+            advanced=True)
         self.add(QgsProcessingParameterRasterLayer(
             "barrierraster", "5b \u25b8 ...or a friction RASTER "
             "(cost per cell; NoData or zero = free)", optional=True),
@@ -678,8 +688,11 @@ class CountsAndShares(EquipopAlgorithm):
         if vec is not None:
             field = (self.parameterAsStrings(parameters, "barrierfield",
                                             context) or [None])[0]
+            bclass = (self.parameterAsStrings(
+                parameters, "barrierclass", context) or [None])[0]
             table = barrier_to_friction(vec, field, unit, agg, ch,
-                                        working_crs)
+                                        working_crs,
+                                        class_field=bclass or None)
             if points_xy is not None:
                 check_plausible(table, vec.featureCount(), points_xy,
                                 float(unit), "Barrier layer", ch)

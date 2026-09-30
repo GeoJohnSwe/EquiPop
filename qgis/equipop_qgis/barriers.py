@@ -55,7 +55,8 @@ def _value(feature, names, field, label):
 
 
 def barrier_to_friction(source, friction_field, unit, agg, channel,
-                        working_crs=None, label="Barrier layer"):
+                        working_crs=None, label="Barrier layer",
+                        class_field=None):
     """One barrier layer -> a friction table the engine understands.
 
     Routes by WHAT the layer is, exactly as the ArcGIS door does:
@@ -113,6 +114,19 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
         return fr
 
     features, values, bad = [], [], 0
+    # BACKLOG 306. With a class field, each CLASS is charged once per
+    # cell instead of each FEATURE - the rule 298 gave machine 3's
+    # join, reaching machine 1's barrier at last. OSM cuts one street
+    # into a new record wherever a tag changes, so per-feature
+    # counting charges a junction once per record: on downtown LA,
+    # 3,975 costed features gave cell costs from 1 to 166 where the
+    # friction table tops out at 8.
+    classes = [] if class_field else None
+    if class_field and class_field not in names:
+        raise QgsProcessingException(
+            f"{label}: no field named '{class_field}'. The class "
+            f"field is optional - leave it empty to charge every "
+            f"feature separately.")
     for f in feats:
         g = f.geometry()
         if g is None or g.isEmpty():
@@ -133,6 +147,12 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
                 else "polygon")
         features.append({"type": kind, "parts": parts})
         values.append(_value(f, names, friction_field, label))
+        if classes is not None:                      # BACKLOG 306
+            try:
+                cv = f[class_field]
+            except Exception:
+                cv = None
+            classes.append("" if cv is None else str(cv))
     if bad:
         channel.warning(f"{label}: {bad} feature(s) with no usable "
                         "geometry were dropped.")
@@ -140,13 +160,34 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
         raise QgsProcessingException(
             f"{label}: no usable geometry found.")
     _extent_check(features, values, unit, label, channel)
+    if classes is not None:
+        from equipop.vectorjoin import paths_to_cells, CLASS
+        try:
+            fr = paths_to_cells(features, values, classes,
+                                unit_size=float(unit),
+                                fidelity=CLASS, agg=agg)
+        except Exception as exc:
+            raise QgsProcessingException(f"{label}: {exc}")
+        # paths_to_cells names its column "value" - it also serves
+        # machine 3's join, where the quantity is not friction
+        fr = fr.rename(columns={"value": "friction"})
+        n_cls = len(set(classes))
+        channel.info(
+            f"{label}: {len(fr)} friction cells from "
+            f"{len(features)} feature(s) in {n_cls} class(es), EACH "
+            f"CLASS CHARGED ONCE per cell (overlap rule: {agg}).")
+        return fr
     try:
         fr = paths_to_friction(features, values,
                                unit_size=float(unit), agg=agg)
     except ValueError as exc:
         raise QgsProcessingException(f"{label}: {exc}")
     channel.info(f"{label}: {len(fr)} friction cells from "
-                 f"{len(features)} feature(s) (overlap rule: {agg}).")
+                 f"{len(features)} feature(s) (overlap rule: {agg}). "
+                 f"No class field was given, so EACH FEATURE is "
+                 f"charged separately - on OSM roads, where one "
+                 f"street is many records, set the class field or "
+                 f"dissolve first.")
     return fr
 
 

@@ -1,12 +1,36 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.48.0**:
-1,264 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.49.1**:
+1,286 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself, a test that
 asks whether anybody can reach any of it - and the published
 distance-decay method restored after twelve releases of silent
 departure.*
+
+## AND THE ONE AFTER IT - TWO DOORS, ONE JOB, DIFFERENT RULES
+
+**Three findings now share one shape, and no guard can see it.**
+
+- **306**: John's ruling that a cell is charged once per CLASS went to
+  machine 3's join in 1.47.4 and never to machine 1's barrier, which
+  kept charging per FEATURE. On downtown LA that is cell costs of 1
+  to 166 where the table tops out at 8.
+- **320**: Pro had a locale-proof number reader from 1.16.7 - found on
+  a Swedish machine - and QGIS never got one, because the code sat in
+  the .pyt instead of in the package. A Norwegian student typing
+  `500,5` met a raw Python error.
+- **324**: 316 was written about Pro's overwrite-or-stop box. Nobody
+  asked what QGIS does with a repeated name: it appended a DUPLICATE
+  FIELD and left OGR to sort it out.
+
+**THE REACHABILITY MATRIX CANNOT CATCH THIS.** It lists capabilities
+against doors - whether a thing can be reached - and says nothing
+about two code paths that do one job by different rules. Every one of
+these was found by a person noticing, not by a test.
+
+**So when a rule is ruled on, ask which OTHER path implements the same
+idea.** Shared logic goes in `equipop/doors/`, never in a door.
 
 ## THE MOST IMPORTANT THING IN THIS FILE - 1.48.0, BACKLOG 317
 

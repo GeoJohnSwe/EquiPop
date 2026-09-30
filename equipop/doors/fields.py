@@ -163,3 +163,115 @@ def refuse_case_clashes(names, what: str) -> None:
             "field names ignore case, so these cannot both become "
             "columns - a shapefile and a geodatabase would each "
             "refuse the second one. Rename one of them.")
+
+
+# ---------------------------------------------------------------------
+# BACKLOG 316 - KEEP BOTH
+#
+# John's design, session 12. The choice existed only as Overwrite or
+# Stop, so running the same k twice with two different friction fields
+# - walk and drive, which is the whole point of exercise 4 - could not
+# be done in one file: the second run destroyed the first.
+#
+# IT LIVES HERE BECAUSE BOTH DOORS NEED IT, and that is the lesson of
+# 320: Pro had a locale-proof number reader from 1.16.7 and QGIS never
+# got one, because the code sat in the .pyt instead of in the package.
+# The two doors reach the SAME implementation now.
+#
+# THE SHAPES OF THE PROBLEM DIFFER, though:
+#   Pro appends to the input layer, so a repeated name means
+#   overwriting a column that is already there - a choice the user
+#   makes on the dialog.
+#   QGIS writes a NEW layer each run, copying the source's fields and
+#   appending the results. A repeated name there means TWO FIELDS OF
+#   ONE NAME in the output, which OGR resolves however it likes. There
+#   is no overwrite to choose, so keeping both is simply correct and
+#   QGIS needs no box.
+# ---------------------------------------------------------------------
+
+def letter_suffix(n: int) -> str:
+    """0 -> "", 1 -> "b", 2 -> "c", ... 25 -> "z", 26 -> "aa", 27 -> "ab".
+
+    The FIRST column keeps its canonical name, so a single run is
+    unchanged and every published result still reads the same. Only a
+    second column of the same name takes a letter - the unsuffixed
+    name IS the "a".
+
+    PAST z IT IS aa, then ab. John: "aa is a good solution". No
+    ceiling and no refusal: it costs nothing and removes a wall
+    somebody would otherwise meet at the least convenient moment.
+
+    NOT the digit the shortener appends for over-length collisions
+    (1.46.3, h72004_africanamericanalo1_100). Letters here keep the
+    two schemes distinguishable, which was John's own argument for
+    letters.
+    """
+    if n <= 0:
+        return ""
+    n += 1                      # shift past the unsuffixed "a"
+    out = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        out = chr(ord("a") + r) + out
+    return out
+
+
+def keep_both(names, taken):
+    """Rename any result whose field name is already in `taken`.
+
+    `names` maps result column -> wanted field name; `taken` is the
+    set of names already present. Returns (new_names, renamed), where
+    `renamed` maps wanted -> written for everything that moved.
+
+    MUST RUN BEFORE ANY SHORTENING, and that ordering is the whole of
+    the shapefile question John raised. shorten_names() already
+    resolves over-length collisions with a disambiguating digit, so
+    R_black_alone_333 and R_black_alone_333b truncating to the same
+    ten characters is a case it knows how to handle - PROVIDED it is
+    handed the suffixed name. Shorten first and the suffix is cut away
+    into a silent collision.
+    """
+    out, used, renamed = {}, set(taken), {}
+    for col, want in names.items():
+        if want not in used:
+            out[col] = want
+            used.add(want)
+            continue
+        i = 1
+        # BOUNDED ON PURPOSE. This was `while True`, which is correct
+        # only as long as letter_suffix keeps producing NEW names -
+        # and a break-check that made it return a constant turned the
+        # loop into a HANG rather than a failure. A hang inside
+        # ArcGIS Pro is a force-quit and lost work, which is worse
+        # than any error message. The ceiling is far above the 26
+        # columns John expects and the loop cannot spin.
+        for i in range(1, 100000):
+            cand = want + letter_suffix(i)
+            if cand not in used:
+                break
+        else:                                        # pragma: no cover
+            raise ValueError(
+                f"could not find a free name for '{want}' - "
+                "letter_suffix is not producing new names")
+        out[col] = cand
+        used.add(cand)
+        renamed[want] = cand
+    return out, renamed
+
+
+def keep_both_message(renamed, limit: int = 6) -> str:
+    """One line naming what moved, or "" when nothing did.
+
+    SAYING SO IS NOT OPTIONAL. A user who looks for their column, does
+    not find it and concludes the run failed is the pattern of
+    BACKLOG 309, 310 and 311 - a silent rename is that same failure
+    wearing a different coat.
+    """
+    if not renamed:
+        return ""
+    shown = list(renamed.items())[:limit]
+    more = len(renamed) - len(shown)
+    return ("Keeping both: these names were already taken, so new "
+            "columns were written beside them - "
+            + "; ".join(f"{k} -> {v}" for k, v in shown)
+            + (f" (+{more} more)" if more > 0 else ""))

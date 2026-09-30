@@ -1,8 +1,11 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.48.2, 16 September 2026.**
-*Reviewed at 1.48.2: no change. The release is Stata-door only -
-the SSC install advice and the engine version floor.
+**Last updated: 1.49.1, 16 September 2026.**
+*Reviewed at 1.49.1: no change to the exercises, but the ratio
+ruling is worth a sentence in class - R is a RATIO, and it exceeds 1
+whenever numerator and denominator count different units. Every
+course exercise uses the same unit on both sides, so all the figures
+stand.
 A test checks that version against pyproject.toml. If they disagree
 the suite fails, because a teaching document that has drifted from the
 software is worse than none — a student follows it.*

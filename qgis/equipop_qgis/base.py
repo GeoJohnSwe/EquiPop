@@ -509,8 +509,31 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         out_fields = QgsFields()
         for f in source.fields():
             out_fields.append(f)
+        # BACKLOG 316. A REPEATED NAME USED TO BE APPENDED BLIND. QGIS
+        # writes a NEW layer each run, copying the source's fields and
+        # then the results - so feeding a previous run's output back
+        # in, which is exactly what comparing walk against drive
+        # requires, produced TWO FIELDS OF ONE NAME and left OGR to
+        # resolve it however it liked.
+        # There is no overwrite to choose here, so keeping both is
+        # simply correct and this door needs no box. Pro, which
+        # appends to the input, offers the choice on its dialog.
+        try:
+            from equipop.doors.fields import (keep_both,
+                                              keep_both_message)
+            taken = {f.name() for f in source.fields()}
+            mapped, renamed = keep_both({n: n for n in order}, taken)
+            if renamed:
+                self.channel(feedback).info(keep_both_message(renamed))
+        except Exception:                            # pragma: no cover
+            mapped, renamed = {n: n for n in order}, {}
+        # `order` STAYS THE RESULT KEYS. The loop below reads
+        # result[name], so renaming `order` itself would have looked
+        # up a key that does not exist - caught before it shipped, and
+        # exactly the shape of a rename that half-lands.
         for name in order:
-            out_fields.append(QgsField(name, QMetaType.Type.Double))
+            out_fields.append(QgsField(mapped.get(name, name),
+                                       QMetaType.Type.Double))
 
         sink, dest = self.parameterAsSink(
             parameters, self.OUT, context, out_fields,

@@ -3569,7 +3569,76 @@ not here. A list of completed work is not a plan.
   NOT BUILT. Awaiting John's ruling on whether tool 4 takes a rate
   schedule, and on what the box should be called.
 
-- 316 | OPEN, SPECIFIED BY JOHN, READY TO BUILD | KEEP BOTH: A THIRD
+- ~~327~~ | DONE v1.49.1, FOUND BY JOHN IN THE FIELD | A CSV INPUT
+  COULD NOT WRITE A NEW FEATURE CLASS.
+  John gave Pro the Northern Ireland 1 km grid as a CSV, chose
+  Output = New feature class, named it TrialRun - and the dialog
+  refused with "Table input has no feature class to append to - set
+  the output table (.csv)" while the feature-class box sat filled in
+  directly above the complaint.
+  The check asked ONLY whether the INPUT was a table. It never looked
+  at the output mode, so the one obvious thing to do with a table of
+  coordinates - turn it into points - was unreachable. THE MESSAGE WAS
+  TRUE OF APPENDING AND FALSE OF THE RUN.
+  FIXED: the .csv is demanded only when the mode is Append to input,
+  where there genuinely is nowhere else for results to go, and the
+  refusal now says why - "a table input cannot be appended to, a .csv
+  on disk is not a feature class" - and names both ways out.
+  A TEST THAT COULD NOT FAIL, AGAIN. The first version read
+  pm["outtable"].message; the simulator stores (kind, text) pairs in
+  .messages and has no .message at all, so the assertion read an
+  attribute that is always empty and would have passed however the
+  code behaved. THIRD TIME THIS WEEK - after the ensurepip test in
+  1.48.2 and the two 306 grep-tests in 1.49.0. Caught by breaking the
+  fix, which is the only thing that catches it.
+
+- ~~328~~ | DONE v1.49.1, JOHN'S RULING FROM THE FIELD | A GROUP
+  LARGER THAN ITS POPULATION IS NOW REPORTED, NOT REFUSED.
+  John: "this is a bit odd the treatment variable is greater than the
+  numerator - that is unusual I agree, but not a cause for reject - it
+  is the choice of the user - we should be able to have ratios on the
+  basis of say 77/66 and not only 55/66".
+  HIS OWN DATA IS THE COUNTER-EXAMPLE, and it is a good one. The
+  Northern Ireland 1 km grid holds TOTAL_HOUSEHOLD, which counts
+  HOUSEHOLDS, and ECONOMICALLYACTIVE, which counts PEOPLE. Two
+  working adults in one household and the ratio passes 1
+  legitimately: R is then economically active persons per household -
+  a real measure, and on the full file its median is 1.333, which is
+  right for Northern Ireland.
+  THE NUMERATOR WAS NEVER REQUIRED TO BE A SUBSET OF THE
+  DENOMINATOR. R_k = T_k / N_k is a ratio; the subset assumption was
+  about typical use, not about the arithmetic.
+  THREE PLACES SAID IT, AND ONE OF THEM WAS FOUND LAST:
+    validate_treatment()        raised on the way in
+    check_results_are_possible() raised on the way out
+    a bare print() in knn_to_rows, which STILL called it "a data
+    error" after the other two had been corrected - found by running
+    John's real file end to end, not by any test. A SECOND VOICE
+    CONTRADICTING THE FIRST IS WORSE THAN NO VOICE AT ALL, so it is
+    gone; validate_treatment already says this, with the ratio.
+  THE OUTPUT BACKSTOP'S PREMISE WAS FALSIFIED. It was ruled in "on
+  the reasoning that no correct run can trip it". A correct run trips
+  it whenever the two count different units. It still reads the
+  number the user is about to be handed - that is why it exists - but
+  it reports, and it no longer calls the result "impossible", which
+  was the word a counter-example could not leave standing.
+  WHAT THE NOTE MUST GIVE, and does: the RATIO. That is how a user
+  tells a legitimate different-units measure from two variables the
+  wrong way round - John's case reads 1.33, a genuine swap of
+  total_pop and a group reads 8.33. The magnitude does the
+  diagnosing, so the number is reported and the user judges.
+  ONE HALF OF THE OLD MESSAGE WAS ALSO WRONG: it offered "or it is a
+  0/1 marker and needs treatmode(flags)". A 0/1 marker can only
+  exceed the population where the population is ZERO, so that is
+  almost never the cause of this trip. Removed rather than repeated.
+  STILL REFUSED, and rightly: a NEGATIVE count. A census no-data code
+  like -666666666 read as a count is a wrong answer, not a choice.
+  AND MY OWN NOTE LEAKED A NUMPY WARNING. The ratio divides by a
+  population that can be zero, so the explanation arrived with a
+  fragment of a RuntimeWarning attached. Suppressed, and tested with
+  warnings-as-errors.
+
+- ~~316~~ | DONE v1.49.0 | KEEP BOTH: A THIRD
   CHOICE FOR "if result fields already exist".
   THE GAP IS REAL AND EXERCISE 4 WALKS INTO IT. The box offers
   "Overwrite" or "Stop with a message", so running the same k twice
@@ -3618,7 +3687,7 @@ not here. A list of completed work is not a plan.
   (h72004_africanamericanalo1_100). Letters here keep the two
   distinguishable, which is a point in favour of John's choice.
 
-- 306 | OPEN, FOUND v1.47.8 BUILDING EXERCISE 4 | MACHINE 1'S BARRIER
+- ~~306~~ | DONE v1.49.0 | MACHINE 1'S BARRIER
   CHARGES PER FEATURE, NOT PER CLASS - so it still has the defect
   298 removed from machine 3's join.
   John's ruling in session 12 was that a cell should be charged once
@@ -3922,6 +3991,68 @@ not here. A list of completed work is not a plan.
   still propagating. README_STATA.md had the same single route.
   NOT IN THE BACKLOG BEFORE THIS RELEASE: found by reading the ado's
   user-facing text with the submission in mind rather than by a test.
+
+- ~~324~~ | DONE v1.49.0, FOUND BUILDING 316 | THE QGIS DOOR APPENDED
+  A DUPLICATE FIELD NAME AND NOTHING DETECTED IT.
+  base.py's write() copies the source's fields and then appends the
+  result names - blind. QGIS writes a NEW layer each run, so feeding
+  a previous run's output back in, which is EXACTLY what comparing
+  walk against drive requires, produced TWO FIELDS OF ONE NAME in the
+  output and left OGR to resolve it however it liked.
+  316 was written about Pro, where the box offered Overwrite or Stop.
+  Nobody asked what the OTHER door does with a repeated name - the
+  same blind spot as 306, where the class rule was given to machine
+  3's join and never to machine 1's barrier. TWO DOORS DOING ONE
+  THING BY DIFFERENT RULES is now three findings deep (306, 320,
+  324) and the reachability matrix cannot see it: it lists
+  CAPABILITIES against DOORS, not the paths inside them.
+  FIXED: QGIS needs no box, because with a new layer every run there
+  is no overwrite to choose - keeping both is simply correct. Pro,
+  which appends to the input, keeps the explicit choice John ruled
+  for.
+  AND THE LOGIC LIVES IN equipop/doors/fields.py, not in either
+  door - the lesson of 320, where Pro had a locale-proof number
+  reader from 1.16.7 that QGIS never received because the code sat in
+  the .pyt.
+  CAUGHT ON THE WAY: renaming `order` in the write loop would have
+  broken the value lookup, since result[name] is read below it. The
+  written name and the result key are separate now.
+
+- ~~325~~ | DONE v1.49.0, FOUND BY BREAK-CHECKING 316 | keep_both()
+  HAD AN UNBOUNDED `while True`, SO A BAD SUFFIX WAS A HANG.
+  The loop asked letter_suffix for name after name until one was
+  free. That is correct only while letter_suffix keeps producing NEW
+  names - and a deliberate break that made it return a constant
+  turned the loop into an INFINITE ONE rather than a failure. The
+  break-check did not report a failing test; it reported a timeout.
+  A HANG INSIDE ARCGIS PRO IS A FORCE-QUIT AND LOST WORK, which is
+  worse than any error message. Bounded now, and it raises with the
+  reason instead of spinning.
+  THE LESSON IS ABOUT THE METHOD, NOT THE LOOP: breaking a fix on
+  purpose found a defect that the fix's own tests, all passing, could
+  not have found. A test suite checks that the code does the right
+  thing; breaking it checks what happens when it does the wrong one.
+
+- ~~326~~ | DONE v1.49.0 | TWO OF MY OWN TESTS WERE TOO WEAK, AND THE
+  BREAK-CHECK SAID SO.
+  The first version of the 306 tests asserted that the strings
+  "class_field" and "fidelity=CLASS" appeared SOMEWHERE in
+  barriers.py, and that "barrierclass" appeared somewhere in
+  alg_counts.py. Both survived a break in one place, because the
+  other occurrence of the same string was still there. Two of three
+  deliberate breaks passed.
+  REPLACED WITH A BEHAVIOURAL TEST that RUNS the QGIS barrier through
+  the simulator on John's own junction example - 'unclassified' three
+  times and 'trunk_link' twice - and asserts 30 per feature against
+  11 per class. All three breaks now fail it.
+  THE SAME WEAKNESS AS THE ensurepip TEST in 1.48.2, which only
+  checked that the word appeared. A GREP IS NOT A TEST: asserting a
+  string exists somewhere in a file proves nothing about whether the
+  path that uses it runs.
+  AND THE FIRST BEHAVIOURAL VERSION WAS REFUSED BY A GUARD THAT WAS
+  RIGHT: an 80 m barrier at 100 m cells "cannot block anything", said
+  the extent check, correctly. The test geometry was wrong, not the
+  code.
 
 - ~~323~~ | DONE v1.48.2 | MACHINE 3 COULD NOT BE IMPORTED ON THE
   PYTHON ARCGIS PRO SHIPS, AND THE WHOLE SUITE PASSED ANYWAY.

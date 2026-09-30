@@ -77,21 +77,56 @@ def test_counts_without_a_population_are_refused():
     assert "treatmode(flags)" in text
 
 
-def test_a_group_larger_than_its_population_is_refused():
-    with pytest.raises(ValueError) as exc:
-        _run(treat={"group": np.full(5, 130.0)},
-             weight=np.full(5, 100.0), treat_are_counts=True)
-    text = str(exc.value)
-    assert "cannot be bigger" in text
+def test_a_group_larger_than_its_population_is_reported_not_refused():
+    """BACKLOG 328, John's ruling from the field: "that is unusual I
+    agree, but not a cause for reject - it is the choice of the user -
+    we should be able to have ratios on the basis of say 77/66 and not
+    only 55/66".
+
+    HIS OWN DATA IS THE CASE. The Northern Ireland 1 km grid holds
+    TOTAL_HOUSEHOLD, which counts HOUSEHOLDS, and ECONOMICALLYACTIVE,
+    which counts PEOPLE. Two working adults in one household and the
+    ratio passes 1 legitimately: R is economically active persons per
+    household, a real measure. The numerator was never required to be
+    a SUBSET of the denominator - that was an assumption about typical
+    use, not about the arithmetic.
+
+    This used to raise. It must now run and SAY SO, because the
+    mistake the guard was written for is still real; what changed is
+    who decides.
+    """
+    from equipop.stata_bridge import validate_treatment
+    said = []
+    validate_treatment({"group": np.full(5, 130.0)},
+                       np.full(5, 100.0), True, say=said.append)
+    text = " ".join(said)
+    assert text, "the run is now silent about a ratio above 1"
     assert "5 of 5 points" in text
+    assert "1.30" in text, (
+        "the note must give the RATIO, because that is how a user "
+        "tells a legitimate different-units measure from two "
+        "variables the wrong way round")
+    assert "wrong way round" in text
 
 
-def test_the_refusal_names_how_many_and_by_how_much():
-    """A user has to be able to tell one bad row from a wrong variable."""
-    treat = {"group": np.array([10.0, 10.0, 10.0, 10.0, 300.0])}
-    with pytest.raises(ValueError) as exc:
-        _run(treat=treat, weight=np.full(5, 100.0), treat_are_counts=True)
-    assert "1 of 5 points" in str(exc.value)
+def test_the_note_names_how_many_and_by_how_much():
+    """A user has to be able to tell one bad row from a wrong
+    variable."""
+    from equipop.stata_bridge import validate_treatment
+    said = []
+    validate_treatment(
+        {"group": np.array([10.0, 10.0, 10.0, 10.0, 300.0])},
+        np.full(5, 100.0), True, say=said.append)
+    assert "1 of 5 points" in " ".join(said)
+
+
+def test_a_negative_count_is_still_refused():
+    """Relaxing the ratio guard must not relax this one: a number of
+    people cannot be negative, and a census no-data code like
+    -666666666 read as a count is a wrong answer, not a choice."""
+    with pytest.raises(ValueError, match="(?i)cannot be negative"):
+        _run(treat={"group": np.array([10.0, -9.0, 10.0, 10.0, 10.0])},
+             weight=np.full(5, 100.0), treat_are_counts=True)
 
 
 def test_a_flag_outside_zero_and_one_is_refused():
@@ -125,18 +160,31 @@ def test_no_treatment_at_all_is_fine():
 # The backstop on the way OUT
 # --------------------------------------------------------------------
 
-def test_the_backstop_catches_an_impossible_result():
-    """Independent of how the input was checked. A guard on the input
-    can be defeated by an engine change; this one reads the number the
-    user is about to be handed."""
-    with pytest.raises(ValueError) as exc:
-        check_results_are_possible({
-            "N_100": np.array([100.0, 100.0]),
-            "T_g_100": np.array([30.0, 3000.0]),
-        })
-    text = str(exc.value)
+def test_the_backstop_reports_a_ratio_above_one():
+    """BACKLOG 328. This guard was ruled in "on the reasoning that no
+    correct run can trip it", and that premise was WRONG: a correct
+    run trips it whenever numerator and denominator count different
+    units - economically active PEOPLE over HOUSEHOLDS, on John's
+    Northern Ireland grid.
+
+    It still reads the number the user is about to be handed, which is
+    why it exists. What changed is that it reports instead of
+    refusing, and no longer calls the result "impossible" - that was
+    the word a counter-example could not leave standing.
+    """
+    said = []
+    check_results_are_possible({
+        "N_100": np.array([100.0, 100.0]),
+        "T_g_100": np.array([30.0, 3000.0]),
+    }, say=said.append)
+    text = " ".join(said)
+    assert text, "the backstop is now silent"
     assert "T_g_100" in text and "N_100" in text
-    assert "impossible" in text
+    assert "impossible" not in text.lower(), (
+        "it is not impossible - John's own data does it legitimately")
+    assert "30.00" in text, (
+        "the note must give the ratio, since that is what separates a "
+        "different-units measure from a swapped pair")
 
 
 def test_the_backstop_passes_a_correct_result():
@@ -151,15 +199,18 @@ def test_the_backstop_tolerates_floating_point_but_not_real_excess():
     """Summation of many weights drifts in the last bits. A guard that
     fired on 1e-12 would be noise; one that missed 0.5 people would be
     useless."""
+    quiet = []
     check_results_are_possible({
         "N_100": np.array([100.0]),
         "T_g_100": np.array([100.0 + 1e-10]),
-    })
-    with pytest.raises(ValueError):
-        check_results_are_possible({
-            "N_100": np.array([100.0]),
-            "T_g_100": np.array([100.5]),
-        })
+    }, say=quiet.append)
+    assert not quiet, "floating-point drift must not be reported"
+    loud = []
+    check_results_are_possible({
+        "N_100": np.array([100.0]),
+        "T_g_100": np.array([100.5]),
+    }, say=loud.append)
+    assert loud, "half a person of real excess must still be reported"
 
 
 def test_the_backstop_ignores_missing_and_unmatched_columns():
@@ -168,3 +219,43 @@ def test_the_backstop_ignores_missing_and_unmatched_columns():
         "T_g_100": np.array([np.nan, 50.0]),
         "T_g_r500": np.array([1e9, 1e9]),      # no N_r500 to compare
     })
+
+
+def test_only_one_voice_speaks_about_a_ratio_above_one():
+    """BACKLOG 328. There were THREE places saying a group bigger than
+    its population was wrong: validate_treatment, the output backstop,
+    and a bare print() inside knn_to_rows that still called it "a data
+    error" after the other two had been corrected.
+
+    Found by running John's real Northern Ireland file end to end, not
+    by any test - which is the lesson. A second voice contradicting
+    the first is worse than no voice at all.
+    """
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "equipop", "stata_bridge.py"),
+               encoding="utf-8").read()
+    assert "larger than totals is a data error" not in src, (
+        "the third warning is back, and it contradicts the other two")
+    assert src.count("[bridge] WARNING: '{name}' exceeds") == 0
+
+
+def test_the_ratio_note_does_not_leak_a_numpy_warning():
+    """The note computes a ratio, which divides by a population that
+    can be zero. The first version let numpy's divide warning through
+    into the user's message pane, so the explanation arrived with a
+    fragment of traceback attached to it."""
+    import warnings
+    from equipop.stata_bridge import (validate_treatment,
+                                      check_results_are_possible)
+    said = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        validate_treatment(
+            {"g": np.array([5.0, 30.0])},
+            np.array([0.0, 10.0]),          # a zero population
+            True, say=said.append)
+        check_results_are_possible(
+            {"N_100": np.array([0.0, 100.0]),
+             "T_g_100": np.array([5.0, 300.0])}, say=said.append)
+    assert len(said) == 2

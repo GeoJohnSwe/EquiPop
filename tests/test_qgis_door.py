@@ -1329,3 +1329,151 @@ def test_the_qgis_door_no_longer_parses_numbers_itself():
         assert bad not in src, (
             f"alg_counts.py parses typed text with {bad!r} again - a "
             "decimal comma will break it. Use equipop.doors.numbers.")
+
+
+# ------------------------------ BACKLOG 316: keep both --------------
+def test_the_letter_suffixes_run_b_c_then_aa():
+    """John's design: the FIRST column keeps its canonical name, so a
+    single run is unchanged and every published result still reads the
+    same. Past z it is aa - "aa is a good solution"."""
+    from equipop.doors.fields import letter_suffix
+    assert letter_suffix(0) == ""
+    assert [letter_suffix(i) for i in (1, 2, 3)] == ["b", "c", "d"]
+    assert letter_suffix(25) == "z"
+    assert letter_suffix(26) == "aa"
+    assert letter_suffix(27) == "ab"
+    # and no ceiling: it must keep producing names, never refuse
+    assert letter_suffix(700)
+
+
+def test_keep_both_leaves_a_free_name_alone_and_reports_what_moved():
+    from equipop.doors.fields import keep_both, keep_both_message
+    names = {"R_a_100": "R_a_100", "R_b_100": "R_b_100"}
+    out, renamed = keep_both(names, {"R_a_100"})
+    assert out["R_b_100"] == "R_b_100", "a free name must not move"
+    assert out["R_a_100"] == "R_a_100b"
+    assert renamed == {"R_a_100": "R_a_100b"}
+    msg = keep_both_message(renamed)
+    assert "R_a_100" in msg and "R_a_100b" in msg, (
+        "a silent rename is BACKLOG 309-311 wearing a different coat")
+    # a third run of the same name goes to c, not back to b
+    out2, _ = keep_both(names, {"R_a_100", "R_a_100b"})
+    assert out2["R_a_100"] == "R_a_100c"
+
+
+def test_keep_both_runs_before_shortening_not_after():
+    """John raised the shapefile question and this is the whole of the
+    answer: the shortener already resolves over-length collisions with
+    a disambiguating digit, so it can handle R_x_333 and R_x_333b
+    truncating alike - PROVIDED it is handed the suffixed name.
+    Shorten first and the suffix is cut away into a silent
+    collision."""
+    from equipop.doors.fields import keep_both, shorten_names
+    wanted = {"c1": "R_black_alone_333"}
+    suffixed, _ = keep_both(wanted, {"R_black_alone_333"})
+    short = shorten_names(list(suffixed.values())
+                          + ["R_black_alone_333"])
+    written = set(short.values())
+    assert len(written) == len(short), (
+        f"two names collided after shortening: {short}")
+    for n in written:
+        assert len(n) <= 10, (n, len(n))
+
+
+def test_the_qgis_door_does_not_append_a_duplicate_field_name():
+    """BACKLOG 316, the QGIS half - which nothing detected at all.
+    The door writes a NEW layer each run, copying the source's fields
+    and then the results, so feeding a previous run's output back in
+    (exactly what comparing walk against drive requires) produced TWO
+    FIELDS OF ONE NAME and left OGR to resolve it.
+
+    Checked on the source, because the defect was an absence."""
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(here, "qgis", "equipop_qgis", "base.py"),
+               encoding="utf-8").read()
+    w = src[src.index("def write(self"):
+            src.index("sink, dest = self.parameterAsSink")]
+    assert "keep_both" in w, (
+        "the write loop appends result names to the source's fields "
+        "without checking for a clash again")
+    # and the RESULT KEYS must survive: result[name] is read below, so
+    # renaming `order` itself looks up a key that does not exist
+    assert "mapped.get(name, name)" in w, (
+        "the written name and the result key have been conflated - "
+        "the value lookup will fail")
+
+
+def test_the_qgis_barrier_charges_per_class_when_told_to():
+    """BACKLOG 306, and tested BY RUNNING IT rather than by grepping
+    the source.
+
+    My first version of this test asserted that the strings
+    "class_field" and "fidelity=CLASS" appeared SOMEWHERE in
+    barriers.py - and a break-check that commented out the import
+    still passed, because the other string survived it. That is the
+    same weakness as the ensurepip test in 1.48.2: a string appearing
+    somewhere is not the behaviour working.
+
+    John's own example: a junction where OSM holds 'unclassified'
+    three times and 'trunk_link' twice, all one road. Per feature the
+    cell is charged five times; per class, twice.
+    """
+    import qgis_stub as Q
+    from equipop_qgis.barriers import barrier_to_friction
+
+    # 600 m of road, so it spans several 100 m cells: a barrier
+    # narrower than one cell is refused, and rightly - it cannot
+    # block anything.
+    line = [[(50.0, 50.0), (650.0, 50.0)]]
+    shapes = ([(line, {"fric": 8.0, "fclass": "unclassified"})] * 3
+              + [(line, {"fric": 3.0, "fclass": "trunk_link"})] * 2)
+    fields = [("fric", True), ("fclass", False)]
+
+    class _Ch:
+        def __init__(self):
+            self.said = []
+
+        def info(self, m):
+            self.said.append(str(m))
+
+        warning = info
+
+    per_feature = barrier_to_friction(
+        Q._ShapeSource(shapes, fields, kind="line"), "fric",
+        100.0, "sum", _Ch())
+    ch = _Ch()
+    per_class = barrier_to_friction(
+        Q._ShapeSource(shapes, fields, kind="line"), "fric",
+        100.0, "sum", ch, class_field="fclass")
+
+    pf = float(per_feature["friction"].max())
+    pc = float(per_class["friction"].max())
+    assert pf == 30.0, f"per-feature should charge all five: {pf}"
+    assert pc == 11.0, (
+        f"per-class should charge 8 + 3 = 11, got {pc} - the class "
+        "field is not reaching the class-collapsing engine")
+    assert any("CLASS CHARGED ONCE" in m for m in ch.said), (
+        "the run does not say which rule it used")
+
+
+def test_the_qgis_barrier_refuses_a_class_field_that_is_not_there():
+    """A typo in the class field must not fall back to per-feature
+    silently - that would be a wrong answer wearing the look of a
+    right one, which is the 309-311 family."""
+    import pytest as _pt
+    import qgis_stub as Q
+    from equipop_qgis.barriers import barrier_to_friction
+    line = [[(50.0, 50.0), (650.0, 50.0)]]
+    shapes = [(line, {"fric": 8.0, "fclass": "motorway"})]
+
+    class _Ch:
+        def info(self, m):
+            pass
+        warning = info
+
+    with _pt.raises(Exception, match="(?i)no field named"):
+        barrier_to_friction(
+            Q._ShapeSource(shapes, [("fric", True), ("fclass", False)],
+                           kind="line"),
+            "fric", 100.0, "sum", _Ch(), class_field="fclas")
