@@ -280,6 +280,12 @@ INTERNAL = {
     "friction", "slope", "stata_bridge", "meta", "gridby", "datasets",
     "area", "viz", "doctor", "fetch", "segregation", "autocorr",
     "access", "fca", "hex", "bigrun", "vectorjoin", "inventory",
+    # BACKLOG 320. Machinery, not a capability: reading a number a
+    # person typed, whatever their machine calls a decimal point.
+    # Both GIS doors call it, which is the point - Pro had its own
+    # copy since 1.16.7 and QGIS had none, so a Norwegian student
+    # typing 500,5 met a raw Python error.
+    "doors.numbers",
     "doors.help", "doors.report", "doors.fields", "doors.loader",
     "doors.rungs", "doors.registry", "doors.reference",
     "doors.decaynames", "doors.demography", "doors.continental",

@@ -99,6 +99,11 @@ def check_folders(folders):
     return folders
 
 
+#: "the rasters' own CRS", with a typographic apostrophe. Kept OUT of
+#: the f-string above: see the note at its use.
+_OWN_CRS = "the rasters\u2019 own CRS"
+
+
 def _plural(n, one, many=None):
     return one if n == 1 else (many or one + "s")
 
@@ -169,7 +174,14 @@ def run_folder(folders, *, k_values=None, r_values=None,
         say(f"{len(man['files'])} {_plural(len(man['files']), 'raster')} "
             f"-> {len(pts):,} points, {len(cols)} "
             f"{_plural(len(cols), 'field')}, in "
-            f"{man.get('crs') or 'the rasters\u2019 own CRS'}.")
+            # PYTHON 3.10 AND 3.11 REFUSE A BACKSLASH INSIDE AN
+            # f-STRING EXPRESSION - PEP 701 only lifted that in 3.12.
+            # This module therefore could not be IMPORTED on the
+            # Python that ArcGIS Pro 3.3 and 3.4 ship, while
+            # pyproject declares >=3.10. Every session until now ran
+            # 3.12, so the interpreter hid it and the whole test suite
+            # passed. The escape is out of the expression now.
+            f"{man.get('crs') or _OWN_CRS}.")
         say("No k was asked for, so this is the point table itself - "
             "every cohort a field, the countries stacked as rows, and "
             "a real 0.0 wherever a layer had nothing there. Give a k "

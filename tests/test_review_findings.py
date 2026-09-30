@@ -269,9 +269,17 @@ def test_an_unknown_subcommand_is_named_rather_than_called_a_varlist():
     """
     body = _program_body()
     assert "unknown subcommand" in body
-    hit = body[body.index("unknown subcommand"):][:1400]
+    # The window was 1400 characters, which v1.48.2 outgrew when the
+    # update advice gained an SSC line above the GitHub one. Slice to
+    # the END OF THE MESSAGE instead of a character count, so the test
+    # measures the message rather than its length.
+    hit = body[body.index("unknown subcommand"):]
+    hit = hit[:hit.index("exit 198")]
     assert "equipop doctor" in hit and "equipop setup" in hit, (
         "the message should list the subcommands that do exist")
+    assert "ssc install equipop" in hit, (
+        "the update advice must name SSC, which is where a Stata user "
+        "updates from (v1.48.2)")
     assert "net install" in hit, (
         "an out-of-date .ado is the likeliest cause, so say how to "
         "update")

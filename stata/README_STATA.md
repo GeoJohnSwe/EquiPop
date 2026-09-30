@@ -19,7 +19,12 @@ where Stata will find it. Updating one without the other gives
 `ImportError: cannot import name ...`, which looks like a bug in
 EquiPop and is not.
 
-**[Stata]**
+**[Stata]** — the commands
+```stata
+ssc install equipop, replace
+```
+
+or, for the development version ahead of SSC:
 ```stata
 net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace
 ```

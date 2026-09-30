@@ -580,7 +580,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.48.0"
+TOOLBOX_VERSION = "1.48.2"
 
 
 def _announce_version(messages):
@@ -1797,7 +1797,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             side, _moved = _sidecar_path(cat, "_EquiPop_fields.csv")
             if _moved:
                 os.makedirs(os.path.dirname(side), exist_ok=True)
-            with open(side, "w", newline="", encoding="utf-8") as fh:
+            with open(side, "w", newline="", encoding="utf-8-sig") as fh:
                 w = _csv.writer(fh)
                 w.writerow(["full_name", "shapefile_name"])
                 for k, v in short.items():
@@ -2125,7 +2125,7 @@ def _write_manifest(target, rows, messages):
         path, moved = _sidecar_path(target, "_EquiPop_run.csv")
         if moved:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", newline="", encoding="utf-8") as fh:
+        with open(path, "w", newline="", encoding="utf-8-sig") as fh:
             w = _csv.writer(fh)
             w.writerow(["item", "value"])
             for k, v in rows:
@@ -2578,6 +2578,22 @@ def _num(pm, name, default=None):
 
 
 def _to_float(text, default=None):
+    """BACKLOG 320: the same reader QGIS uses, so the two doors cannot
+    drift apart again. Kept as a thin wrapper because the Pro door
+    must raise arcpy.ExecuteError, not ValueError, for the message to
+    reach the user. The fallback keeps the toolbox working against a
+    package older than this."""
+    try:
+        from equipop.doors.numbers import to_float, BadNumber
+    except Exception:                                # pragma: no cover
+        return _to_float_local(text, default)
+    try:
+        return to_float(text, default)
+    except BadNumber as bad:
+        raise arcpy.ExecuteError(str(bad))
+
+
+def _to_float_local(text, default=None):
     t = str(text or "").strip()
     if not t:
         return default

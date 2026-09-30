@@ -1,11 +1,8 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.48.0, 16 September 2026.**
-*Reviewed at 1.48.0: the half-life change (BACKLOG 317) does NOT
-touch the course. Exercise 3 uses negexp, where half-life and
-half-probability are identical, so its figures stand. A student who
-switches to expnormal, expsqrt or lognormal will now meet the
-calibration choice - worth a sentence in class.
+**Last updated: 1.48.2, 16 September 2026.**
+*Reviewed at 1.48.2: no change. The release is Stata-door only -
+the SSC install advice and the engine version floor.
 A test checks that version against pyproject.toml. If they disagree
 the suite fails, because a teaching document that has drifted from the
 software is worse than none — a student follows it.*

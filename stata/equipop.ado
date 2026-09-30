@@ -1,4 +1,4 @@
-*! equipop v1.48.0  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.48.2  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -58,6 +58,15 @@ program define equipop, rclass
             "not know it, the"
         display as text "  command files here are older than the " ///
             "subcommand. Update them:"
+        * v1.48.2. THIS USED TO NAME A RAW GITHUB URL ONLY, and it is
+        * printed at the exact moment a confused user is reading
+        * carefully. SSC is where a Stata user expects to update from,
+        * and adoupdate only knows about packages installed from a
+        * site - so SSC goes first. The GitHub line stays as the
+        * development route, and as the answer while an SSC update is
+        * still propagating.
+        display as text "     ssc install equipop, replace"
+        display as text "  or, for the development version:"
         display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace"'
         display as text "  and then restart Stata."
         display as text ""
@@ -457,7 +466,19 @@ end
 program define _equipop_setup
     version 17
     syntax [, REPAIR]
-    python: _equipop_setup_py("`repair'")
+    * BACKLOG 196. The ado's own version goes IN, so setup can ask for
+    * an engine at least as new as the commands calling it. Maintained
+    * by tools/bump_version.py, which replaces every line matching
+    * this pattern - so this string and the doctor's below always
+    * agree.
+    local eqp_ado_version "1.48.2"
+    python: _equipop_setup_py("`repair'", "`eqp_ado_version'")
+    * AND A FAILURE IS NOW A FAILURE. It used to print "PIP FAILED"
+    * and return normally, so a scripted or institutional install had
+    * no code to act on.
+    if "`eqp_setup_failed'" != "" {
+        exit 601
+    }
 end
 
 program define _equipop_doctor
@@ -467,7 +488,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.48.0"
+    local eqp_ado_version "1.48.2"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
@@ -745,7 +766,7 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
     Macro.setLocal("eqp_varlist", " ".join(made))
 
 
-def _equipop_setup_py(repair=""):
+def _equipop_setup_py(repair="", ado_version=""):
     # Standard library ONLY, and deliberately so: this runs BEFORE the
     # package exists, on a machine where the whole point is that
     # nothing is installed yet. It must not import the thing it is
@@ -753,7 +774,16 @@ def _equipop_setup_py(repair=""):
     import subprocess
     import sys
 
-    args = ["--user", "--upgrade"]
+    # BACKLOG 319. --user IS REFUSED INSIDE A VIRTUAL ENVIRONMENT:
+    # "Can not perform a '--user' install. User site-packages are not
+    # visible in this virtualenv." A colleague on a Mac had pointed
+    # Stata at ~/StataPython/bin/python - a venv made for Stata, which
+    # is a sensible thing to do - and setup would have failed on
+    # exactly the users careful enough to do that. In a venv the
+    # ordinary install IS the user install, so --user is not merely
+    # unnecessary, it is wrong.
+    in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    args = ["--upgrade"] if in_venv else ["--user", "--upgrade"]
     if repair:
         # The Mac case, and the Anaconda case: the libraries are
         # present but built for the wrong processor, or shadowed by
@@ -762,10 +792,33 @@ def _equipop_setup_py(repair=""):
         # repair appears not to work.
         args += ["--force-reinstall", "--no-cache-dir",
                  "--only-binary=:all:", "numpy", "scipy", "pandas"]
-    args.append("equipop")
+    # BACKLOG 196. A FLOOR, NOT A PIN. Unpinned, a 1.40 command file
+    # could pull whatever PyPI has today; doctor then reports a
+    # mismatch that SETUP created. Exact pinning would be worse in the
+    # other direction - it would stop an older ado ever receiving a
+    # bug-fixed engine.
+    # THE REAL INVARIANT: the ado is the caller and the engine is the
+    # library, so THE LIBRARY MUST BE AT LEAST AS NEW AS THE CALLER.
+    # A floor permits fixes and forbids the case that actually breaks -
+    # an ado calling something its engine does not have.
+    # THIS MATTERS MORE FROM SSC THAN IT DID FROM GITHUB. There the
+    # two arrived together from one set of instructions; on SSC they
+    # sit on separate update tracks - adoupdate for the commands,
+    # `equipop setup` for the engine - so drift is the normal state
+    # rather than an accident.
+    if ado_version:
+        args.append("equipop>=" + ado_version)
+    else:
+        args.append("equipop")
     cmd = [sys.executable, "-m", "pip", "install"] + args
 
     print("EquiPop setup")
+    if ado_version:
+        print("  these command files are version " + ado_version +
+              ", so the engine asked for is equipop>=" + ado_version)
+    if in_venv:
+        print("  this Python is a virtual environment, so --user is "
+              "not used")
     print("  installing into the Python Stata is using:")
     print("     " + sys.executable)
     print("  command:")
@@ -775,24 +828,60 @@ def _equipop_setup_py(repair=""):
         p = subprocess.run(cmd, capture_output=True, text=True)
     except Exception as exc:
         print("  could not run pip at all: " + str(exc).splitlines()[0])
+        Macro.setLocal("eqp_setup_failed", "1")      # BACKLOG 196
         return
     tail = (p.stdout or "").strip().splitlines()[-12:]
     for line in tail:
         print("  " + line)
     if p.returncode != 0:
         print("")
+        Macro.setLocal("eqp_setup_failed", "1")      # BACKLOG 196
         print("  PIP FAILED. The message above is pip's own:")
         for line in (p.stderr or "").strip().splitlines()[-8:]:
             print("     " + line)
-        print("  If it mentions an externally managed environment, "
-              "this is")
-        print("  Apple's or the system's own Python and is not ours to "
-              "change.")
-        print("  Install a plain Python from python.org, point Stata at "
-              "it with")
-        print("     python set exec \"THE_PATH_TO_THAT_PYTHON\", "
-              "permanently")
-        print("  restart Stata, and run -equipop setup- again.")
+        # BACKLOG 319. THIS USED TO PRINT THE SAME ADVICE WHATEVER PIP
+        # SAID. For "No module named pip" it sent the user to replace
+        # their entire Python when the fix is one line, and they
+        # believed it, because the message sounded certain. Advise on
+        # WHAT PIP ACTUALLY SAID, and when it says something we do not
+        # recognise, quote it and stop rather than guess.
+        low = ((p.stderr or "") + (p.stdout or "")).lower()
+        if "no module named pip" in low:
+            print("  That Python has no pip. It is otherwise fine, and "
+                  "one line fixes it:")
+            print("     " + sys.executable + " -m ensurepip --upgrade")
+            print("  Run that in a Terminal or Command Prompt, then run "
+                  "-equipop setup- again.")
+            print("  If THAT says there is no ensurepip either, the "
+                  "Python was built")
+            print("  without it - install a plain Python from "
+                  "python.org instead.")
+        elif "externally managed" in low:
+            print("  This is Apple's or the system's own Python and is "
+                  "not ours to change.")
+            print("  Install a plain Python from python.org, point "
+                  "Stata at it with")
+            print("     python set exec \"THE_PATH_TO_THAT_PYTHON\", "
+                  "permanently")
+            print("  restart Stata, and run -equipop setup- again.")
+        elif "--user" in low and ("virtualenv" in low or "venv" in low):
+            print("  That Python is a virtual environment, which "
+                  "refuses a --user install.")
+            print("  This version should not have asked for one - "
+                  "please report it. Meanwhile:")
+            print("     " + sys.executable + " -m pip install --upgrade "
+                  "equipop")
+        elif "no matching distribution" in low or "could not find" in low:
+            print("  pip could not reach PyPI, or could not find a "
+                  "build for this Python.")
+            print("  Check the network and any proxy, and that this "
+                  "Python is 3.10 or newer:")
+            print("     " + sys.executable + " --version")
+        else:
+            print("  We do not recognise that message, so we will not "
+                  "guess at it.")
+            print("  It is pip's own, and it is the thing to search for "
+                  "or to send on.")
         return
 
     print("")

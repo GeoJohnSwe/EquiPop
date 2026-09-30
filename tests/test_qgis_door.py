@@ -1286,3 +1286,46 @@ def test_the_mismatch_message_offers_BOTH_routes():
         assert "plugin is ahead" in said
     finally:
         equipop.__version__, equipop_qgis.__version__ = was
+
+
+# ---------------- BACKLOG 320: locale, and door parity in PARSING ---
+def test_a_decimal_comma_is_read_the_same_by_both_doors():
+    """Pro has taken 12,5 since 1.16.7, found on a SWEDISH machine.
+    QGIS read k, radii and tau with bare int()/float() straight on the
+    typed text, so a Norwegian student typing 500,5 got the raw Python
+    "could not convert string to float". One parser now; this checks
+    both doors reach it.
+    """
+    from equipop.doors.numbers import to_float, to_int, numlist, intlist
+    assert to_float("500,5") == 500.5
+    assert to_float("500.5") == 500.5
+    assert to_float("1 234,5") == 1234.5      # spreadsheet paste
+    assert to_float("1,234.5") == 1234.5      # thousands then decimal
+    assert to_float("") is None
+    assert to_int("800") == 800
+    assert numlist("500,5 800") == [500.5, 800.0]
+    assert numlist("500,5;800") == [500.5, 800.0]
+    assert intlist("100 200 400") == [100, 200, 400]
+
+
+def test_a_typed_number_that_is_not_one_explains_itself():
+    from equipop.doors.numbers import to_float, to_int, BadNumber
+    with pytest.raises(BadNumber, match="(?i)decimal comma"):
+        to_float("five hundred")
+    # k counts people: a fraction is refused, never silently rounded
+    with pytest.raises(BadNumber, match="(?i)whole number"):
+        to_int("100,5")
+
+
+def test_the_qgis_door_no_longer_parses_numbers_itself():
+    """The gap test_door_parity missed, because it compares which
+    BOXES the doors offer and not how they READ them. Checked on the
+    source, because that is where the drift happened."""
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(here, "qgis", "equipop_qgis",
+                            "alg_counts.py"), encoding="utf-8").read()
+    for bad in ("[int(v) for v in", "[float(v) for v in"):
+        assert bad not in src, (
+            f"alg_counts.py parses typed text with {bad!r} again - a "
+            "decimal comma will break it. Use equipop.doors.numbers.")

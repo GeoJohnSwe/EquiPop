@@ -423,10 +423,19 @@ class CountsAndShares(EquipopAlgorithm):
                                          context)
             kw["decay_eps"] = float(eps) if eps > 0 else 1e-6
             ch.info(curve_in_plain_numbers(model, half))
-        if k_text:
-            kw["k_values"] = [int(v) for v in k_text.split()]
-        if r_text:
-            kw["r_values"] = [float(v) for v in r_text.split()]
+        # BACKLOG 320. WAS int(v) / float(v) STRAIGHT ON TYPED TEXT, so
+        # a Norwegian or Swedish machine - where a radius is written
+        # 500,5 - produced the raw Python "could not convert string to
+        # float". Pro has been protected since 1.16.7; QGIS never was.
+        # One parser now, in equipop.doors.numbers, called by both.
+        from equipop.doors.numbers import intlist, numlist, BadNumber
+        try:
+            if k_text:
+                kw["k_values"] = intlist(k_text)
+            if r_text:
+                kw["r_values"] = numlist(r_text)
+        except BadNumber as bad:
+            raise QgsProcessingException(str(bad))
         if pop:
             kw["weight"] = pts.data[pop]
         if treats:
@@ -631,7 +640,8 @@ class CountsAndShares(EquipopAlgorithm):
             tau = self.parameterAsString(  # not defined
                 parameters, "tau", context).strip()
             if tau:
-                kw["tau_values"] = [float(v) for v in tau.split()]
+                from equipop.doors.numbers import numlist as _nl
+                kw["tau_values"] = _nl(tau)
             if decaying:
                 ch.warning(
                     "Decay over effort is not available, so decay is "

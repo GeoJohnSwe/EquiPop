@@ -3424,6 +3424,151 @@ not here. A list of completed work is not a plan.
   option would make the tool harder to use for a distinction few
   users could act on. Kept as a methodological note.
 
+- ~~319~~ | DONE v1.48.1 |
+  `equipop setup` FAILS IN A VIRTUAL ENVIRONMENT, AND ITS MESSAGE
+  GIVES THE WRONG ADVICE WHEN PIP IS MISSING.
+  Stata was pointed at /Users/<name>/StataPython/bin/python - a
+  virtual environment made for Stata, which is a sensible thing to do.
+  Setup ran `python -m pip install --user --upgrade equipop` and got
+  "No module named pip". TWO DEFECTS, both in _equipop_setup_py:
+  (a) THE MESSAGE ANSWERED A QUESTION PIP DID NOT ASK. Whatever pip
+      said, setup printed the SAME advice: if it mentions an externally
+      managed environment, install a plain Python from python.org. For
+      "No module named pip" that sends the user to replace their whole
+      Python when the fix is one line: `python -m ensurepip --upgrade`.
+  (b) `--user` IS ALWAYS PASSED, AND A VIRTUAL ENVIRONMENT REFUSES IT:
+      "Can not perform a '--user' install. User site-packages are not
+      visible in this virtualenv." So even after pip is fixed, setup
+      fails again - on precisely the users careful enough to give Stata
+      its own environment.
+  REPRODUCED EXACTLY before recording: a venv made --without-pip gives
+  her error; ensurepip fixes it; --user then fails as above; installing
+  WITHOUT --user succeeds and `import equipop` reports 1.48.0. equipop
+  1.48.0 is on PyPI, so the plain install is all that is needed.
+  THE FIX: detect a virtual environment (sys.prefix != sys.base_prefix)
+  and drop --user there; and read pip's stderr and advise on WHAT IT
+  SAID - "No module named pip" -> ensurepip; "externally managed" ->
+  the python.org advice; anything else -> quote pip without guessing.
+  THE FAMILY: the same shape as 309-311 - a failure reported as if it
+  were a different, more familiar failure. A message that guesses is
+  worse than one that quotes, because it is believed.
+  BUILT v1.48.1: a virtual environment is detected and --user dropped
+  there, with a line saying so; and the failure now dispatches on what
+  pip SAID - no module named pip -> ensurepip with the exact command;
+  externally managed -> the python.org route; a --user refusal inside
+  a venv -> named as such; no matching distribution -> network, proxy
+  and Python version. ANYTHING ELSE IS QUOTED AND LEFT ALONE, with
+  "we do not recognise that message, so we will not guess at it".
+  The first version of the test only checked that the word ensurepip
+  appeared, so disabling the branch that offers it still passed; it
+  now pins the dispatch itself.
+
+- ~~320~~ | DONE v1.48.1 |
+  NORWEGIAN MACHINES: THE LOCALE FIX WENT TO PRO AND NEVER TO QGIS,
+  AND THE CSVs WE WRITE ARE UNREADABLE IN A NORWEGIAN EXCEL.
+  John, after the LA County lecture: everyone got it working, but the
+  students whose machines were set to Norwegian hit "some issues".
+
+  (a) QGIS PARSES TYPED NUMBERS WITH BARE int() AND float().
+      alg_counts.py: k_values uses int(v), r_values and tau_values use
+      float(v), straight on the text the user typed. A student typing
+      a radius as 500,5 - which is how a Norwegian keyboard and a
+      Norwegian Windows write it - gets the raw Python message
+      "could not convert string to float: '500,5'", with nothing
+      saying that a decimal comma is the problem.
+      PRO HAS BEEN PROTECTED SINCE 1.16.7, when this was found on a
+      SWEDISH machine: _to_float and _numlist take 12,5 and 12.5 alike
+      and explain themselves when they cannot. THE FIX WAS NEVER
+      CARRIED ACROSS - a door-parity gap of exactly the kind
+      test_door_parity exists to catch, which it did not, because it
+      compares which BOXES the doors offer and not how they READ them.
+      Fix: move _to_float/_numlist into equipop/doors/ so both doors
+      call one implementation, and extend the parity test to parsing.
+
+  (b) THE CSVs ARE UTF-8 WITHOUT A BOM. _EquiPop_run.csv and
+      _EquiPop_fields.csv are both written encoding="utf-8". Excel on
+      Windows, with no BOM, falls back to the ANSI codepage, so a path
+      or field name holding ae/oe/aa renders as mojibake - verified
+      against cp1252, "andel_fodt_i_Norge" comes out
+      "andel_fXdt_i_Norge" with the vowel replaced. One-word fix:
+      encoding="utf-8-sig".
+
+  (c) THE CSV DELIMITER IS A COMMA, and Excel splits on the SYSTEM
+      list separator, a semicolon on a Norwegian machine, so even with
+      the BOM the file opens as one column. No fix is free: a
+      semicolon breaks English Excel and a "sep=," first line breaks
+      every programmatic reader. Probably keep the comma and say so in
+      the message. JOHN'S CALL.
+
+  WHAT IS NOT AT FAULT, checked: dates - the manifest writes ISO UTC,
+  which no locale touches. Pro's own numeric boxes are Pro's to parse.
+  Python's float() and str() are locale-independent by language
+  design, so nothing in the engine is exposed.
+  NOT CHECKED, WORTH TESTING: field names carrying ae/oe/aa through
+  the shapefile 10-character shortener, where the DBF encoding is a
+  separate question from the CSV one.
+  BUILT v1.48.1: (a) equipop/doors/numbers.py now holds ONE reader -
+  to_float, to_int, numlist, intlist - and both doors call it. QGIS
+  raises QgsProcessingException with the message; Pro wraps it as
+  arcpy.ExecuteError, keeping a local fallback so the toolbox still
+  works against an older package. to_int REFUSES a fractional k
+  rather than rounding it, because a silently rounded k is a wrong
+  answer that looks right. (b) both CSVs are utf-8-sig.
+  (c) THE DELIMITER STAYS A COMMA - John's ruling: Excel's import
+  wizard covers it, and the encoding was the real fault.
+  THE PARITY TEST NOW COVERS PARSING, not only which boxes exist -
+  it reads alg_counts.py and fails if bare int()/float() on typed
+  text returns.
+  AND THE REACHABILITY MATRIX CAUGHT THE NEW MODULE UNPROMPTED,
+  exactly as it was built to: doors.numbers had to be declared before
+  the suite would pass. That is the guard written after inventory.py
+  and vectorjoin.py shipped with no way to reach them, working on its
+  own author.
+
+- 321 | OPEN, PROPOSED 23 SEPTEMBER 2026 | WHAT OF PETER'S BURDEN
+  METRICS COULD GO IN TOOL 4, AND WHAT MUST NOT.
+  John asked which measures from the eBoD literature could be added to
+  machine 4 with little fuss. TOOL 4'S OWN DOCSTRING DECIDES MOST OF
+  IT: it computes RATIOS OF TWO AGE-SEX GROUPS over a k-neighbourhood,
+  and already excludes TFR, ASFR, CBR, CDR and life expectancy on the
+  stated ground that "they need vital events and an age-sex folder
+  carries stock, not flow".
+  BY THAT RULE, ALMOST NOTHING FROM THE LIST BELONGS:
+    DALY, QALY, WALY, YLD  need disability or utility weights and a
+                           disease model. Not demography, and not
+                           ours - they belong with the epidemiology
+                           partner, as PROPOSALS.md already says.
+    YLL / YPLL             needs DEATHS BY AGE, which is flow. Out for
+                           the same reason CDR is out. Adding it would
+                           break tool 4's own boundary, and that
+                           boundary is why the tool is coherent.
+  WHAT COULD GO IN, AND IS GENUINELY LITTLE FUSS:
+    (1) EXPECTED COUNTS UNDER A SUPPLIED RATE SCHEDULE. Give tool 4 a
+        rate per age band - deaths per 1000, dispensations per 1000,
+        from a published table or the user's own - and it returns
+        sum(pop_band * rate_band) over the k-neighbourhood. Pure
+        arithmetic on stock, NO new data layer, and the machinery is
+        the one already there: tool 4 sums arbitrary band sets into a
+        group, so this weights each band instead of counting its
+        membership.
+        THIS IS INDIRECT STANDARDISATION, and it is the thing every
+        burden study needs before it starts. With expected counts the
+        user computes SMR or SIR downstream as observed/expected.
+    (2) THE AGE COMPOSITION AS COLUMNS - population per band over the
+        neighbourhood. The input to any standardisation, and the same
+        sums tool 4 already forms, emitted rather than divided.
+  WHAT IS NOT AVAILABLE, and the distinction is worth stating because
+  it is easy to get wrong: DIRECT standardisation needs EVENTS BY AGE
+  WITHIN EACH NEIGHBOURHOOD, which is flow again. Indirect works on
+  stock alone. So indirect is cheap and direct is impossible here.
+  WHY IT MATTERS BEYOND THE PROPOSAL: a crude rate over a bespoke
+  neighbourhood mostly measures WHERE OLD PEOPLE LIVE. Age
+  standardisation is not an optional extra for a neighbourhood health
+  rate - it is what makes one mean anything. That argument holds for
+  the EquiEXPOSE prescription work directly.
+  NOT BUILT. Awaiting John's ruling on whether tool 4 takes a rate
+  schedule, and on what the box should be called.
+
 - 316 | OPEN, SPECIFIED BY JOHN, READY TO BUILD | KEEP BOTH: A THIRD
   CHOICE FOR "if result fields already exist".
   THE GAP IS REAL AND EXERCISE 4 WALKS INTO IT. The box offers
@@ -3745,14 +3890,66 @@ not here. A list of completed work is not a plan.
   category/reference preparation helper from the GIS doors, then
   implement Stata through it.
 
-- 196 | OPEN, SMALL | `equipop setup` IS NOT VERSION-PINNED AND
+- ~~196~~ | DONE v1.48.2 | `equipop setup` WAS NOT VERSION-PINNED AND
   RETURNS SUCCESS ON A PIP FAILURE. It runs `pip install --upgrade
   equipop`, so a 1.40.4 command file can pull a newer engine after a
   later PyPI release - doctor detects the mismatch afterwards, but
   setup created it. And it prints "PIP FAILED" then returns normally,
-  so a scripted install has no failure code. FIX: pass the .ado
-  version in and install equipop==<that version>; return non-zero on
-  pip failure.
+  so a scripted install has no failure code.
+  DONE v1.48.2, WITH ONE CHANGE TO THE FIX THIS ENTRY PROPOSED. Not
+  `equipop==<version>`: an exact pin would stop an older ado ever
+  receiving a bug-fixed engine, which is the wrong failure. THE REAL
+  INVARIANT IS A FLOOR - the ado is the caller, the engine is the
+  library, so the library must be AT LEAST AS NEW as the caller:
+  `pip install "equipop>=<ado version>"`. That permits fixes and
+  forbids the case that actually breaks, an ado calling something its
+  engine does not have. The run now says which floor it asked for.
+  Both failing exits set a local the ado turns into `exit 601`.
+  RAISED IN PRIORITY BY THE SSC SUBMISSION, and that is the general
+  lesson: from GitHub the ado and engine arrived together from one set
+  of instructions, but on SSC they sit on SEPARATE UPDATE TRACKS -
+  adoupdate for the commands, `equipop setup` for the engine - so
+  drift stops being an accident and becomes the normal state. The same
+  item was cheap to ignore for months and became urgent the week the
+  distribution channel changed.
+
+- ~~322~~ | DONE v1.48.2, SAME RELEASE | THE UNKNOWN-SUBCOMMAND
+  MESSAGE SENT USERS TO A RAW GITHUB URL. It is printed at the exact
+  moment a confused user is reading carefully, and once the package is
+  on SSC it was the wrong instruction - `adoupdate` only knows about
+  packages installed from a site. SSC first now, GitHub kept below it
+  as the development route and as the answer while an SSC update is
+  still propagating. README_STATA.md had the same single route.
+  NOT IN THE BACKLOG BEFORE THIS RELEASE: found by reading the ado's
+  user-facing text with the submission in mind rather than by a test.
+
+- ~~323~~ | DONE v1.48.2 | MACHINE 3 COULD NOT BE IMPORTED ON THE
+  PYTHON ARCGIS PRO SHIPS, AND THE WHOLE SUITE PASSED ANYWAY.
+  pyproject promises `requires-python = ">=3.10"`.
+  equipop/doors/continental.py line 172 put a \u2019 escape INSIDE an
+  f-string expression, which Python refuses before 3.12 - PEP 701
+  lifted that restriction only there. So on Python 3.10 and 3.11 the
+  module raises SyntaxError at IMPORT: not a wrong answer, no answer
+  at all. ArcGIS Pro 3.3 and 3.4 ship Python 3.11.
+  HOW IT SURVIVED: every session until now ran Python 3.12, where the
+  interpreter accepts it. 1,272 tests passed over a module that could
+  not load on the floor the package advertises. FOUND ONLY BECAUSE THE
+  TEST CONTAINER CAME BACK AS 3.11 after a reset - by accident, not by
+  a guard.
+  THE FAMILY, AND IT IS A NEW MEMBER: 309-311 and 318 were all
+  failures reported as something else. THIS IS A FAILURE THE
+  ENVIRONMENT HID ENTIRELY. A test suite can only fail on the
+  interpreter it runs on, so a compatibility promise that nothing
+  checks is not a promise.
+  FIXED by lifting the string to a module constant, _OWN_CRS. GUARDED
+  by a test that compiles every module AND, while the declared floor
+  is below 3.12, refuses a backslash inside any f-string expression -
+  because a compile check on 3.12 cannot catch what 3.12 allows. The
+  test says to delete its second half, not itself, if the floor ever
+  rises.
+  WORTH DOING SEPARATELY: run the suite on the OLDEST declared Python
+  in CI, not merely on whatever the machine has. This release proves
+  the value and does not provide it.
 
 - 197 | OPEN, HOUSEKEEPING | THE COMPLETE ZIP CARRIES CACHE
   DIRECTORIES AND A STALE HANDOVER. .pytest_cache and seven

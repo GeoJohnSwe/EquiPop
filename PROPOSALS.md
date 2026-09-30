@@ -1,10 +1,10 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.48.0, 16 September 2026.**
-*Reviewed at 1.48.0: nothing in either proposal rests on decay
-calibration. Worth knowing for the methods work package, though:
-the 2016 paper's log-normal formula places 75% of the area before
-the median, not half, and anything citing it inherits that.
+**Last updated: 1.48.2, 16 September 2026.**
+*Reviewed at 1.48.2: no change to either proposal. Tool 4's
+stock-not-flow boundary still decides what of Peter's eBoD material
+EquiPop could compute - see BACKLOG 321, which proposes the one
+addition that fits: expected counts under a supplied rate schedule.
 A test checks that version against pyproject.toml.*
 
 **NOT SHIPPED.** This file stays in the repository and out of the
@@ -83,6 +83,99 @@ side.
 health outcomes, biomarkers, SSH partners and clinical-study
 annexes. A tool is a WP.
 
+## From exposure to health burden — eBoD and DALYs
+
+*Added 21 September 2026, from Peter G. Schild's literature list on
+metrics for environmental burden of disease.*
+
+**Why this matters for the call.** It is a HEALTH call, and the
+section above says plainly that a tool is not a proposal: it needs
+health outcomes. EquiPop measures *exposure* — who is near what, at
+which scale. Environmental burden of disease (eBoD) is the established
+route from exposure to *health*, expressed as DALYs. It closes the gap
+between what EquiPop produces and what a reviewer of an ENVHLTH topic
+will ask for.
+
+**The chain, and where each part sits:**
+
+    exposure           who is exposed, where, at what scale   EquiPop
+      -> exposure-response function                           epidemiology
+      -> attributable fraction of disease                     epidemiology
+      -> burden in DALYs  (= YLL + YLD)                       eBoD method
+
+DALYs combine years of life lost to early death (YLL) with years lived
+with disability (YLD). The method is set out in Prüss-Üstün et al.
+(2003); Hänninen et al. (2014) apply it to nine environmental risk
+factors in six European countries; Burnett et al. (2014) supply the
+integrated exposure-response function for fine particles that the
+Global Burden of Disease work uses; Cohen et al. (2017) give the
+global ambient-air estimates.
+
+**What EquiPop adds that standard eBoD does not.** eBoD studies
+usually assign exposure at a coarse level — a country, a region, a
+grid cell — and report one burden per area. That averages exactly the
+inequality this call asks about. EquiPop assigns exposure per
+bespoke neighbourhood, disaggregated by group and at several scales,
+so the burden can be computed *for the disproportionately affected
+populations* rather than for the area they happen to live in.
+
+**And the granularity finding applies here too.** If coarse units
+understate how concentrated a minority group is, they also misplace
+how much of an exposure that group carries — and therefore how much
+of the attributable burden. That makes the comparability problem in
+"Why EquiPop fits" a health problem, not only a measurement one.
+
+**The indoor half — and where SustainaBuilt comes in.** Most of the
+example studies on the list are about the INDOOR environment:
+De Oliveira Fernandes et al. (2009), Jantunen et al. (2011), Morawska
+et al. (2013), Asikainen et al. (2016) and Carrer et al. (2015, 2018)
+all quantify the health burden of indoor air and ventilation. That
+matters because people spend most of their time indoors — commonly put
+at close to 90% in Europe and North America — so the building envelope
+and its ventilation stand between an outdoor climate exposure and the
+exposure a person actually receives. Heat, wildfire smoke and ozone
+all arrive through the building. This gives the proposal a natural
+work package that turns *outdoor* climate exposure into *received*
+exposure, and it is where the Department's building and indoor
+expertise — SustainaBuilt — joins EquiPop and TransFrUrban.
+
+**Which metric — John's decision, with a suggestion:**
+
+| metric | what it counts | fit for this call |
+|---|---|---|
+| **DALY** | healthy years lost: YLL + YLD | **primary** — comparable with GBD and WHO eBoD |
+| YLL / YPLL | years lost to early death only | a component of DALY, not a rival |
+| YLD | years lived with disability only | the other component |
+| QALY | quality-adjusted years gained | health economics, cost-effectiveness |
+| HALY | umbrella term for all of these | no separate method |
+| WALY | wellbeing-adjusted years | **worth considering for the SSH part** |
+
+DALY is the natural primary measure: it is what the WHO eBoD method and
+the Global Burden of Disease use, so results are comparable with
+theirs. **WALY is worth a thought** because the call requires a real
+social-science contribution, not a token one: a wellbeing-adjusted
+measure is an SSH question in its own right, and could give that
+partner a substantive role rather than a supporting one.
+
+**The literature, by role:**
+
+- *Method and reviews* — Prüss-Üstün et al. (2003); NCCID, summary
+  measures of burden of disease.
+- *Ambient air, global and European* — Burnett et al. (2014);
+  Hänninen et al. (2014); Brauer et al. (2015); Cohen et al. (2017);
+  WHO (2016).
+- *Indoor environment and ventilation* — De Oliveira Fernandes et al.
+  (2009); Jantunen et al. (2011); Morawska et al. (2013); Carrer et al.
+  (2015, 2018); Asikainen et al. (2016); Morawska (2024).
+- *Household energy* — Bonjour et al. (2013), on solid-fuel cooking.
+
+**One reference to fix before it goes in the application.** The DOI
+listed for WHO (2016) resolves to a one-page research brief reprinted
+in the *Clean Air Journal* 26(2), 6. The author is correctly WHO, but
+the full report of the same title — *Ambient air pollution: a global
+assessment of exposure and burden of disease* — is the document to
+cite in a grant.
+
 ## Open — John's
 
     [ ]  Consortium: who, and which of them brings the cohorts
@@ -90,6 +183,14 @@ annexes. A tool is a WP.
          contribution, not a token)
     [ ]  Whether to target this topic or a sibling in the same call
     [ ]  One-page concept, before approaching partners
+    [ ]  Burden metric: DALY as primary (suggested); WALY for the
+         SSH part?
+    [ ]  Which exposures - heat, PM2.5, ozone, wildfire smoke - and
+         which exposure-response function for each
+    [ ]  Model the indoor step (outdoor -> received exposure), with
+         SustainaBuilt, or stay with outdoor exposure?
+    [ ]  Who brings the epidemiology - exposure-response is not
+         EquiPop's to supply
 
 ## What the code could owe it
 
@@ -103,6 +204,16 @@ choosing work knows which choices serve two purposes at once:
   instrument for it. Whether a *general* correction for unit
   granularity is possible is a research question and might be the
   intellectual core of the WP rather than a feature.
+- **Probably nothing for eBoD itself - and that is deliberate.**
+  DALYs are computed downstream from exposure, with exposure-response
+  functions that belong to the epidemiology partner. That keeps the
+  division of labour this project has held to: EquiPop builds the
+  neighbourhoods, statistics happen in Stata or Python. What EquiPop
+  DOES supply is the input eBoD needs and rarely has - population-
+  weighted exposure per group, per neighbourhood, at several scales.
+  Machine 2 already computes weighted summaries of a numeric field
+  within each k-neighbourhood, so a sampled PM2.5 or heat surface may
+  need no new code at all. Worth demonstrating before promising.
 - **Climate rasters through machine 3.** Heat, air quality and
   drought surfaces are continental rasters, which is what machine 3
   already curates. Nothing new may be needed, which is worth knowing

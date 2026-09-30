@@ -567,3 +567,163 @@ def test_the_ssc_package_lists_every_ado_and_a_current_date():
         f"Distribution-Date is {m.group(1)}, {age} days old. It is "
         "bumped with the version; if this fails, a release went out "
         "without one")
+
+
+def test_the_run_manifests_carry_a_bom_for_excel():
+    """BACKLOG 320(b). Excel on Windows reads a BOM-less UTF-8 CSV as
+    the ANSI codepage, so a path or field name holding a Norwegian
+    vowel arrives as mojibake - andel_fodt became andel_fXdt, verified
+    against cp1252. Students reported it after the LA lecture."""
+    src = open(os.path.join(ROOT, "arcgis", "EquiPop.pyt"),
+               encoding="utf-8").read()
+    assert 'newline="", encoding="utf-8")' not in src, (
+        "a CSV is written without a BOM again - Excel will mangle "
+        "every non-ASCII character in it")
+    assert src.count("utf-8-sig") >= 2
+
+
+def test_stata_setup_does_not_force_user_in_a_virtual_environment():
+    """BACKLOG 319. pip refuses --user inside a venv, so setup failed
+    on exactly the people careful enough to give Stata its own
+    environment. And the failure message used to print the same advice
+    whatever pip said - for "No module named pip" it told them to
+    replace their whole Python."""
+    src = open(os.path.join(ROOT, "stata", "equipop.ado"),
+               encoding="utf-8").read()
+    assert 'args = ["--user", "--upgrade"]' not in src, (
+        "--user is unconditional again; a virtual environment will "
+        "refuse it")
+    assert "base_prefix" in src, "no virtual environment detection"
+    # The advice must be REACHABLE, not merely present: an earlier
+    # version of this test only looked for the word "ensurepip", so
+    # disabling the branch that offers it still passed.
+    assert '"no module named pip" in low' in src, (
+        "setup no longer dispatches on what pip actually said - the "
+        "'No module named pip' case will fall through to generic "
+        "advice again")
+    assert "ensurepip" in src, (
+        "the 'No module named pip' case is unhandled - the one-line "
+        "fix is ensurepip, not a new Python")
+    assert '"externally managed" in low' in src
+
+
+def test_setup_asks_for_an_engine_at_least_as_new_as_the_commands():
+    """BACKLOG 196. `equipop setup` installed a bare `equipop`, so a
+    1.40 command file could pull whatever PyPI had that day - and
+    `equipop doctor` then reported a drift that SETUP had created.
+
+    A FLOOR, NOT A PIN: the ado is the caller and the engine is the
+    library, so the library must be at least as new as the caller.
+    Exact pinning would stop an older ado ever receiving a bug-fixed
+    engine, which is the wrong failure.
+
+    This matters more from SSC than it did from GitHub: there the two
+    arrived together, on SSC they update on separate tracks.
+    """
+    import re
+    src = open(os.path.join(ROOT, "stata", "equipop.ado"),
+               encoding="utf-8").read()
+    assert 'args.append("equipop>=" + ado_version)' in src, (
+        "no version floor - setup can install an engine older than "
+        "the commands calling it")
+    assert '_equipop_setup_py(repair="", ado_version="")' in src or \
+        'def _equipop_setup_py(repair="", ado_version="")' in src, (
+        "the setup routine does not receive the ado's version")
+
+    # the version it passes in must be the SAME string the doctor uses,
+    # or the two halves of the same guard disagree
+    vers = set(re.findall(r'local eqp_ado_version "([^"]+)"', src))
+    assert len(vers) == 1, (
+        f"the ado declares more than one version of itself: {vers}")
+    pkg = re.search(r'^version\s*=\s*"([^"]+)"',
+                    open(os.path.join(ROOT, "pyproject.toml"),
+                         encoding="utf-8").read(), re.M).group(1)
+    assert vers == {pkg}, f"ado says {vers}, package says {pkg}"
+
+
+def test_a_failed_setup_is_a_failed_command():
+    """BACKLOG 196, the other half. Setup printed "PIP FAILED" and
+    then returned normally, so a scripted or institutional install had
+    no failure code to act on."""
+    src = open(os.path.join(ROOT, "stata", "equipop.ado"),
+               encoding="utf-8").read()
+    assert src.count('Macro.setLocal("eqp_setup_failed", "1")') >= 2, (
+        "not every failing exit flags the failure - both the "
+        "could-not-run-pip and the pip-returned-nonzero paths must")
+    assert '''if "`eqp_setup_failed'" != "" {''' in src and \
+        "exit 601" in src, (
+        "the ado does not turn the flag into a non-zero exit")
+
+
+def test_the_update_advice_names_ssc_first():
+    """v1.48.2. The unknown-subcommand message named a raw GitHub URL
+    only - printed at the exact moment a confused user is reading
+    carefully, and the wrong instruction once the package is on SSC.
+    GitHub stays as the development route."""
+    src = open(os.path.join(ROOT, "stata", "equipop.ado"),
+               encoding="utf-8").read()
+    i_ssc = src.find("ssc install equipop, replace")
+    i_git = src.find("raw.githubusercontent")
+    assert i_ssc > 0, "the update advice does not mention SSC"
+    assert i_ssc < i_git, (
+        "GitHub is offered before SSC - a Stata user updates from SSC")
+    readme = open(os.path.join(ROOT, "stata", "README_STATA.md"),
+                  encoding="utf-8").read()
+    assert "ssc install equipop" in readme, (
+        "README_STATA.md still offers only the GitHub route")
+
+
+def test_every_module_compiles_on_the_oldest_python_we_promise():
+    """v1.48.2, FOUND BY THE TEST ENVIRONMENT CHANGING.
+
+    pyproject declares requires-python >= 3.10, and
+    equipop/doors/continental.py could not be IMPORTED on 3.10 or
+    3.11: it put a \\u2019 escape inside an f-string expression, which
+    PEP 701 only permitted from 3.12. ArcGIS Pro 3.3 and 3.4 ship
+    Python 3.11, so machine 3 was dead there - and every session until
+    now ran 3.12, where the interpreter accepted it and the entire
+    suite passed.
+
+    A COMPILE CHECK CANNOT CATCH WHAT THIS INTERPRETER ALLOWS, so this
+    test does what it can: it compiles every module, and separately
+    refuses the one construct known to differ. If the declared floor
+    ever rises to 3.12, delete the second half rather than the test.
+    """
+    import re
+    roots = ("equipop", "qgis", "arcgis")
+    files = []
+    for r in roots:
+        for dirpath, _dirs, names in os.walk(os.path.join(ROOT, r)):
+            if "__pycache__" in dirpath:
+                continue
+            files.extend(os.path.join(dirpath, n) for n in names
+                         if n.endswith((".py", ".pyt")))
+    assert files, "found no modules to compile - the walk is wrong"
+
+    declared = re.search(r'requires-python\s*=\s*"[^0-9]*(\d+)\.(\d+)',
+                         open(os.path.join(ROOT, "pyproject.toml"),
+                              encoding="utf-8").read())
+    floor = (int(declared.group(1)), int(declared.group(2)))
+
+    bad = []
+    for f in files:
+        src = open(f, encoding="utf-8").read()
+        try:
+            compile(src, f, "exec")
+        except SyntaxError as exc:
+            bad.append(f"{f}:{exc.lineno} {exc.msg}")
+        if floor < (3, 12):
+            # A BACKSLASH INSIDE AN f-STRING EXPRESSION. Matched on the
+            # {...} parts of f-string lines only, so an ordinary
+            # escape in the literal text is left alone.
+            for i, line in enumerate(src.splitlines(), 1):
+                if not re.search(r'\bf["\']', line):
+                    continue
+                for expr in re.findall(r"\{([^{}]*)\}", line):
+                    if "\\" in expr:
+                        bad.append(
+                            f"{f}:{i} backslash inside an f-string "
+                            f"expression - refused by Python "
+                            f"{floor[0]}.{floor[1]}, which pyproject "
+                            f"promises to support")
+    assert not bad, "\n".join(bad)
