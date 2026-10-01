@@ -505,7 +505,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
             col[vidx] = vals
         else:
             col[vidx] = res.loc[keys, c].to_numpy(dtype=float)
-        out[c] = col
+        out[c.replace(".", "_")] = col
     n_miss = n_rows - len(vidx)
     if n_miss:
         print(f"[equipop] {n_miss} rows with missing coordinates -> "
