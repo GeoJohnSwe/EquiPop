@@ -576,7 +576,7 @@ def _map_back(res, keys, cols, valid, n_rows):
     for c in cols:
         col = np.full(n_rows, np.nan)
         col[vidx] = res.loc[keys, c].to_numpy(dtype=float)
-        out[c] = col
+        out[c.replace(".", "_")] = col
     return out
 
 
