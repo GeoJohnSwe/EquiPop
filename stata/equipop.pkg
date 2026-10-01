@@ -19,3 +19,5 @@ f equipop.ado
 f equipop.sthlp
 f equipop_knn.ado
 f equipop_run.ado
+f example.do
+f stata_test_data.dta

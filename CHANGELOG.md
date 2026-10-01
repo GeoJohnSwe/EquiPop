@@ -46,7 +46,12 @@ release it was added for.
   not legal in a Stata variable name, and two distinct radii that agree
   to `:g`'s six significant digits would still produce the same label.
   Both are a separate, lower-priority issue from the ones fixed here.
-- Also noticed, not addressed here: `equipop.pkg` does not list
-  `example.do`/`stata_test_data.dta` among its `f` lines, so a plain
-  `ssc install equipop` would not actually fetch the files the help
-  file's Examples section now tells users to use.
+- Fixed (`equipop.pkg`): `example.do` and `stata_test_data.dta` were
+  missing from the package's `f` lines, so a plain `ssc install equipop`
+  would not have actually fetched the files the help file's Examples
+  section tells users to use. Added both.
+- Not fixed here, pushing this branch/tag to a GitHub fork does not by
+  itself update SSC. Users who already have an earlier version
+  installed via `ssc install equipop` keep that version until a real
+  SSC update is submitted and distributed - that is a separate step
+  from anything in this repository.
