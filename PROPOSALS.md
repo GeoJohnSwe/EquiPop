@@ -1,10 +1,11 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.48.2, 16 September 2026.**
-*Reviewed at 1.48.2: no change to either proposal. Tool 4's
-stock-not-flow boundary still decides what of Peter's eBoD material
-EquiPop could compute - see BACKLOG 321, which proposes the one
-addition that fits: expected counts under a supplied rate schedule.
+**Last updated: 1.49.1, 16 September 2026.**
+*Reviewed at 1.49.1: the ratio ruling matters for EquiEXPOSE. A
+prescription count over a population is a rate, not a share, and can
+exceed 1 - dispensations per person routinely do. EquiPop no longer
+refuses that. BACKLOG 321, expected counts under a supplied rate
+schedule, still awaits John's ruling.
 A test checks that version against pyproject.toml.*
 
 **NOT SHIPPED.** This file stays in the repository and out of the

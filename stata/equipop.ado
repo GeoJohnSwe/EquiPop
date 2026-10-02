@@ -1,4 +1,4 @@
-*! equipop v1.48.5  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.49.2  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -487,7 +487,7 @@ program define _equipop_setup
     * by tools/bump_version.py, which replaces every line matching
     * this pattern - so this string and the doctor's below always
     * agree.
-    local eqp_ado_version "1.48.5"
+    local eqp_ado_version "1.49.2"
     python: _equipop_setup_py("`repair'", "`eqp_ado_version'")
     * AND A FAILURE IS NOW A FAILURE. It used to print "PIP FAILED"
     * and return normally, so a scripted or institutional install had
@@ -504,7 +504,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.48.5"
+    local eqp_ado_version "1.49.2"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 

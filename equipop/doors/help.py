@@ -261,6 +261,23 @@ HELP = {
                "charge every grid cell they cross, polygons every "
                "cell they cover, rasters are sampled at cell "
                "midpoints.",
+    # BACKLOG 306 -----------------------------------------------------
+    "barrierclass": "OPTIONAL, AND IT CHANGES THE ARITHMETIC. Without "
+                    "it every barrier FEATURE is charged to every cell "
+                    "it crosses, and OSM cuts one street into a new "
+                    "record wherever a tag changes - so a junction "
+                    "holding 'unclassified' three times and "
+                    "'trunk_link' twice is charged five times, which "
+                    "is a fact about how the data was fragmented "
+                    "rather than about the world. Name the field "
+                    "holding the class (fclass on OSM roads) and each "
+                    "CLASS is charged once per cell instead. Measured "
+                    "on downtown Los Angeles, per-feature counting "
+                    "gave cell costs from 1 to 166 where the friction "
+                    "table topped out at 8. The same rule machine 3's "
+                    "vector join has used since 1.47.4. Dissolving by "
+                    "class first achieves the same thing and is a "
+                    "reasonable GIS step; this saves it.",
     "barrierfield": "The numeric field holding each feature's "
                     "crossing cost in rounds. For rasters the cell "
                     "value is the cost and this box is unused.",

@@ -1123,7 +1123,12 @@ def test_pyt_dialogs_construct_like_pro():
     m1 = {p.name: p for p in pyt.CountsShares().getParameterInfo()}
     assert isinstance(m1["layer"].datatype, list)      # the field bug
     assert m1["barriertable"].datatype == "GPValueTable"
-    assert len(m1["barriertable"].columns) == 2      # source + field
+    # BACKLOG 306: a THIRD column, the optional class field. Without
+    # it a cell is charged once per FEATURE, and OSM cuts one street
+    # into a new record wherever a tag changes.
+    assert len(m1["barriertable"].columns) == 3   # source, value, class
+    assert "lass" in str(m1["barriertable"].columns[2]), (
+        "the third barrier column is not the class field")
     # every value-table column must be a type Pro can marshal
     for p in list(m1.values()):
         for col in getattr(p, "columns", []) or []:
@@ -2943,3 +2948,129 @@ def test_a_variable_half_life_keeps_the_chosen_model():
         f"a half-life from a field ran with model {seen.get('decay_model')!r}"
         " - the chosen model was dropped on the variable route")
     assert seen.get("decay_calibration") == "half-probability"
+
+
+# ------------- BACKLOG 306: the barrier charges per CLASS ------------
+def test_the_barrier_can_charge_each_class_once():
+    """BACKLOG 306. Machine 1's barrier went through
+    paths_to_friction(), which charges ONCE PER FEATURE - so it still
+    had the defect 298 removed from machine 3's join.
+
+    John's own example: a real junction holds 'unclassified' three
+    times and 'trunk_link' twice, all one road. Per feature that is
+    five charges; per class it is two.
+    """
+    import contextlib, io
+    from equipop.friction import paths_to_friction
+    from equipop.vectorjoin import paths_to_cells, CLASS
+    line = {"type": "line", "parts": [[(10.0, 10.0), (90.0, 10.0)]]}
+    feats = [line] * 5
+    vals = [8.0] * 3 + [3.0] * 2
+    classes = ["unclassified"] * 3 + ["trunk_link"] * 2
+    with contextlib.redirect_stdout(io.StringIO()):
+        per_feature = paths_to_friction(feats, vals, unit_size=100.0,
+                                        agg="sum")
+        per_class = paths_to_cells(feats, vals, classes,
+                                   unit_size=100.0, fidelity=CLASS,
+                                   agg="sum")
+    assert float(per_feature["friction"].iloc[0]) == 30.0
+    assert float(per_class["value"].iloc[0]) == 11.0, (
+        "the class-collapsing route is charging per feature again")
+
+
+def test_the_barrier_class_field_reaches_both_doors():
+    """A box one door has and the other does not is this project's
+    oldest failure - and 320 was exactly that, a locale fix Pro had
+    from 1.16.7 that QGIS never received. Checked on the sources,
+    because the defect would be an absence."""
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pyt = open(os.path.join(here, "arcgis", "EquiPop.pyt"),
+               encoding="utf-8").read()
+    assert "class_field" in pyt and "fidelity=CLASS" in pyt, (
+        "the Pro barrier cannot charge per class")
+    bar = open(os.path.join(here, "qgis", "equipop_qgis",
+                            "barriers.py"), encoding="utf-8").read()
+    assert "class_field" in bar and "fidelity=CLASS" in bar, (
+        "the QGIS barrier cannot charge per class")
+    alg = open(os.path.join(here, "qgis", "equipop_qgis",
+                            "alg_counts.py"), encoding="utf-8").read()
+    assert "barrierclass" in alg, "no class box on the QGIS door"
+    # and the explanation must be SHARED, not written twice
+    from equipop.doors.help import HELP
+    assert "barrierclass" in HELP
+
+
+def test_a_run_without_the_class_field_says_so():
+    """The default stays per-feature, because with no class field
+    there is nothing to collapse on - so the behaviour of every
+    existing barrier run is unchanged. What must NOT stay unchanged is
+    the silence: on OSM roads per-feature counting is a fact about the
+    data, and the run now says which rule it used either way."""
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for rel in (("arcgis", "EquiPop.pyt"),
+                ("qgis", "equipop_qgis", "barriers.py")):
+        src = open(os.path.join(here, *rel), encoding="utf-8").read()
+        low = src.lower()
+        assert "no class field" in low, (
+            f"{rel[-1]} does not say when it charged per feature")
+        assert "dissolve" in low, (
+            f"{rel[-1]} does not name the workaround")
+
+
+def test_a_table_input_may_write_a_new_feature_class():
+    """BACKLOG 327, John from the field with the Northern Ireland 1 km
+    grid. He gave a CSV of coordinates, chose Output = New feature
+    class, named it, and the dialog still refused with "Table input
+    has no feature class to append to - set the output table (.csv)"
+    while the feature-class box sat filled in right above it.
+
+    The check asked only whether the INPUT was a table. It never
+    looked at the output mode, so the one obvious thing to do with a
+    table of coordinates - turn it into points - was unreachable. The
+    message was true of appending and false of the run.
+    """
+    import pandas as pd
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1, 2],
+                                      "X": [335500.0, 336500.0],
+                                      "Y": [357500.0, 358500.0],
+                                      "pop": [13.0, 22.0]}))
+    pyt = _load_pyt()
+    import arcpy as fake
+    real = fake.Describe
+    fake.Describe = lambda v: types.SimpleNamespace(
+        dataType="Table", shapeType=None, spatialReference=None,
+        catalogPath=r"C:\ni\grid.csv")
+    try:
+        tool = pyt.CountsShares()
+        ps = tool.getParameterInfo()
+        pm = {p.name: p for p in ps}
+        pm["layer"].value = "grid.csv"
+        pm["xfield"].value = "X"
+        pm["yfield"].value = "Y"
+        pm["k"].value = "200"
+        pm["outmode"].value = "New feature class"
+        pm["outfc"].value = r"C:\ni\work.gdb\TrialRun"
+        tool.updateMessages(ps)
+        errs = [t for k, t in pm["outtable"].messages if k == "ERROR"]
+        assert not errs, (
+            "a .csv output is still demanded when a NEW FEATURE CLASS "
+            f"was asked for: {errs!r}")
+
+        # and the demand must remain when there IS nowhere else to go
+        pm["outmode"].value = "Append to input"
+        pm["outtable"].value = None
+        for q in ps:
+            try:
+                q.clearMessage()
+            except Exception:
+                pass
+        tool.updateMessages(ps)
+        errs2 = " ".join(t for k, t in pm["outtable"].messages
+                         if k == "ERROR")
+        assert "cannot be appended" in errs2, (
+            "appending a table input must still be refused - a CSV on "
+            f"disk is not a feature class. Got: {errs2!r}")
+    finally:
+        fake.Describe = real
