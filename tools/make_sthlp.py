@@ -92,6 +92,34 @@ STATA_ONLY = {
         "How many bands of similar bandwidth halflifevar() is grouped "
         "into. More bands follow the variation more closely and take "
         "longer. Ignored without halflifevar(). Default 10.",
+    "overshoot(string)":
+        "What happens to the ring of cells that CROSSES k. "
+        "EquiPop grows a neighbourhood outward until it "
+        "holds k people, and the ring that takes it past k "
+        "almost never lands on k exactly. 'Whole ring' takes "
+        "all of it - what EquiPop did before 1.30 - so ask a "
+        "3x3 of cells holding ten each for k=11 and you "
+        "receive 50. That is worst at SMALL k and AT "
+        "BOUNDARIES, which is exactly where segregation is "
+        "measured: on a planted sharp edge the share R_k in "
+        "the boundary cell reads 0.20 whole against 0.02 "
+        "proportional. 'Proportional share' takes the same "
+        "fraction of every cell in that ring, so N_k is "
+        "exactly k; it produces FRACTIONAL PEOPLE, which are "
+        "estimates rather than persons, and value "
+        "statistics refuse it because a quarter of a cell "
+        "has no median, percentile or Gini. 'Sampled' takes "
+        "whole cells one at a time, in an order drawn from "
+        "the seed, until k is reached - this is the original "
+        "EquiPop method from the 2014 C# tool, kept so old "
+        "results can be reproduced and compared. Sampled is "
+        "NOT proportional with the fractions removed: it is "
+        "that answer rounded up to a whole cell, and "
+        "different seeds do not average the difference away. "
+        "NOT AVAILABLE IN STATA - calling overshoot(sampled) here "
+        "returns an error pointing you to overshoot(proportional) or "
+        "to QGIS/ArcGIS Pro, which do implement it. Set 'whole ring' "
+        "to reproduce numbers from before 1.30 exactly.",
     "calibration(string)":
         "What the halflife() distance MEANS. halflife, the default: "
         "half of all trips are shorter than it - use this for a survey "
@@ -291,7 +319,7 @@ def build():
     add("{pstd}")
     add(_wrap(
         "equipop needs Python. See {help python} and, for the "
-        "installation, the file TESTING_STATA.md in the EquiPop "
+        "installation, the file README_STATA.md in the EquiPop "
         "distribution. Note that Stata and Anaconda do not mix: use "
         "a plain python.org Python for Stata."))
     add("")
@@ -384,13 +412,25 @@ def build():
     add("{marker examples}{...}")
     add("{title:Examples}")
     add("")
+    add("{pstd}The examples below run against {cmd:stata_test_data.dta}, "
+        "included with this package ({cmd:ID}, {cmd:X_local}, "
+        "{cmd:Y_local}, {cmd:LowEdu}, {cmd:HighEdu}, {cmd:TheoEdu}, "
+        "{cmd:VocaEdu}, {cmd:ValFloat}, {cmd:ValCount}). See also "
+        "{cmd:example.do}, which runs the full round trip in one "
+        "file:{p_end}")
+    add("")
     add("{phang}{cmd:. equipop setup}{p_end}")
     add("{phang}{cmd:. equipop doctor}{p_end}")
+    add("{phang}{cmd:. use stata_test_data, clear}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) "
-        "treat(HighEdu) k(25 50 200) unit(100)}{p_end}")
-    add("{phang}{cmd:. equipop if urban==1, x(X) y(Y) "
-        "treat(HighEdu) k(50) replace}{p_end}")
+        "treat(HighEdu) k(25 50 200) unit(100) replace}{p_end}")
+    add("")
+    add("{pstd}The remaining examples are illustrative syntax patterns "
+        "using placeholder variable names ({cmd:totalpop}, "
+        "{cmd:university}, {cmd:households}, {cmd:renting}, "
+        "{cmd:unemployed}) - adapt them to your own data; they do not "
+        "run as-is against {cmd:stata_test_data.dta}.{p_end}")
     add("")
     add("{pstd}A reference population - counts per row rather than one "
         "row per person:{p_end}")
@@ -403,20 +443,27 @@ def build():
     add("{phang}{cmd:. equipop [fweight=households], x(X) y(Y) "
         "treat(renting) k(200)}{p_end}")
     add("")
-    add("{pstd}Self-potential - whether an origin counts itself. The "
-        "default keeps it, which is right when a row is a place; "
-        "{cmd:selfpot(0)} drops it, which is right when a row is a "
-        "person and you are asking about their surroundings:{p_end}")
+    add("{pstd}Self-potential and origin rule are two different "
+        "settings - do not confuse them. {cmd:selfpot(#)} only changes "
+        "the ASSUMED DISTANCE from the origin to itself; the origin's "
+        "own cell is still counted as its own neighbour either way, as "
+        "confirmed in the run's log. To actually exclude the origin "
+        "from its own neighbourhood - the w(ii)=0 convention spatial "
+        "regression needs - use {cmd:originrule(exclude)} "
+        "instead:{p_end}")
     add("{phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) "
         "selfpot(0)}{p_end}")
+    add("{phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) "
+        "originrule(exclude)}{p_end}")
     add("")
     add("{pstd}Distance decay - near neighbours weigh more than far "
-        "ones. {cmd:half(m)} is the distance at which a neighbour "
-        "counts half:{p_end}")
+        "ones. {cmd:halflife(#)} is the distance at which a neighbour "
+        "counts half (see {cmd:calibration()} above for the exact "
+        "definition):{p_end}")
     add("{phang}{cmd:. equipop, x(X) y(Y) treat(HighEdu) k(1000) "
-        "decay(negexp) half(500)}{p_end}")
+        "decay(negexp) halflife(500)}{p_end}")
     add("{phang}{cmd:. equipop, x(X) y(Y) treat(HighEdu) k(1000) "
-        "decay(lognormal) half(2000)}{p_end}")
+        "decay(lognormal) halflife(2000)}{p_end}")
     add("")
     add("{pstd}Overshoot - what to do with the ring that carries the "
         "neighbourhood past k. {cmd:whole} takes the whole ring, so N "

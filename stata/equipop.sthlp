@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.48.3}{...}
+{* *! version 1.48.4}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.48.3)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.48.4)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -98,9 +98,9 @@ others.
 
 {pstd}
 equipop needs Python. See {c -({c )-}help python{c )-} and, for the
-installation, the file README_STATA.md in the EquiPop distribution.
-Note that Stata and Anaconda do not mix: use a plain python.org Python
-for Stata.
+installation, the file README_STATA.md in the EquiPop distribution. Note
+that Stata and Anaconda do not mix: use a plain python.org Python for
+Stata.
 
 {marker options}{...}
 {title:Options}
@@ -263,10 +263,7 @@ See also {c -({c )-}help python{c )-}, and {c -({c )-}cmd:python query{c
 {marker examples}{...}
 {title:Examples}
 
-{pstd}The examples below run against {cmd:stata_test_data.dta}, included with
-this package ({cmd:ID}, {cmd:X_local}, {cmd:Y_local}, {cmd:LowEdu},
-{cmd:HighEdu}, {cmd:TheoEdu}, {cmd:VocaEdu}, {cmd:ValFloat}, {cmd:ValCount}).
-See also {cmd:example.do}, which runs the full round trip in one file:{p_end}
+{pstd}The examples below run against {cmd:stata_test_data.dta}, included with this package ({cmd:ID}, {cmd:X_local}, {cmd:Y_local}, {cmd:LowEdu}, {cmd:HighEdu}, {cmd:TheoEdu}, {cmd:VocaEdu}, {cmd:ValFloat}, {cmd:ValCount}). See also {cmd:example.do}, which runs the full round trip in one file:{p_end}
 
 {phang}{cmd:. equipop setup}{p_end}
 {phang}{cmd:. equipop doctor}{p_end}
@@ -274,10 +271,7 @@ See also {cmd:example.do}, which runs the full round trip in one file:{p_end}
 {phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}
 {phang}{cmd:. equipop, x(X_local) y(Y_local) treat(HighEdu) k(25 50 200) unit(100) replace}{p_end}
 
-{pstd}The remaining examples are illustrative syntax patterns using
-placeholder variable names ({cmd:totalpop}, {cmd:university},
-{cmd:households}, {cmd:renting}, {cmd:unemployed}) - adapt them to your own
-data; they do not run as-is against {cmd:stata_test_data.dta}.{p_end}
+{pstd}The remaining examples are illustrative syntax patterns using placeholder variable names ({cmd:totalpop}, {cmd:university}, {cmd:households}, {cmd:renting}, {cmd:unemployed}) - adapt them to your own data; they do not run as-is against {cmd:stata_test_data.dta}.{p_end}
 
 {pstd}A reference population - counts per row rather than one row per person:{p_end}
 {phang}{cmd:. equipop, x(X) y(Y) pop(totalpop) treat(university) k(500 1000)}{p_end}

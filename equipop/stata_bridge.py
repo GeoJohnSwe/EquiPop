@@ -341,6 +341,46 @@ def zone_span_warning(x, y, epsg=None):
         return None
 
 
+def _safe_radius_labels(r_values):
+    """Stata-safe, collision-checked labels for r_values.
+
+    Temporary guard (v1.48.3) pending a proper radius-naming redesign -
+    see CHANGELOG. Two different radii can format to the SAME label
+    under Python's 6-significant-digit ``:g`` (e.g. 100.000001 and
+    100.000002 both give "r100"); a radius small or large enough to
+    trigger scientific notation produces a label containing ``-`` or
+    ``+``, which is not legal in a Stata variable name. Confirmed
+    directly: before this guard, two such radii silently collapsed
+    into ONE output variable, overwriting one radius's result with the
+    other's - no error, no warning. Refusing the run is safer than
+    guessing at a fix here; a human needs to pick different radii or
+    wait for the redesign that can tell them apart properly.
+    """
+    labels = {}
+    for r in r_values:
+        raw = f"r{r:g}"
+        safe = raw.replace(".", "_")
+        if "-" in safe or "+" in safe:
+            raise ValueError(
+                f"r({r:g}) cannot be turned into a legal Stata name "
+                f"('{raw}') - this radius is small or large enough that "
+                f"Python's number formatting switches to scientific "
+                f"notation. Use a radius roughly between 0.0001 and "
+                f"1,000,000 in your coordinate units, or ask about the "
+                f"pending radius-naming redesign (see CHANGELOG).")
+        if safe in labels.values():
+            other = next(rr for rr, ll in labels.items() if ll == safe)
+            raise ValueError(
+                f"r({r:g}) and r({other:g}) both produce the Stata "
+                f"name '{safe}' and cannot be told apart in the output "
+                f"- one result would silently overwrite the other. Use "
+                f"radii that differ in their first 6 significant "
+                f"digits, or ask about the pending radius-naming "
+                f"redesign (see CHANGELOG).")
+        labels[r] = safe
+    return [labels[r] for r in r_values]
+
+
 def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                 weight=None, unit_size: float = 100.0,
                 m_neighbors: int | None = None,
@@ -444,6 +484,8 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                   value_arrays={}, unit_size=unit_size)
     k_values = sorted(k_values or [])
     r_values = sorted(r_values or [])
+    if r_values:
+        _safe_radius_labels(r_values)   # raises before any computation
     if treat and weight is None and not treat_are_counts:
         for _v, _a in treat.items():
             _fin = _a[np.isfinite(_a)]
@@ -782,6 +824,8 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             pop = pop.loc[pop.index.repeat(pop["_rep"])] \
                      .drop(columns="_rep").reset_index(drop=True)
         dv = pop
+        if r_values:
+            _safe_radius_labels(r_values)   # raises before any computation
         cd = build_cells(dv, "_x", "_y", value_vars=list(values),
                          unit_size=unit_size)
         cd = _add_empty_origin_cells(cd, E, N, list(values))
