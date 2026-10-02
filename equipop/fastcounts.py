@@ -21,8 +21,17 @@ from .cells import CellData
 
 
 def _lab(x) -> str:
-    """Compact numeric label: 500 -> '500', 2.5 -> '2.5'."""
-    return f"{x:g}"
+    """Compact numeric label: 500 -> '500', 2.5 -> '2_5'.
+
+    BACKLOG 337: `f"{x:g}"` until 1.51.0, which carried six
+    significant digits and switched to scientific notation - so
+    r(1000000) became the illegal 'r1e+06' and two radii agreeing to
+    six digits silently became ONE column. equipop/labels.py holds the
+    one formatter now; the dot is already an underscore when it
+    arrives here.
+    """
+    from .labels import numeric_tag
+    return numeric_tag(x)
 
 
 def run_knn_counts(cd: CellData, k_values: list[int] | None = None,

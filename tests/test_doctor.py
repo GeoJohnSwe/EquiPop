@@ -158,15 +158,86 @@ def test_the_verdict_is_positive_when_the_three_are_present():
 # The two-part update - v1.40.1
 # --------------------------------------------------------------------
 
-def test_a_version_mismatch_is_named_and_explained():
-    """The .ado files and the Python package are installed separately,
-    by net install and by pip. Updating one and not the other is the
-    single most frequent field failure this project has, and it
-    surfaces as an ImportError that looks like our bug."""
-    text = "\n".join(doctor.report(ado_version="0.0.1"))
-    assert "VERSION MISMATCH" in text
-    assert "net install" in text and "pip" in text
+def test_the_floor_is_what_the_doctor_judges_against():
+    """BACKLOG 332. Two version numbers on screen, and NEITHER of
+    them is the question. What matters is the engine the commands
+    actually need, which the ado now states.
+
+    So the ordinary case - engine ahead of commands, which is what
+    `equipop setup` produces and what confused Kit Baum - has nothing
+    to report beyond one satisfied line. No paragraph explaining
+    itself, because there is nothing to explain.
+    """
+    text = "\n".join(doctor.report(ado_version="1.49.3",
+                                   min_engine="1.48.0"))
+    assert "1.48.0 or newer - satisfied" in text, text
+    assert "MISMATCH" not in text
+    assert "nothing to fix" not in text, (
+        "the old reassurance is still being printed - with a floor "
+        "there is no difference to reassure anybody about")
+
+
+def test_an_engine_below_the_floor_is_refused_loudly():
+    """The one case that breaks: the commands call something the
+    engine does not have."""
+    text = "\n".join(doctor.report(ado_version="1.49.3",
+                                   min_engine="99.0.0"))
+    assert "TOO OLD FOR THESE COMMANDS" in text
     assert "ImportError" in text
+    assert "equipop setup" in text
+
+
+def test_a_floor_the_doctor_cannot_read_is_not_guessed_at():
+    for odd in ("", "dev", "1.x.4"):
+        text = "\n".join(doctor.report(ado_version="1.49.3",
+                                       min_engine=odd))
+        assert "TOO OLD" not in text, f"{odd!r} produced a verdict"
+
+
+def test_an_engine_older_than_the_commands_is_named_and_explained():
+    """The direction that actually breaks. Commands written against an
+    engine that is not installed yet call a function that is not there,
+    which arrives as an ImportError and looks like our bug."""
+    text = "\n".join(doctor.report(ado_version="99.0.0"))
+    assert "OLDER THAN THE COMMANDS" in text
+    assert "ImportError" in text
+    assert "equipop setup" in text, (
+        "the loud message must name the one-line fix")
+
+
+def test_an_engine_newer_than_the_commands_is_not_alarming():
+    """BACKLOG 330, KIT BAUM ON THE SSC RELEASE. He followed the
+    manuscript exactly - `equipop setup`, full restart of Stata - and
+    the doctor told him he had a VERSION MISMATCH to repair. He did
+    not. He had commands 1.48.2 from SSC and engine 1.49.1 from pip,
+    which is what `equipop setup` ASKS FOR: it installs
+    equipop>=<ado version>, so pip takes the newest there is, and PyPI
+    runs ahead of SSC by design.
+
+    The package shipped an installer that creates a state and a
+    diagnostic that calls that state a fault. This test holds the two
+    to the same story.
+    """
+    text = "\n".join(doctor.report(ado_version="0.0.1"))
+    assert "MISMATCH" not in text, (
+        "the expected outcome of our own installer is still being "
+        f"reported as a fault:\n{text}")
+    assert "ImportError" not in text, (
+        "a harmless state must not be illustrated with the error "
+        "message from the harmful one")
+    assert "nothing to fix" in text, (
+        "silence is not enough - the two version lines differ on "
+        "screen, so the reason must be there too")
+    assert "equipop>=0.0.1" in text, (
+        "the note should quote what setup actually asked pip for")
+
+
+def test_an_unreadable_version_makes_the_doctor_go_quiet():
+    """Better no comment than a comparison it could not make."""
+    for odd in ("", "dev", "1.x.4", "unknown"):
+        text = "\n".join(doctor.report(ado_version=odd))
+        assert "MISMATCH" not in text and "OLDER THAN" not in text, (
+            f"ado version {odd!r} produced a verdict anyway")
 
 
 def test_matching_versions_say_nothing_about_it():

@@ -1,4 +1,4 @@
-*! equipop v1.49.1  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.51.0  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -342,6 +342,13 @@ program define equipop, rclass
             foreach kk of numlist `k' {
                 capture drop `prefix'N_`kk'
                 capture drop `prefix'Dist_`kk'
+                * BACKLOG 336, MARINA'S PULL REQUEST. The decay
+                * outputs were never dropped, so a second decay() run
+                * with -replace- failed and told the user to "use
+                * option replace" - which they had.
+                if "`decay'" != "" {
+                    capture drop `prefix'ND_`kk'
+                }
                 * treat() became optional in 1.36, and an empty
                 * -varlist- loop is a syntax error, not an empty loop.
                 * So -equipop, x() y() k(25) replace- failed on exactly
@@ -350,6 +357,10 @@ program define equipop, rclass
                     foreach v of varlist `treat' {
                         capture drop `prefix'T_`v'_`kk'
                         capture drop `prefix'R_`v'_`kk'
+                        if "`decay'" != "" {        /* 336 */
+                            capture drop `prefix'TD_`v'_`kk'
+                            capture drop `prefix'RD_`v'_`kk'
+                        }
                     }
                 }
             }
@@ -359,12 +370,24 @@ program define equipop, rclass
                 * `rl' is the underscore-safe name -
                 * r=1.5 becomes r1_5, because a dot cannot appear in
                 * a Stata variable name.
+                * BACKLOG 337: this subinstr was RIGHT and the engine
+                * was wrong - it produced N_r1.5 while this looked for
+                * N_r1_5, so the two halves of one file disagreed.
+                * equipop/labels.py now names the column this way at
+                * the source, so the engine and this list agree.
                 local rl : subinstr local rr "." "_", all
                 capture drop `prefix'N_r`rl'
+                if "`decay'" != "" {                /* 336 */
+                    capture drop `prefix'ND_r`rl'
+                }
                 if "`treat'" != "" {
                     foreach v of varlist `treat' {
                         capture drop `prefix'T_`v'_r`rl'
                         capture drop `prefix'R_`v'_r`rl'
+                        if "`decay'" != "" {        /* 336 */
+                            capture drop `prefix'TD_`v'_r`rl'
+                            capture drop `prefix'RD_`v'_r`rl'
+                        }
                     }
                 }
             }
@@ -383,9 +406,22 @@ program define equipop, rclass
         foreach v of varlist `treat' {
             if length("`v'") > `_longest' local _longest = length("`v'")
         }
+        * BACKLOG 335, MARINA'S PULL REQUEST. `foreach ... of numlist`
+        * with an EMPTY argument is a syntax error in Stata, not an
+        * empty loop - so -equipop, x() y() r(500) treat(HighEdu)- died
+        * with "invalid numlist has too few elements" before computing
+        * anything. A radius-only run with a treatment, which is an
+        * ordinary thing to ask for.
+        * THE GUARD ALREADY EXISTED FORTY LINES ABOVE, in the replace
+        * drop block, with a comment explaining this exact property.
+        * The rule was written down in this file and not applied below
+        * it - the same shape as the version invariant that sat in a
+        * comment three files from the code ignoring it (BACKLOG 330).
         local _bigk = 0
-        foreach kk of numlist `k' {
-            if `kk' > `_bigk' local _bigk = `kk'
+        if "`k'" != "" {
+            foreach kk of numlist `k' {
+                if `kk' > `_bigk' local _bigk = `kk'
+            }
         }
         local _need = length("`prefix'") + 2 + `_longest' ///
             + 1 + length("`_bigk'")
@@ -449,6 +485,15 @@ program define equipop, rclass
     }
     return scalar N_origins = `n_origins'
     return scalar N_missing = `n_missing'
+    * BACKLOG 293. The two settings that move every k-based number and
+    * were recorded NOWHERE until now - overshoot since 1.30, the
+    * origin rule since 1.47. The EFFECTIVE value, so an unset option
+    * returns the default that actually ran rather than an empty
+    * string. r(provenance) is the run id printed in the note above,
+    * so a log and a do-file can be matched to each other.
+    return local overshoot   "`eqp_overshoot'"
+    return local originrule  "`eqp_originrule'"
+    return local provenance  "`eqp_provenance'"
     if "`eqp_crs'" != "" {
         return local crs "`eqp_crs'"
         return scalar epsg = `eqp_epsg'
@@ -466,13 +511,45 @@ end
 program define _equipop_setup
     version 17
     syntax [, REPAIR]
-    * BACKLOG 196. The ado's own version goes IN, so setup can ask for
-    * an engine at least as new as the commands calling it. Maintained
-    * by tools/bump_version.py, which replaces every line matching
-    * this pattern - so this string and the doctor's below always
-    * agree.
-    local eqp_ado_version "1.49.1"
-    python: _equipop_setup_py("`repair'", "`eqp_ado_version'")
+    * BACKLOG 196. The ado's own version, for the record and for the
+    * doctor. Maintained by tools/bump_version.py, which replaces
+    * every line matching this pattern - so this string and the
+    * doctor's below always agree.
+    local eqp_ado_version "1.51.0"
+
+    * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
+    * tying the two together was the whole fault. Setup used to ask
+    * pip for `equipop>=`the line above, which says "the engine must
+    * be as new as this release" - and that is not a dependency, it is
+    * a release number pretending to be one. Two consequences, both
+    * real:
+    *
+    *   1.49.2 touched the ArcGIS toolbox and nothing else, and
+    *   silently raised the Stata engine floor to 1.49.2. The commands
+    *   did not need it.
+    *
+    *   And whenever the commands reach SSC before the engine reaches
+    *   PyPI, pip is asked for a version that does not exist and the
+    *   install FAILS OUTRIGHT - at the first instruction in the
+    *   paper, for every new reader.
+    *
+    * THE HONEST FLOOR IS THE OLDEST ENGINE THAT SATISFIES THE CALLS
+    * THIS FILE MAKES. It is maintained BY HAND - bump_version.py must
+    * never touch it - and raised only when the commands start calling
+    * something new, and only after that engine is on PyPI. Then the
+    * floor can never name an engine that is not there.
+    *
+    * WHAT SETS IT TODAY, newest requirement last:
+    *   equipop.stata_bridge   knn_to_rows, to_stata_values,
+    *                          project_for_stata, degrees_warning,
+    *                          zone_span_warning        - long-standing
+    *   equipop.doctor.run(ado_version=)                - 1.40.1
+    *   equipop.decay.Decay(calibration=)               - 1.48.0
+    * So: 1.48.0. If you add a call to something newer, raise this AND
+    * say which call did it. tests/test_stata_python_block.py checks
+    * that every name this file imports from the engine still exists.
+    local eqp_min_engine "1.48.0"
+    python: _equipop_setup_py("`repair'", "`eqp_ado_version'", "`eqp_min_engine'")
     * AND A FAILURE IS NOW A FAILURE. It used to print "PIP FAILED"
     * and return normally, so a scripted or institutional install had
     * no code to act on.
@@ -488,17 +565,41 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.49.1"
-    python: _equipop_doctor_py("`eqp_ado_version'")
+    local eqp_ado_version "1.51.0"
+    * BACKLOG 332. The floor is what the doctor should JUDGE against;
+    * the two version numbers are only there to be shown. Keep this
+    * string identical to the one in _equipop_setup above - a test
+    * asserts it, because a floor that setup and the doctor disagree
+    * about is worse than no floor.
+    local eqp_min_engine "1.48.0"
+    python: _equipop_doctor_py("`eqp_ado_version'", "`eqp_min_engine'")
 end
 
 version 17
 python:
 # --- thin sfi glue; all computation lives in equipop.stata_bridge ----
-# Keep this block as SMALL as possible. Code in here can only be run
+# Keep this block as SMALL as possible. Everything that can live in
+# the package does.
+#
+# BACKLOG 331. This comment used to end "Code in here can only be run
 # by Stata, so the Python test suite cannot reach it - which is how
-# and 173 survive. Everything that can live in the package does.
-# What must stay here is READ by tests/test_stata_ado.py.
+# and 173 survive", and that sentence was both true and expensive:
+# every guard in `equipop setup` was verified by GREPPING THIS FILE
+# FOR STRINGS, which is how the 1.48.2 ensurepip test came to assert
+# nothing and how a whole branch of pip advice could point the wrong
+# way for a release.
+#
+# It is no longer true. tests/test_stata_python_block.py EXECUTES this
+# block with `sfi` stubbed - which works only because everything here
+# is standard library, as the setup function's own comment requires -
+# and calls these functions with pip's real output, reading the advice
+# back from what was PRINTED. Keep it that way: an import of numpy,
+# pandas or the equipop package at the top of a setup path would put
+# this block back out of reach and take its tests with it.
+#
+# tests/test_stata_ado.py still READS the file, for the Stata half -
+# the syntax line, the macros, the option names - which no stub can
+# exercise.
 from sfi import Data, Macro, SFIToolkit
 import sys
 import numpy as np
@@ -641,23 +742,69 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
         dec = _decay_spec(decay, halflife, calibration)
         if dec is not None:
             _report_calibration(dec, halflife, halflifevar)
-        res = knn_to_rows(xs, ys, ks, treat=treats, weight=w,
-                          unit_size=float(unit), r_values=rs,
-                          self_potential=float(selfpot),
-                          treat_are_counts=(treatmode != "flags"),
-                          missing_codes=[float(c)
-                                         for c in missing.split()],
-                          decay=dec,
-                          decay_half_life=(_col(halflifevar)
-                                           if halflifevar else None),
-                          decay_bins=int(bins),
-                          overshoot_mode=(overshoot or None),
-                          self_rule=(originrule or None))
+        # BACKLOG 293. The arguments are assembled as a DICT first so
+        # that the provenance note below is built from the SAME object
+        # the engine was called with. Listing them twice is how a
+        # record comes to describe a run that did not happen.
+        _call = dict(unit_size=float(unit), r_values=rs,
+                     self_potential=float(selfpot),
+                     treat_are_counts=(treatmode != "flags"),
+                     missing_codes=[float(c)
+                                    for c in missing.split()],
+                     decay=dec,
+                     decay_half_life=(_col(halflifevar)
+                                      if halflifevar else None),
+                     decay_bins=int(bins),
+                     overshoot_mode=(overshoot or None),
+                     self_rule=(originrule or None))
+        res = knn_to_rows(xs, ys, ks, treat=treats, weight=w, **_call)
     except ValueError as exc:
         for line in _wrap_for_stata(str(exc)):
             SFIToolkit.errprintln(line)
         SFIToolkit.error(198)
         return
+
+    # BACKLOG 293. PROVENANCE, John's ruling: a PRINTED NOTE rather
+    # than a sidecar, because a Stata run writes variables into memory
+    # and may produce no file at all, and because `log using` is where
+    # a Stata user's reproducibility already lives. The values also go
+    # back in r() so a do-file can CHECK them instead of a human
+    # reading the log.
+    #
+    # THE EFFECTIVE MODE, not the typed one. An empty overshoot() or
+    # originrule() means "the engine's default applies", and the
+    # record has to say which default that was - otherwise the two
+    # settings that moved every number since 1.30 are recorded as
+    # blank, which is how they came to be recorded nowhere at all.
+    # TWO BLOCKS, AND THE SPLIT IS DELIBERATE. The r() values need
+    # only overshoot.DEFAULT (1.30) and selfrule.DEFAULT (1.47), both
+    # of which any engine this ado will meet already has. The printed
+    # note needs equipop.meta.record, which is new in 1.50.0 - so it
+    # degrades to one line on an older engine rather than forcing
+    # eqp_min_engine up and making `equipop setup` demand a version
+    # nobody has yet (BACKLOG 332). A note is a convenience; an
+    # install that cannot complete is not.
+    from equipop.overshoot import DEFAULT as _OVER_DEFAULT
+    from equipop.selfrule import DEFAULT as _ORIG_DEFAULT
+    _eff_over = overshoot or _OVER_DEFAULT
+    _eff_orig = originrule or _ORIG_DEFAULT
+    Macro.setLocal("eqp_overshoot", str(_eff_over))
+    Macro.setLocal("eqp_originrule", str(_eff_orig))
+    try:
+        from equipop.meta import record, render_settings
+        _rl = record("counts", len(xs),
+                     dict(_call, k_values=ks, treat=treats, weight=w,
+                          overshoot_mode=_eff_over,
+                          self_rule=_eff_orig))
+        _rl.set_data(output_columns=len(res))
+        for _line in render_settings(_rl.doc):
+            SFIToolkit.displayln("{txt}" + _line)
+        Macro.setLocal("eqp_provenance", _rl.doc["run"]["id"])
+    except Exception as _exc:
+        # A provenance failure must never lose a finished analysis.
+        SFIToolkit.displayln(
+            "{txt}(the run note needs engine 1.50.0 or newer: "
+            + str(_exc).splitlines()[0] + ")")
 
     # [if] [in]: computed for everyone, REPORTED for the sample.
     keep = _col(touse) > 0 if touse else None
@@ -766,7 +913,7 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
     Macro.setLocal("eqp_varlist", " ".join(made))
 
 
-def _equipop_setup_py(repair="", ado_version=""):
+def _equipop_setup_py(repair="", ado_version="", min_engine=""):
     # Standard library ONLY, and deliberately so: this runs BEFORE the
     # package exists, on a machine where the whole point is that
     # nothing is installed yet. It must not import the thing it is
@@ -792,30 +939,37 @@ def _equipop_setup_py(repair="", ado_version=""):
         # repair appears not to work.
         args += ["--force-reinstall", "--no-cache-dir",
                  "--only-binary=:all:", "numpy", "scipy", "pandas"]
-    # BACKLOG 196. A FLOOR, NOT A PIN. Unpinned, a 1.40 command file
-    # could pull whatever PyPI has today; doctor then reports a
-    # mismatch that SETUP created. Exact pinning would be worse in the
-    # other direction - it would stop an older ado ever receiving a
-    # bug-fixed engine.
-    # THE REAL INVARIANT: the ado is the caller and the engine is the
-    # library, so THE LIBRARY MUST BE AT LEAST AS NEW AS THE CALLER.
-    # A floor permits fixes and forbids the case that actually breaks -
-    # an ado calling something its engine does not have.
+    # BACKLOG 196, corrected by 332. A FLOOR, NOT A PIN, and not the
+    # ADO'S VERSION EITHER. Unpinned, a 1.40 command file could pull
+    # whatever PyPI has today. Pinned exactly, an older ado could
+    # never receive a bug-fixed engine. Pinned to the ado's own
+    # release number - which is what 196 actually built - the floor
+    # names an engine that may not exist, and pip then refuses to
+    # install anything at all.
+    # THE REAL INVARIANT, stated properly: the ado is the CALLER and
+    # the engine is the LIBRARY, so the library must be at least as
+    # new as THE OLDEST VERSION THAT SATISFIES THE CALLER'S CALLS.
+    # That is a fact about the code, maintained by hand beside the
+    # list of what sets it, and it only ever names something already
+    # published.
     # THIS MATTERS MORE FROM SSC THAN IT DID FROM GITHUB. There the
     # two arrived together from one set of instructions; on SSC they
     # sit on separate update tracks - adoupdate for the commands,
     # `equipop setup` for the engine - so drift is the normal state
     # rather than an accident.
-    if ado_version:
-        args.append("equipop>=" + ado_version)
+    floor = min_engine or ado_version       # older ado: no floor sent
+    if floor:
+        args.append("equipop>=" + floor)
     else:
         args.append("equipop")
     cmd = [sys.executable, "-m", "pip", "install"] + args
 
     print("EquiPop setup")
     if ado_version:
-        print("  these command files are version " + ado_version +
-              ", so the engine asked for is equipop>=" + ado_version)
+        print("  these command files are version " + ado_version)
+    if floor:
+        print("  the oldest engine they can run on is " + floor +
+              ", so the engine asked for is equipop>=" + floor)
     if in_venv:
         print("  this Python is a virtual environment, so --user is "
               "not used")
@@ -871,6 +1025,41 @@ def _equipop_setup_py(repair="", ado_version=""):
                   "please report it. Meanwhile:")
             print("     " + sys.executable + " -m pip install --upgrade "
                   "equipop")
+        elif floor and ("equipop>=" + floor).lower() in low:
+            # BACKLOG 331. THE ENGINE WE ASKED FOR DOES NOT EXIST YET,
+            # which is OUR release-ordering mistake and not the user's
+            # problem to debug. It happens when the command files
+            # reach SSC before the engine reaches PyPI: setup asks for
+            # equipop>=<ado version>, pip finds nothing that new, and
+            # the install fails outright - not a warning, a hard stop
+            # for every new user.
+            #
+            # Until now this fell into the branch below and was told
+            # to check the network and the Python version. Both fine;
+            # neither the cause. That is BACKLOG 319's fault exactly -
+            # confident advice pointing the wrong way - and it was
+            # written in the same release that fixed 319.
+            print("  THIS IS OUR MISTAKE, NOT YOURS. These command "
+                  "files ask for an engine")
+            print("     equipop>=" + floor)
+            print("  and no engine that new has been published to "
+                  "PyPI yet, so pip has")
+            print("  nothing to install. The two halves are released "
+                  "separately and the")
+            print("  engine is supposed to go first.")
+            print("")
+            print("  What works meanwhile - take the newest engine "
+                  "there is:")
+            print("     " + sys.executable + " -m pip install "
+                  "--upgrade equipop")
+            print("  Then restart Stata and run -equipop doctor-. It "
+                  "will tell you the")
+            print("  engine is older than the commands. Most things "
+                  "will work; if a")
+            print("  command stops with ImportError, that is the gap, "
+                  "and it is worth")
+            print("  reporting at "
+                  "https://github.com/GeoJohnSwe/EquiPop/issues")
         elif "no matching distribution" in low or "could not find" in low:
             print("  pip could not reach PyPI, or could not find a "
                   "build for this Python.")
@@ -893,7 +1082,7 @@ def _equipop_setup_py(repair="", ado_version=""):
     # and say everything matches when it does not.
 
 
-def _equipop_doctor_py(ado_version=""):
+def _equipop_doctor_py(ado_version="", min_engine=""):
     # The report prints itself, line by line, flushing as it goes.
     # That is deliberate: if a compiled library takes the whole Stata
     # process down mid-report - which is what a second copy of the
@@ -912,5 +1101,13 @@ def _equipop_doctor_py(ado_version=""):
         print("   Python running Stata: " + sys.executable)
         print("   Install equipop into THAT Python, then restart Stata.")
         return
-    run(ado_version=ado_version)
+    # BACKLOG 332. min_engine is newer than the argument list of
+    # every engine before 1.49.3, and those engines are installed on
+    # real machines. Passing it to one of them raises TypeError, so
+    # the call falls back - an ado must never break on an engine older
+    # than itself when the only loss is a line of the report.
+    try:
+        run(ado_version=ado_version, min_engine=min_engine)
+    except TypeError:
+        run(ado_version=ado_version)
 end

@@ -35,10 +35,12 @@ def load(name: str, **kw):
                 "(EquiPop does not require it, because this is the "
                 "only dataset that needs it.)")
     if name == "stata_test":
-        p = os.path.join(_HERE, "..", "stata", "stata_test_data.dta")
+        p = os.path.join(_HERE, "..", "stata",
+                         "equipop_test_data.dta")
         if not os.path.exists(p):
             raise FileNotFoundError(
-                "stata_test_data.dta belongs to the Stata door and is "
+                "equipop_test_data.dta belongs to the Stata door and "
+                "is "
                 "not shipped in the pip package - it comes with the "
                 "source archive (the .tar.gz on GitHub) and with the "
                 "repository, in stata/. The other datasets - gridby, "

@@ -32,16 +32,31 @@ def test_radius_fast_vs_brute():
     rs = [250.0, 900.0, 1e6]              # small, medium, whole-world
     out = run_knn_counts(cd, k_values=None, r_values=rs)
     pts = np.c_[cd.E, cd.N]
+    # BACKLOG 337. This test used `lab = f"{r:g}"` and then asserted
+    # the column "N_r1e+06" - IT WAS ENCODING THE BUG. `1e+06` is not
+    # a legal Stata variable name and Pro stored it as the unreadable
+    # "N_r1e_06", so the suite was pinning a name no door could use,
+    # for the one radius here that most needed checking. The label now
+    # comes from the shared formatter, which is the point: a test that
+    # computes the expected name the same way the code does cannot
+    # catch a naming fault, so the expected name is spelled out below.
+    from equipop.labels import radius_suffix
     for i in range(len(cd)):
         d = np.hypot(pts[:, 0] - cd.E[i], pts[:, 1] - cd.N[i])
         for r in rs:
             m = d <= r
-            lab = f"{r:g}"
-            assert np.isclose(out.loc[i, f"N_r{lab}"], cd.n[m].sum())
-            assert np.isclose(out.loc[i, f"T_t_r{lab}"],
+            lab = radius_suffix(r)
+            assert np.isclose(out.loc[i, f"N_{lab}"], cd.n[m].sum())
+            assert np.isclose(out.loc[i, f"T_t_{lab}"],
                               cd.binary_sums["t"][m].sum())
-    # whole-world radius must equal the global totals
-    assert np.allclose(out["N_r1e+06"], cd.n.sum())
+    # whole-world radius must equal the global totals - and the column
+    # is named in full, not computed, so this fails if 1e6 ever goes
+    # back to scientific notation
+    assert np.allclose(out["N_r1000000"], cd.n.sum())
+    assert not any("e+" in c or "e-" in c or "." in c for c in out), (
+        f"a result column is named with scientific notation or a dot, "
+        f"which no Stata variable and no shapefile field may be "
+        f"called: {[c for c in out if 'e+' in c or '.' in c]}")
 
 
 def test_radius_stats_engine_matches_fast():

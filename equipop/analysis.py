@@ -666,7 +666,8 @@ def run_knn_stats(
 
         # walk cells in distance order, atomically per equal-distance ring
         def record_r(rv):
-            record(rv, suffix=f"r{rv:g}", with_dist=False)
+            from .labels import radius_suffix     # BACKLOG 337
+            record(rv, suffix=radius_suffix(rv), with_dist=False)
 
         j = 0
         n_nb = len(nd)

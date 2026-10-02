@@ -18,6 +18,16 @@ These are the ANALYTICAL boxes - what the tool asks about the world.
 Output plumbing (where results go, what to do with existing columns,
 shortened names) is host-specific by design and deliberately absent:
 Pro writes to a feature class or a table, QGIS to a sink.
+
+`tablecrs` (BACKLOG 329) is absent for a different and stronger
+reason, recorded here so a later session does not read it as a gap:
+QGIS CANNOT HAVE THE BOX. A delimited-text layer is loaded through
+QGIS's own import dialog, which demands a CRS there and then, so by
+the time alg_counts sees the layer it HAS one - layer.crs(). Pro's
+table view has no coordinate system at any point and no dialog ever
+asks for one. The box exists to close a hole in Pro that QGIS never
+had, so offering it in QGIS would be offering a second, competing
+answer to a question the host has already answered.
 """
 
 # machine 1 - Counts and Shares (list added v1.25)

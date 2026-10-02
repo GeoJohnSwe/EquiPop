@@ -1,7 +1,31 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.49.1, 16 September 2026.**
-*Reviewed at 1.49.1: the ratio ruling matters for EquiEXPOSE. A
+**Last updated: 1.51.0, 2 October 2026.**
+*Reviewed at 1.51.0: nothing in the positioning changes, but the
+project took its first outside pull request and every finding in it
+was real - worth knowing for any consortium section that claims an
+open, contributable codebase, because it is now demonstrated rather
+than asserted.
+Reviewed at 1.50.0: PROVENANCE IS A REVIEWER'S QUESTION AND IT NOW
+HAS AN ANSWER. Every run records the settings that produced it, taken
+from the engine's own arguments rather than from a list somebody
+maintains - which is the thing to write in a data-management plan,
+and the thing an exposome consortium will ask about before it shares
+anything. Worth a sentence wherever this file promises reproducible
+multi-site analysis.
+Reviewed at 1.49.3: EQUIPOP IS ON SSC. That is the sentence a
+reviewer looks for - a Stata module distributed through the archive
+economists actually use, not a link to a repository - and it can now
+be written in the present tense wherever this file says "planned".
+Reviewed at 1.49.2: nothing in the positioning changes. Worth
+noting for the EquiEXPOSE data story, though: the exposome inputs -
+WorldPop extracts, air-quality grids, remote-sensing summaries -
+arrive as TABLES of coordinates far more often than as feature
+classes, and until this release Pro could not turn one into a layer.
+The partner-facing claim that EquiPop takes "whatever the provider
+sends" is now true of the commonest case rather than nearly true.
+BACKLOG 321 still awaits John's ruling.
+Reviewed at 1.49.1: the ratio ruling matters for EquiEXPOSE. A
 prescription count over a population is a rate, not a share, and can
 exceed 1 - dispensations per person routinely do. EquiPop no longer
 refuses that. BACKLOG 321, expected counts under a supplied rate

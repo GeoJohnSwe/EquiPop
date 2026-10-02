@@ -29,8 +29,14 @@ def safe_field_name(name) -> str:
 
 
 def _fmt_num(v) -> str:
-    f = float(v)
-    return str(int(f)) if f == int(f) else str(f)
+    """BACKLOG 337. THE PREDICTION AND THE ENGINE NOW USE ONE
+    FORMATTER. This was `str(int(f)) if f == int(f) else str(f)` while
+    the engine used `f"{x:g}"`, so for r(1000000) this promised
+    N_r1000000 and the engine made N_r1e+06 - and the docstring below
+    claims this function is validated against the real dispatch. It
+    was not, for radii of that shape."""
+    from equipop.labels import numeric_tag
+    return numeric_tag(v)
 
 
 def predict_result_fields(engine, k_text, r_text, tau_text,

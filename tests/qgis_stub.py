@@ -838,6 +838,17 @@ class QgsProcessingAlgorithm:
                 "QgsWkbTypes.Point, not a number.")
         sink = _Sink(fields, wkb, crs)
         parameters.setdefault("_sinks", {})[name] = sink
+        # BACKLOG 293. The DESTINATION STRING is what a door writes a
+        # provenance sidecar beside, so the stub has to hand back what
+        # QGIS hands back: a real path when the user chose a file, and
+        # one of the in-memory forms otherwise. It used to return
+        # "memory:<name>" unconditionally, which meant a door could
+        # only ever be tested on the branch that has nowhere to write.
+        asked = parameters.get(name)
+        if isinstance(asked, str) and not (
+                asked.startswith(("memory:", "ogr:"))
+                or asked.upper().startswith("TEMPORARY")):
+            return sink, asked
         return sink, f"memory:{name}"
 
 

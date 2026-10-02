@@ -83,8 +83,20 @@ HELP = {
     "k": "One or more k values, space-separated (200 1600). Each k "
          "gives its own neighbourhood: the nearest k PERSONS, so the "
          "radius floats and Dist_k reports it.",
-    "r": "Fixed radii in metres, space-separated. The mirror image of "
-         "k: the area is fixed and the population floats (N_r###).",
+    # BACKLOG 337/338. The shared text, so all three doors say it.
+    # Marina's pull request added a Stata-only copy of this; the box
+    # is not Stata-specific and a second copy is how the wording
+    # drifts (BACKLOG 105). What IS Stata-specific lives in
+    # STATA_EXTRA in tools/make_sthlp.py.
+    "r": "Fixed radii in your coordinate units, space-separated. The "
+         "mirror image of k: the area is fixed and the population "
+         "floats (N_r###), and there is no Dist_ - the radius IS the "
+         "distance. Each radius becomes part of a column name, with a "
+         "decimal point written as an underscore, so r=100.5 gives "
+         "N_r100_5. Radii are carried to six decimal places; two that "
+         "differ by less than that cannot be told apart in a name, "
+         "and the run stops rather than quietly writing one column "
+         "where you asked for two.",
     "model": "Distance decay weighting. 'no decay' counts every "
              "neighbour equally inside the neighbourhood.",
     "halflife": "A distance in metres that anchors the decay curve. "
@@ -305,7 +317,24 @@ HELP = {
              "characters.{formatnote}",
     "outtable": "Where a TABLE input's results are written (.csv). "
                 "The output carries your coordinates plus the result "
-                "columns, in the original row order.",
+                "columns, in the original row order. A table input "
+                "can take BOTH this and a new feature class, and then "
+                "both are written.",
+    "tablecrs": "The coordinate system your X and Y columns are in. "
+                "A table carries none - a CSV of eastings and "
+                "northings is two columns of numbers and nothing "
+                "more - so EquiPop has to be told, and it will not "
+                "guess. Leave it blank and the run still works: the "
+                "distances are in whatever unit the columns are, and "
+                "nothing about the numbers changes. What it costs is "
+                "the MAP - a new feature class written from a table "
+                "with no coordinate system declared cannot be placed "
+                "on a basemap or reprojected until you run Define "
+                "Projection on it. Filling this box is also what puts "
+                "an honest CRS in the run manifest instead of the "
+                "word 'unknown'. Only projected (metric) systems are "
+                "accepted: EquiPop measures neighbourhoods in metres, "
+                "and a degree is not a length.",
     "unit": "The grid cell size in metres. Bigger cells mean fewer "
             "origins and much faster runs; smaller cells mean finer "
             "geography. This is the strongest speed control you "

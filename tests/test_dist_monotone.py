@@ -43,7 +43,7 @@ from equipop.stata_bridge import knn_to_rows
 
 DATA = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "stata", "stata_test_data.dta")
+    "stata", "equipop_test_data.dta")
 
 KS = [50, 100, 200, 400]
 MODES = ["proportional", "whole"]

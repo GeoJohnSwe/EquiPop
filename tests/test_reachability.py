@@ -17,8 +17,15 @@ Verified by breaking things on purpose:
   * a door's evidence symbol deleted from its file      -> 1 fails
   * a capability given neither a door nor a reason      -> 2 fails
   * a no_door entry left with an empty reason           -> 3 fails
+  * a GAP whose door has since been built               -> 3b fails
   * a new module added and not declared anywhere        -> 4 fails
   * a backlog number cited that does not exist          -> 5 fails
+
+BACKLOG 333 added 3b, and it is the one that closes the asymmetry:
+every other check verifies a POSITIVE claim. A missing door used to
+assert nothing at all, so the matrix could only ever be caught being
+pessimistic about itself - never optimistic. It had already been wrong
+that way for three releases.
 """
 import os
 import re
@@ -50,6 +57,15 @@ def _resolve(cap, which):
     assert not seen or entry[0] == "none", (
         f"{cap!r}/{which} points at a door that EXISTS - a missing "
         "door cannot borrow its reason from a present one")
+    # BACKLOG 333. A reference may borrow a REASON and never a
+    # WITNESS. A witness names one door's file, so Pro borrowing
+    # QGIS's would assert something about a QGIS file and prove
+    # nothing about Pro - which is precisely how the lattice join came
+    # to claim a missing Pro door while Pro had one.
+    assert not (seen and len(entry) > 3 and entry[3]), (
+        f"{cap!r}/{which} points at a GAP, whose witness names "
+        f"another door's file. Give {which} its own not_yet() with "
+        "its own witness, or make the target a ruled_out()")
     return entry
 
 
@@ -111,11 +127,58 @@ def test_3_a_missing_door_gives_a_reason_worth_reading(cap):
         entry = _resolve(cap, which)
         if entry[0] != "none":
             continue
-        _, why, item = entry
+        # BACKLOG 333: a ruling is (none, why, item, None) and a gap
+        # is (none, why, item, witness), so unpack the first three and
+        # leave the rest. Hard-coding three is what broke when the
+        # witness was added.
+        why, item = entry[1], entry[2]
         assert why and len(why.strip()) > 25, (
             f"{cap!r} has no {which} door and the reason is "
             f"{why!r} - too short to tell a future session whether "
             "this was a decision or an oversight")
+
+
+# --- 3b: a GAP must be able to announce its own obsolescence ---------
+
+@pytest.mark.parametrize("cap", sorted(R.MATRIX))
+def test_3b_a_gap_stops_being_true_when_the_door_is_built(cap):
+    """BACKLOG 333. THE CHECK THIS FILE DID NOT HAVE, and the only one
+    that can catch the matrix going stale in the direction it exists
+    to watch.
+
+    test_1 walks `entry[0] == "door"`, so a door that DISAPPEARS is
+    caught. Before this, a missing door named no file and no symbol,
+    so a door that APPEARS was never noticed - and the matrix went on
+    saying the capability was unreachable. It only had to be wrong one
+    way, and it was: "vector to lattice join" declared no QGIS door
+    while `joinlayer` had sat in alg_continental.py since 1.47.6, the
+    same release that wrote the claim. Three releases later it reached
+    the backlog's own "what next" head as "the two finished engines
+    with NO DOOR", and that is a wasted release waiting to happen.
+
+    So a GAP now carries a witness - the file and symbol that must
+    stay absent while the gap is real - and this fails the moment the
+    door is built. A RULING carries none, because a decision is not a
+    thing that goes stale on its own.
+    """
+    for which in R.MATRIX[cap]:
+        entry = _resolve(cap, which)
+        if entry[0] != "none" or len(entry) < 4 or not entry[3]:
+            continue
+        path, symbol = entry[3]
+        full = os.path.join(ROOT, path)
+        assert os.path.exists(full), (
+            f"{cap!r}/{which} watches {path} for {symbol!r} and that "
+            "file is gone - pick a witness that still exists, or the "
+            "gap is unwatched again")
+        assert symbol not in _read(path), (
+            f"{cap!r} claims NO {which} door, and {path} now mentions "
+            f"{symbol!r}. EITHER THE DOOR WAS BUILT - in which case "
+            "say so with door(), and strike the backlog item - or the "
+            "witness has become ambiguous and needs replacing. What "
+            "must not happen is the matrix going on saying this is "
+            "unreachable: that is how a future session comes to "
+            "build something that already exists.")
 
 
 # --- 4: the package cannot grow a capability in silence --------------
@@ -169,7 +232,7 @@ def test_the_matrix_prints_a_readable_report(capsys):
     doors = ("python", "qgis", "pro", "stata", "runner")
     print(f"\n{'capability':<46}" + "".join(f"{d:>8}" for d in doors))
     print("-" * 86)
-    holes = 0
+    gaps = rulings = 0
     for cap in sorted(R.MATRIX):
         row = R.MATRIX[cap]
         cells = []
@@ -181,8 +244,23 @@ def test_the_matrix_prints_a_readable_report(capsys):
                 cells.append("yes")
             else:
                 r = _resolve(cap, d)
-                cells.append(f"no:{r[2]}" if r[2] else "no")
-                holes += 1
+                # BACKLOG 333: show WHICH KIND of absence. A ruling is
+                # a decision and will not change on its own; a gap is
+                # watched and will announce itself when it closes.
+                # Reading "no" 26 times told you nothing about which
+                # of those two you were looking at.
+                watched = len(r) > 3 and r[3]
+                mark = "gap" if watched else "-"
+                cells.append(f"{mark}:{r[2]}" if r[2] else mark)
+                if watched:
+                    gaps += 1
+                else:
+                    rulings += 1
         print(f"{cap:<46}" + "".join(f"{c:>8}" for c in cells))
-    print(f"\n{holes} declared gaps, every one with a reason.")
+    print(f"\n{gaps} GAPS - watched: each names a file and a symbol "
+          "that must stay absent,")
+    print(f"      so the entry fails the day somebody builds the "
+          "door (BACKLOG 333).")
+    print(f"{rulings} rulings - a decision, not a gap. Nothing to "
+          "watch; '-' in the table.")
     assert True

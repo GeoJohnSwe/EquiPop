@@ -139,11 +139,33 @@ def _install_fake_arcpy(table: pd.DataFrame):
     class SpatialReference:
         """Fake CRS object; auto-projection is simulated by a simple
         deterministic degrees->metres transform (the glue only needs
-        to prove that projection HAPPENED and metres arrived)."""
-        def __init__(self, code):
+        to prove that projection HAPPENED and metres arrived).
+
+        BACKLOG 329: NO ARGUMENT means UNKNOWN, which is what real
+        arcpy returns for SpatialReference() and what EquiPop passes
+        deliberately rather than letting XYTableToPoint fall back to
+        its own default of WGS 1984. A string is accepted because a
+        saved ModelBuilder model can hold a projection by NAME.
+        """
+        _GEOGRAPHIC = {4326, 4258, 4277}      # WGS84, ETRS89, OSGB36
+
+        def __init__(self, code=None):
+            if code is None or code == "":
+                self.factoryCode = 0
+                self.type = "Unknown"
+                self.name = "Unknown"
+                self.linearUnitName = None
+                return
+            if isinstance(code, str) and not code.strip().isdigit():
+                raise RuntimeError(
+                    f"cannot create a spatial reference from {code!r}")
             self.factoryCode = int(code)
-            self.type = "Projected"
+            self.type = ("Geographic"
+                         if self.factoryCode in self._GEOGRAPHIC
+                         else "Projected")
             self.name = f"EPSG:{code}"
+            self.linearUnitName = (None if self.type == "Geographic"
+                                   else "Meter")
 
     def FeatureClassToNumPyArray(_layer, fields, skip_nulls=False,
                                  null_value=np.nan,
@@ -312,8 +334,50 @@ def _install_fake_arcpy(table: pd.DataFrame):
         state.setdefault("copies", {})[out] = t
         state["active_copy"] = out          # results now target the copy
 
+    def XYTableToPoint(in_table, out_fc, xf, yf, zf=None, sr=None):
+        """A table of coordinates becomes a point feature class.
+
+        BACKLOG 329. Modelled on CopyFeatures and STRICTER than it in
+        the two ways that matter, because a stub is only safe where it
+        is stricter than the real thing (1.29.1's isAdvanced, 1.29.3's
+        polygon barriers, 164's renumbering):
+
+        (1) IT RENUMBERS FROM SCRATCH. A table has no identifier to
+            preserve at all, so the new feature class assigns its own -
+            a geodatabase from 1, a shapefile from 0. If the door
+            joined results on the table's own OBJECTID column, every
+            result would land one row out, which is BACKLOG 164
+            exactly.
+        (2) IT DROPS ROWS WITH NO COORDINATE, as real arcpy does, so
+            the row-count guard can be exercised. This is the one way
+            a table run differs from EquiPop's "missing coordinates ->
+            Null results" convention, and it must fail loudly rather
+            than misalign.
+        (3) IT RECORDS THE SPATIAL REFERENCE. The QGIS simulator used
+            to accept one and discard it (223/235), and a layer with
+            the wrong projection lands in the wrong part of the world
+            while looking perfectly healthy.
+        """
+        t = _df_for(in_table).copy()
+        keep = t[xf].notna() & t[yf].notna()
+        t = t[keep].reset_index(drop=True)
+        dst_oid = state.get("oid_names", {}).get(str(out_fc), "OBJECTID")
+        for c in list(t.columns):
+            if c in ("OBJECTID", "FID", "fid") and c != dst_oid:
+                t = t.drop(columns=[c])
+        start = state.get("oid_starts", {}).get(str(out_fc), 1)
+        t[dst_oid] = np.arange(start, start + len(t), dtype=np.int64)
+        state.setdefault("copies", {})[out_fc] = t
+        state.setdefault("tables", {})[str(out_fc)] = t
+        state.setdefault("written", {})[str(out_fc)] = {
+            "table": t, "xy": (xf, yf), "sr": sr}
+        state["active_copy"] = out_fc     # results now target the points
+        state.setdefault("shape_types", {})[str(out_fc)] = "Point"
+        return out_fc
+
     mgmt.DeleteField = DeleteField
     mgmt.CopyFeatures = CopyFeatures
+    mgmt.XYTableToPoint = XYTableToPoint
     mgmt.AddField = AddField
 
     def TableToNumPyArray(table, fields, skip_nulls=False,
@@ -3074,3 +3138,195 @@ def test_a_table_input_may_write_a_new_feature_class():
             f"disk is not a feature class. Got: {errs2!r}")
     finally:
         fake.Describe = real
+
+
+def test_a_table_input_really_writes_the_new_feature_class(tmp_path):
+    """BACKLOG 329, John's NEXT run of the fix above.
+
+        File "C:\\Data\\EQP\\EquiPop.pyt", line 1570, in _run_tool
+        arcgisscripting.ExecuteError: Table input has no feature class
+        to append to - set the output table (.csv).
+
+    The same sentence, from the EXECUTION path this time. It was not a
+    duplicated check: it was the only thing there. _run_tool read
+
+        if kind == "table":  ...  elif out_mode.startswith("New"):
+
+    so a table input could never reach the New-feature-class branch at
+    all. 1.49.1 had stopped the dialog refusing and left nothing to
+    run. THE CAPABILITY DID NOT EXIST, only the refusal.
+
+    AND THE 327 TEST COULD NOT HAVE CAUGHT IT, because it called
+    updateMessages and stopped there. A validator test certifies the
+    validator. This one RUNS THE TOOL.
+    """
+    rng = np.random.default_rng(329)
+    n = 90
+    tab = pd.DataFrame({
+        # John's grid: Irish Grid eastings/northings, no projection
+        # anywhere in the file
+        "X": 330000.0 + rng.uniform(0, 9000, n),
+        "Y": 355000.0 + rng.uniform(0, 9000, n),
+        "TOTAL_HOUSEHOLD": rng.integers(1, 40, n).astype(float),
+        # an identifier of its OWN, out of step with what the feature
+        # class will assign - BACKLOG 164's trap
+        "OBJECTID": np.arange(500, 500 + n, dtype=np.int64)})
+    seed = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                         "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(seed)
+    state["aux_tables"] = {"grid": tab}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    fc = r"C:\ni\work.gdb\TrialRun"
+
+    msg = _Messages()
+    pyt._run_tool("counts", "grid", msg, k_text="200",
+                  x_field="X", y_field="Y",
+                  weight_field="TOTAL_HOUSEHOLD",
+                  out_mode="New feature class", out_fc=fc)
+
+    wrote = state["written"][fc]
+    # what the CONVERSION was told is in `written`; the LIVE dataset
+    # is in `copies`, because ExtendTable replaces it afterwards and
+    # the creation-time snapshot goes stale
+    got = state["copies"][fc]
+    assert len(got) == n, "the points do not match the table's rows"
+    assert wrote["xy"] == ("X", "Y")
+    assert got["OBJECTID"].tolist() == list(range(1, n + 1)), (
+        "the fixture no longer exercises BACKLOG 164's renumbering - "
+        "the table's own OBJECTID ran 500..589")
+    assert "N_200" in got.columns, (
+        "no result columns on the new feature class - the run wrote "
+        f"nothing usable. Columns: {list(got.columns)}")
+
+    # THE NUMBERS, not just the column. A renumbered join that lands a
+    # row early leaves the last row Null and shifts the rest, which is
+    # exactly what BACKLOG 164 did in the field and what nothing but a
+    # value check can see.
+    from equipop.stata_bridge import dispatch
+    ref = dispatch("counts", tab["X"].to_numpy(), tab["Y"].to_numpy(),
+                   weight=tab["TOTAL_HOUSEHOLD"].to_numpy(),
+                   k_values=[200], treat_are_counts=True)
+    assert not got["N_200"].isna().any(), (
+        "Null results on the new feature class - the results were "
+        "joined on identifiers the conversion had renumbered")
+    assert np.allclose(got["N_200"].to_numpy(), ref["N_200"],
+                       equal_nan=True)
+    # Dist_200 VARIES ROW BY ROW, and N_200 does not - under
+    # `proportional` it reads 200 everywhere. That is why John's
+    # BACKLOG 164 misalignment was invisible for four releases: the
+    # only visible symptom was a single Null in the last row. A
+    # by-position check needs a column whose values differ.
+    assert got["Dist_200"].nunique() > n // 2, "the fixture is flat"
+    assert np.allclose(got["Dist_200"].to_numpy(), ref["Dist_200"],
+                       equal_nan=True), (
+        "Dist_200 is shifted - the results did not land on the rows "
+        "they were computed for")
+
+    # NO CRS WAS DECLARED, so the layer must say so - loudly - and
+    # must NOT be stamped with arcpy's own WGS 1984 default, which
+    # would read Irish Grid eastings as degrees of longitude.
+    assert getattr(wrote["sr"], "factoryCode", None) == 0, (
+        "a projection was invented for coordinates that declared "
+        f"none: {wrote['sr']!r}")
+    loud = " ".join(msg.log)
+    assert "NO COORDINATE SYSTEM WAS DECLARED" in loud
+    assert "29902" in loud, "the message does not name a way out"
+
+
+def test_a_declared_crs_reaches_the_new_feature_class(tmp_path):
+    """BACKLOG 329, the other half: when the user DOES declare the
+    projection of the X/Y columns it must arrive on the layer and in
+    the run manifest.
+
+    BACKLOG 235's lesson, transplanted: the QGIS simulator used to
+    accept a spatial reference and discard it, and a layer with the
+    wrong one lands in the wrong part of the world while looking
+    perfectly healthy. So the stub records it and this reads it back.
+    """
+    rng = np.random.default_rng(3291)
+    n = 40
+    tab = pd.DataFrame({"X": 330000.0 + rng.uniform(0, 4000, n),
+                        "Y": 355000.0 + rng.uniform(0, 4000, n),
+                        "pop": rng.integers(1, 20, n).astype(float)})
+    seed = pd.DataFrame({"OBJECTID": [1], "SHAPE@X": [0.0],
+                         "SHAPE@Y": [0.0]})
+    state = _install_fake_arcpy(seed)
+    state["aux_tables"] = {"grid": tab}
+    pyt = _load_pyt()
+    arcpy = sys.modules["arcpy"]
+    fc = r"C:\ni\work.gdb\Irish"
+    csv = tmp_path / "also.csv"
+
+    msg = _Messages()
+    pyt._run_tool("counts", "grid", msg, k_text="30",
+                  x_field="X", y_field="Y", weight_field="pop",
+                  out_mode="New feature class", out_fc=fc,
+                  out_table=str(csv),
+                  table_crs=arcpy.SpatialReference(29902))
+
+    assert state["written"][fc]["sr"].factoryCode == 29902, (
+        "the declared projection did not reach the feature class")
+    loud = " ".join(msg.log)
+    assert "NO COORDINATE SYSTEM WAS DECLARED" not in loud
+
+    # BOTH boxes were filled, so BOTH must be honoured - a box that
+    # does nothing is the fault this release is about
+    assert csv.exists(), (
+        "the .csv was thrown away because the feature class path "
+        "changed `kind` before the CSV writer was reached")
+    res = pd.read_csv(csv)
+    assert len(res) == n and "N_30" in res.columns
+
+    # and the manifest must record the CRS the user declared, not one
+    # left behind by a previous run in the same Pro session
+    man = pd.read_csv(tmp_path / "also_EquiPop_run.csv").set_index(
+        "item")["value"].to_dict()
+    assert "29902" in str(man.get("working_crs", "")), (
+        f"the manifest records {man.get('working_crs')!r}")
+
+
+def test_a_table_run_never_borrows_the_last_layers_projection(tmp_path):
+    """BACKLOG 329, found while building the above.
+
+    last_crs_text and last_unit are attributes ON _read_input, so they
+    survive from one tool run to the next inside one Pro session - and
+    the tabular branch set NEITHER. It read them with
+    getattr(..., "unknown"), which returns whatever the last FEATURE
+    CLASS read in that session left behind.
+
+    So: read a projected layer, then read a CSV of Irish Grid numbers,
+    and the second run's manifest recorded the FIRST run's coordinate
+    system. A manifest exists so a result can be reproduced a year
+    later; one that names the wrong CRS is worse than one that admits
+    it does not know.
+    """
+    rng = np.random.default_rng(3292)
+    n = 30
+    geom = pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                         "SHAPE@X": rng.uniform(0, 900, n),
+                         "SHAPE@Y": rng.uniform(0, 900, n),
+                         "Persons": rng.integers(1, 9, n).astype(float)})
+    state = _install_fake_arcpy(geom)
+    state["aux_tables"] = {"plain": pd.DataFrame(
+        {"X": 330000.0 + rng.uniform(0, 3000, n),
+         "Y": 355000.0 + rng.uniform(0, 3000, n),
+         "Persons": rng.integers(1, 9, n).astype(float)})}
+    pyt = _load_pyt()
+    msg = _Messages()
+    # a FEATURE CLASS first: this is what leaves a CRS behind
+    pyt._run_tool("counts", "people", msg, k_text="10",
+                  weight_field="Persons")
+    assert "SWEREF99 TM" in getattr(pyt._read_input, "last_crs_text",
+                                    ""), "the fixture changed"
+    # then a TABLE, which declares nothing
+    out = tmp_path / "t.csv"
+    pyt._run_tool("counts", "plain", msg, k_text="10",
+                  x_field="X", y_field="Y", weight_field="Persons",
+                  out_table=str(out))
+    man = pd.read_csv(tmp_path / "t_EquiPop_run.csv").set_index(
+        "item")["value"].to_dict()
+    assert "SWEREF" not in str(man["working_crs"]), (
+        "the table run's manifest borrowed the previous run's "
+        f"coordinate system: {man['working_crs']!r}")
+    assert "unknown" in str(man["working_crs"]).lower()

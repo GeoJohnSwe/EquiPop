@@ -503,6 +503,69 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 "them, which shows up as mysterious write failures. "
                 "An ordinary local folder is safer.")
 
+    # -----------------------------------------------------------------
+    # BACKLOG 293. PROVENANCE, which this door has never had.
+    #
+    # Pro has written an _EquiPop_run.csv beside every output since
+    # 1.26; QGIS wrote nothing at all, so a result produced here could
+    # not be traced to the settings that made it. The record itself
+    # comes from equipop.meta, filled by the ENGINE from the arguments
+    # it was actually given - so this method is only about WHERE it
+    # goes, which is the one part that is genuinely QGIS's own.
+    # -----------------------------------------------------------------
+    def write_provenance(self, runlog, dest, result, ch, source=None):
+        """A .meta.json and .meta.txt beside the output.
+
+        NEVER raises. A provenance write that loses a finished
+        analysis would be a worse bug than having no provenance, which
+        is the state this replaces. A failure is reported and the run
+        stands.
+        """
+        if runlog is None:
+            return None
+        try:
+            import os
+            if source is not None:
+                try:
+                    runlog.add_input(
+                        str(getattr(source, "sourceName", lambda: "")()
+                            or ""))
+                except Exception:
+                    pass
+            # A QGIS destination is a path, possibly with a layer
+            # suffix - "out.gpkg|layername=x" - or one of the
+            # in-memory forms, which have no folder to write beside.
+            path = str(dest or "").split("|", 1)[0]
+            memoryish = (not path
+                         or path.startswith(("memory:", "ogr:"))
+                         or path.upper().startswith("TEMPORARY"))
+            if memoryish or not os.path.isdir(os.path.dirname(path)
+                                              or "."):
+                # A temporary or in-memory output has nowhere to put a
+                # sidecar, and that is the DEFAULT destination in
+                # QGIS - so the record is printed instead of silently
+                # not existing. The log is where a QGIS user's
+                # reproducibility already lives.
+                runlog.doc["run"]["status"] = "completed"
+                runlog.doc["columns"] = {k: "" for k in result}
+                ch.info("No file destination, so no provenance sidecar "
+                        "could be written. The settings this run used "
+                        "follow; save the output to a file to get them "
+                        "as .meta.json beside it.")
+                for line in runlog.render_txt().splitlines():
+                    ch.info("  " + line)
+                return None
+            written = runlog.finalize(result, path)
+            ch.info(f"Run provenance written to "
+                    f"{os.path.basename(written)} - every setting the "
+                    "engine was given, the input row count, the "
+                    "library versions and the column definitions.")
+            return written
+        except Exception as exc:                     # pragma: no cover
+            ch.info(f"Could not write the run provenance ({exc}). The "
+                    "results above are unaffected.")
+            return None
+
     def write(self, parameters, context, source, result, order,
               feedback):
         """Original columns, then the results, row for row."""

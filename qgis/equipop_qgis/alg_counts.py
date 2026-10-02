@@ -661,14 +661,23 @@ class CountsAndShares(EquipopAlgorithm):
 
         ch.info(f"Calculating ({engine} engine, {pts.n} rows, cell "
                 f"size {float(unit):g} m).")
+        # BACKLOG 293. The record is opened here and filled BY THE
+        # ENGINE from the arguments it is given, so this door never
+        # maintains a list of what to record.
+        from equipop.meta import record
+        runlog = record(engine, pts.n, {},
+                        source=getattr(source, "sourceName",
+                                       lambda: "")())
         with stage(ch, "calculating"), speaking(ch):
-            res = dispatch(engine, pts.data["x"], pts.data["y"], **kw)
+            res = dispatch(engine, pts.data["x"], pts.data["y"],
+                           provenance=runlog, **kw)
 
         order = [n for n in names if n in res] + \
                 [n for n in res if n not in names]
         with stage(ch, "writing output"):
             dest = self.write(parameters, context, source, res, order,
                               feedback)
+        self.write_provenance(runlog, dest, res, ch, source=source)
         return {self.OUT: dest}
 
     # ---------------------------------------------------------------

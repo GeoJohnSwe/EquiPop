@@ -32,43 +32,57 @@ costs somebody a session.*
 items live in the detail below and in the manual's version history,
 not here. A list of completed work is not a plan.
 
-### Now — the Machine 5 arc (one outcome, several releases)
-1. **248–265, 268, 278, 284** — a data BROWSER, not more message
-   fixes. One complete WorldPop path and one complete Geofabrik path
-   first; GHSL's dependent tuples and HDX's paged search follow on the
-   same contract. Needs John in the loop testing the dialog, so it
-   should not share a release with work that does not.
-2. **280, 282, 283 + 269** — the two finished engines with NO DOOR.
-   The OSM lattice join is reachable only from run_osm_friction.py;
-   doors/inventory.py is reachable from nothing at all. Both are QGIS
-   dialog work and belong with the browser.
+### ~~Now — the Machine 5 arc~~ COMPLETE. Corrected 1.49.3.
+*This list went stale for the SECOND time, and entry 2 was false on
+the day it was written. Kept as a correction rather than deleted,
+because the failure is the point: a priority list is the one document
+nothing in the suite checks.*
+
+1. ~~**248–265, 268, 278, 284**~~ — **18 of these 21 are struck.**
+   What is left is not browser work: 255 (won't fix as asked), 257
+   (paused by John, session 12) and 259 (reference facts about the
+   Geofabrik index). The arc finished across 1.44.2–1.46.2.
+2. ~~**280, 282, 283 + 269**~~ — **both claims were wrong.** It said
+   the OSM lattice join is "reachable only from run_osm_friction.py"
+   and doors/inventory.py "from nothing at all". Both have had doors
+   in BOTH GUIs since 1.47.6 — item 269's own entry says "DOORS DONE
+   v1.47.6", which is THE SAME RELEASE that wrote this line. The
+   rewrite that existed to stop a stale index carried a stale claim
+   into its own first paragraph, copied from the item numbers rather
+   than checked against the code.
+   **And tests/reachability.py still declares both as `no_door`** —
+   see 333. The matrix cannot catch it: nothing there can falsify a
+   claim that something is unreachable.
 
 ### Next — reachability and trust
-3. **293** — RunLog is dead code and it is item 2. Analysis runs have
+3. **333** — a `no_door` entry cannot fail, so the matrix goes stale
+   in the one direction it exists to watch. Cheap, and it is the map
+   every other decision on this list is read from.
+4. **293** — RunLog is dead code and it is item 2. Analysis runs have
    no provenance record, which is why neither `overshoot` nor the new
    `originrule` can be written to one. Needs its own release and a
    decision about which door writes the sidecar.
-4. **118** — the statistics path still rounds weights and expands
+5. **118** — the statistics path still rounds weights and expands
    rows into persons though the engine has carried fractional weights
    since 1.29. (205, a Stata door for machine 2, was RULED OUT in
    session 12: Stata does weighted statistics natively and better,
    and what it cannot do is build the neighbourhood. Each tool does
    its own part.)
-5. **119** — resume compares parameters but not input CONTENT. The
+6. **119** — resume compares parameters but not input CONTENT. The
    same cell count and the same settings are not proof of the same
    data. Not ready for an unattended world-scale run.
-6. **128, 80, 87, 198–199, 288** — a real-host release gate: small
+7. **128, 80, 87, 198–199, 288** — a real-host release gate: small
    recorded end-to-end runs in live QGIS and Pro, matching
    plugin/engine version checks, cancellation, a copyable diagnostic.
 
 ### Then — analytical capability already half-built
-7. **102 + 42** — QGIS variable bandwidth and its explanation.
-8. **117 + 120** — shared validation and construction, as those paths
+8. **102 + 42** — QGIS variable bandwidth and its explanation.
+9. **117 + 120** — shared validation and construction, as those paths
    are touched. 120 is confined to machine 1; machines 3, 4 and 5 have
    none of it, so it gates changes to counts and nothing else.
-9. **158** — hex self-potential uses a square-cell area, overstating
+10. **158** — hex self-potential uses a square-cell area, overstating
    the radius by 7.5%.
-10. **134, 132** — a golden dataset per host; a public ArcGIS Online
+11. **134, 132** — a golden dataset per host; a public ArcGIS Online
     item.
 
 ### Waiting on John, not on code
@@ -1584,7 +1598,7 @@ not here. A list of completed work is not a plan.
   join, failed under test while being correct in QGIS. That file has
   now been wrong in this way five times.
 
-- 237 | OPEN, MINOR, NEXT RELEASE | stata_test_data.dta HAS TWO
+- ~~237~~ | DONE v1.50.0 | equipop_test_data.dta HAS TWO
   MISLEADING VARIABLE NAMES. John, from the field: ValFloat is not
   float and should be; ValCount holds counts.
   The names teach the wrong thing. The showcase and the field pass
@@ -1598,6 +1612,42 @@ not here. A list of completed work is not a plan.
   regeneration rather than on its own, because the file is a fixture
   and touching it invalidates pinned EXPECT numbers in
   equipop_test_pass.do - check those in the same pass.
+  THE STAKES ROSE BEFORE IT WAS DONE. The file is now published: it
+  reaches every SSC user who types `ssc install equipop, all`, beside
+  the paper, and it is the first thing a reader inspects. It is also
+  the file C. F. Baum renamed, which is how it came back into view.
+  DONE v1.50.0, and the regeneration was PROVED LOSSLESS BEFORE A
+  PUBLISHED FIXTURE WAS TOUCHED - which is the only reason it was safe
+  to do at all. ValFloat was declared Stata `double` (type 'd'). All
+  9,166 of its present values are whole numbers, the largest is
+  23,254, and float32 holds integers exactly to 16,777,216, so the
+  round trip is exact and NOT ONE PINNED NUMBER MOVED. The showcase's
+  `Nv 167.30 | Mean 1815.23 | Med 1248.10 | Gini .5806` still stands.
+  tools/make_test_data.py refuses to run if either of those two facts
+  stops being true.
+  AND ALL NINE VARIABLES HAD EMPTY LABELS, found while doing it. In
+  Stata the label is where meaning lives, so with none the NAME has to
+  carry it - which is how a name that lies does real damage. Labelling
+  them is a better cure for "misleading" than renaming: a rename would
+  break equipop_showcase.do, equipop_test_pass.do, the paper's
+  variable list and every student's notes, for a fault this item's own
+  text calls minor. ValCount's label says what it is NOT - "a count,
+  0-98 - not a 0/1 marker and not a magnitude" - because the
+  ValFloat/ValCount pair is the confusion the item was raised about,
+  and block 20 of the field pass was INVALID FOR A RELEASE because of
+  exactly that mix-up (1.40.5).
+  THE NAMES AND THE VALUES ARE UNTOUCHED, AND ONE QUESTION IS LEFT FOR
+  JOHN. ValFloat exists to demonstrate a CONTINUOUS measure - that is
+  the whole point of block 20 - and every value in it is a whole
+  number. Genuinely fractional values would teach the lesson better.
+  They would also want `double` storage to be worth having, which is
+  the OPPOSITE of what John asked for here, and they would change the
+  one pinned EXPECT line and diverge from the copy now hosted on SSC.
+  So: storage fixed as instructed, pedagogy recorded, his ruling.
+  Measured for whoever picks it up: ValFloat has 9,166 present values,
+  1,726 missing by design, 3,527 distinct, range 0-23,254, and
+  test_dist_monotone.py uses ValCount rather than ValFloat, so the
+  Python suite pins nothing that fractional values would move.
 
 - ~~238~~ | DONE | A REFUSAL NAMED A CHARACTER THE USER NEVER TYPED.
   External review of 1.43: 'fm:0-14,65-' was refused. Correct, and the
@@ -3525,6 +3575,209 @@ not here. A list of completed work is not a plan.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- ~~334~~ | DONE v1.51.0, FOUND BY MARINA'S PULL REQUEST | `g` IS NOT
+  THE ANCILLARY KEYWORD, AND 330 SHIPPED FOR A DAY BELIEVING IT WAS.
+  330 declared the worked examples and the test data in equipop.pkg
+  with `g`, on my belief that `g` meant "ancillary". `g` is the
+  PLATFORM-SPECIFIC directive and its syntax is
+  `g PLATFORMNAME sourcefile targetfile` - for shipping a different
+  compiled plugin to WIN64A, MACARM64, LINUX64. So Stata read
+  "equipop_example.do" as a platform name with no files after it, and
+  THOSE THREE FILES WOULD NOT HAVE INSTALLED AT ALL from
+  `net install`. Marina's pull request had them as `f` all along.
+  `f` IS CORRECT: Stata decides what to do with a file from its
+  EXTENSION, installing .ado and .sthlp into the ado path and fetching
+  .do and .dta with `net get`, which is what the `all` option of
+  `ssc install` performs.
+  AND THE TEST I WROTE BESIDE 330 VALIDATED THE BUG. It walked the `g`
+  lines and asserted the named file existed in stata/ - which it did.
+  A test written beside a change encodes the change's assumption, and
+  this one encoded a wrong one. That is the seventh unfalsifiable-or-
+  wrong test of this stretch and the second that was mine.
+  The check now rejects a `g` line whose second word is not a real
+  platform name, and requires every .do and .dta in stata/ to be an
+  `f` line. Both break-checked against the exact bug.
+
+- ~~335~~ | DONE v1.51.0, MARINA'S PULL REQUEST | A RADIUS-ONLY RUN
+  WITH treat() CRASHED BEFORE COMPUTING ANYTHING.
+  `foreach ... of numlist `k'` with an EMPTY `k' is a SYNTAX
+  ERROR in Stata, not an empty loop. The name-length warning looped
+  over k() unguarded, so `equipop, x() y() r(500) treat(HighEdu)` died
+  with "invalid numlist has too few elements". k() and r() are each
+  optional and either will do (BACKLOG 305), so a radius-only run with
+  a treatment is an ordinary thing to ask for.
+  THE GUARD ALREADY EXISTED FORTY LINES ABOVE, in the replace drop
+  block, with a comment explaining this exact property of numlist. The
+  rule was written down in the file and not applied below it - the
+  same shape as 330, where the right version invariant sat in a
+  comment three files from the code that ignored it. A test now walks
+  every numlist loop in the ado and requires the guard, because the
+  lesson demonstrably does not stick on its own.
+
+- ~~336~~ | DONE v1.51.0, MARINA'S PULL REQUEST | -replace- LEFT THE
+  DECAY OUTPUTS BEHIND, so a second decay() run told the user to "use
+  option replace" when they already had.
+  The drop list cleared N_, Dist_, T_ and R_ and not ND_, TD_, RD_.
+  Her fix covers all three for the k loop and the r loop, and
+  correctly does NOT drop Dist_r - a radius run reports no distance,
+  because the radius IS the distance (203, John's ruling).
+  THE TEST READS THE FAMILIES FROM THE ENGINE, equipop.analysis.NAMES,
+  rather than listing them - so a new output family added to the
+  engine fails the test instead of quietly escaping the drop list,
+  which is how these three escaped it.
+  AND MY FIRST VERSION OF THAT TEST COULD NOT FAIL PROPERLY: it
+  searched the whole drop block, so deleting the decay drop from the
+  k half still passed, because the radius half's `drop ND_r`rl'`
+  matched the same pattern. Caught by breaking it. It now checks each
+  half separately.
+
+- ~~337~~ | DONE v1.51.0, DIAGNOSED BY MARINA, FIXED DIFFERENTLY | ONE
+  RADIUS, FOUR DOORS, FOUR DIFFERENT ANSWERS.
+  Marina found that two radii agreeing to six significant digits
+  collapse into ONE output column, silently, and that a radius needing
+  scientific notation makes an illegal Stata name. Both reproduced.
+  THE CAUSE WAS FOUR FORMATTERS FOR ONE LABEL:
+    fastcounts._lab            f"{x:g}"
+    analysis.record(suffix=)   f"r{rv:g}"
+    stata_bridge labs          f"r{r:g}"
+    doors/fields._fmt_num      str(int(f)) if whole else str(f)
+  `:g` carries six significant digits and goes exponential outside a
+  narrow range, so for r(1000000) - 1000 km, an ordinary continental
+  radius - Python got N_r1e+06, ArcGIS Pro stored the unreadable
+  N_r1e_06, QGIS got N_r1e+06 and STATA CRASHED. And the PREDICTION
+  disagreed with the engine: doors/fields promised N_r1000000 while
+  the engine made N_r1e+06, so Pro's shapefile-name check and its
+  "names will be shortened" warning were computed against a field that
+  never appears - in a function whose docstring says it is "validated
+  against the real dispatch ... and does not drift into a guess".
+  WHY NOT HER FIX. Hers raises ValueError for a label that is not a
+  legal STATA name, inside knn_to_rows and dispatch - so every door,
+  Python included, is refused r(1000000) because of a Stata naming
+  rule, and tests/test_menu.py uses 1e6 deliberately and calls it the
+  whole-world radius. The project's own rule, written in dispatch for
+  missing codes, is that no engine learns a door's concepts.
+  BUILT INSTEAD: equipop/labels.py, one formatter, used by the engine
+  AND by the prediction. Six decimal places, never scientific, the dot
+  already an underscore, fixed AT THE SOURCE so no name needs
+  repairing at an output boundary. EVERY RADIUS ANYBODY HAS USED KEEPS
+  ITS NAME - 50, 100, 500, 800, 2800 are unchanged - so no pinned
+  number moves. A true collision is still refused, which is her rule
+  kept; at six decimal places it fires only when the two radii are the
+  same radius.
+  AND tau HAD THE SAME EXPOSURE, found with it: friction.py formatted
+  effort budgets with `:g` too, so tau(3.5) made the illegal
+  Rounds_tau3.5. Same function, fixed together.
+  AND THE TEST SUITE WAS PINNING THE BUG. test_menu asserted the
+  column "N_r1e+06" - a name no Stata variable and no shapefile field
+  may have - for the one radius there that most needed checking, and
+  it computed the expected name with the same `:g` the code used. A
+  test that derives the expected name the way the code does cannot
+  catch a naming fault. The name is now spelled out, and a second
+  assertion refuses any result column containing an exponent or a dot.
+
+- ~~338~~ | DONE v1.51.0, MARINA'S PULL REQUEST, TAKEN DIFFERENTLY |
+  THE HELP'S EXAMPLES NAMED NO VARIABLES, AND A SHARED EXPLANATION
+  NEARLY GOT A SECOND COPY.
+  Her PR adds help text for r() and overshoot() as STATA_ONLY entries,
+  described as boxes that "had no help entry". THEY HAD ONE: OPTION_HELP
+  maps both to keys in equipop/doors/help.py, which is the mechanism
+  that makes a QGIS student and a Stata student read the same words
+  about the same box. STATA_ONLY REPLACES that text, so her version
+  would have given Stata its own copy of two paragraphs - BACKLOG 105's
+  fault exactly, where Pro said "additive (sum)" and QGIS said
+  "additive (costs add up)". I repeated her claim in my review before
+  checking it; the shared entries exist and I was wrong.
+  WHAT IS GENUINELY STATA-SPECIFIC IS REAL, THOUGH: overshoot(sampled)
+  is refused by the ado. So STATA_EXTRA now APPENDS a door-specific
+  sentence to the shared explanation instead of overriding it. The
+  permanent duplication of 105 exists only because a QGIS plugin may
+  not import the package at load time; the Stata help generator has no
+  such constraint, so it should not duplicate.
+  TAKEN FROM HER: the examples now say what they run ON - the help
+  named no variables, so a reader could not try them - with Kit Baum's
+  filenames and the findfile idiom 1.49.3 established, because an SSC
+  install puts ancillary files under PLUS and not in the working
+  directory.
+  ALSO HERS: the help sent users to TESTING_STATA.md, gone since 1.36.
+  1.49.3 pointed at `equipop doctor`; her README_STATA.md is the better
+  target for an installation question and is now named alongside it.
+
+- ~~333~~ | DONE v1.50.0, FOUND WHILE ANSWERING "WHAT NEXT" | A `no_door` ENTRY CANNOT FAIL, SO THE REACHABILITY MATRIX
+  GOES STALE IN THE ONE DIRECTION IT EXISTS TO WATCH.
+  tests/reachability.py was written in 1.47.6 after five capabilities
+  shipped with no way to reach them. It is the right instrument and it
+  has an asymmetry:
+    test_1 walks `entry[0] == "door"` and checks the named file still
+    mentions the named symbol. A door that DISAPPEARS is caught.
+    A `no_door(why, item)` names NO file and NO symbol, so NOTHING
+    about it is verified. A door that APPEARS is never noticed, and
+    the matrix goes on saying the capability is unreachable.
+  IT HAS ALREADY HAPPENED, to the entry the matrix was written for.
+  "vector to lattice join (OSM roads, polygons)" declares no_door for
+  QGIS, with Pro and Stata pointing at that reason:
+    "The headline engine of 1.46.0 and 1.46.1 has no GUI. Reachable
+     only from run_osm_friction.py"
+  Both GUIs have had it since 1.47.6. Verified in the code, not
+  inferred: alg_continental.py offers the `joinlayer` box at line 125
+  and calls paths_to_cells at 390; EquiPop.pyt declares joinlayer at
+  3759 and _join_layer calls paths_to_cells at 3539.
+  WHY THIS DIRECTION IS THE WORSE ONE. A false "no door" costs a
+  RELEASE: it tells a future session to build something that exists.
+  The backlog's own head did exactly that - "the two finished engines
+  with NO DOOR" - and I nearly recommended it as the next piece of
+  work before checking the code.
+  AND IT IS THE SESSION'S OWN THEME FOUND IN THE SESSION'S OWN
+  INSTRUMENT. Four tests that could not fail in 1.48.2-1.49.0, a
+  fifth in 1.49.1, my own sixth in 1.49.3 - and the guard built to
+  catch unreachable capabilities has an assertion of exactly that
+  shape. A matrix that can only be wrong in one direction will be.
+  PROPOSED FIX, small:
+  (a) A GAP AND A RULING ARE DIFFERENT THINGS and no_door conflates
+      them. "Downloading is not a Stata activity" is a ruling - it
+      needs no witness and should never fire. "No GUI yet" is a GAP,
+      and a gap should be able to announce its own obsolescence.
+  (b) So a gap carries a WITNESS: the file that would hold the door,
+      and a symbol that must NOT appear in it. For the lattice join
+      that is ("qgis/.../alg_continental.py", "joinlayer") - the BOX
+      name, not the engine function, because barriers.py and
+      EquiPop.pyt both call paths_to_cells for machine 1's barrier
+      charging, which is a different capability the matrix's own
+      docstring warns against conflating.
+  (c) A new test asserts the witness is absent. It fails the moment
+      the door is built, which is the moment the entry becomes a lie.
+  (d) Audit every existing no_door while doing it: this one was found
+      by accident, so the others are unaudited by definition.
+  BUILT. `no_door` is GONE as a name, which is deliberate: leaving it
+  available as a catch-all would have let the blind spot back in on
+  the next entry somebody wrote. Every absence is now `ruled_out(why,
+  item)` or `not_yet(why, item, absent=(file, symbol))`, and the
+  classification of all 26 forced the audit.
+  PROOF IT WORKS: restoring the exact 1.47.6 claim - no QGIS door for
+  the lattice join - now fails the suite, naming the file and the
+  symbol. Three breaks checked: the false claim, a same_as borrowing
+  another door's witness, and a gap declared with no witness at all.
+  THE AUDIT FOUND TWO MORE THINGS.
+  (a) "accessibility and FCA" was three identical lines reading "No
+      door. No demand recorded." - 28 characters, just past the
+      25-character minimum, saying nothing a future session could
+      act on. kFCA has been in the engine since 1.12.0. Rewritten,
+      and the two GUI rows now carry witnesses.
+  (b) `diagnostics (the doctor)` had `pro: same_as("qgis")`, which
+      cannot carry a witness - it would assert something about a QGIS
+      file and prove nothing about Pro. That is the SAME MECHANISM as
+      the lattice join's false Pro claim. Two gaps now, two
+      witnesses, and the resolver refuses a reference that lands on a
+      gap.
+  AND THE REPORT NOW SAYS WHICH KIND each absence is: 8 watched gaps,
+  18 rulings. It used to print "26 declared gaps, every one with a
+  reason", which told a reader nothing about whether what they were
+  looking at was a decision or an oversight - the exact distinction
+  the file exists to make.
+  THE STATA ROW FOR THE LATTICE JOIN became a ruling rather than a
+  door, on 296's reasoning: a vector layer put on a raster lattice is
+  a GIS operation on GIS inputs, and the result reaches Stata as the
+  point table machine 3 writes.
+
 - 321 | OPEN, PROPOSED 23 SEPTEMBER 2026 | WHAT OF PETER'S BURDEN
   METRICS COULD GO IN TOOL 4, AND WHAT MUST NOT.
   John asked which measures from the eBoD literature could be added to
@@ -3637,6 +3890,325 @@ not here. A list of completed work is not a plan.
   population that can be zero, so the explanation arrived with a
   fragment of a RuntimeWarning attached. Suppressed, and tested with
   warnings-as-errors.
+
+- ~~332~~ | DONE v1.49.3, JOHN'S QUESTION | THE ENGINE FLOOR WAS A
+  RELEASE NUMBER PRETENDING TO BE A DEPENDENCY.
+  John, after being handed the three-step release order for 331:
+  "wouldn't it be easier to generate a new version of equipop and I
+  will git it and py it and this will never happen again".
+  HALF RIGHT, AND THE OTHER HALF IS THE INTERESTING ONE. He needs no
+  new version - 1.49.3 exists nowhere, so releasing it IS his plan
+  with one step fewer. But a synchronised release does not make it
+  never happen again, because the gap REOPENS AT THE NEXT RELEASE:
+  SSC is an email to a person and PyPI is a command, and this
+  project's own submission notes say to submit to SSC rarely. PyPI
+  ahead of SSC is the steady state, not the accident.
+  SO WHAT MAKES IT NEVER HAPPEN AGAIN IS NOT A RELEASE, IT IS A
+  DEFINITION. Setup asked pip for `equipop>=<the ado's own version>`,
+  which BACKLOG 196 built and which reads "the engine must be as new
+  as this release". THAT IS NOT A DEPENDENCY. Two consequences, both
+  real and both live:
+    1.49.2 TOUCHED THE ARCGIS TOOLBOX AND NOTHING ELSE, and silently
+    raised the Stata engine floor to 1.49.2. The commands did not
+    need one byte of it.
+    AND A FLOOR THAT NAMES AN UNPUBLISHED ENGINE CANNOT BE SATISFIED,
+    so pip installs nothing at all - which is 331.
+  THE HONEST FLOOR is the oldest engine that satisfies the calls the
+  ado makes. Declared by hand as `eqp_min_engine`, beside the list of
+  what sets it:
+      equipop.stata_bridge   knn_to_rows, to_stata_values,
+                             project_for_stata, degrees_warning,
+                             zone_span_warning       long-standing
+      equipop.doctor.run(ado_version=)               1.40.1
+      equipop.decay.Decay(calibration=)              1.48.0
+  So 1.48.0, where the ado's own version is 1.49.3. It moves only
+  when the commands start calling something new, and only after that
+  engine is on PyPI - so it can never name something that is not
+  there, and the hard failure becomes IMPOSSIBLE rather than merely
+  documented. bump_version.py must not touch it, and a test asserts
+  that it does not: a floor that follows the release number is 332
+  back within one release and invisible.
+  AND THE DOCTOR NOW JUDGES THE FLOOR, not the two release numbers,
+  which is the better answer to 330 than the one I shipped two hours
+  earlier. Kit's case stops needing a paragraph of reassurance and
+  becomes one line:
+      engine       : 1.49.3   (the Python package)
+      commands     : 1.49.3   (the .ado files)
+      needs engine : 1.48.0 or newer - satisfied
+  330's calm note survives for a PRE-1.49.3 ADO, which sends no floor
+  and is installed on real machines - there the direction of the
+  difference is the best signal available.
+  THE TRADE-OFF, STATED SO IT CAN BE OVERRULED. The old design failed
+  LOUDLY AND EARLY: pip refused, at install time. A hand-maintained
+  floor can fail LATER AND LESS CLEARLY - add a call to a newer
+  engine, forget to raise the floor, and the user meets an
+  ImportError mid-run. So the imports are checked: a test reads every
+  `from equipop... import ...` in the ado's python block and asserts
+  each name exists in the installed engine, plus the one requirement
+  hasattr cannot see - Decay's `calibration` keyword, which is what
+  sets the floor today. That cannot prove the floor NUMBER is right,
+  only a matrix of old engines could, and that is not worth building;
+  it catches the failure that would actually reach a user.
+  AND THE ADO MUST NOT BREAK ON AN OLDER ENGINE THAN ITSELF: passing
+  min_engine to a pre-1.49.3 doctor raises TypeError, so the call
+  falls back to the old signature. The loss is one line of a report.
+
+- ~~331~~ | DONE v1.49.3, JOHN, BEFORE THE REPLY TO BAUM WENT OUT |
+  THE ENGINE MUST REACH PyPI BEFORE THE COMMANDS REACH SSC, AND THE
+  FIX FOR 330 IS IN THE ENGINE.
+  John, reading the batch I had just handed him: "short question -
+  this way ado will be 1.49.3 and the py version an earlier version
+  which would lead to a conflict, correct?"
+  CORRECT, AND WORSE THAN A CONFLICT. PyPI's newest was 1.49.1.
+  Verified against the real index rather than assumed:
+      pip install --dry-run "equipop>=1.49.3"
+      ERROR: No matching distribution found for equipop>=1.49.3
+  So `equipop setup` - the FIRST INSTRUCTION IN THE PAPER - would have
+  failed outright for every new reader, not warned. I had built the
+  whole 330 fix, bumped the version, written the covering letter, and
+  not checked the one number that decides whether any of it installs.
+  AND THE 330 FIX ITSELF IS IN THE PYTHON PACKAGE. The doctor's entire
+  report comes from equipop/doctor.py; the ado only does
+  `from equipop.doctor import run`. So sending Kit the ado alone would
+  have changed NOTHING HE COULD SEE - he would have run the new
+  commands against the old engine, read the same "VERSION MISMATCH"
+  paragraph, and reasonably concluded it had not been fixed. A reply
+  that says "fixed" and demonstrably is not is worse than no reply.
+  RECORDED AS A HARD PRECONDITION, section 0 of SSC_SUBMISSION.md,
+  with the two commands that compare the numbers - and in
+  tools/bump_version.py, printed at the moment the two versions part
+  company, because that is where the mistake is made and not where it
+  is discovered.
+  THE PIP ADVICE FOR IT WAS CONFIDENTLY WRONG. "No matching
+  distribution" fell into the network branch: "pip could not reach
+  PyPI, or could not find a build for this Python. Check the network
+  and any proxy, and that this Python is 3.10 or newer." All true,
+  none of it the cause, and the user cannot fix it in any case. THAT
+  IS BACKLOG 319'S EXACT FAULT, WRITTEN IN THE RELEASE THAT FIXED 319.
+  Setup now recognises its own floor in pip's message, says the
+  mistake is ours, and gives the fallback that works - the newest
+  engine there is, plus the doctor to see the gap it leaves.
+  AND THE .ADO'S PYTHON BLOCK IS REACHABLE BY TESTS AT LAST. Its own
+  comment said so, for releases:
+    "Code in here can only be run by Stata, so the Python test suite
+     cannot reach it - which is how ... and 173 survive."
+  True, and it is why every guard in `equipop setup` - the venv
+  detection, the ensurepip advice, the externally-managed advice, the
+  whole dispatch on what pip said - was verified by GREPPING THE FILE
+  FOR STRINGS. That is how the 1.48.2 ensurepip test came to assert
+  nothing, and how a branch of advice could point the wrong way for a
+  whole release with tests passing over it.
+  The block needs Stata only for `sfi`. Everything else is standard
+  library BY DESIGN, because setup runs before the package exists - so
+  tests/test_stata_python_block.py stubs sfi, EXECUTES the block, calls
+  the functions with pip's real output, and reads the advice back from
+  what was PRINTED. Nine tests; each one fails when the thing it
+  describes is broken, checked one break at a time. The block's
+  comment now says what keeps it reachable: an import of numpy, pandas
+  or equipop on a setup path would put it back out of reach and take
+  its tests with it.
+
+- ~~330~~ | DONE v1.49.3, FOUND BY C. F. BAUM ON THE SSC RELEASE |
+  THREE VOICES CALLING A CORRECT INSTALL A FAULT, AND THE FILENAMES
+  THE ARCHIVE COULD NOT TAKE.
+  equipop is on SSC. Kit Baum installed it by following the
+  manuscript exactly - `equipop setup`, full restart of Stata - and
+  wrote: "I am a bit confused as to why the doctor routine identifies
+  a version mismatch." He had commands 1.48.2 from SSC and engine
+  1.49.1 from pip.
+  HE WAS RIGHT TO BE CONFUSED AND THE PACKAGE WAS WRONG. That state
+  is not a mismatch to repair: IT IS WHAT OUR OWN INSTALLER PRODUCES.
+  `equipop setup` asks pip for `equipop>=<ado version>` - deliberately,
+  since 1.48.2, because new commands need a new engine - so pip takes
+  the newest there is, which is ahead of SSC whenever PyPI has moved.
+  And PyPI and SSC are on separate tracks BY DESIGN, which 1.48.2's
+  own note says. So the package shipped an installer that creates a
+  state and a diagnostic that calls that state a fault. BACKLOG 328's
+  lesson arriving from the other direction: a second voice
+  contradicting the first is worse than no voice at all.
+  THE DIRECTION IS THE WHOLE DIAGNOSIS, and `!=` cannot see it:
+    engine NEWER than commands   expected, harmless. Commands only
+                                 ever call engine functions that
+                                 existed when they were written.
+    engine OLDER than commands   the real fault, and the ONLY one
+                                 that produces `ImportError: cannot
+                                 import name ...` - which is the
+                                 error the old message illustrated
+                                 BOTH cases with.
+  The loud message now goes only to the second. The first gets three
+  calm lines that quote what setup asked pip for, because the two
+  version numbers differ on screen and an unexplained difference is
+  its own kind of alarm. An unreadable version string makes the
+  doctor go quiet rather than guess.
+  AND THE ANSWER WAS ALREADY WRITTEN DOWN, WHICH IS THE WORST PART.
+  The comment beside the pip call in equipop.ado, put there for
+  BACKLOG 196 in 1.48.2, says it exactly:
+    "A FLOOR, NOT A PIN... doctor then reports a mismatch that SETUP
+     CREATED... THE REAL INVARIANT: the ado is the caller and the
+     engine is the library, so THE LIBRARY MUST BE AT LEAST AS NEW AS
+     THE CALLER."
+  So the reasoning was correct, recorded, and eleven releases old, and
+  the diagnostic three files away was never told. Nothing connects a
+  comment to the code that should obey it - which is the same shape as
+  BACKLOG 103 and 320, two doors disagreeing, with prose as one of the
+  doors. The tests now hold the doctor, the test pass and the setup
+  floor to one rule.
+  AND IT WAS IN TWO MORE PLACES, both found by looking for it:
+    equipop_test_pass.do, block 0: `"$EQP_ENGINE" == "$EQP_EXPECT"`.
+      So the pass FAILS A CHECK on a correct SSC installation - while
+      SSC_SUBMISSION.md instructs the submitter to run it and expect
+      every check to pass. Now "at least", with a note when newer.
+    SSC_SUBMISSION.md itself, which told the reader to make "the
+      doctor's mismatch message current before submitting". It was
+      current. It was wrong.
+  THE FILENAMES. Kit also renamed two files, and his reasoning is
+  correct: "We obviously cannot host a file named example.do on the
+  archive... Likewise stata_test_data.dta is not a workable name (as
+  it could be used by many package authors)". SSC's filename space is
+  FLAT AND GLOBAL. The repository now uses HIS names -
+  equipop_example.do, equipop_test_data.dta - so that one file has
+  one name everywhere, and a test asserts the prefix on everything in
+  stata/.
+  WHICH EXPOSED THE CONSEQUENCE HE COULD NOT HAVE SEEN: both sample
+  do-files open with `use stata_test_data, clear`, so AS HOSTED they
+  fail on their first data line. Renaming the data without renaming
+  the reference breaks the example - and the reference was in a file
+  he was not renaming. Both now use findfile, which fixes a second
+  fault underneath the first: ancillary files install into Stata's
+  PLUS folder, not the working directory, so `use equipop_test_data`
+  would not have found it even under the right name. The shipped
+  examples had only ever been runnable from a clone of the repository.
+  AND THE .PKG HAD NEVER LISTED THEM AT ALL. Eleven releases of `net
+  install` from GitHub handed over the commands and not the material
+  the help and the paper tell people to run, while SSC - whose .pkg
+  the archive generates from the zip - handed over both. TWO INSTALL
+  ROUTES OFFERING DIFFERENT FILES, and neither route's contents
+  written down anywhere. Now declared with `g`, and a test walks both
+  the `f` and the `g` lines.
+  THE HELP FILE NEVER NAMED THE EXAMPLES either, which left the paper
+  as the only place they appeared - by the filenames SSC then changed.
+  It names them now, with the findfile idiom, so an SSC user can find
+  what they installed.
+  AND THE HELP FILE'S SMCL WAS BROKEN, found while editing it. Every
+  escaped brace shipped malformed, since the generator was written:
+  _smcl_escape chained two .replace() calls and the second ATE THE
+  FIRST ONE'S OUTPUT - `{` became `{c -(}`, whose closing brace the
+  second replace turned into `{c )-}`, giving `{c -({c )-}` - and the
+  line wrapper, which knows nothing about SMCL, then broke the wreck
+  across a newline. FIVE OF THEM WERE IN THE FILE KIT READ. str
+  .translate does it in one pass and never re-scans its own output.
+  Five paragraphs were also being brace-escaped when they WANTED live
+  markup, so `{help python}` had shipped as the words rather than the
+  link for as long as the line existed; they go through a new _smcl
+  that wraps without escaping and refuses to break inside a
+  directive. One of those paragraphs pointed at TESTING_STATA.md,
+  which has not existed outside stata/historical/ since 1.36 - a help
+  file naming a missing file, now on SSC. It points at
+  `equipop doctor` instead.
+  THE SIXTH UNFALSIFIABLE TEST OF THE WEEK, and my own: the
+  output-side check for broken SMCL could not fail once the five
+  paragraphs moved off the escaper, because nothing reached it with a
+  brace any more - breaking _smcl_escape again changed no shipped
+  byte and the test passed over the restored bug. _smcl_escape is now
+  pinned by a unit test of its own, and the output check is kept for
+  the two regressions it CAN catch.
+
+- ~~329~~ | DONE v1.49.2, FOUND BY JOHN IN THE FIELD, THE SAME DAY AS
+  327 | THE CAPABILITY DID NOT EXIST, ONLY THE REFUSAL.
+  John ran 1.49.1 - the release that fixed 327 - and met the SAME
+  SENTENCE:
+
+      File "C:\Data\EQP\EquiPop.pyt", line 1570, in _run_tool
+      arcgisscripting.ExecuteError: Table input has no feature class
+      to append to - set the output table (.csv).
+
+  MY FIRST READING WAS WRONG AND WORTH RECORDING. I assumed a second
+  COPY of the check on the execution path - that I had fixed the one I
+  happened to find instead of grepping for the message. There was no
+  second copy. The message at line 1570 was the ONLY thing _run_tool
+  did with a table input, because the four lines read
+
+      if kind == "table":   ...
+      elif out_mode.startswith("New"):   ...
+
+  and an `elif` after `if kind == "table"` is unreachable for a table.
+  So 1.49.1 stopped the DIALOG refusing and left the engine with
+  nothing to run. FIXING A VALIDATOR DOES NOT BUILD A FEATURE. The
+  toolbox had offered "New feature class" to table inputs for as long
+  as the box had existed, and no code anywhere could do it.
+  AND THE 327 TEST COULD NOT HAVE CAUGHT IT. It called
+  updateMessages() and stopped - a validator test certifies the
+  validator. Fifth unfalsifiable-or-insufficient test this week
+  (ensurepip in 1.48.2, the two 306 greps and the .message attribute
+  in 1.49.0, this). The common shape: the test exercises the layer the
+  fix touched instead of the behaviour the user asked for.
+  BUILT: arcpy.management.XYTableToPoint, which is the right tool and
+  was used nowhere in the toolbox. It carries EVERY column of the
+  table across, not only the ones EquiPop read, so John's census
+  counts arrive on the layer beside the results computed from them.
+  After the conversion `kind` becomes "point" and the whole ordinary
+  write path runs unaltered - the shapefile name check, keep-both, the
+  ExtendTable write, the verification and the manifest.
+  BACKLOG 164 BITES HARDER HERE THAN FOR A COPY. A table has no
+  identifier to preserve at all, so the new feature class numbers its
+  rows from scratch (1 in a geodatabase, 0 in a shapefile) and `oid`
+  was None a moment earlier. The ids are read back in row order and
+  used, exactly as the copy path does. The test proves it on
+  Dist_200, which VARIES row by row - N_200 reads 200 everywhere
+  under `proportional`, which is why the original 164 misalignment
+  was invisible for four releases.
+  ROWS WITH NO COORDINATE ARE THE ONE BEHAVIOURAL DIFFERENCE, and it
+  is refused rather than absorbed: the conversion DROPS them, where
+  EquiPop's convention is Null results, so the row count is checked
+  and a mismatch stops the run naming the cause. A misaligned write
+  is not worth a convenience.
+  WHERE THE PROJECTION COMES FROM - the one real design question. A
+  table declares none: a CSV of eastings and northings is two columns
+  of numbers. BACKLOG 313's rule is never guess a CRS and never be
+  silent about a missing one, so there is now a box, "Coordinate
+  system of the X/Y columns", and it is honoured in the direction that
+  applies here. The NUMBERS never depend on it - distances are in
+  whatever unit the columns are - only the MAP does, so a blank box
+  writes the feature class with an unknown coordinate system and says
+  so loudly, naming both remedies (fill the box, or run Define
+  Projection) and the two grids John's audience uses. Refusing the run
+  over a metadata field would be 327's mistake again in the other
+  direction.
+  AND THE SPATIAL REFERENCE IS PASSED EXPLICITLY EVEN WHEN UNKNOWN,
+  because arcpy's own default for XYTableToPoint's coordinate_system
+  is GCS_WGS_1984: omitting it would stamp Irish Grid eastings as
+  degrees of longitude and the layer would claim a projection it does
+  not have. An empty SpatialReference() says "unknown", which is
+  true. A GEOGRAPHIC choice in the box is refused outright - EquiPop
+  measures in metres and a degree is not a length.
+  THE BOX WENT ON THE END OF THE PARAMETER LIST, not beside the other
+  coordinate boxes: Pro places a box by its CATEGORY, and a parameter
+  inserted mid-list renumbers every parameter after it, which silently
+  rewires a saved ModelBuilder model.
+  TWO THINGS FOUND WHILE DOING IT:
+  (a) A TABLE RUN'S MANIFEST COULD NAME A CRS IT NEVER HAD.
+      last_crs_text and last_unit are attributes ON _read_input, so
+      they survive from one tool run to the next inside one Pro
+      session, and the tabular branch set NEITHER - it read them with
+      getattr(..., "unknown"), which returns what the last FEATURE
+      CLASS read in that session left behind. Read a projected layer,
+      then a CSV of Irish Grid numbers, and the second manifest
+      records the first run's coordinate system. A manifest exists so
+      a result can be reproduced a year later; one that names the
+      wrong CRS is worse than one that admits it does not know. Now
+      set explicitly on every path, and "unknown - a table declares
+      none" when nothing is declared.
+  (b) BACKLOG 320 MISSED THE CSV A STUDENT ACTUALLY OPENS. It made
+      the name-map and the manifest utf-8-sig and left the RESULTS
+      csv - the only to_csv in the toolbox - with no encoding at all.
+      That is the file with T_andel_fodt_i_Norge_333 in its header.
+      Fixed here.
+  ALSO: both output boxes are now honoured. A table input may take a
+  .csv AND a new feature class, and gets both, with a manifest beside
+  each. Until this release the CSV writer lived inside
+  `if kind == "table":` and the feature-class path had already changed
+  `kind`, so filling both boxes silently threw one away - the same
+  fault as the rest of the item, one line further down.
 
 - ~~316~~ | DONE v1.49.0 | KEEP BOTH: A THIRD
   CHOICE FOR "if result fields already exist".
@@ -3907,8 +4479,8 @@ not here. A list of completed work is not a plan.
   SO THE MATRIX NOW RECORDS A DOOR DELIBERATELY NOT BUILT rather than
   a capability missing, which is the distinction it exists to make.
 
-- 293 | OPEN, FOUND v1.47.6 | RunLog IS DEAD CODE, AND IT IS BACKLOG
-  ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
+- ~~293~~ | DONE v1.50.0, FOUND v1.47.6 | RunLog IS DEAD CODE, AND IT
+  IS BACKLOG ITEM 2. equipop/meta.py - "the per-run metadata log (backlog item 2,
   design as agreed)" - is complete, documented, exported in __all__,
   and CALLED BY NOTHING AND TESTED BY NOTHING. No door, no engine, no
   runner constructs a RunLog.
@@ -3925,6 +4497,89 @@ not here. A list of completed work is not a plan.
   (280/282). This one is the oldest by a wide margin. The pattern is
   now the project's characteristic failure: a thing is built, tested,
   and never connected to a way of reaching it.
+
+  BUILT v1.50.0, AND THE DIAGNOSIS WAS WRONG IN A USEFUL WAY. "Analysis
+  runs have no provenance record" is not quite what was true. PRO HAD
+  ONE - an _EquiPop_run.csv beside every output since 1.26 - so the
+  real state was TWO IMPLEMENTATIONS OF ONE JOB, which is BACKLOG
+  103's shape with a dead one and a live one. And the live one was
+  HAND-MAINTAINED, so it drifted exactly as a hand-written list does:
+  `overshoot` moved every k-based number from 1.30 and appeared in no
+  record until 1.47 because nobody added it; 148 is the same story
+  told larger - the manifest recorded k, cell size, decay and barriers
+  and NONE of the settings that define the numbers, so two runs could
+  carry identical records and different answers, and Claude tried to
+  use two of John's to settle which of his runs had differed and could
+  not.
+  SO THE FIX IS NOT "WRITE A RECORD". It is that THE RECORD COMES FROM
+  THE ENGINE'S OWN ARGUMENTS. `dispatch(..., provenance=runlog)` fills
+  it from `locals()` at entry - the arguments AS BOUND, defaults
+  included - so a parameter added to the engine appears in the record
+  the same day with no door touched. A setting the caller never
+  mentioned is recorded as the value that actually ran, which is what
+  a record is for: self_potential changes every Dist_k and decay_eps
+  changes how far the search goes, and no door passes either when the
+  default suits it.
+  A TEST WALKS dispatch's OWN SIGNATURE and fails if any parameter is
+  missing from the record. That is the anti-drift guard this item has
+  needed since it was raised as item 2.
+  EACH DOOR, AND ITS OWN SHAPE:
+    python  RunLog directly, as the module docstring always showed.
+    qgis    .meta.json + .meta.txt beside the output - this door wrote
+            NOTHING before. With a temporary or in-memory destination,
+            which is QGIS's own default, there is nowhere to put a
+            sidecar, so the settings are PRINTED instead of silently
+            not existing.
+    pro     the engine's rows appended to the existing CSV under an
+            `engine.` prefix. NO SECOND SIDECAR: that CSV is the file
+            a user already looks for, and two files describing one run
+            is how this item's problem started. The two overlap on
+            purpose - cell_size_m against engine.unit_size - because a
+            disagreement between what the dialog believes it sent and
+            what the engine received is a bug class nobody could see
+            before.
+    stata   a PRINTED note, John's ruling, because a Stata run writes
+            variables into memory and may produce no file at all, and
+            `log using` is where a Stata user's reproducibility
+            already lives. Plus r(overshoot), r(originrule) and
+            r(provenance) - the first two being the settings this item
+            was raised about, returned as the EFFECTIVE value so an
+            unset option reports the default that ran rather than an
+            empty string.
+  THE STATA SIDE IS SPLIT IN TWO BLOCKS ON PURPOSE. The r() values
+  need only overshoot.DEFAULT (1.30) and selfrule.DEFAULT (1.47); the
+  printed note needs equipop.meta.record, which is new here. So the
+  note degrades to one line on an older engine rather than forcing
+  eqp_min_engine up and making `equipop setup` demand a version nobody
+  has yet (332). A note is a convenience; an install that cannot
+  complete is not.
+  WHAT IS NOT IN THE RECORD: the data. A population column is not a
+  setting, and a sidecar is not the place to copy one - megabytes of
+  numbers already in the input file, plus a disclosure question nobody
+  asked for. Arrays are summarised: count, dtype, how many present,
+  the range. A test caps the record at 20 kB on a 500-row run with a
+  treatment column, which is what catches a future change that starts
+  dumping them.
+  AND A None IS KEPT RATHER THAN DROPPED. "overshoot_mode was not
+  passed" and "overshoot_mode was whole" are different runs; a record
+  that omits the first cannot say which happened, which is how a door
+  that named no mode became impossible to measure against an answer
+  key (99). The PRINTED note drops them, and only the printed note,
+  because on screen a None is noise and in a record it is evidence.
+  FOUND WHILE DOING IT: the record named the WRONG ENGINE VERSION.
+  _versions() asked importlib.metadata, which reads dist-info - and
+  dist-info lags the source on every editable install and on any
+  machine where the toolbox was copied in by hand. Measured: it said
+  1.49.1 while __version__ said 1.49.3, so a provenance record would
+  have named a version that did not produce it. __version__ is also
+  the string the doctor and the .ado compare, so anything else here
+  would have made the record disagree with the rest of the package
+  about which engine ran.
+  AND 333's WITNESS CAUGHT THIS WORK AN HOUR AFTER IT WAS BUILT. The
+  three `not_yet` entries for run provenance fired the moment the
+  doors were wired, in the same session. An hour earlier they would
+  have gone on claiming the capability was unreachable - which is
+  precisely what the lattice join did for three releases.
 
 - 194 | OPEN | THE 1.41 PLAN IN HANDOVER 11 CONTAINED TWO ERRORS THAT
   WOULD HAVE BEEN BUILT VERBATIM. Both found by the external review,

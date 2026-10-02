@@ -325,7 +325,8 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
             pending_tau = list(tau_values)
 
             def rec_tau(tv):     # effort isochrone: everything within tv
-                lab = f"tau{tv:g}"
+                from .labels import tau_suffix    # BACKLOG 337
+                lab = tau_suffix(tv)
                 rec[f"N_{lab}"] = sum_all
                 if _has_group:
                     rec[f"T_{lab}"] = sum_grp

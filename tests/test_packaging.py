@@ -86,7 +86,7 @@ def test_the_loader_never_reaches_above_the_package_at_import_time():
 
 
 def test_the_stata_fixture_refuses_by_explaining_where_to_get_it():
-    p = os.path.join(PKG, "..", "stata", "stata_test_data.dta")
+    p = os.path.join(PKG, "..", "stata", "equipop_test_data.dta")
     if os.path.exists(p):
         pytest.skip("running inside the repo, where the file exists")
     with pytest.raises(FileNotFoundError) as e:
@@ -531,6 +531,54 @@ def test_the_bump_tool_refuses_to_touch_the_status_documents():
             "next routine bump will silence its own guard")
 
 
+def test_the_published_test_dataset_says_what_it_is():
+    """BACKLOG 237. John, from the field: "ValFloat is not float and
+    should be; ValCount holds counts."
+
+    It was declared Stata `double` under a name that says float, and
+    all nine variables had EMPTY LABELS - so the name carried the
+    whole burden of saying what a variable meant, and one of the names
+    lied. That matters more than it used to: the file now ships to
+    every SSC user who types `ssc install equipop, all`, next to the
+    paper, and it is the first thing a reader inspects.
+
+    THE VALUES ARE NOT CHECKED HERE and must not change without a
+    ruling - they are the answer key behind the showcase's pinned
+    `Nv 167.30 | Mean 1815.23 | Med 1248.10 | Gini .5806`. What is
+    checked is that the file still DESCRIBES ITSELF.
+    """
+    import pandas as pd
+    path = os.path.join(ROOT, "stata", "equipop_test_data.dta")
+    if not os.path.exists(path):                     # pragma: no cover
+        pytest.skip("the Stata test dataset is not present")
+    r = pd.io.stata.StataReader(path)
+    r.read(1)
+    types = dict(zip(r._varlist, [str(t) for t in r._typlist]))
+    labels = r.variable_labels()
+
+    assert types.get("ValFloat") == "f", (
+        f"ValFloat is declared {types.get('ValFloat')!r}, not a Stata "
+        "float. The name is the lesson - a continuous measure belongs "
+        "in values() and not in treat() - and a name that disagrees "
+        "with `describe` undercuts it every time somebody looks")
+    for coord in ("X_local", "Y_local"):
+        assert types.get(coord) == "d", (
+            f"{coord} must stay DOUBLE: these are metres in a local "
+            "projection and a float would lose sub-metre precision "
+            "on six-figure eastings")
+    empty = sorted(n for n, lab in labels.items() if not lab.strip())
+    assert not empty, (
+        f"{empty} have no variable label. In Stata the label is where "
+        "meaning lives; without one the NAME has to carry it, which "
+        "is how ValFloat came to teach the wrong thing. "
+        "tools/make_test_data.py holds the text")
+    assert "not a 0/1 marker" in labels.get("ValCount", ""), (
+        "ValCount's label must say what it is NOT - the pair "
+        "ValFloat/ValCount is the confusion 237 was raised about, and "
+        "block 20 of the field pass was invalid for a release because "
+        "of exactly that mix-up")
+
+
 def test_the_ssc_package_lists_every_ado_and_a_current_date():
     """v1.47.12. SSC shows Distribution-Date to users and uses it to
     decide what is new. It sat at 20260830 through twelve releases
@@ -551,6 +599,30 @@ def test_the_ssc_package_lists_every_ado_and_a_current_date():
         "they will not install, and the user finds out when a command "
         "is not found")
     assert "equipop.sthlp" in listed, "the help file must install too"
+
+    # BACKLOG 330, KIT BAUM ON THE SSC RELEASE. The archive builds its
+    # OWN .pkg and he included the worked examples and the test data;
+    # this one had never declared them, so `net install` from GitHub
+    # gave the commands and not the material the help and the paper
+    # tell people to run. TWO INSTALL ROUTES OFFERING DIFFERENT FILES,
+    # and only one of them was described anywhere.
+    #
+    # He also renamed them - example.do and stata_test_data.dta are
+    # not names one package may take on a flat archive - so the check
+    # pins the prefixed names: a generic name here is a name SSC will
+    # refuse, and finding that out by email costs a release.
+    ship = set(re.findall(r"^[fg] (\S+)", pkg, re.M))
+    for name in ("equipop_example.do", "equipop_showcase.do",
+                 "equipop_test_data.dta"):
+        assert name in ship, (
+            f"{name} is not in equipop.pkg, so `net install` from "
+            "GitHub installs less than `ssc install` does")
+    for name in os.listdir(os.path.join(ROOT, "stata")):
+        if name.endswith((".do", ".dta")):
+            assert name.startswith("equipop"), (
+                f"stata/{name} has a name the SSC archive cannot "
+                "take - every file there shares a flat, global "
+                "namespace, so it needs the equipop prefix")
 
     ver = re.search(r'^version\s*=\s*"([^"]+)"',
                     open(os.path.join(ROOT, "pyproject.toml"),
@@ -607,28 +679,87 @@ def test_stata_setup_does_not_force_user_in_a_virtual_environment():
     assert '"externally managed" in low' in src
 
 
-def test_setup_asks_for_an_engine_at_least_as_new_as_the_commands():
-    """BACKLOG 196. `equipop setup` installed a bare `equipop`, so a
-    1.40 command file could pull whatever PyPI had that day - and
-    `equipop doctor` then reported a drift that SETUP had created.
+def test_setup_asks_for_an_engine_at_least_as_new_as_it_needs():
+    """BACKLOG 196, corrected by 332. `equipop setup` installed a bare
+    `equipop`, so a 1.40 command file could pull whatever PyPI had that
+    day - and `equipop doctor` then reported a drift that SETUP had
+    created.
 
-    A FLOOR, NOT A PIN: the ado is the caller and the engine is the
-    library, so the library must be at least as new as the caller.
-    Exact pinning would stop an older ado ever receiving a bug-fixed
-    engine, which is the wrong failure.
+    A FLOOR, NOT A PIN, AND NOT THE ADO'S VERSION EITHER. 196 built
+    the floor out of the ado's own release number, which is not a
+    dependency: 1.49.2 touched only the ArcGIS toolbox and silently
+    raised the Stata engine floor, and a release that reaches SSC
+    before PyPI names an engine that does not exist, so pip installs
+    nothing at all.
 
-    This matters more from SSC than it did from GitHub: there the two
-    arrived together, on SSC they update on separate tracks.
+    The floor is now the oldest engine that satisfies the calls the
+    ado makes, declared by hand beside the list of what sets it.
     """
     import re
     src = open(os.path.join(ROOT, "stata", "equipop.ado"),
                encoding="utf-8").read()
-    assert 'args.append("equipop>=" + ado_version)' in src, (
+    assert 'args.append("equipop>=" + floor)' in src, (
         "no version floor - setup can install an engine older than "
         "the commands calling it")
-    assert '_equipop_setup_py(repair="", ado_version="")' in src or \
-        'def _equipop_setup_py(repair="", ado_version="")' in src, (
-        "the setup routine does not receive the ado's version")
+    assert 'args.append("equipop>=" + ado_version)' not in src, (
+        "the floor is the ado's own release number again, so a "
+        "release that reaches SSC before PyPI cannot be installed")
+    assert ('def _equipop_setup_py(repair="", ado_version="", '
+            'min_engine="")') in src, (
+        "the setup routine does not receive the engine floor")
+
+    # the floor must be declared TWICE and identically - setup asks
+    # pip for it, the doctor judges against it, and a floor the two
+    # disagree about is worse than no floor
+    floors = set(re.findall(r'local eqp_min_engine "([^"]+)"', src))
+    assert len(floors) == 1, (
+        f"setup and the doctor name different engine floors: {floors}")
+    floor = floors.pop()
+    assert re.fullmatch(r"\d+\.\d+(\.\d+)?", floor), floor
+
+    # AND IT MUST NOT BE BUMPED AUTOMATICALLY. The whole point is that
+    # it moves only when the commands start calling something new,
+    # which is a human decision - if bump_version.py touched it the
+    # fault would be back within one release and invisible.
+    #
+    # Checked by RUNNING EVERY PATTERN the tool applies against the
+    # floor's own line, rather than by grepping the tool for the
+    # name: the first version of this check did grep, and failed on
+    # the COMMENT that explains why the floor is left alone. A test
+    # that forbids documenting a rule is testing the wrong thing.
+    import sys
+    pkg_version = re.search(
+        r'^version\s*=\s*"([^"]+)"',
+        open(os.path.join(ROOT, "pyproject.toml"),
+             encoding="utf-8").read(), re.M).group(1)
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import bump_version
+    finally:
+        sys.path.pop(0)
+    floor_line = f'    local eqp_min_engine "{floor}"'
+    for entry in bump_version.DECLARATIONS:
+        rel, pat = entry[0], entry[1]
+        if not rel.endswith("equipop.ado"):
+            continue
+        assert not re.search(pat, floor_line, re.M), (
+            f"bump_version.py pattern {pat!r} matches the engine "
+            "floor, so the floor will follow the release number "
+            "again - BACKLOG 332 exactly")
+    # and the ado's own version line must still be matched by one of
+    # them, or the opposite fault is waiting
+    ado_line = f'    local eqp_ado_version "{pkg_version}"'
+    assert any(re.search(e[1], ado_line, re.M)
+               for e in bump_version.DECLARATIONS
+               if e[0].endswith("equipop.ado")), (
+        "no pattern matches the ado's own version line - it will "
+        "drift from pyproject.toml")
+    assert floor != pkg_version or floor == "0", (
+        f"the floor has caught up with the release number ({floor}). "
+        "That is allowed only if this release really did add an "
+        "engine call the commands need - if it did, say which in the "
+        "comment beside eqp_min_engine and change this test's "
+        "reasoning deliberately")
 
     # the version it passes in must be the SAME string the doctor uses,
     # or the two halves of the same guard disagree

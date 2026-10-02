@@ -154,9 +154,67 @@ STATA_ONLY = {
 }
 
 
+_SMCL_BRACES = str.maketrans({"{": "{c -(}", "}": "{c )-}"})
+
+
 def _smcl_escape(text):
-    """SMCL treats { and } as markup."""
-    return text.replace("{", "{c -(}").replace("}", "{c )-}")
+    """SMCL treats { and } as markup, so a LITERAL brace is escaped.
+
+    BACKLOG 330. This was two chained .replace() calls, and the
+    second one ate the first one's output: `{` became `{c -(}`, whose
+    closing brace the second replace then turned into `{c )-}`, so
+    every escaped brace shipped as `{c -({c )-}` - not the directive
+    for a brace, and mangled again by the line wrapper, which is free
+    to break inside it. Five of them were in the help file Kit Baum
+    read for the SSC submission.
+
+    str.translate does it in ONE pass and never re-scans what it has
+    written, which is the property the chained replaces lacked.
+    """
+    return text.translate(_SMCL_BRACES)
+
+
+def _smcl(text, width=72, indent=""):
+    """Wrap text that IS SMCL - {cmd:...}, {help ...} - unescaped.
+
+    BACKLOG 330. _wrap escapes braces, which is right for prose out
+    of help.py and wrong for markup written here: the "See also" line
+    had been asking for a clickable {help python} since the generator
+    was written and shipping the words instead. Two jobs, two
+    functions, so the choice has to be made deliberately.
+
+    The wrapper is told not to break inside a directive - Stata reads
+    `{cmd:python\\nquery}` as markup that never closes.
+    """
+    out, line = [], indent
+    for tok in _smcl_tokens(text):
+        if line.strip() and len(line) + len(tok) + 1 > width:
+            out.append(line)
+            line = indent + tok
+        else:
+            line = (line + " " + tok) if line.strip() else line + tok
+    if line.strip():
+        out.append(line)
+    return "\n".join(out)
+
+
+def _smcl_tokens(text):
+    """Words, except that a {...} directive is one unbreakable word."""
+    toks, buf, depth = [], "", 0
+    for ch in text:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+        if ch.isspace() and depth == 0:
+            if buf:
+                toks.append(buf)
+                buf = ""
+            continue
+        buf += ch
+    if buf:
+        toks.append(buf)
+    return toks
 
 
 def _wrap(text, width=72, indent=""):
@@ -165,10 +223,37 @@ def _wrap(text, width=72, indent=""):
                                    subsequent_indent=indent))
 
 
+#: BACKLOG 338. A SENTENCE TO APPEND, not a replacement.
+#:
+#: Marina's pull request added `overshoot(string)` to STATA_ONLY to
+#: record that `sampled` is refused in Stata - which is true and worth
+#: saying. But STATA_ONLY REPLACES the shared text, and the shared
+#: text is shared on purpose: OPTION_HELP maps each Stata option to a
+#: key in equipop/doors/help.py so that a QGIS student and a Stata
+#: student read the same words about the same box. A second copy of a
+#: paragraph is exactly how BACKLOG 105's wording drifted - Pro said
+#: "additive (sum)" where QGIS said "additive (costs add up)" - and
+#: that is a permanent duplication only because a QGIS plugin may not
+#: import the package at load time. Here there is no such constraint.
+#:
+#: So a door-specific FACT is appended to the shared explanation
+#: instead of overriding it. Use this when the box means the same
+#: thing everywhere and only its availability differs.
+STATA_EXTRA = {
+    "overshoot(string)":
+        "NOT AVAILABLE IN STATA: overshoot(sampled) returns an error "
+        "pointing you to overshoot(proportional), or to QGIS and "
+        "ArcGIS Pro, which do implement it - sampled needs a seeded "
+        "draw over whole cells, and the Stata door does not carry "
+        "one.",
+}
+
+
 def option_text(opt):
     """The sentences for one option, from the shared source."""
     if opt in STATA_ONLY:
         return STATA_ONLY[opt]
+    extra = STATA_EXTRA.get(opt, "")
     key = OPTION_HELP.get(opt)
     if key is None:
         raise KeyError(f"no help mapped for Stata option {opt!r}")
@@ -176,7 +261,7 @@ def option_text(opt):
         raise KeyError(
             f"Stata option {opt!r} maps to help key {key!r}, which is "
             f"not in equipop/doors/help.py")
-    return HELP[key]
+    return HELP[key] + ((" " + extra) if extra else "")
 
 
 def build():
@@ -289,11 +374,18 @@ def build():
         "still counts as a neighbour to others."))
     add("")
     add("{pstd}")
-    add(_wrap(
-        "equipop needs Python. See {help python} and, for the "
-        "installation, the file TESTING_STATA.md in the EquiPop "
-        "distribution. Note that Stata and Anaconda do not mix: use "
-        "a plain python.org Python for Stata."))
+    # BACKLOG 330: _smcl, not _wrap - {help python} is meant to be a
+    # LINK. And the pointer went to TESTING_STATA.md, which has not
+    # existed outside stata/historical/ since 1.36: a help file that
+    # names a missing file is worse than one that names none, and
+    # this one is on SSC now.
+    add(_smcl(
+        "equipop needs Python. See {help python}, the file "
+        "README_STATA.md in the EquiPop distribution for the "
+        "installation, and {cmd:equipop doctor}, which reports the "
+        "Python Stata is actually using and whether the libraries "
+        "load in it. Note that Stata and Anaconda do not mix: use a "
+        "plain python.org Python for Stata."))
     add("")
     add("{marker options}{...}")
     add("{title:Options}")
@@ -350,7 +442,7 @@ def build():
     add("{phang}{cmd:. equipop setup}{p_end}")
     add("")
     add("{pstd}")
-    add(_wrap(
+    add(_smcl(
         "installs the engine into the Python Stata is using, so it "
         "cannot land in a different one. Add {cmd:repair} - "
         "{cmd:equipop setup, repair} - to reinstall numpy, scipy and "
@@ -377,15 +469,72 @@ def build():
         "session and keeps the packages it first loaded."))
     add("")
     add("{pstd}")
-    add(_wrap(
+    add(_smcl(
         "See also {help python}, and {cmd:python query}, which reports "
         "Stata's own view of the same interpreter."))
     add("")
     add("{marker examples}{...}")
     add("{title:Examples}")
     add("")
+    # BACKLOG 330. The package installs two worked do-files and a test
+    # dataset and the help had never said so, which left the paper as
+    # the only place they were named - and the paper named them by the
+    # filenames SSC then changed. findfile is given because an SSC
+    # install files them under PLUS and not in the user's folder,
+    # so `do equipop_showcase` alone does not find them.
+    add("{pstd}")
+    add(_smcl(
+        "Two worked do-files and a test dataset install with the "
+        "package if you ask for them - {cmd:ssc install equipop, all} "
+        "- and Stata will tell you where they went:"))
+    add("")
+    add("{phang}{cmd:. findfile equipop_example.do}{p_end}")
+    add("{phang}{cmd:. do \"`r(fn)'\"}{p_end}")
+    add("")
+    # BACKLOG 338, Marina's PR: say what the examples RUN ON - the
+    # help named no variables, so a reader could not try them. Her
+    # version used stata_test_data.dta and `use stata_test_data,
+    # clear`; both changed in 1.49.3 (Baum renamed the file, and an
+    # SSC install puts it under PLUS rather than in the working
+    # directory, so findfile is what locates it).
+    add("{pstd}")
+    add(_smcl(
+        "The examples run on {cmd:equipop_test_data.dta}: {cmd:ID}, "
+        "{cmd:X_local}, {cmd:Y_local}, four 0/1 education markers "
+        "({cmd:LowEdu}, {cmd:HighEdu}, {cmd:TheoEdu}, "
+        "{cmd:VocaEdu}), a continuous {cmd:ValFloat} with missings by "
+        "design, and a count {cmd:ValCount}. Load it the same way:"))
+    add("")
+    add("{phang}{cmd:. findfile equipop_test_data.dta}{p_end}")
+    add("{phang}{cmd:. use \"`r(fn)'\", clear}{p_end}")
+    add("")
+    add("{pstd}")
+    add(_smcl(
+        "{cmd:equipop_example.do} is the short round trip; "
+        "{cmd:equipop_showcase.do} runs every function in turn with "
+        "the expected numbers in comments, against "
+        "{cmd:equipop_test_data.dta}. Both locate the data with "
+        "{help findfile}, so they run from anywhere."))
+    add("")
     add("{phang}{cmd:. equipop setup}{p_end}")
     add("{phang}{cmd:. equipop doctor}{p_end}")
+    add("")
+    # BACKLOG 338, Marina's PR: say what the examples RUN ON. Her
+    # version named stata_test_data.dta and `use stata_test_data,
+    # clear`; both changed in 1.49.3 - C. F. Baum renamed the file on
+    # the archive, and an SSC install puts it under PLUS rather than
+    # in the working directory, so findfile is what finds it.
+    add(_smcl(
+        "The examples below run on {cmd:equipop_test_data.dta}, which "
+        "installs with the package: {cmd:ID}, {cmd:X_local}, "
+        "{cmd:Y_local}, four 0/1 education markers ({cmd:LowEdu}, "
+        "{cmd:HighEdu}, {cmd:TheoEdu}, {cmd:VocaEdu}), a continuous "
+        "{cmd:ValFloat} with missings by design, and a count "
+        "{cmd:ValCount}."))
+    add("")
+    add("{phang}{cmd:. findfile equipop_test_data.dta}{p_end}")
+    add("{phang}{cmd:. use \"`r(fn)\'\", clear}{p_end}")
+    add("")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}")
     add("{phang}{cmd:. equipop, x(X_local) y(Y_local) "
         "treat(HighEdu) k(25 50 200) unit(100)}{p_end}")

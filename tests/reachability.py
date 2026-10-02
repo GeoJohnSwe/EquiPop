@@ -43,10 +43,46 @@ def door(path, symbol):
     return ("door", path, symbol)
 
 
-#: No door, on purpose or not yet. `why` is prose, `item` is the
-#: backlog number if one exists.
-def no_door(why, item=None):
-    return ("none", why, item)
+#: BACKLOG 333. A RULING. No door, on purpose, by a decision - John's
+#: or a structural one. There is nothing to watch, so nothing is
+#: checked beyond the reason being worth reading.
+def ruled_out(why, item=None):
+    return ("none", why, item, None)
+
+
+#: BACKLOG 333. A GAP. No door YET, and `absent` is the WITNESS: a
+#: (file, symbol) pair that must stay absent while the gap is real,
+#: so the entry can ANNOUNCE ITS OWN OBSOLESCENCE the moment somebody
+#: builds the door.
+#:
+#: WHY THIS EXISTS. Until 1.49.3 both cases were one `no_door(why,
+#: item)` naming no file and no symbol - so nothing about them was
+#: verified. test_1 walks `entry[0] == "door"`, which catches a door
+#: that DISAPPEARS and can never notice one that APPEARS. The matrix
+#: could therefore only be wrong in one direction, and it was the
+#: expensive direction: a false "no door" tells a future session to
+#: build something that already exists.
+#:
+#: IT HAD ALREADY HAPPENED, to the entry this file was written for.
+#: "vector to lattice join" declared no door in QGIS - "reachable
+#: only from run_osm_friction.py" - while BOTH GUIs had had a
+#: joinlayer box since 1.47.6, the same release that wrote the claim.
+#: Claude read that entry as current and nearly recommended building
+#: a door that was already there.
+#:
+#: CHOOSING A WITNESS. It must be something that CANNOT be absent once
+#: the door exists, and must not appear for any other reason. A dialog
+#: BOX NAME or a registration import is usually right; an engine
+#: function usually is not, because the same engine serves several
+#: capabilities - paths_to_cells is called by machine 1's barrier
+#: charging as well as by the lattice join, which is exactly the
+#: conflation this file's docstring warns about.
+def not_yet(why, item, absent):
+    assert isinstance(absent, tuple) and len(absent) == 2, (
+        "a gap needs a (file, symbol) witness - if there is nothing "
+        "that would necessarily appear when the door is built, the "
+        "entry is a ruling and not a gap, so say so with ruled_out()")
+    return ("none", why, item, absent)
 
 
 def same_as(other_door, extra=""):
@@ -57,6 +93,13 @@ def same_as(other_door, extra=""):
     future session nothing it can act on. The resolved reason is what
     gets checked, so a cross-reference cannot be a way of writing
     less than a reason.
+
+    BACKLOG 333: a reference may only land on a RULING. A reason can
+    be shared; a WITNESS cannot, because a witness names one door's
+    file. Pro borrowing QGIS's gap would assert something about a
+    QGIS file and prove nothing about Pro - which is how the lattice
+    join came to claim no Pro door while Pro had one. A door missing
+    in two places for the same reason needs two witnesses.
     """
     return ("same", other_door, extra)
 
@@ -81,7 +124,7 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_stats.py", "dispatch"),
         "pro": door("arcgis/EquiPop.pyt", "ValueStatistics"),
-        "stata": no_door(
+        "stata": ruled_out(
             "RULED OUT by John, session 12. Stata computes weighted "
             "means, medians, percentiles and Ginis natively and "
             "better than we would; what it cannot do is BUILD THE "
@@ -94,7 +137,7 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_continental.py", "run_folder"),
         "pro": door("arcgis/EquiPop.pyt", "ContinentalRasters"),
-        "stata": no_door(
+        "stata": ruled_out(
             "A continental raster run writes a feature class and is "
             "measured in hours; Stata is not where anyone would "
             "start one. No demand recorded."),
@@ -103,7 +146,7 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_demography.py", "demography"),
         "pro": door("arcgis/EquiPop.pyt", "SpatialDemography"),
-        "stata": no_door(
+        "stata": ruled_out(
             "As machine 3: a demographic raster run writes a feature "
             "class and is measured in hours. Stata is not where "
             "anyone would start one, and no demand is recorded."),
@@ -111,11 +154,14 @@ MATRIX = {
     "machine 5 - fetching": {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_fetch.py", "plan_fetch"),
-        "pro": no_door(
+        "pro": not_yet(
             "Pro has four machines and this is not one of them. The "
             "gap is real and known; it widens every release that "
-            "adds a provider.", 288),
-        "stata": no_door("Downloading is not a Stata activity."),
+            "adds a provider.", 288,
+            # a Pro fetch tool must reach the same planner the QGIS
+            # door does, so the name cannot be absent once it exists
+            absent=("arcgis/EquiPop.pyt", "plan_fetch")),
+        "stata": ruled_out("Downloading is not a Stata activity."),
         "runner": door("run_fetch.py", "plan_fetch"),
     },
 
@@ -124,7 +170,7 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_counts.py", "barrier"),
         "pro": door("arcgis/EquiPop.pyt", "barrier"),
-        "stata": no_door(
+        "stata": ruled_out(
             "RULED OUT by John, session 12: \"those are GIS features, "
             "and not needed in statistics\". Barriers and terrain are "
             "about how a landscape is crossed, which is a question "
@@ -137,7 +183,7 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_counts.py", "dem"),
         "pro": door("arcgis/EquiPop.pyt", "dem"),
-        "stata": no_door(
+        "stata": ruled_out(
             "RULED OUT with friction, session 12, for the same "
             "reason: a DEM is a GIS input and a walking model is a "
             "statement about terrain, neither of which belongs in a "
@@ -176,47 +222,63 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_inventory.py", "inventory"),
         "pro": door("arcgis/EquiPop.pyt", "FolderInventory"),
-        "stata": no_door(
+        "stata": ruled_out(
             "Reading a folder of GIS files to see which share a "
             "lattice is a GIS question, and the same reasoning that "
             "closed 296 applies. The JSON it writes is plain text "
             "that Stata can read if anyone ever needs to.", 269),
     },
     "vector to lattice join (OSM roads, polygons)": {
+        # BACKLOG 333. THIS ROW WAS THE FALSE ONE, and it is why the
+        # witness exists. It read "The headline engine of 1.46.0 and
+        # 1.46.1 has no GUI. Reachable only from run_osm_friction.py"
+        # - and 299 gave Pro a join box and 298 gave QGIS three
+        # fidelities, both in 1.47.6, THE SAME RELEASE that wrote the
+        # claim. Nothing could contradict it, so it stood for three
+        # releases and reached the backlog's "what next" head as "the
+        # two finished engines with NO DOOR".
         "python": PYTHON,
-        "qgis": no_door(
-            "The headline engine of 1.46.0 and 1.46.1 has no GUI. "
-            "Reachable only from run_osm_friction.py - which the "
-            "source archive did not carry until 1.47.0, so for two "
-            "releases it was reachable by nobody at all.", 283),
-        "pro": same_as("qgis"),
-        "stata": same_as("qgis"),
+        "qgis": door("qgis/equipop_qgis/alg_continental.py",
+                     "joinlayer"),
+        "pro": door("arcgis/EquiPop.pyt", "joinlayer"),
+        "stata": ruled_out(
+            "A vector layer put on a raster lattice is a GIS "
+            "operation on GIS inputs, so the reasoning that closed "
+            "296 for friction and terrain applies unchanged. The "
+            "result reaches Stata as the point table machine 3 "
+            "writes.", 296),
         "runner": door("run_osm_friction.py", "lines_to_cells"),
     },
     "run provenance": {
-        "python": no_door(
-            "RunLog exists in meta.py, is exported in __all__, and is "
-            "called by nothing and tested by nothing. It is BACKLOG "
-            "ITEM 2.", 293),
-        "qgis": no_door(
-            "QGIS writes no record of the settings a run used, "
-            "though it has an output to sit beside exactly as Pro "
-            "does. Pro's field list is the specification.", 293),
+        # BACKLOG 293, DONE v1.50.0. Every door records a run now, and
+        # the record is built BY THE ENGINE from the arguments it was
+        # given - so a setting added to dispatch() appears in the
+        # record the same day with no door touched. That is the
+        # property Pro's hand-written manifest never had, and it is
+        # why `overshoot` moved every k-based number from 1.30 and
+        # was recorded nowhere until 1.47.
+        #
+        # AND THIS ROW IS WHERE 333's WITNESS PROVED ITSELF: the three
+        # gaps below fired the moment the doors were wired, in the
+        # same session that added the mechanism. An hour earlier they
+        # would have gone on claiming the capability was unreachable.
+        "python": door("equipop/stata_bridge.py", "provenance"),
+        "qgis": door("qgis/equipop_qgis/base.py", "write_provenance"),
         "pro": door("arcgis/EquiPop.pyt", "_EquiPop_run.csv"),
-        "stata": no_door(
-            "Nothing recorded. John's ruling, session 12: a PRINTED "
-            "NOTE rather than a sidecar, because a Stata run writes "
-            "variables into memory and may produce no file at all - "
-            "and because `log using` is where a Stata user's "
-            "reproducibility already lives. Values to be returned in "
-            "r() as well, so a do-file can check them rather than a "
-            "human reading the log.", 293),
+        "stata": door("stata/equipop.ado", "eqp_provenance"),
+        # John's ruling, session 12, and it is what shipped: a
+        # PRINTED NOTE rather than a sidecar, because a Stata run
+        # writes variables into memory and may produce no file at
+        # all - and because `log using` is where a Stata user's
+        # reproducibility already lives. The values also come back in
+        # r(overshoot), r(originrule) and r(provenance), so a do-file
+        # can CHECK them rather than a human reading the log.
     },
 
     # --------------------------------- library work, no door expected
     "segregation profile": {
         "python": PYTHON,
-        "qgis": no_door(
+        "qgis": ruled_out(
             "A profile is a curve over many k, not a column on a "
             "layer, so a GIS dialog is the wrong shape for it. The "
             "doors already produce the R_ columns it is computed "
@@ -226,7 +288,7 @@ MATRIX = {
     },
     "spatial autocorrelation": {
         "python": PYTHON,
-        "qgis": no_door(
+        "qgis": ruled_out(
             "Moran's I and Getis-Ord over an EquiPop neighbourhood. "
             "No GUI demand recorded; the Tartu work drives it from "
             "Python and Stata."),
@@ -235,13 +297,33 @@ MATRIX = {
     },
     "accessibility and FCA": {
         "python": PYTHON,
-        "qgis": no_door("No door. No demand recorded."),
-        "pro": no_door("No door. No demand recorded."),
-        "stata": no_door("No door. No demand recorded."),
+        # BACKLOG 333, found while auditing: three identical
+        # one-liners, each just long enough to pass the 25-character
+        # check and each saying nothing a future session could act
+        # on. kFCA has been in the engine since 1.12.0. "No demand
+        # recorded" is the honest part and is kept; what is added is
+        # a witness, so the row stops being true the moment a door
+        # appears.
+        "qgis": not_yet(
+            "No demand recorded. Two-step floating catchment areas "
+            "have been in the engine since 1.12.0 and nobody has "
+            "asked for a dialog; the doors already produce the "
+            "neighbourhood the ratio is computed over.", None,
+            absent=("qgis/equipop_qgis/provider.py", "alg_access")),
+        "pro": not_yet(
+            "No demand recorded, as in QGIS. A Pro tool would be a "
+            "seventh machine and the fetch gap (288) is the one that "
+            "widens.", None,
+            absent=("arcgis/EquiPop.pyt", "two_step_fca")),
+        "stata": ruled_out(
+            "A catchment ratio over a k-neighbourhood is arithmetic "
+            "Stata does natively once EquiPop has handed it the "
+            "neighbourhood - the same division of labour John ruled "
+            "on for machine 2.", 205),
     },
     "hex cells": {
         "python": PYTHON,
-        "qgis": no_door(
+        "qgis": ruled_out(
             "Square cells only at every door. Hex exists in the "
             "package and its self-potential uses a SQUARE cell's "
             "area, overstating the radius by 7.5% - so it should not "
@@ -253,14 +335,28 @@ MATRIX = {
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_continental.py", "tiles"),
         "pro": door("arcgis/EquiPop.pyt", "tiles"),
-        "stata": no_door("Machine 3 has no Stata door either."),
+        "stata": ruled_out("Machine 3 has no Stata door either."),
     },
     "diagnostics (the doctor)": {
         "python": PYTHON,
-        "qgis": no_door(
+        # BACKLOG 333: this was `pro: same_as("qgis")`, and a
+        # reference cannot carry a witness - it would assert
+        # something about a QGIS file and prove nothing about Pro,
+        # which is exactly how the lattice join came to claim a
+        # missing Pro door it had. Two gaps, two witnesses.
+        "qgis": not_yet(
             "A user whose QGIS door is broken cannot run the thing "
-            "that would say why. Same in Pro.", 128),
-        "pro": same_as("qgis"),
+            "that would say why - the plugin needs the package to "
+            "load at all, so the diagnostic has to live where the "
+            "failure does not.", 128,
+            absent=("qgis/equipop_qgis/provider.py", "alg_doctor")),
+        "pro": not_yet(
+            "As QGIS, and for the same reason: the toolbox imports "
+            "the package, so a doctor inside it cannot report the "
+            "case where importing is what fails. Stata's works "
+            "because the ado reaches Python without reaching "
+            "equipop first.", 128,
+            absent=("arcgis/EquiPop.pyt", "doctor")),
         "stata": door("stata/equipop.ado", "setup"),
     },
 }
@@ -286,6 +382,14 @@ INTERNAL = {
     # copy since 1.16.7 and QGIS had none, so a Norwegian student
     # typing 500,5 met a raw Python error.
     "doors.numbers",
+    # BACKLOG 337. Machinery, not a capability: the numeric part of a
+    # result column's name. Declared because the matrix asked - this
+    # is the fourth new module it has stopped from shipping
+    # undeclared, after inventory, vectorjoin and doors.numbers.
+    # Both GIS doors, Stata and the name PREDICTION all call it, which
+    # is the point: four formatters for one label gave one radius four
+    # different column names across four doors.
+    "labels",
     "doors.help", "doors.report", "doors.fields", "doors.loader",
     "doors.rungs", "doors.registry", "doors.reference",
     "doors.decaynames", "doors.demography", "doors.continental",

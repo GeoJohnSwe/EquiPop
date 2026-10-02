@@ -346,7 +346,7 @@ def _numeric(arr, field, context):
 
 
 def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
-                context="input", auto_project=False):
+                context="input", auto_project=False, table_sr=None):
     """THE SHARED LOADER (v1.16): one behaviour for both machines.
     Returns the door contract object (equipop.doors.loader.
     PointInput), which still unpacks as (kind, data dict incl.
@@ -431,11 +431,50 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     messages.addMessage(
         f"Coordinates from attribute fields: X = '{xf}', Y = '{yf}'"
         f" ({how}). X is the easting, Y the northing.")
+    # BACKLOG 329. A TABLE'S CRS IS SET HERE OR IT IS UNKNOWN - never
+    # inherited. last_crs_text and last_unit are attributes ON THIS
+    # FUNCTION, so they survive from one tool run to the next inside
+    # one Pro session, and the tabular branch used to set NEITHER: it
+    # read them with getattr(..., "unknown"), which returns the value
+    # left behind by the last FEATURE CLASS read in that session. A
+    # table run's manifest could therefore record "SWEREF99 TM
+    # (EPSG:3006)" for a CSV of Irish Grid coordinates, and the
+    # messages could promise distances in a unit nothing had declared.
+    # A manifest exists to make a run reproducible a year later; one
+    # that names the wrong CRS is worse than one that says it does not
+    # know.
+    _declared = table_sr if table_sr is not None else (
+        # a FEATURE CLASS read through its attribute columns still
+        # carries a projection of its own; only a real table carries
+        # none at all
+        getattr(desc, "spatialReference", None) if kind != "table"
+        else None)
+    if _declared is not None:
+        _nm = getattr(_declared, "name", None) or str(_declared)
+        _cd = getattr(_declared, "factoryCode", 0) or 0
+        _read_input.last_crs_text = (
+            f"{_nm}" + (f" (EPSG:{_cd})" if _cd else ""))
+        _read_input.last_unit = _crs_unit_name(
+            getattr(_declared, "linearUnitName", None))
+        messages.addMessage(
+            "Coordinate system for these columns: "
+            f"{_read_input.last_crs_text} - distances are "
+            f"{_read_input.last_unit}."
+            + (" (you declared it)" if table_sr is not None
+               else " (the layer's own)"))
+    else:
+        _read_input.last_crs_text = "unknown - a table declares none"
+        _read_input.last_unit = "map units"
     return PointInput("table" if kind == "table" else "point",
                       data, oid,
                       crs_text=getattr(_read_input, "last_crs_text",
                                        "unknown"),
-                      note=f"attribute fields ({how})")
+                      note=f"attribute fields ({how})",
+                      # BACKLOG 329: the RESOLVED names, because the
+                      # boxes may have been left blank and guessed
+                      # from - and XYTableToPoint has to be told which
+                      # columns to build the geometry from.
+                      extras={"x_field": xf, "y_field": yf})
 
 
 def _target_exists(path):
@@ -580,7 +619,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.49.1"
+TOOLBOX_VERSION = "1.51.0"
 
 
 def _announce_version(messages):
@@ -1542,7 +1581,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               rest_group=None, rest_in_population=True,
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
-              seed=None, overshoot=None, originrule=None):
+              seed=None, overshoot=None, originrule=None,
+              table_crs=None):
     """The single glue path both machines share (stub-validated)."""
     _announce_version(messages)        # BACKLOG 314, first line of
                                        # every run: which code is this?
@@ -1561,16 +1601,102 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     t_all = time.time()
     stages = []
     with _stage(messages, "reading input", stages), _speaking(messages):
-        kind, data, oid = _read_input(layer, coord_source, x_field,
-                                      y_field, extra, messages,
-                                      auto_project=auto_project)
+        got = _read_input(layer, coord_source, x_field,
+                          y_field, extra, messages,
+                          auto_project=auto_project,
+                          table_sr=table_crs)
+        kind, data, oid = got
 
+    # BACKLOG 329. THE CAPABILITY DID NOT EXIST, only the refusal.
+    # 1.49.1 fixed the DIALOG check for 327 - the .csv is demanded only
+    # when the mode is Append to input - and John's next run met the
+    # SAME SENTENCE from line 1570, inside this function. The message
+    # was not duplicated: it was the only thing here. These four lines
+    # read
+    #     if kind == "table":  ...  elif out_mode.startswith("New"):
+    # so a TABLE input could never reach the New-feature-class branch
+    # at all. The dialog had stopped refusing and the execution path
+    # had nothing to run. Fixing a validator does not build a feature.
+    #
+    # A table input now has three honest destinations - a .csv, a new
+    # feature class, or both - and the refusal survives only for the
+    # one case that has nowhere to go.
+    new_points = kind == "table" and out_mode.startswith("New")
     if kind == "table":
-        if not out_table:
+        if not out_table and not new_points:
             raise arcpy.ExecuteError(
-                "Table input has no feature class to append to - "
-                "set the output table (.csv). The results arrive "
-                "there with your coordinates.")
+                "A table input cannot be appended to - a .csv on disk "
+                "is not a feature class. Either set the output table "
+                "(.csv), where the results arrive with your "
+                "coordinates, or choose Output = New feature class "
+                "and give it a path.")
+        if new_points and not out_fc:
+            raise arcpy.ExecuteError("New feature class chosen - "
+                                     "please set the output name/path.")
+        if new_points:
+            # XYTableToPoint carries EVERY column of the table across,
+            # not just the ones EquiPop read, so the points arrive
+            # usable: the census counts are on the layer beside the
+            # results that came from them. After this the input IS a
+            # feature class with an identifier of its own, so `kind`
+            # changes and the whole ordinary write path below runs
+            # unaltered - the shapefile name check, keep-both,
+            # ExtendTable, the verification and the manifest.
+            #
+            # THE SPATIAL REFERENCE IS PASSED EXPLICITLY EVEN WHEN
+            # UNKNOWN. arcpy's own default for coordinate_system is
+            # GCS_WGS_1984, so omitting it would stamp Irish Grid
+            # eastings as degrees of longitude and the layer would
+            # claim a projection it does not have. An EMPTY
+            # SpatialReference() says "unknown", which is true, and
+            # BACKLOG 313's rule - never guess a CRS, never be silent
+            # about a missing one - is kept in the direction that
+            # applies here: the numbers are metres either way, it is
+            # only the map that cannot place them.
+            sr = table_crs if table_crs is not None \
+                else arcpy.SpatialReference()
+            _ex = getattr(got, "extras", None) or {}
+            _xf = _ex.get("x_field") or x_field
+            _yf = _ex.get("y_field") or y_field
+            arcpy.management.XYTableToPoint(layer, out_fc, _xf,
+                                            _yf, None, sr)
+            messages.addMessage(
+                f"Table turned into points at {out_fc} ("
+                f"{len(data['x'])} rows, every column carried across);"
+                " results go there, the input table untouched.")
+            if table_crs is None:
+                messages.addWarningMessage(
+                    "NO COORDINATE SYSTEM WAS DECLARED for the X/Y "
+                    "columns, so the new feature class is written with "
+                    "an UNKNOWN one. EquiPop refuses to guess: your "
+                    "numbers are unaffected - the distances are in "
+                    "whatever unit the columns are - but Pro cannot "
+                    "place the layer on a basemap or reproject it "
+                    f"until it knows. Fix it either way: fill "
+                    "'Coordinate system of the X/Y columns' and run "
+                    "again, or run Define Projection on "
+                    f"{out_fc}. For a UK/Ireland grid that is usually "
+                    "Irish Grid (EPSG:29902) or British National Grid "
+                    "(EPSG:27700).")
+            layer, kind = out_fc, "point"
+            # BACKLOG 164 all over again, and it bites HARDER here
+            # than for a copy: a table has no identifier to preserve,
+            # so the new feature class numbers its rows from scratch -
+            # 1 in a geodatabase, 0 in a shapefile - and `oid` was
+            # None a moment ago. The results are matched by POSITION,
+            # so the row count must agree or nothing is written.
+            oid = arcpy.Describe(layer).OIDFieldName
+            fresh = arcpy.da.TableToNumPyArray(layer, [oid])[oid]
+            if len(fresh) != len(data["x"]):
+                raise arcpy.ExecuteError(
+                    f"The points at {out_fc} number {len(fresh):,} "
+                    f"where the table had {len(data['x']):,} rows. "
+                    "Results are matched to rows by position, so "
+                    "EquiPop will not guess which row is which. "
+                    "Nothing was written. A row whose X or Y is empty "
+                    "is dropped by the conversion - remove or fill "
+                    "those rows and run again.")
+            data[oid] = np.asarray(fresh, np.int64)
     elif out_mode.startswith("New"):
         if not out_fc:
             raise arcpy.ExecuteError("New feature class chosen - "
@@ -1963,19 +2089,29 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         f"Calculating ({engine} engine, {len(x)} rows, cell size "
         f"{float(unit):g} m). Progress and engine notes follow; "
         "bigger cells mean fewer origins and faster runs.")
+    # BACKLOG 293. Pro has written a manifest since 1.26 and it was
+    # HAND-MAINTAINED - which is why `overshoot` moved every k-based
+    # number from 1.30 and appeared in no record until 1.47, and why
+    # BACKLOG 148's complaint was possible at all. The engine now
+    # describes its own arguments, and those rows are appended to the
+    # same CSV under an `engine.` prefix, so a setting added to the
+    # engine appears in the record with nothing here touched. No
+    # second sidecar: Pro's CSV is the record a user already looks
+    # for, and two files describing one run is how the project ended
+    # up with two provenance systems in the first place.
+    _runlog = None
+    try:
+        from equipop.meta import record
+        _runlog = record(engine, len(x), {},
+                         source=_catalog_of(layer) or str(layer))
+    except Exception:                                # pragma: no cover
+        _runlog = None
     with _stage(messages, "calculating", stages), _speaking(messages):
-        res = dispatch(engine, x, y, **kw)
+        res = dispatch(engine, x, y, provenance=_runlog, **kw)
 
     if kind == "table":
         with _stage(messages, "writing output table", stages):
-            out_df = pd.DataFrame({k: v for k, v in data.items()
-                                   if k in ("x", "y")})
-            for c, v in res.items():
-                out_df[_field(c)] = v
-            out_df.to_csv(out_table, index=False)
-        messages.addMessage(
-            f"EquiPop: {len(res)} result columns written with x/y to "
-            f"{out_table} ({len(out_df)} rows, row order preserved).")
+            _results_csv(data, res, out_table, messages)
         _write_manifest(out_table, _manifest_rows(
             engine, layer, unit, k_text, r_text, tau_text, stats_list,
             pct_text, half_life, decay_model, decay_eps, barrier,
@@ -1988,7 +2124,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                 treat_fields, value_fields),
             source=_catalog_of(layer) or str(layer),
             overshoot=overshoot, originrule=originrule,
-            seed=seed), messages)
+            seed=seed,
+            engine_record=_finished(_runlog, res)), messages)
         messages.addMessage("[time] TOTAL: " + _hms(time.time()
                                                     - t_all))
         return
@@ -2134,7 +2271,11 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(
             f"EquiPop: {len(res)} fields written and VERIFIED present "
             f"in {where} ({', '.join(names.values())}).")
-    _write_manifest(_catalog_of(layer) or out_fc, _manifest_rows(
+    if new_points and out_table:
+        # BACKLOG 329. Both boxes filled, so both are honoured.
+        with _stage(messages, "writing output table", stages):
+            _results_csv(data, res, out_table, messages)
+    _man = _manifest_rows(
         engine, layer, unit, k_text, r_text, tau_text, stats_list,
         pct_text, half_life, decay_model, decay_eps, barrier,
         barrier_field, barrier_agg, auto_project, len(x),
@@ -2146,7 +2287,14 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             treat_fields, value_fields),
         source=_catalog_of(layer) or str(layer),
         overshoot=overshoot, originrule=originrule,
-        seed=seed), messages)
+        seed=seed,
+        engine_record=_finished(_runlog, res))
+    _write_manifest(_catalog_of(layer) or out_fc, _man, messages)
+    if new_points and out_table:
+        # one beside EACH output, because a manifest exists so that an
+        # output can be traced and the .csv is often the one that
+        # travels to somebody else
+        _write_manifest(out_table, _man, messages)
     if stages:
         slow = max(stages, key=lambda p: p[1])
         messages.addMessage(
@@ -2166,7 +2314,7 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
                    auto_project, n_rows, out_fields, stages, total,
                    population=None, source=None, overshoot=None,
                    originrule=None,
-                   seed=None):
+                   seed=None, engine_record=None):
     """BACKLOG 148: `population` carries the settings that DEFINE the
     numbers - the reference and treatment rungs, the count field, the
     types, the keepoutside rung and self-potential. Until 1.29.6 the
@@ -2225,6 +2373,19 @@ def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
     ]
     rows += [(f"time_{lbl.replace(' ', '_')}_seconds", round(dt, 1))
              for lbl, dt in stages]
+    # BACKLOG 293. WHAT THE ENGINE WAS ACTUALLY GIVEN, under its own
+    # prefix and beside the door's rows rather than instead of them.
+    # The two overlap on purpose - cell_size_m against
+    # engine.unit_size - because a disagreement between what the
+    # dialog believes it sent and what the engine received is exactly
+    # the bug class nobody could see before.
+    if engine_record is not None:
+        try:
+            from equipop.meta import flat_rows
+            rows += [("engine." + k, v)
+                     for k, v in flat_rows(engine_record)]
+        except Exception:                            # pragma: no cover
+            pass
     return rows
 
 
@@ -2336,6 +2497,53 @@ def _sidecar_path(target, suffix):
     stem = base[:spans[holder]].rstrip("\\/")
     folder = os.path.join(stem, "EquiPop_runs")
     return os.path.join(folder, parts[-1] + suffix), True
+
+
+def _finished(runlog, res):
+    """Close a RunLog without writing a file, and hand back its doc.
+
+    BACKLOG 293. Pro keeps ONE provenance file - the _EquiPop_run.csv
+    a user already looks for - so the record is completed in memory
+    and its rows are appended to that CSV. RunLog.finalize() writes a
+    .meta.json, which is right for QGIS, where there was no record at
+    all, and would be a second file saying the same thing here.
+    Returns None on any failure: a provenance step must never lose a
+    finished analysis.
+    """
+    if runlog is None:
+        return None
+    try:
+        import time as _t
+        runlog.doc["run"]["status"] = "completed"
+        runlog.doc["run"]["duration_s"] = round(
+            _t.time() - runlog._t0, 2)
+        runlog.doc["data"].setdefault("output_columns", len(res))
+        return runlog.doc
+    except Exception:                                # pragma: no cover
+        return None
+
+
+def _results_csv(data, res, out_table, messages):
+    """The results beside the coordinates, as a plain CSV.
+
+    BACKLOG 329: lifted out of _run_tool so that a table input asked
+    for BOTH a .csv and a new feature class gets both. Until 1.49.2
+    only one of the two boxes could be honoured, because the CSV was
+    written inside `if kind == "table":` and the feature-class path
+    had already changed `kind` - so filling both boxes silently threw
+    one away. A box that does nothing is the fault this whole release
+    is about.
+    """
+    import pandas as pd
+    out_df = pd.DataFrame({k: v for k, v in data.items()
+                           if k in ("x", "y")})
+    for c, v in res.items():
+        out_df[_field(c)] = v
+    out_df.to_csv(out_table, index=False, encoding="utf-8-sig")
+    messages.addMessage(
+        f"EquiPop: {len(res)} result columns written with x/y to "
+        f"{out_table} ({len(out_df)} rows, row order preserved).")
+    return out_df
 
 
 def _write_manifest(target, rows, messages):
@@ -2870,6 +3078,28 @@ def _p(name, display, dtype, **kw):
     return p
 
 
+def _TABLECRS():
+    """The coordinate system of the X/Y COLUMNS (BACKLOG 329).
+
+    A table carries no projection: a CSV of eastings and northings is
+    two columns of numbers and nothing more. EquiPop does not need one
+    to compute - every distance is in whatever unit the columns are -
+    but it needs one to WRITE A FEATURE CLASS, and to record an
+    honest CRS in the run manifest instead of the words "unknown".
+
+    Blank is allowed and stays allowed: the run proceeds, the feature
+    class is written with an unknown coordinate system, and the
+    message says so loudly and names both ways to fix it. That is
+    BACKLOG 313's rule kept in the direction that applies here -
+    never guess a CRS, never be silent about a missing one - without
+    refusing a run whose NUMBERS are unaffected.
+    """
+    return _p("tablecrs", "Coordinate system of the X/Y columns "
+              "(a table carries none - needed to write a new feature "
+              "class, and recorded in the run manifest)",
+              "GPCoordinateSystem", required=False)
+
+
 def _coord_trio(ps, dep="layer"):
     """The shared coordinate-source parameters (v1.16)."""
     a = _p("coordsrc", "Coordinate source", "GPString", required=False)
@@ -2916,6 +3146,12 @@ def _trio_update(parameters, i_layer, i_src, i_x, i_y):
     on = is_attr or is_table
     parameters[i_x].enabled = on
     parameters[i_y].enabled = on
+    # BACKLOG 329: the projection box belongs to the COLUMN route -
+    # geometry already carries one - so it lives and dies with the
+    # X/Y boxes.
+    _crs = _byname(parameters).get("tablecrs")
+    if _crs is not None:
+        _crs.enabled = on
     if on and val is not None and not parameters[i_x].valueAsText \
             and not parameters[i_y].valueAsText:
         try:
@@ -3052,6 +3288,28 @@ def _shared_messages(parameters, i_layer, i_src, i_x, i_y,
             "not a feature class. Either set the output table (.csv), "
             "where the results arrive with your coordinates, or "
             "choose Output = New feature class and give it a path.")
+    # BACKLOG 329. A table declares no projection, so turning one into
+    # points needs to be TOLD which. The warning sits on the OUTPUT
+    # box as well as on the projection box, for the reason the
+    # auto-projection warning does: Pro does not show a message while
+    # its section is collapsed, and Coordinates is collapsed by
+    # default - so a warning living only there is invisible exactly
+    # when it matters.
+    _byn = _byname(parameters)
+    if kind == "table" and _om.startswith("New") \
+            and _byn.get("tablecrs") is not None \
+            and not _byn["tablecrs"].valueAsText:
+        _msg = ("The X/Y columns carry no coordinate system, so the "
+                "new feature class will be written with an UNKNOWN "
+                "one: the numbers are unaffected, but Pro cannot "
+                "place it on a basemap or reproject it. Set "
+                "'Coordinate system of the X/Y columns' in "
+                "Coordinates - for a UK/Ireland grid usually Irish "
+                "Grid (EPSG:29902) or British National Grid "
+                "(EPSG:27700).")
+        _byn["tablecrs"].setWarningMessage(_msg)
+        if _byn.get("outfc") is not None:
+            _byn["outfc"].setWarningMessage(_msg)
     if kind == "table" or src == _COORD_ATTR:
         xf = parameters[i_x].valueAsText
         yf = parameters[i_y].valueAsText
@@ -3087,6 +3345,48 @@ def _epsg_of(param):
     except Exception:
         return None
     return code or None
+
+
+def _sr_of(param):
+    """The SpatialReference OBJECT behind a GPCoordinateSystem box.
+
+    BACKLOG 329. _epsg_of reduces the box to a number, which is
+    enough for the continental machine - it hands the code to a
+    projection library. Here the object itself is wanted, because a
+    projection chosen from Pro's picker may have NO EPSG CODE AT ALL
+    (a custom or a deprecated one: factoryCode 0), and reducing it to
+    a code would throw the user's choice away and then write the
+    layer as "unknown". An UNPROJECTED box - a geographic coordinate
+    system - is refused here rather than at the write, because
+    EquiPop measures in metres and degrees are not a length.
+    """
+    if param is None:
+        return None
+    val = getattr(param, "value", None)
+    if not val:
+        return None
+    if isinstance(val, str):                         # a saved model
+        try:                                         # may hold a name
+            val = arcpy.SpatialReference(val)
+        except Exception:
+            try:
+                val = arcpy.SpatialReference(int(val))
+            except Exception:
+                raise arcpy.ExecuteError(
+                    f"'{val}' is not a coordinate system EquiPop can "
+                    "read. Pick one from the box, or give an EPSG "
+                    "code (Irish Grid is 29902, British National "
+                    "Grid 27700).")
+    if str(getattr(val, "type", "")) == "Geographic":
+        raise arcpy.ExecuteError(
+            f"'{getattr(val, 'name', val)}' is a GEOGRAPHIC coordinate "
+            "system - degrees of latitude and longitude. EquiPop "
+            "measures neighbourhoods in metres, and a degree is not a "
+            "length (it is about 111 km north-south and anything from "
+            "111 km to nothing east-west). Declare the PROJECTED "
+            "system your X/Y columns are actually in, or project the "
+            "coordinates first.")
+    return val
 
 
 def _write_points(table, man, target, messages):
@@ -3863,7 +4163,15 @@ class CountsShares:
                   "GPBoolean", required=False),
                _p("seed", "Seed - used by 'sampled' and by "
                   "permutations; empty draws one and prints it",
-                  "GPLong", required=False)]
+                  "GPLong", required=False),
+               # BACKLOG 329. LAST IN THE LIST, FIRST IN THE
+               # COORDINATES SECTION: Pro places a box by its
+               # category and not by its position, and a new
+               # parameter inserted mid-list renumbers every
+               # parameter after it - which silently rewires a saved
+               # ModelBuilder model and any script that calls the
+               # tool positionally. New boxes go on the end.
+               _TABLECRS()]
         pm = _byname(ps)
         # BACKLOG 143. This list used to be written out by hand -
         # ("pop", "treat", "catfield") - and treatcatfield was simply
@@ -3916,6 +4224,7 @@ class CountsShares:
         SECTION = {
             "coordsrc": "Coordinates", "xfield": "Coordinates",
             "yfield": "Coordinates", "autoproj": "Coordinates",
+            "tablecrs": "Coordinates",               # BACKLOG 329
             "k": "Neighbourhood", "r": "Neighbourhood",
             "unit": "Neighbourhood", "selfpot": "Neighbourhood",
             "model": "Neighbourhood",
@@ -4152,6 +4461,7 @@ class CountsShares:
                   originrule=ORIGIN_VALUES[
                       _mode(pm, "originrule", ORIGIN_MODES)],
                   auto_project=_flag(pm, "autoproj"),
+                  table_crs=_sr_of(pm.get("tablecrs")),   # 329
                   short_names=_flag(pm, "shortnames"))
 
 
@@ -4230,7 +4540,8 @@ class ValueStatistics:
                   "GPBoolean", required=False),
                _p("seed", "Seed - used by 'sampled' and by "
                   "permutations; empty draws one and prints it",
-                  "GPLong", required=False)]
+                  "GPLong", required=False),
+               _TABLECRS()]                          # BACKLOG 329
         # v1.29.2: BY NAME. This block still counted boxes off by
         # position after 1.29.0 converted the rest of machine 2, and
         # the ladder above inserts four of them - which would have
@@ -4261,6 +4572,7 @@ class ValueStatistics:
                         "xfield": "Coordinates",
                         "yfield": "Coordinates",
                         "autoproj": "Coordinates",
+                        "tablecrs": "Coordinates",   # BACKLOG 329
                         "k": "Neighbourhood", "r": "Neighbourhood",
                         "unit": "Neighbourhood",
                         "selfpot": "Neighbourhood",
@@ -4402,4 +4714,5 @@ class ValueStatistics:
                       _mode(pm, "originrule", ORIGIN_MODES)],
                   seed=_num(pm, "seed"),
                   auto_project=_flag(pm, "autoproj"),
+                  table_crs=_sr_of(pm.get("tablecrs")),   # 329
                   short_names=_flag(pm, "shortnames"))

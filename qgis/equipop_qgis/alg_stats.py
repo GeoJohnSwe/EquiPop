@@ -302,12 +302,18 @@ class ValueStatistics(EquipopAlgorithm):
 
         ch.info(f"Calculating (stats engine, {pts.n} rows, cell size "
                 f"{float(unit):g} m). Measures: " + " ".join(wanted))
+        from equipop.meta import record          # BACKLOG 293
+        runlog = record("stats", pts.n, {},
+                        source=getattr(source, "sourceName",
+                                       lambda: "")())
         with stage(ch, "calculating"), speaking(ch):
-            res = dispatch("stats", pts.data["x"], pts.data["y"], **kw)
+            res = dispatch("stats", pts.data["x"], pts.data["y"],
+                           provenance=runlog, **kw)
 
         order = [n for n in names if n in res] + \
                 [n for n in res if n not in names]
         with stage(ch, "writing output"):
             dest = self.write(parameters, context, source, res, order,
                               feedback)
+        self.write_provenance(runlog, dest, res, ch, source=source)
         return {self.OUT: dest}

@@ -4,8 +4,9 @@
 * Requires: Stata 17+, Python visible to Stata (help python), and the
 * package installed in THAT Python:  pip install equipop
 *
-* Run from the stata/ folder of the EquiPop repository (it needs
-* equipop.ado and stata_test_data.dta next to it).
+* Runs either from the stata/ folder of the EquiPop repository or
+* straight after `ssc install equipop, all` - the data is located
+* with findfile, which searches the ado-path.
 *
 * Sections 1-5 use the equipop command (the ado; equipop_knn still works). Sections 6-8 reach
 * deeper into the EquiPop package through Stata's python blocks: value
@@ -36,11 +37,21 @@ adopath + "`c(pwd)'"
 * ---------------------------------------------------------------------------
 * SECTION 1 - the test data
 * ---------------------------------------------------------------------------
-use stata_test_data, clear
+* findfile searches the ado-path, so this works from the repository
+* folder AND from an SSC install, where the data lands in Stata's
+* PLUS folder rather than in your working directory (BACKLOG 330).
+findfile equipop_test_data.dta
+use "`r(fn)'", clear
 describe
 * 10,892 observations. Metric coordinates X_local / Y_local; four binary
 * education variables (LowEdu, HighEdu, TheoEdu, VocaEdu); one continuous
 * variable (ValFloat, has missings by design); one count (ValCount).
+*
+* BACKLOG 237: every variable now carries a LABEL, so `describe` says
+* what each one is rather than leaving the name to carry it - and
+* ValFloat is declared a Stata `float` at last, which is what its name
+* has claimed since the fixture was made. No value changed, so every
+* EXPECT below still holds.
 
 count if missing(X_local) | missing(Y_local)
 * EXPECT: 9. These rows are kept - EquiPop gives them missing results and

@@ -484,6 +484,42 @@ def test_net_install_manifest_lists_files_that_exist():
     for f in listed:
         assert os.path.exists(os.path.join(STATA_DIR, f)), (
             f"equipop.pkg lists {f}, which is not in stata/")
+
+    # BACKLOG 334. `g` IS NOT THE ANCILLARY KEYWORD, and 330 shipped
+    # for one release believing it was. `g` is PLATFORM-SPECIFIC, and
+    # its syntax is `g PLATFORMNAME sourcefile targetfile` - so
+    # `g equipop_example.do` reads "equipop_example.do" as a platform
+    # name with no files after it, and the file does not install.
+    #
+    # THE PREVIOUS VERSION OF THIS TEST VALIDATED THE BUG. It walked
+    # the `g` lines and checked the named file existed in stata/ -
+    # which it did - so a malformed manifest passed. Found by Marina's
+    # pull request, which had used `f` all along. A test written beside
+    # a change tends to encode the change's assumption; this one
+    # encoded a wrong one.
+    PLATFORMS = {"WIN", "WIN64", "WIN64A", "MACINTEL", "MACINTEL64",
+                 "MACARM64", "LINUX", "LINUX64", "SUNOS", "HP9000"}
+    for ln in open(pkg, encoding="utf-8"):
+        if not ln.startswith("g "):
+            continue
+        parts = ln.split()
+        assert len(parts) >= 3 and parts[1] in PLATFORMS, (
+            f"malformed `g` line in equipop.pkg: {ln.strip()!r}. "
+            "`g` is the PLATFORM-SPECIFIC directive - "
+            "`g PLATFORMNAME sourcefile targetfile` - and not the "
+            "ancillary keyword. An ancillary .do or .dta is an "
+            "ordinary `f` line; Stata decides what to do with a file "
+            "from its EXTENSION, installing .ado and .sthlp into the "
+            "ado path and fetching .do and .dta with `net get`, which "
+            "is what the `all` option performs")
+
+    # and the ancillary material must be declared, as `f`
+    for name in os.listdir(STATA_DIR):
+        if name.endswith((".do", ".dta")):
+            assert name in listed, (
+                f"stata/{name} is not an `f` line in equipop.pkg, so "
+                "`net install equipop, all` does not bring it - which "
+                "is the gap BACKLOG 330 was raised on")
     assert any(f.endswith(".sthlp") for f in listed), (
         "the package ships no help file")
     assert "p equipop" in open(toc, encoding="utf-8").read(), (
@@ -491,6 +527,127 @@ def test_net_install_manifest_lists_files_that_exist():
 
 
 # ---------------------------------------------------------------------
+def test_no_numlist_loop_runs_over_a_macro_that_may_be_empty():
+    r"""BACKLOG 335, MARINA'S PULL REQUEST (GitHub lizardie).
+
+    `foreach ... of numlist \`x'` with an EMPTY \`x' is a SYNTAX
+    ERROR in Stata, not an empty loop. The name-length warning looped
+    over k() unguarded, so a radius-only run with a treatment -
+    `equipop, x() y() r(500) treat(HighEdu)` - died with "invalid
+    numlist has too few elements" before computing anything.
+
+    k() and r() are each optional and either will do (BACKLOG 305), so
+    EVERY numlist loop over one of them needs the guard. The guard
+    already existed forty lines above the fault, with a comment
+    explaining the property - which is why this test walks the file
+    rather than trusting that the lesson stuck.
+    """
+    import re
+    src = _ado_text()
+    lines = src.splitlines()
+    bad = []
+    for i, line in enumerate(lines):
+        m = re.search(r"foreach\s+\w+\s+of\s+numlist\s+`(\w+)'", line)
+        if not m:
+            continue
+        macro = m.group(1)
+        # look back for an `if "`macro'" != ""` that encloses this
+        guarded = any(
+            f'if "`{macro}\'" != ""' in lines[j]
+            for j in range(max(0, i - 12), i))
+        if not guarded:
+            bad.append((i + 1, macro, line.strip()))
+    assert not bad, (
+        "these numlist loops are not guarded against an empty macro, "
+        "which is a Stata SYNTAX ERROR rather than an empty loop:\n"
+        + "\n".join(f"  line {n}: {macro} in {text}"
+                     for n, macro, text in bad))
+
+
+def test_replace_drops_every_column_the_run_will_create():
+    """BACKLOG 336, MARINA'S PULL REQUEST. -replace- cleared N_, Dist_,
+    T_ and R_ and NOT the decay outputs ND_, TD_, RD_ - so repeating a
+    decay() run with replace failed, telling the user to "use option
+    replace" when they already had.
+
+    The prefixes are read from the ENGINE rather than listed here, so
+    a new output family added to the engine fails this test instead of
+    quietly escaping the drop list, which is how these three did.
+    """
+    import re
+    from equipop.analysis import NAMES
+    src = _ado_text()
+    block = src[src.index("drop what we are about to write"):
+                src.index("WARN ABOUT LONG NAMES")]
+    # the SHORT naming scheme is the one the Stata door uses
+    families = {tpl.split("{")[0].rstrip("_")
+                for tpl in NAMES["short"].values()}
+    # BOTH HALVES, SEPARATELY. The first version of this test searched
+    # the whole block, so deleting the decay drop from the k half
+    # still passed - the radius half's `drop `prefix'ND_r`rl'` matched
+    # the same pattern. Caught by breaking it; a family has to be
+    # dropped for k AND for r, because a run can ask for either.
+    k_half = block[block.index('if "`k' + chr(39) + '" != ""'):
+                   block.index('if "`r' + chr(39) + '" != ""')]
+    r_half = block[block.index('if "`r' + chr(39) + '" != ""'):]
+    #: Dist_ is the one exception, and a RULING not an oversight: a
+    #: radius run reports no distance, because the radius IS the
+    #: distance (BACKLOG 203, John's ruling). So the engine never
+    #: makes Dist_r500 and nothing should drop it.
+    for half, name, skip in ((k_half, "k()", set()),
+                             (r_half, "r()", {"Dist"})):
+        missing = sorted(f for f in families - skip
+                         if not re.search(rf"drop `prefix'{f}_", half))
+        assert not missing, (
+            f"-replace- never drops {missing} in the {name} branch, "
+            "which the engine produces there, so a second run with "
+            "replace stops on 'already defined' and tells the user to "
+            "use the option they used. The families come from "
+            f"equipop.analysis.NAMES: {sorted(families)}")
+
+
+def test_a_literal_brace_is_escaped_once_and_only_once():
+    """BACKLOG 330. Every escaped brace in the shipped help was
+    malformed, and had been since the generator was written.
+
+    _smcl_escape did `.replace("{", "{c -(}").replace("}", "{c )-}")`,
+    and the second replace ate the first one's OUTPUT: the `}` of
+    `{c -(}` became `{c )-}`, so a literal brace shipped as
+    `{c -({c )-}`. Then the line wrapper, which knows nothing about
+    SMCL, was free to break the wreckage across a newline. Five of
+    them were in the file Kit Baum read for the SSC submission.
+
+    THIS TEST EXISTS BECAUSE THE OUTPUT CHECK BELOW CANNOT FAIL ANY
+    MORE. Once the five paragraphs that carried markup were moved to
+    _smcl, nothing in the generator reached _smcl_escape with a brace
+    in it, so breaking the function again changed no shipped byte -
+    the output check passed over the restored bug. _smcl_escape is
+    still live for option text out of help.py, so it is pinned here,
+    on its own, where a break has to show.
+    """
+    from tools.make_sthlp import _smcl_escape
+    assert _smcl_escape("{help python}") == "{c -(}help python{c )-}"
+    assert _smcl_escape("r{k}") == "r{c -(}k{c )-}"
+    assert _smcl_escape("no braces") == "no braces"
+
+
+def test_the_help_file_holds_no_broken_smcl():
+    """The same fault seen from the OUTPUT side, which is the side a
+    user meets. It cannot catch a regression in _smcl_escape today
+    (see above) and it can catch the other two ways this breaks: a new
+    _wrap call given markup, and a directive split across a line."""
+    h = _read("equipop.sthlp")
+    assert "{c -({c )-}" not in h, (
+        "malformed brace escape in the help file: the escape "
+        "sequence has been escaped again")
+    for i, line in enumerate(h.splitlines(), 1):
+        # a directive must open and close on ONE line - Stata reads
+        # `{cmd:python\nquery}` as markup that never closes
+        assert line.count("{") == line.count("}"), (
+            f"line {i} of equipop.sthlp leaves an SMCL directive "
+            f"open across the line break: {line!r}")
+
+
 # BACKLOG 285/286 - the help's examples, and names that are too long.
 # ---------------------------------------------------------------------
 def test_every_option_in_every_example_exists():

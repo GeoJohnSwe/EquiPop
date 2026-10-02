@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.49.1}{...}
+{* *! version 1.51.0}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.49.1)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.51.0)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -43,7 +43,7 @@ Install or update the calculating engine, into the Python this Stata is using. A
 {synopt:{opt y(varname)}}The northing, on the same system as x();{p_end}
 {syntab:Neighbourhood}
 {synopt:{opt k(numlist)}}One or more k values, space-separated (200 1600).{p_end}
-{synopt:{opt r(numlist)}}Fixed radii in metres, space-separated.{p_end}
+{synopt:{opt r(numlist)}}Fixed radii in your coordinate units, space-separated.{p_end}
 {synopt:{opt unit(#)}}The grid cell size in metres.{p_end}
 {synopt:{opt selfpot(#)}}Self-potential: how far away what is LOCAL - what your...{p_end}
 {synopt:{opt originrule(string)}}WHETHER THE ORIGIN COUNTS AS ITS OWN NEIGHBOUR.{p_end}
@@ -97,10 +97,11 @@ which rows RECEIVE results; every row still counts as a neighbour to
 others.
 
 {pstd}
-equipop needs Python. See {c -({c )-}help python{c )-} and, for the
-installation, the file TESTING_STATA.md in the EquiPop distribution.
-Note that Stata and Anaconda do not mix: use a plain python.org Python
-for Stata.
+equipop needs Python. See {help python}, the file README_STATA.md in the
+EquiPop distribution for the installation, and {cmd:equipop doctor},
+which reports the Python Stata is actually using and whether the
+libraries load in it. Note that Stata and Anaconda do not mix: use a
+plain python.org Python for Stata.
 
 {marker options}{...}
 {title:Options}
@@ -122,7 +123,7 @@ for Stata.
 {p_end}
 
 {phang}
-{opt r(numlist)} Fixed radii in metres, space-separated. The mirror image of k: the area is fixed and the population floats (N_r###).
+{opt r(numlist)} Fixed radii in your coordinate units, space-separated. The mirror image of k: the area is fixed and the population floats (N_r###), and there is no Dist_ - the radius IS the distance. Each radius becomes part of a column name, with a decimal point written as an underscore, so r=100.5 gives N_r100_5. Radii are carried to six decimal places; two that differ by less than that cannot be told apart in a name, and the run stops rather than quietly writing one column where you asked for two.
 {p_end}
 
 {phang}
@@ -178,7 +179,7 @@ for Stata.
 {p_end}
 
 {phang}
-{opt overshoot(string)} What happens to the ring of cells that CROSSES k. EquiPop grows a neighbourhood outward until it holds k people, and the ring that takes it past k almost never lands on k exactly. 'Whole ring' takes all of it - what EquiPop did before 1.30 - so ask a 3x3 of cells holding ten each for k=11 and you receive 50. That is worst at SMALL k and AT BOUNDARIES, which is exactly where segregation is measured: on a planted sharp edge the share R_k in the boundary cell reads 0.20 whole against 0.02 proportional. 'Proportional share' takes the same fraction of every cell in that ring, so N_k is exactly k; it produces FRACTIONAL PEOPLE, which are estimates rather than persons, and value statistics refuse it because a quarter of a cell has no median, percentile or Gini. 'Sampled' takes whole cells one at a time, in an order drawn from the seed, until k is reached - this is the original EquiPop method from the 2014 C# tool, kept so old results can be reproduced and compared. Sampled is NOT proportional with the fractions removed: it is that answer rounded up to a whole cell, and different seeds do not average the difference away. Set 'whole ring' to reproduce numbers from before 1.30 exactly.
+{opt overshoot(string)} What happens to the ring of cells that CROSSES k. EquiPop grows a neighbourhood outward until it holds k people, and the ring that takes it past k almost never lands on k exactly. 'Whole ring' takes all of it - what EquiPop did before 1.30 - so ask a 3x3 of cells holding ten each for k=11 and you receive 50. That is worst at SMALL k and AT BOUNDARIES, which is exactly where segregation is measured: on a planted sharp edge the share R_k in the boundary cell reads 0.20 whole against 0.02 proportional. 'Proportional share' takes the same fraction of every cell in that ring, so N_k is exactly k; it produces FRACTIONAL PEOPLE, which are estimates rather than persons, and value statistics refuse it because a quarter of a cell has no median, percentile or Gini. 'Sampled' takes whole cells one at a time, in an order drawn from the seed, until k is reached - this is the original EquiPop method from the 2014 C# tool, kept so old results can be reproduced and compared. Sampled is NOT proportional with the fractions removed: it is that answer rounded up to a whole cell, and different seeds do not average the difference away. Set 'whole ring' to reproduce numbers from before 1.30 exactly. NOT AVAILABLE IN STATA: overshoot(sampled) returns an error pointing you to overshoot(proportional), or to QGIS and ArcGIS Pro, which do implement it - sampled needs a seeded draw over whole cells, and the Stata door does not carry one.
 {p_end}
 
 {phang}
@@ -235,11 +236,10 @@ mention EquiPop.
 
 {pstd}
 installs the engine into the Python Stata is using, so it cannot land in
-a different one. Add {c -({c )-}cmd:repair{c )-} - {c -({c
-)-}cmd:equipop setup, repair{c )-} - to reinstall numpy, scipy and
-pandas as well, which is the fix when a library is installed but refuses
-to load. Restart Stata afterwards: Stata starts Python once per session
-and keeps what it first loaded.
+a different one. Add {cmd:repair} - {cmd:equipop setup, repair} - to
+reinstall numpy, scipy and pandas as well, which is the fix when a
+library is installed but refuses to load. Restart Stata afterwards:
+Stata starts Python once per session and keeps what it first loaded.
 
 {phang}{cmd:. equipop doctor}{p_end}
 
@@ -257,14 +257,48 @@ afterwards: Stata starts Python once per session and keeps the packages
 it first loaded.
 
 {pstd}
-See also {c -({c )-}help python{c )-}, and {c -({c )-}cmd:python query{c
-)-}, which reports Stata's own view of the same interpreter.
+See also {help python}, and {cmd:python query}, which reports Stata's
+own view of the same interpreter.
 
 {marker examples}{...}
 {title:Examples}
 
+{pstd}
+Two worked do-files and a test dataset install with the package if you
+ask for them - {cmd:ssc install equipop, all} - and Stata will tell you
+where they went:
+
+{phang}{cmd:. findfile equipop_example.do}{p_end}
+{phang}{cmd:. do "`r(fn)'"}{p_end}
+
+{pstd}
+The examples run on {cmd:equipop_test_data.dta}: {cmd:ID},
+{cmd:X_local}, {cmd:Y_local}, four 0/1 education markers ({cmd:LowEdu},
+{cmd:HighEdu}, {cmd:TheoEdu}, {cmd:VocaEdu}), a continuous
+{cmd:ValFloat} with missings by design, and a count {cmd:ValCount}. Load
+it the same way:
+
+{phang}{cmd:. findfile equipop_test_data.dta}{p_end}
+{phang}{cmd:. use "`r(fn)'", clear}{p_end}
+
+{pstd}
+{cmd:equipop_example.do} is the short round trip;
+{cmd:equipop_showcase.do} runs every function in turn with the expected
+numbers in comments, against {cmd:equipop_test_data.dta}. Both locate
+the data with {help findfile}, so they run from anywhere.
+
 {phang}{cmd:. equipop setup}{p_end}
 {phang}{cmd:. equipop doctor}{p_end}
+
+The examples below run on {cmd:equipop_test_data.dta}, which installs
+with the package: {cmd:ID}, {cmd:X_local}, {cmd:Y_local}, four 0/1
+education markers ({cmd:LowEdu}, {cmd:HighEdu}, {cmd:TheoEdu},
+{cmd:VocaEdu}), a continuous {cmd:ValFloat} with missings by design, and
+a count {cmd:ValCount}.
+
+{phang}{cmd:. findfile equipop_test_data.dta}{p_end}
+{phang}{cmd:. use "`r(fn)'", clear}{p_end}
+
 {phang}{cmd:. equipop, x(X_local) y(Y_local) k(50)}{p_end}
 {phang}{cmd:. equipop, x(X_local) y(Y_local) treat(HighEdu) k(25 50 200) unit(100)}{p_end}
 {phang}{cmd:. equipop if urban==1, x(X) y(Y) treat(HighEdu) k(50) replace}{p_end}

@@ -1,7 +1,38 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.49.1, 16 September 2026.**
-*Reviewed at 1.49.1: no change to the exercises, but the ratio
+**Last updated: 1.51.0, 2 October 2026.**
+*Reviewed at 1.51.0: no figure or exercise changes. One thing to
+mention if anyone asks about radii: a radius now appears in a column
+name with its decimal point as an underscore, so r(100.5) gives
+N_r100_5, and two radii closer than a millionth cannot be told apart
+and are refused rather than quietly merged.
+Reviewed at 1.50.0: one change reaches the course, and it is a
+good one to say out loud. Every EquiPop run now leaves a record of
+the settings that produced it - in QGIS as a .meta.json beside the
+output, in Pro inside the run CSV, in Stata printed into the log and
+returned in r(). That is the answer to "which run was this?", which
+is the question a student asks on the second day and cannot answer
+on the first. The test dataset also describes itself now: `describe`
+shows a label on every variable.
+Reviewed at 1.49.3: nothing in the course changes - this release
+is the Stata door and the SSC archive. Worth saying once in class,
+though, now that it is true: `ssc install equipop` gets the command
+without a clone, and `ssc install equipop, all` brings a worked
+do-file and a test dataset with it, which is a gentler first run
+than the GIS exercises for a student who already knows Stata.
+Reviewed at 1.49.2: no figure changes. One exercise gains a step it
+could not have before - the Airbnb listings arrive as
+`listings.csv.gz`, and a CSV of coordinates can now be pointed at
+directly and written out as a point feature class, instead of being
+imported first. That also brings the coordinate-system box into
+class: a table declares no projection, so the student either
+declares it or gets a layer marked "unknown", which is a small,
+concrete instance of the lesson the whole course keeps making - the
+software will not guess, and it says what it does not know. Note that
+the listings are in DEGREES, so the projection box is not the whole
+answer there; they still need projecting, which machine 3's box does
+and reports.
+Reviewed at 1.49.1: no change to the exercises, but the ratio
 ruling is worth a sentence in class - R is a RATIO, and it exceeds 1
 whenever numerator and denominator count different units. Every
 course exercise uses the same unit on both sides, so all the figures

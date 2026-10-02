@@ -524,7 +524,11 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     # map cell results back to every individual row
     res = res.set_index(["EastWest", "NorthSouth"])
     keys = list(zip(cells["_E"], cells["_N"]))
-    labs = [f"r{r:g}" for r in r_values]
+    # BACKLOG 337. ONE formatter, and a true collision refused before
+    # anything is written - two radii that cannot be told apart in a
+    # column name used to OVERWRITE each other in this dict, silently.
+    from .labels import radius_suffixes
+    labs = ["r" + t for t in radius_suffixes(r_values)]
     out_cols = ([f"N_{k}" for k in k_values + labs]
                 + [f"Dist_{k}" for k in k_values]
                 + [f"T_{v}_{k}" for v in treat for k in k_values + labs]
@@ -652,6 +656,7 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              self_rule: str | None = None,
              seed: int | None = None,
              missing_codes=None,
+             provenance=None,
              **extra) -> dict:
     """
     One entry point, five engines, row-aligned results:
@@ -665,7 +670,28 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
 
     Everything computable is here (pytest-covered); the ado only moves
     arrays over sfi and calls this.
+
+    `provenance` is an equipop.meta.RunLog, or None. BACKLOG 293: the
+    record is taken from THE ARGUMENTS AS BOUND - defaults included -
+    so a setting that exists is recorded whether or not the caller
+    mentioned it, and a setting added to this signature appears in the
+    record the same day with no door touched. That is the property
+    ArcGIS Pro's hand-written manifest never had: `overshoot` moved
+    every k-based number from 1.30 and was recorded nowhere until
+    1.47, because the list was maintained by remembering.
     """
+    if provenance is not None:
+        # dict(locals()) FIRST and on its own line: a comprehension has
+        # its own scope in Python 3, so locals() called inside one
+        # returns the comprehension's variables and not these.
+        _loc = dict(locals())
+        from .meta import settings_from_engine
+        provenance.doc["run"]["engine"] = engine
+        provenance.doc["settings"].update(settings_from_engine(
+            {k: v for k, v in _loc.items()
+             if k not in ("engine", "x", "y", "provenance")}))
+        provenance.set_data(input_rows=int(len(np.asarray(x))))
+
     x = np.asarray(x, float); y = np.asarray(y, float)
     n_rows = len(x)
     valid = np.isfinite(x) & np.isfinite(y)

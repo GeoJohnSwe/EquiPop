@@ -172,6 +172,29 @@ def main(argv):
         print("\n[bump] regenerate what is derived:")
         print("       python tools/make_sthlp.py")
         print("       python arcgis/make_help_xml.py")
+        # BACKLOG 331, John's question before the SSC reply went out.
+        # The bump moves the ADO's declared version, and the ado asks
+        # pip for `equipop>=` that number. Ship the commands first and
+        # `equipop setup` fails outright - no matching distribution -
+        # for every new user, at the first instruction in the paper.
+        # The reminder lives here because this is the moment the two
+        # numbers part company.
+        # BACKLOG 332. The Stata engine FLOOR is deliberately not
+        # this number and is not touched here - see eqp_min_engine in
+        # stata/equipop.ado. What remains true whatever the floor
+        # says: a doctor or engine fix lives in the PYTHON PACKAGE,
+        # so an ado-only update changes nothing the reporter can see.
+        print("\n[bump] RELEASE ORDER, if this version is going out:")
+        print("       1. PyPI  (the engine)   - twine upload")
+        print("       2. SSC   (the commands) - email Baum")
+        print("       The engine first: anything fixed in equipop/ -")
+        print("       the doctor's whole report, for instance - does")
+        print("       not exist for the user until PyPI has it, so an")
+        print("       ado-only update looks like no fix at all.")
+        print("       eqp_min_engine in stata/equipop.ado is NOT")
+        print("       touched by this tool. Raise it by hand, only")
+        print("       when the commands call something new, and only")
+        print("       after that engine is published.")
     return 0
 
 
