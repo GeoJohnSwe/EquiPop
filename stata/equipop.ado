@@ -1,4 +1,4 @@
-*! equipop v1.49.1  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.49.2  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -342,6 +342,9 @@ program define equipop, rclass
             foreach kk of numlist `k' {
                 capture drop `prefix'N_`kk'
                 capture drop `prefix'Dist_`kk'
+                if "`decay'" != "" {
+                    capture drop `prefix'ND_`kk'
+                }
                 * treat() became optional in 1.36, and an empty
                 * -varlist- loop is a syntax error, not an empty loop.
                 * So -equipop, x() y() k(25) replace- failed on exactly
@@ -350,6 +353,10 @@ program define equipop, rclass
                     foreach v of varlist `treat' {
                         capture drop `prefix'T_`v'_`kk'
                         capture drop `prefix'R_`v'_`kk'
+                        if "`decay'" != "" {
+                            capture drop `prefix'TD_`v'_`kk'
+                            capture drop `prefix'RD_`v'_`kk'
+                        }
                     }
                 }
             }
@@ -361,10 +368,17 @@ program define equipop, rclass
                 * a Stata variable name.
                 local rl : subinstr local rr "." "_", all
                 capture drop `prefix'N_r`rl'
+                if "`decay'" != "" {
+                    capture drop `prefix'ND_r`rl'
+                }
                 if "`treat'" != "" {
                     foreach v of varlist `treat' {
                         capture drop `prefix'T_`v'_r`rl'
                         capture drop `prefix'R_`v'_r`rl'
+                        if "`decay'" != "" {
+                            capture drop `prefix'TD_`v'_r`rl'
+                            capture drop `prefix'RD_`v'_r`rl'
+                        }
                     }
                 }
             }
@@ -384,8 +398,10 @@ program define equipop, rclass
             if length("`v'") > `_longest' local _longest = length("`v'")
         }
         local _bigk = 0
-        foreach kk of numlist `k' {
-            if `kk' > `_bigk' local _bigk = `kk'
+        if "`k'" != "" {
+            foreach kk of numlist `k' {
+                if `kk' > `_bigk' local _bigk = `kk'
+            }
         }
         local _need = length("`prefix'") + 2 + `_longest' ///
             + 1 + length("`_bigk'")
@@ -471,7 +487,7 @@ program define _equipop_setup
     * by tools/bump_version.py, which replaces every line matching
     * this pattern - so this string and the doctor's below always
     * agree.
-    local eqp_ado_version "1.49.1"
+    local eqp_ado_version "1.49.2"
     python: _equipop_setup_py("`repair'", "`eqp_ado_version'")
     * AND A FAILURE IS NOW A FAILURE. It used to print "PIP FAILED"
     * and return normally, so a scripted or institutional install had
@@ -488,7 +504,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.49.1"
+    local eqp_ado_version "1.49.2"
     python: _equipop_doctor_py("`eqp_ado_version'")
 end
 
