@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.48.4}{...}
+{* *! version 1.48.5}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.48.4)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.48.5)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -122,7 +122,7 @@ Stata.
 {p_end}
 
 {phang}
-{opt r(numlist)} Fixed radii in metres, space-separated. The mirror image of k: the area is fixed and the population floats (N_r###).
+{opt r(numlist)} Fixed radii in metres, space-separated. The mirror image of k: the area is fixed and the population floats (N_r###). Each radius becomes part of a variable name, so two radii that agree to 6 significant digits (e.g. 100.000001 and 100.000002) cannot be told apart and the run is refused, as is a radius small or large enough to need scientific notation (roughly below 0.0001 or above 1,000,000 in your coordinate units). Use radii further apart, or within that range.
 {p_end}
 
 {phang}

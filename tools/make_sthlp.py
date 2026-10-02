@@ -75,6 +75,16 @@ STATA_ONLY = {
     "y(varname)":
         "The northing, on the same system as x(); or latitude in "
         "degrees, with -project-.",
+    "r(numlist)":
+        "Fixed radii in metres, space-separated. The mirror image of "
+        "k: the area is fixed and the population floats (N_r###). "
+        "Each radius becomes part of a variable name, so two radii "
+        "that agree to 6 significant digits (e.g. 100.000001 and "
+        "100.000002) cannot be told apart and the run is refused, as "
+        "is a radius small or large enough to need scientific "
+        "notation (roughly below 0.0001 or above 1,000,000 in your "
+        "coordinate units). Use radii further apart, or within that "
+        "range.",
     "halflife(#)":
         "A distance, in the same units as your coordinates, that "
         "anchors the decay curve. WHAT IT MEANS is set by "

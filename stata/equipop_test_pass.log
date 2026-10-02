@@ -25,7 +25,7 @@ Notes:
 . do /Users/lizardie/ArbeitMachtFrei/ResearchProjects/UTMAJO/Equipop/equipop_test_pass.d
 > o 
 
-. *! EquiPop 1.48.4 - a test pass over stata_test_data.dta
+. *! EquiPop 1.48.5 - a test pass over stata_test_data.dta
 . *!
 . *! WHAT CHANGED IN 1.40.5, and why it matters:
 . *!   Until now this file STATED its invariants and did not ENFORCE
@@ -85,7 +85,7 @@ Notes:
 . * updated by two different mechanisms, and a half-update is the most
 . * common support problem this project has.
 . 
-. global EQP_EXPECT "1.48.4"
+. global EQP_EXPECT "1.48.5"
 
 . 
 . * ------------------------------------------------------------------
@@ -142,7 +142,7 @@ Notes:
 ==================================================
 
 . display as text "EquiPop field pass, expecting version $EQP_EXPECT"
-EquiPop field pass, expecting version 1.48.4
+EquiPop field pass, expecting version 1.48.5
 
 . display as text "data: $EQP_DATA"
 data: stata_test_data.dta
@@ -170,8 +170,8 @@ PYTHON
   user packages: /Users/lizardie/.local/lib/python3.12/site-packages
 
 EQUIPOP
-  engine       : 1.48.4   (the Python package)
-  commands     : 1.48.4   (the .ado files)
+  engine       : 1.48.5   (the Python package)
+  commands     : 1.48.5   (the .ado files)
   installed in : /Users/lizardie/StataPython/lib/python3.12/site-packages/equipop
 
 REQUIRED - machine 1 cannot run without these
@@ -214,10 +214,10 @@ VERDICT
 
 . else {
 .     display as text "   engine reports version $EQP_ENGINE"
-   engine reports version 1.48.4
+   engine reports version 1.48.5
 .     local ok = ("$EQP_ENGINE" == "$EQP_EXPECT")
 .     eqpcheck `ok' "block 0: engine version matches $EQP_EXPECT"
-   [ok]   block 0: engine version matches 1.48.4
+   [ok]   block 0: engine version matches 1.48.5
 . }
 
 . 
@@ -1640,10 +1640,10 @@ macros:
 EquiPop field pass - VERDICT
 
 . display as text "  version expected : $EQP_EXPECT"
-  version expected : 1.48.4
+  version expected : 1.48.5
 
 . display as text "  engine reported  : $EQP_ENGINE"
-  engine reported  : 1.48.4
+  engine reported  : 1.48.5
 
 . display as text "  checks run       : $EQP_RUN   (expected $EQP_EXPECT_CHECKS)"
   checks run       : 57   (expected 57)
