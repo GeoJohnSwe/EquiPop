@@ -1,7 +1,60 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.51.0, 2 October 2026.**
-*Reviewed at 1.51.0: no figure or exercise changes. One thing to
+**Last updated: 1.51.2, 3 October 2026.**
+*Reviewed at 1.51.2: THIS RELEASE EXISTS FOR THIS FILE'S SAKE, more or
+less. John's reason for cutting it was pedagogical: the engine, the
+commands, the QGIS plugin and the Pro toolbox are installed by four
+different means, so they drift, and a class should not have to be
+taught why. Every one of them now says 1.51.2, and the first thing to
+do in a session is `equipop setup`, restart Stata, `equipop doctor`:
+
+      engine       : 1.51.2   (the Python package)
+      commands     : 1.51.2   (the .ado files)
+      needs engine : 1.48.0 or newer - satisfied
+
+SAY WHAT THAT THIRD LINE IS, because a sharp student will ask. It is
+not a version, it is a REQUIREMENT - the oldest engine the commands'
+own calls need - and it is deliberately older than the release. Two
+numbers that must match and one that must merely be satisfied is a
+good ten-minute lesson about what a version actually promises, and the
+doctor's report is the artefact to teach it from.
+A SECOND EXERCISE ARRIVED FOR FREE. Negative populations are refused,
+and the refusal now explains itself - so "why can't I put population
+CHANGE in pop()?" is a question with a teachable answer: because k
+counts people and a neighbourhood grows until it holds k of them, a
+total that can fall with distance has no single radius at which k was
+reached. Then show the right route: change goes in values(), the
+headcount stays in pop(), and the result is a population-weighted mean
+of a signed quantity per neighbourhood. That is the distinction
+between a WEIGHT and a MEASUREMENT, which is the thing students most
+often get wrong in this software, and here the error message teaches
+it for you.
+Reviewed at 1.51.1: NO FIGURE CHANGES, and one check worth stating
+because the release moves numbers for somebody. Every course exercise
+uses WHOLE population counts - register rows, census blocks, the
+Los Angeles blocks - so the fractional-weight correction cannot touch
+a single figure here: rounding 10 to 10 is an identity. It WOULD touch
+an exercise built on WorldPop, which is fractional by construction,
+and there is no such exercise yet. If one is written, say in class
+that the engine carries a fifth of a person as a fifth of a person,
+because the naive route - repeat each row `weight` times - is both the
+obvious implementation and the one that deleted half of John's people.
+TWO THINGS TO MENTION if they come up. A GeoPackage holding several
+result layers now gets one provenance sidecar PER LAYER
+(out.k100.meta.json, not out.meta.json), which is worth knowing before
+a student wonders where the first one went. And the demographic index
+tools now refuse a folder that is missing one cohort of one sex, and
+name it - which is a better teaching moment than the old behaviour: it
+shows what "the data cannot support this measure under its own name"
+means in a case where the arithmetic would have worked fine.
+THE METHODOLOGICAL LESSON of this release is the best one it has for a
+class, and it is not about any feature: the suite had thorough tests
+for each option and thorough tests for each engine, and nothing that
+crossed the two - so an option could be documented, recorded in the
+run's own provenance, and never passed to the engine. Three of the
+nine findings were that shape. "Test the pairs, not the parts" is
+worth ten minutes of anybody's course.
+Reviewed at 1.51.0: no figure or exercise changes. One thing to
 mention if anyone asks about radii: a radius now appears in a column
 name with its decimal point as an underscore, so r(100.5) gives
 N_r100_5, and two radii closer than a millionth cannot be told apart

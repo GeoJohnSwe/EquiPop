@@ -225,13 +225,24 @@ def validate_treatment(treat, weight, treat_are_counts, say=print):
         # sentinel to be refused and watched it sail through.
         fin = a[np.isfinite(a)]
         if len(fin) and fin.min() < 0:
+            # BACKLOG 351: the same message gap as validate_weight -
+            # one explanation offered, one remedy, and the route for a
+            # legitimately signed quantity never named. T_k is a COUNT
+            # of a group within the neighbourhood, so it has the same
+            # problem for the same reason.
             raise ValueError(
                 f"'{name}' goes down to {fin.min():g}, and a number of "
-                f"people cannot be negative. If that value means NO "
-                f"DATA rather than a count - census extracts use codes "
-                f"like -666666666, -9 or 999 - declare it with "
+                f"people cannot be negative.\n"
+                f"Two things this usually means.\n"
+                f"  NO DATA. Census extracts use codes like "
+                f"-666666666, -9 or 999. Declare it with "
                 f"missing({fin.min():g}) and it will be excluded "
-                f"properly.")
+                f"properly.\n"
+                f"  A CHANGE, or net migration - a quantity that is "
+                f"legitimately negative. That is not a group count: "
+                f"pass it as a VALUE variable (equipop stats, "
+                f"values()) and you get its population-weighted mean, "
+                f"median and SD over each neighbourhood.")
         both = np.isfinite(a) & np.isfinite(w)
         over = int(np.count_nonzero(a[both] > w[both]))
         if over:
@@ -279,6 +290,83 @@ def validate_treatment(treat, weight, treat_are_counts, say=print):
                 f"round - a swap usually shows as a ratio far above "
                 f"1, so check that {ratio:.2f} is the number you "
                 f"expect.")
+
+
+def validate_weight(weight, say=print):
+    """Refuse a POPULATION field that cannot be true.
+
+    BACKLOG 343, external review of 1.51 (finding F2). Every guard
+    above judges the TREATMENT. Nothing judged the weight itself, and
+    the two machines disagreed about what a negative one meant:
+    reproduced on two cells with weights [-5, 10], machine 1 reported
+    N = 5 (it summed them) and machine 2 reported N = 10 (it zeroed
+    the negative). Neither is right, because a population of minus
+    five people is not a quantity - it is a sentinel somebody forgot
+    to declare, which is exactly the defect BACKLOG 168 closed for
+    treatments and left open here.
+
+    Non-finite is NOT an error: Stata's own missing arrives that way,
+    and John's rule since 1.22.2 is that a row with no count counts as
+    ZERO, is nobody's neighbour, and still gets its own results. So a
+    blank weight is a blank, and only a NEGATIVE number is refused.
+
+    BACKLOG 351, JOHN'S QUESTION ON THE 343 RELEASE. "What if a
+    negative population represented the n the local has lost - I
+    realize that would clash with some stats but not all. Should there
+    be a warning rather than refusal?"
+
+    THE REFUSAL STAYS, and the reason is a step earlier than
+    statistics. k counts PEOPLE and a neighbourhood is grown outward
+    until it holds k of them, so with a negative weight the running
+    total is NOT MONOTONE IN RADIUS: it can rise, fall, and cross k
+    several times, or never. "The radius at which k was reached" stops
+    having one answer, so Dist_k is not wrong but UNDEFINED - and
+    every self-calibrating bandwidth reads Dist_k. `proportional`, the
+    default since 1.30, divides by the crossing cell's population to
+    take a share of it, and a negative denominator inverts the share
+    and lands N on the wrong side of k. R_k = T_k/N_k flips sign with
+    its denominator. Downstream, a weighted mean with mixed-sign
+    weights can land OUTSIDE THE RANGE OF THE DATA, Gini has no
+    definition for them, and a weighted median found by cumulative
+    weight has none when the cumulative sum is not monotone. There is
+    no warn-and-proceed that yields a defensible number.
+
+    BUT THE MESSAGE WAS BAD ADVICE FOR HIS CASE, and that was the real
+    defect here. It gave ONE explanation - an undeclared sentinel -
+    and one remedy, missing(). For a genuine change or net-migration
+    variable both are wrong, and the route that works was never named:
+    a signed quantity is a MEASUREMENT, not a population, so it goes
+    in values() and comes back as a population-weighted mean, median
+    and SD per neighbourhood. Verified on three places 100 m apart
+    with change [-50, +20, -5] and ten people each: Mean_chg_20 =
+    [-15, -3.75, 7.5], and -15 is exactly (-50*10 + 20*10)/20.
+    1.44.3's rule: if the code knows the right answer, a refusal that
+    only names the problem is a wasted trip.
+    """
+    if weight is None:
+        return
+    w = np.asarray(weight, dtype=float)
+    fin = w[np.isfinite(w)]
+    if len(fin) and fin.min() < 0:
+        worst = float(fin.min())
+        bad = int(np.count_nonzero(fin < 0))
+        raise ValueError(
+            f"the population field goes down to {worst:g} at {bad} "
+            f"row(s), and k counts PEOPLE - so a neighbourhood cannot "
+            f"be grown against a negative one: the total stops rising "
+            f"with distance, and the radius where k was reached has no "
+            f"single answer.\n"
+            f"Two things this usually means.\n"
+            f"  NO DATA. Census and raster extracts use codes like "
+            f"-666666666, -9999 or -9. Declare it with "
+            f"missing({worst:g}) and those rows hold nobody while "
+            f"still getting their own results.\n"
+            f"  A CHANGE, or net migration - a quantity that is "
+            f"legitimately negative. That is not a population: pass it "
+            f"as a VALUE variable (equipop stats, values()) and you "
+            f"get its population-weighted mean, median and SD over "
+            f"each neighbourhood, with pop() holding the actual "
+            f"headcount.")
 
 
 def check_results_are_possible(result, say=print):
@@ -451,6 +539,7 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     # Refuse what cannot be true BEFORE doing the work - see
     # validate_treatment() for the defect this closes.
     if strict_treatment:
+        validate_weight(weight, say=say)          # BACKLOG 343
         validate_treatment(treat, weight, treat_are_counts, say=say)
     for name in treat:
         if not treat_are_counts:
@@ -610,9 +699,22 @@ def _add_empty_origin_cells(cd, E, N, value_vars):
     for v in value_vars:
         cd.value_arrays[v] = list(cd.value_arrays[v]) + \
             [np.array([], float) for _ in want]
+    # BACKLOG 343. EVERY per-cell array has to grow, not just the ones
+    # the first caller happened to populate. `value_weights` is empty
+    # unless build_cells(weights=) was given something, and it was not
+    # until F2's fix - so this loop was correct by accident and became
+    # a length mismatch the moment the Stata door started carrying
+    # fractional weights. `binary_valid` has the same shape and the
+    # same exposure if a door ever brings treatments here.
+    for v, lst in list(cd.value_weights.items()):
+        cd.value_weights[v] = list(lst) + \
+            [np.array([], float) for _ in want]
     for v, arr in list(cd.binary_sums.items()):
         cd.binary_sums[v] = np.append(np.asarray(arr, float),
                                       np.zeros(len(want), float))
+    for v, arr in list(cd.binary_valid.items()):
+        cd.binary_valid[v] = np.append(np.asarray(arr, float),
+                                       np.zeros(len(want), float))
     if cd.labels is not None:
         cd.labels = list(cd.labels) + [None] * len(want)
     print(f"[cells] {len(want)} origin cell(s) hold no population - "
@@ -730,6 +832,30 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                   "contribute nothing of their own, and shares are "
                   "divided by the people actually observed.")
 
+    # BACKLOG 342. RESOLVE THE SEED ONCE, HERE, before anything can
+    # draw its own. Under `sampled` the seed decides which cells the
+    # crossing ring gives up; a self-calibrating decay runs TWO passes,
+    # so two independently drawn seeds would calibrate a bandwidth
+    # from one neighbourhood and then measure a different one - and
+    # neither run would be reproducible from its own record, because
+    # the seed it reports was never the seed it used. Resolved here, it
+    # reaches both passes and the provenance record as one value.
+    #
+    # AND IT SAYS SO IN THE WORDS THE DOORS ALREADY USE. The first
+    # version of this block printed its own sentence, which made it a
+    # SECOND VOICE on repeatability: resolving the seed here means the
+    # engine below now sees one and prints "sampled order from seed N"
+    # - the line that means "you chose this" - so the line that means
+    # "we chose for you, write it down" disappeared from every door at
+    # once. test_6b caught it, which is the test it was written for.
+    # seed_message() is the one formatter; this adds a clause, never a
+    # rewording.
+    from . import overshoot as _ov
+    if seed is None and _ov.resolve(overshoot_mode) == _ov.SAMPLED:
+        seed = _ov.draw_seed()
+        print(_ov.seed_message(seed, given=False)
+              + " Every pass of this run uses it.")
+
     if engine == "counts":
         dec = None
         if half_life_m or half_life_field is not None \
@@ -763,6 +889,27 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                                 # reintroduced inside a single run,
                                 # where nobody would look for it.
                                 self_rule=self_rule,
+                                # BACKLOG 342, FOUND BY THE 1.51.0 CODE
+                                # REVIEW. The comment above states the
+                                # rule and the code applied it to ONE
+                                # of the three settings that define a
+                                # neighbourhood. A Dist_k measured
+                                # under `proportional`, feeding a
+                                # kernel applied under `whole`, is the
+                                # same two-definitions problem, and the
+                                # seed is the same argument again for
+                                # `sampled`.
+                                # Reproduced: three cells 100 m apart,
+                                # 10 people each, k=15, whole. The
+                                # whole-ring Dist_15 is 100 m at every
+                                # origin, and the calibration pass
+                                # reported a bandwidth of 50-71 m -
+                                # proportional's answer - giving
+                                # ND_15 [13.75, 15, 13.75] where the
+                                # same bandwidth supplied as a field
+                                # gives [15, 20, 15].
+                                overshoot_mode=overshoot_mode,
+                                seed=seed,
                                 # BACKLOG 142: EquiPop's own pass,
                                 # not the user's run
                                 report_label=" calibration pass,",
@@ -821,9 +968,32 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
         if weight is not None:
             # v1.16 FULL-POPULATION field: each row carries this many
             # persons; k is measured against PERSONS, and every value
-            # statistic weights by population - implemented EXACTLY by
-            # expanding rows to persons (median/Gini/percentiles come
-            # out weighted by construction).
+            # statistic weights by population.
+            #
+            # BACKLOG 343, external review of 1.51 (F2). THIS USED TO
+            # EXPAND ROWS TO PERSONS - np.round(w) copies of each row -
+            # which is exact only when the weights are whole numbers,
+            # and WorldPop counts are not. Reproduced: two cells with
+            # values [0, 10] and weights [0.4, 0.6] reported a mean of
+            # 10 where the hand calculation and the direct weighted-
+            # cells route both give 6; six cells each weighing 0.4
+            # reported N = 0 and a mean of MISSING for every row, the
+            # entire population having rounded away. This is BACKLOG
+            # 118's WorldPop deletion - measured at 50.5% of people
+            # lost, 39% in Rwanda and 69% in Denmark - still live
+            # through the Stata door eight versions after the cell
+            # engine learned to carry fractional weights. It also made
+            # the expansion the run's memory ceiling: two rows holding
+            # Swedish municipal totals materialised 5,000,000 rows and
+            # took 3.25 s for an answer that is two multiplications.
+            #
+            # The weight now goes to build_cells(weights=) as a
+            # NUMBER, so a person weighing 0.4 stays 0.4 of a person,
+            # the arithmetic is the one machine 1 has always done, and
+            # nothing is materialised. Median, Gini and the
+            # percentiles come out weighted because run_knn_stats
+            # reads `value_weights` (BACKLOG 118) rather than counting
+            # entries.
             #
             # v1.29.2, BACKLOG 83: a row with no count is not a
             # MEMBER, but it is still an ORIGIN. John's rule since
@@ -832,34 +1002,34 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             # RESULTS. Machine 1 has always done this; machine 2
             # dropped such rows entirely, because expanding by the
             # count makes a zero-count row vanish. So ORIGIN and
-            # MEMBER are now separate sets. A door that wants Null
-            # instead says so by NaN-ing the coordinates, which is
-            # how `keepoutside` has always worked.
+            # MEMBER are now separate sets, and they still are - what
+            # changed is only how a member's weight is carried. A door
+            # that wants Null instead says so by NaN-ing the
+            # coordinates, which is how `keepoutside` has always
+            # worked.
+            validate_weight(weight)               # BACKLOG 343
             w = np.asarray(weight, float)
             w = np.where(w > 8.9e307, np.nan, w)
-            rep = np.where(np.isfinite(w) & (w > 0),
-                           np.round(w), 0).astype(np.int64)
-            members = valid & (rep > 0)
-            df["_rep"] = rep
+            members = valid & np.isfinite(w) & (w > 0)
+            df["_w"] = w
         dv = df[valid]
         E, N = _snap(dv["_x"], dv["_y"], unit_size)   # per INPUT row
         pop = df[members]
         if weight is not None:
-            n_persons = int(pop["_rep"].sum())
+            n_persons = float(pop["_w"].sum())
             outside = int(valid.sum() - members.sum())
             print(f"[equipop] full population: {len(pop)} of {len(df)} "
-                  f"rows carry a usable count -> {n_persons} persons "
-                  f"(k counts PERSONS)")
+                  f"rows carry a usable count -> {n_persons:,.6g} "
+                  f"persons (k counts PERSONS)")
             if outside:
                 print(f"[equipop] {outside} row(s) have no count (empty "
                       "or zero): they count as ZERO and are nobody's "
                       "neighbour, but they still get their own "
                       "results - what is around THEM.")
-            pop = pop.loc[pop.index.repeat(pop["_rep"])] \
-                     .drop(columns="_rep").reset_index(drop=True)
         dv = pop
         cd = build_cells(dv, "_x", "_y", value_vars=list(values),
-                         unit_size=unit_size)
+                         unit_size=unit_size,
+                         weights=None if weight is None else "_w")
         cd = _add_empty_origin_cells(cd, E, N, list(values))
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            self_potential=self_potential,
@@ -914,19 +1084,35 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                    .groupby(["x", "y"], as_index=False).sum())
             if engine == "slope":
                 from .slope import run_knn_slope
+                # BACKLOG 341, FOUND BY THE 1.51.0 CODE REVIEW. These
+                # three were accepted by dispatch and handed to the
+                # radial engine, and NEITHER EFFORT ENGINE RECEIVED
+                # THEM - so asking for barriers or terrain silently
+                # dropped the overshoot mode, the seed and the origin
+                # rule. Reproduced: `whole` + `exclude` on two cells
+                # of 100 and 10 people at k=5 returned [5, 5], which
+                # is proportional with the origin included; whole-cell
+                # counting gives [100, 10].
+                # From 1.50.0 the run record also wrote down the
+                # setting that had been ignored, which turns a silent
+                # wrong answer into a documented one.
                 res = run_knn_slope(pop, k_values or [],
                                     self_potential=self_potential,
                                     altitude=dem,
                                     model=model, fr=fr,
                                     unit_size=unit_size,
                                     tau_values=tau_values,
+                                    overshoot_mode=overshoot_mode,
+                                    seed=seed, self_rule=self_rule,
                                     roundtrip=roundtrip, **extra)
             else:
                 from .friction import run_knn_friction
                 res = run_knn_friction(pop, k_values or [], fr=fr,
                                        self_potential=self_potential,
                                        unit_size=unit_size,
-                                       tau_values=tau_values)
+                                       tau_values=tau_values,
+                                       overshoot_mode=overshoot_mode,
+                                       seed=seed, self_rule=self_rule)
             if gname is not None:
                 res = res.rename(columns={
                     c: (f"T_{gname}_{c[2:]}" if c.startswith("T_")

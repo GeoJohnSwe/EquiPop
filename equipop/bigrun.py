@@ -50,17 +50,108 @@ def _md5(path, blocksize=1 << 20):
             h.update(b)
 
 
+# --- crash-safe writing, BACKLOG 344 ---------------------------------
+# A three-day run has to survive being interrupted at any instant,
+# which is the whole reason this module writes as it goes. Truncating a
+# file open and then filling it is the one pattern that cannot: the
+# window between the two is a window in which the file on disk is
+# neither the old content nor the new. Write beside it, flush it to the
+# platter, then rename - os.replace() is atomic within a filesystem, so
+# a reader (or the next resume) sees one complete version or the other.
+
+def _atomic_write_json(obj, path):
+    tmp = f"{path}.tmp.{os.getpid()}"
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(obj, fh, indent=1)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        # A failed write must not leave litter behind that the next
+        # run has to reason about.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_write_parquet(df, path):
+    """Same contract for a tile. A HALF-WRITTEN TILE IS WORSE THAN A
+    MISSING ONE: the resume check asks only whether the file exists,
+    so a truncated parquet left by a kill would be skipped as finished
+    and then fail - or silently short-change - every later read. With
+    the rename, the file appears complete or not at all, and `_md5`
+    then records what was actually stored.
+    """
+    tmp = f"{path}.tmp.{os.getpid()}"
+    try:
+        df.to_parquet(tmp, index=False)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _engine_version():
+    from . import __version__
+    return str(__version__)
+
+
+def _norm_list(v):
+    """Plain Python numbers in a plain list.
+
+    Two reasons, and the first is not cosmetic: json.dump REFUSES a
+    numpy scalar, so a k list that arrived as np.int64 - which is what
+    a numpy-built door hands over - would raise TypeError while
+    writing the manifest, after the tile was already computed. The
+    second is that the comparison has to be on what comes BACK from
+    JSON, where a tuple returns as a list and would differ from
+    itself forever.
+    """
+    if not v:
+        return []
+    out = []
+    for x in v:
+        f = float(x)
+        out.append(int(f) if f.is_integer() else f)
+    return out
+
+
+def _norm_str(v):
+    return None if v is None else str(v)
+
+
 def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
                          out_dir: str = "equipop_tiles",
                          tile_m: float = 50_000.0,
                          dtype: str = "float32",
                          resume: bool = True,
                          m_neighbors: int = 4096,
-                         chunk: int = 4096) -> dict:
+                         chunk: int = 4096,
+                         decay_eps: float = 1e-6,
+                         self_potential=None,
+                         overshoot_mode: str | None = None,
+                         self_rule: str | None = None,
+                         seed: int | None = None) -> dict:
     """Run the fast engine tile by tile, flushing each tile to
     parquet. Returns the manifest dict (also written progressively to
     out_dir/manifest.json). Results are EXACTLY those of an untiled
-    run - only the packaging differs."""
+    run - only the packaging differs.
+
+    BACKLOG 345, external review of 1.51. The engine options below -
+    self_potential, overshoot_mode, self_rule, seed, decay_eps - were
+    accepted by run_knn_counts and NOT by this wrapper, so a tiled
+    continental run silently took the defaults and there was no way to
+    ask it for the origin rule a spatial regression needs. Same shape
+    as BACKLOG 340 (r_values dropped on the tiled branch) and BACKLOG
+    341 (the effort engines never told which overshoot mode to use):
+    an option honoured on one path and unreachable on another.
+    """
     try:
         import pyarrow  # noqa: F401 - parquet engine for the tiles
     except ImportError:
@@ -76,17 +167,45 @@ def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
     print(f"[bigrun] {len(cd.E):,} cells -> {len(groups)} tiles of "
           f"{tile_m / 1000:g} km; out: {out_dir}/ ({dtype})")
 
-    params = {"k_values": k_values, "r_values": r_values,
-               "decay": (None if decay is None else
-                         {"model": decay.model,
-                          "half_life_m": decay.half_life_m,
-                          "gamma": decay.gamma}),
-               "tile_m": tile_m, "dtype": dtype,
-               "unit_size": cd.unit_size,
-               "n_cells": int(len(cd.E))}
+    # WHAT MAKES TWO RUNS THE SAME RUN (BACKLOG 344, review finding
+    # F3). The rule for this dict: a key belongs here if changing it
+    # changes a NUMBER, and must stay out if it changes only the
+    # speed - otherwise a user who raises `chunk` to go faster is told
+    # their finished three-day run is a different analysis. So
+    # m_neighbors and chunk are deliberately absent: both are
+    # documented as speed-only and regression-tested as such.
+    #
+    # Everything else that reaches the engine is here, normalised so
+    # the comparison is on values and not on object identity or dict
+    # order, and JSON-round-trippable because that is how it comes
+    # back from the manifest: int/float/str/None/list only, no tuples
+    # (a tuple returns as a list and would differ from itself).
+    params = {
+        "schema": 2,                 # bump when a column's MEANING moves
+        "equipop": _engine_version(),
+        "k_values": _norm_list(k_values),
+        "r_values": _norm_list(r_values),
+        "decay": None if decay is None else decay.fingerprint(),
+        "decay_eps": float(decay_eps),
+        "self_potential": (None if self_potential is None
+                           else float(self_potential)),
+        "overshoot_mode": _norm_str(overshoot_mode),
+        "self_rule": _norm_str(self_rule),
+        "seed": None if seed is None else int(seed),
+        "tile_m": float(tile_m),
+        "dtype": str(dtype),
+        "unit_size": float(cd.unit_size),
+        "n_cells": int(len(cd.E)),
+        # THE DATA ITSELF, not a count of it. See
+        # CellData.fingerprint(): identical geometry with a different
+        # population used to resume happily and return the earlier
+        # run's answers.
+        "cells_md5": cd.fingerprint(),
+    }
 
     if resume and os.path.exists(mpath):
-        man = json.load(open(mpath))
+        with open(mpath) as fh:
+            man = json.load(fh)
         # DOES THE FINISHED WORK ANSWER THE QUESTION BEING ASKED?
         # Resume skipped tiles on FILENAME AND EXISTENCE ALONE, never
         # comparing what they contain to what was requested. Running
@@ -105,13 +224,33 @@ def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
                 lines.append(f"  {k}: finished run has "
                              f"{was.get(k)!r}, you asked for "
                              f"{params.get(k)!r}")
+                # A HASH IS NOT A SENTENCE. The other keys name
+                # themselves; this one has to say what it means, or
+                # the user reads two hex strings and learns nothing
+                # (BACKLOG 344).
+                if k == "cells_md5":
+                    lines.append(
+                        "      -> the CELL DATA differs: same folder, "
+                        "different coordinates, populations or group "
+                        "totals. The geometry and the cell count can "
+                        "match and the people still be different "
+                        "numbers.")
+                elif k in ("schema", "equipop"):
+                    lines.append(
+                        "      -> a different EquiPop built those "
+                        "tiles. Finish a run with the version that "
+                        "started it, or recompute.")
             lines.append("Use an empty folder, or pass resume=False to "
                          "recompute. The tiles on disk are NOT the "
                          "analysis you requested.")
+            # Raised BEFORE the loop below, so nothing is computed and
+            # nothing on disk is touched - a refused resume leaves the
+            # earlier run intact and still resumable by its own caller.
             raise ValueError("\n".join(lines))
         print(f"[bigrun] resume: manifest found, "
               f"{len(man['tiles'])} tiles already done, "
-              "parameters match")
+              "parameters and cell data match "
+              f"(cells {params['cells_md5'][:8]})")
     else:
         man = {"created": time.strftime("%Y-%m-%d %H:%M:%S"),
                "params": params, "tiles": {}}
@@ -122,21 +261,38 @@ def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
         fpath = os.path.join(out_dir, name)
         if resume and name in man["tiles"] and os.path.exists(fpath):
             continue
-        res = run_knn_counts(cd, k_values, m_neighbors=m_neighbors,
-                             chunk=chunk, r_values=r_values,
-                             decay=decay, origins=grp["i"].to_numpy())
+        kw = dict(m_neighbors=m_neighbors, chunk=chunk,
+                  r_values=r_values, decay=decay, decay_eps=decay_eps,
+                  overshoot_mode=overshoot_mode, self_rule=self_rule,
+                  seed=seed, origins=grp["i"].to_numpy(),
+                  # One tile's banner is the whole run's banner
+                  # repeated once per tile; a continental run has
+                  # thousands of them.
+                  report=(n_done == 1))
+        if self_potential is not None:
+            kw["self_potential"] = self_potential
+        res = run_knn_counts(cd, k_values, **kw)
         num = res.select_dtypes(include=[np.floating]).columns
         res[num] = res[num].astype(dtype)
-        res.to_parquet(fpath, index=False)
+        # The TILE first, then the manifest entry that claims it - and
+        # each write replaced into place rather than truncated open.
+        # BACKLOG 344: `json.dump(man, open(mpath, "w"))` truncates the
+        # manifest before it writes, so a crash, a full disk or a
+        # kill in that window leaves a half-written file and the whole
+        # finished run unresumable - which is the one failure this
+        # module exists to survive. os.replace is atomic within a
+        # filesystem, so a reader sees the old manifest or the new one
+        # and never a fragment.
+        _atomic_write_parquet(res, fpath)
         man["tiles"][name] = {"rows": int(len(res)),
                               "md5": _md5(fpath)}
-        json.dump(man, open(mpath, "w"), indent=1)   # progressive
+        _atomic_write_json(man, mpath)               # progressive
         print(f"[bigrun] tile {n_done}/{len(groups)} ({gx},{gy}): "
               f"{len(res):,} origins flushed "
               f"[{time.time() - t0:,.0f} s elapsed]")
 
     man["finished"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    json.dump(man, open(mpath, "w"), indent=1)
+    _atomic_write_json(man, mpath)
     print(f"[bigrun] complete: {sum(t['rows'] for t in man['tiles'].values()):,} "
           f"rows in {len(man['tiles'])} tiles")
     return man

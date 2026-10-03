@@ -17,6 +17,8 @@ Missing handling (spec section 12):
     statistics (a separate valid-n is reported as Nv_<var>_<k>)
 """
 
+import hashlib
+
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
@@ -70,6 +72,46 @@ class CellData:
         got = self.binary_valid.get(v)
         return self.n.astype(float) if got is None else got
 
+    def fingerprint(self) -> str:
+        """A short digest of the DATA this table holds.
+
+        BACKLOG 344, external review of 1.51 (finding F3). A resumable
+        run has to answer one question before it skips any finished
+        work: is the data on disk the data being asked about? Counting
+        cells cannot answer it. Reproduced on two 9-cell tables with
+        identical geometry and different populations - 10 people per
+        cell, then 20 - where resuming the second against the first's
+        folder returned the FIRST run's numbers, reported success, and
+        left a manifest whose recorded parameters matched perfectly,
+        because `n_cells` and `unit_size` were all it recorded. A
+        three-day continental run is exactly where nobody will notice.
+
+        Everything the counting engine reads goes in: the coordinates,
+        the population, and each treatment's totals and observed
+        denominators - in a fixed order, as raw little-endian float64
+        bytes, so the digest does not depend on dict ordering or on
+        how the arrays were typed. VALUE ARRAYS ARE NOT INCLUDED: the
+        counts engine never reads them, and hashing a per-person list
+        at continental scale would cost more than the run it guards.
+        Any future engine that reads them owes this method a line.
+        """
+        h = hashlib.md5()
+        h.update(f"equipop-cells-1|{float(self.unit_size)!r}|"
+                 f"{len(self.n)}".encode())
+        for arr in (self.E, self.N, self.n):
+            h.update(np.ascontiguousarray(arr, dtype="<f8").tobytes())
+        for bag_name, bag in (("binary_sums", self.binary_sums),
+                              ("binary_valid", self.binary_valid)):
+            for v in sorted(bag):
+                h.update(f"|{bag_name}|{v}|".encode())
+                h.update(np.ascontiguousarray(bag[v],
+                                              dtype="<f8").tobytes())
+        if self.labels is not None:
+            h.update(b"|labels|")
+            h.update("\x1f".join("" if x is None else str(x)
+                                 for x in self.labels).encode())
+        return h.hexdigest()
+
 
 def build_cells(
     df: pd.DataFrame,
@@ -110,6 +152,49 @@ def build_cells(
     # --- coerce to numeric; blanks become NaN ---
     for c in [e_col, n_col] + binary_vars + value_vars:
         df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # --- the WEIGHT column, BACKLOG 343 ---
+    # A weight is a number of people, so it is coerced like every
+    # other number and judged before anything sums it. Two silent
+    # failures this closes: a weight column arriving as text summed to
+    # nonsense or to zero, and a blank or negative weight reaching
+    # `value_weights`, where np.bincount turns one NaN into a NaN
+    # statistic for every neighbourhood that touches the cell. Blank
+    # means NOBODY (John's rule since 1.22.2 - the row still gets its
+    # own results); negative means a sentinel nobody declared, and
+    # that is refused rather than quietly read as a population.
+    if weights is not None:
+        if weights not in df.columns:
+            raise ValueError(
+                f"[cells] weights='{weights}' is not a column - found "
+                f"{list(df.columns)}")
+        wv = pd.to_numeric(df[weights], errors="coerce")
+        neg = wv < 0
+        if bool(neg.any()):
+            # BACKLOG 351. Same two causes as the bridge's
+            # validate_weight, named in the same order, because this
+            # is the other door onto the same mistake - rasterfolder
+            # hands a raster's own column straight in, and a raster's
+            # NoData is frequently -9999.
+            raise ValueError(
+                f"[cells] '{weights}' goes down to {float(wv.min()):g} "
+                f"at {int(neg.sum())} row(s), and k counts PEOPLE, so "
+                f"a neighbourhood cannot be grown against a negative "
+                f"population.\n"
+                f"  NO DATA: blank it, or declare it as a missing code "
+                f"- those rows then hold nobody and still get their "
+                f"own results.\n"
+                f"  A CHANGE or net migration, legitimately negative: "
+                f"that is a MEASUREMENT, not a population. Pass it as "
+                f"a value_vars column and keep the headcount in "
+                f"weights=.")
+        blank = ~np.isfinite(wv)
+        if bool(blank.any()):
+            print(f"[cells] note: '{weights}' is missing at "
+                  f"{int(blank.sum())} of {len(df)} rows - those rows "
+                  f"hold nobody, are nobody's neighbour, and still get "
+                  f"their own results.")
+        df[weights] = wv.where(~blank, 0.0)
 
     # --- missing coordinates: drop with warning (spec 12) ---
     bad = df[e_col].isna() | df[n_col].isna()

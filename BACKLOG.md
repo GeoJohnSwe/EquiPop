@@ -54,26 +54,44 @@ nothing in the suite checks.*
    see 333. The matrix cannot catch it: nothing there can falsify a
    claim that something is unreachable.
 
-### Next — reachability and trust
-3. **333** — a `no_door` entry cannot fail, so the matrix goes stale
-   in the one direction it exists to watch. Cheap, and it is the map
-   every other decision on this list is read from.
-4. **293** — RunLog is dead code and it is item 2. Analysis runs have
-   no provenance record, which is why neither `overshoot` nor the new
-   `originrule` can be written to one. Needs its own release and a
-   decision about which door writes the sidecar.
-5. **118** — the statistics path still rounds weights and expands
-   rows into persons though the engine has carried fractional weights
-   since 1.29. (205, a Stata door for machine 2, was RULED OUT in
-   session 12: Stata does weighted statistics natively and better,
-   and what it cannot do is build the neighbourhood. Each tool does
-   its own part.)
-6. **119** — resume compares parameters but not input CONTENT. The
-   same cell count and the same settings are not proof of the same
-   data. Not ready for an unattended world-scale run.
-7. **128, 80, 87, 198–199, 288** — a real-host release gate: small
-   recorded end-to-end runs in live QGIS and Pro, matching
-   plugin/engine version checks, cancellation, a copyable diagnostic.
+### ~~Next — reachability and trust~~ COMPLETE across 1.50.0–1.51.1.
+*Struck in 1.51.1. All four of these were done and this list still
+asked for them - which is the THIRD time this index has gone stale,
+and the second time an external reader had to point at it. The 1.51.0
+review's section 4 said so in as many words: "the backlog head still
+describes RunLog as dead code". **An entry that is struck leaves this
+list** is the rule written six lines above, and it was not followed,
+because striking an item and updating the index are two actions and
+only the first feels like finishing. The detail below is where done
+work lives.*
+
+3. ~~**333**~~ — DONE v1.50.0. A `no_door` entry cannot fail; the
+   matrix now distinguishes `ruled_out` (no witness) from
+   `not_yet(absent=(file, symbol))`, which a built door falsifies.
+4. ~~**293**~~ — DONE v1.50.0. RunLog is not dead code: every run
+   records the settings that produced it, taken from the engine's own
+   arguments rather than from a list somebody maintains. 1.51.1 gave
+   the record an output identity too (348).
+5. ~~**118**~~ — DONE v1.51.1, see 343. The Stata statistics path
+   carries fractional weights as numbers. It had been open since 1.29
+   and the defect was still live in the released 1.51.0: six cells of
+   0.4 people each returned N = 0 and a mean of MISSING for every row.
+   (205, a Stata door for machine 2, stays RULED OUT from session 12:
+   Stata does weighted statistics natively and better, and what it
+   cannot do is build the neighbourhood.)
+6. ~~**119**~~ — DONE v1.51.1, see 344. Resume fingerprints the cell
+   data itself, plus a complete normalised config. Same geometry with
+   a different population is now refused instead of answered.
+
+### Next — a release gate on real hosts
+3. **128, 80, 87, 198–199, 288** — small recorded end-to-end runs in
+   live QGIS and Pro, matching plugin/engine version checks,
+   cancellation, a copyable diagnostic. **Now the oldest unaddressed
+   item on this list**, and the only one of the original seven left.
+4. **349** — the continental door does not expose the five engine
+   options the tiled wrapper now takes (345). A uniform gap on both
+   branches, so nothing is inconsistent; exposing it is door options,
+   help text and four-door parity, which is a feature.
 
 ### Then — analytical capability already half-built
 8. **102 + 42** — QGIS variable bandwidth and its explanation.
@@ -106,6 +124,27 @@ nothing in the suite checks.*
 - ~~95~~ | DONE v1.29.5 | SELF-POTENTIAL, shipped. equipop/selfpot.py holds the rule once so the two engines cannot drift; both apply it; both doors offer `selfpot` and BOTH ARE CHECKED ON VALUES, not names. Default 1.0, John's ruling. Guards broken on purpose six ways before being trusted - including the Pro one, whose FIRST version passed against a deliberate break because it drove _run_tool and skipped the dialog hop where `or 1.0` eats a falsy 0. Rewritten through execute(). s=0 reproduces pre-1.29.5 numbers exactly, asserted not assumed.
 
 - ~~96~~ | DONE v1.29.5 | Fixed by 95 and made loud. The substitution now prints a WARNING with the count and percentage, and the reported bandwidth range is the range BEFORE substitution - it used to be after, which hid it completely. Field check: 6,000 rows with a dense block, s=0 -> 'WARNING: 3,000 of 6,000 rows (50.0%) ... given the MEDIAN bandwidth (632 m)'; s=1 -> no warning, and the dense block becomes its own bin at a 10 m half-life instead of hiding in a 632 m bin.
+
+- 349 | open v1.51.1 | THE CONTINENTAL DOOR DOES NOT OFFER THE FIVE
+  ENGINE OPTIONS THE TILED WRAPPER NOW TAKES.
+  345 threaded self_potential, overshoot_mode, self_rule, seed and
+  decay_eps through run_knn_counts_tiled, because fingerprinting an
+  option that cannot be varied would have been theatre. `run_folder`
+  still accepts none of them, ON EITHER BRANCH - so nothing is
+  inconsistent between tiled and untiled, which is why this is not a
+  correctness fix and did not go into 1.51.1.
+  WHAT IT COSTS TO CLOSE: four door dialogs, shared help text through
+  doors/help.py (not a second copy - see 105 and 338), door-parity
+  entries, and the box-changes-the-answer tests that 99 and 341
+  established as the standard for a new option. The untiled branch
+  also forwards no `decay`, so a continental run cannot ask for
+  distance decay at all; that belongs in the same piece of work.
+  WHY IT MATTERS: `originrule(exclude)` is the w_ii = 0 convention
+  spatial regression requires, and a continental run is exactly the
+  scale at which somebody wants it. Session 12 measured what the rule
+  does on coarse units - 13.6% on African American isolation at
+  k=100 - so this is not a preference, it is a published number that
+  a continental user cannot currently reproduce.
 
 - 101 | open v1.29.5 | THE TEST SUITE WRITES FILES INTO THE WORKING
   DIRECTORY. Found by Claude while staging 1.29.5: a clean clone had
@@ -3574,6 +3613,389 @@ nothing in the suite checks.*
   the suite would pass. That is the guard written after inventory.py
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
+
+- ~~351~~ | DONE v1.51.2, JOHN'S QUESTION ON THE 343 RELEASE | A
+  REFUSAL THAT WAS RIGHT AND ADVICE THAT WAS WRONG.
+  John, reading 343: *"what if a negative population represented the n
+  the local has lost - I realize that would clash with some stats but
+  not all. Should there be a warning rather than refusal? - you
+  decide."*
+  **THE REFUSAL STAYS, and his ruling after the reasoning: "negative
+  population is refused and for a good reason."** The reason is a step
+  EARLIER than statistics, which is the part worth writing down,
+  because his instinct was that this is a statistics problem. k counts
+  PEOPLE and a neighbourhood is grown outward until it holds k of
+  them, so with a negative weight the running total is NOT MONOTONE IN
+  RADIUS: it can rise, fall and cross k several times, or never. "The
+  radius at which k was reached" stops having one answer, so Dist_k is
+  not wrong but UNDEFINED - and every self-calibrating bandwidth reads
+  Dist_k. `proportional`, the default since 1.30, divides by the
+  crossing cell's population to take a share of it, so a negative
+  denominator inverts the share and lands N on the wrong side of k.
+  R_k = T_k/N_k flips sign with its denominator. Only THEN come the
+  statistics: a weighted mean with mixed-sign weights can land outside
+  the range of the data, Gini has no definition for them, and a
+  weighted median found by cumulative weight has none when the
+  cumulative sum is not monotone. There is no warn-and-proceed that
+  yields a number either of us would defend.
+  **AND THE ROUTE HE WANTS ALREADY WORKS.** A change or net-migration
+  variable is a MEASUREMENT, not a population: it goes in values(),
+  weighted by the real headcount in pop(). Verified before answering,
+  not asserted - three places 100 m apart, ten people each, change
+  [-50, +20, -5], k=20: Mean_chg_20 = [-15, -3.75, 7.5], and -15 is
+  exactly (-50*10 + 20*10)/20, with a weighted SD and median alongside.
+  **SO THE DEFECT WAS THE MESSAGE.** It gave ONE cause - an undeclared
+  sentinel - and one remedy, missing(). For a genuine change variable
+  both are wrong, and the user is left with a refusal and nowhere to
+  go. 1.44.3's rule: if the code knows the right answer, a refusal
+  that only names the problem is a wasted trip. All three negative
+  guards - validate_weight, validate_treatment's count rule, and
+  build_cells' weights column - now name BOTH causes in the same
+  order, say why a negative population breaks the search rather than
+  only that it is impossible, and point at values().
+  TWO EXISTING TESTS MATCHED A PHRASE OF THOSE MESSAGES and so failed
+  when the wording improved while the guards were untouched - shape 7
+  in HANDOVER_15's list, added in the same release that then tripped
+  over it. Rewritten to assert the behaviour and to check that the
+  refusal names the offending value; the wording is pinned by 351's
+  own test, where it belongs.
+  ALSO HERE, found while checking the figure for 349: **the
+  origin-rule measurement existed in THREE copies and one was the
+  retracted one.** selfrule.py's header explicitly supersedes an
+  earlier 13.4% - a bench run with the neighbour search capped at 48
+  cells, which never reached k for remote blocks - and
+  `selfrule.CHOICES`, NINETEEN LINES BELOW THAT CORRECTION, still said
+  13.4%. Nothing renders it: the doors read doors/help.py, which has
+  always said 13.6%, and the shipped equipop.sthlp was checked and
+  says 13.6%, so no user ever saw the wrong number. A third copy that
+  disagrees with the other two is still 105's and 338's defect, and it
+  had already propagated into BACKLOG 349 and HANDOVER_15 before
+  anybody compared them - both corrected. A test now pins the copies
+  TO EACH OTHER rather than to a literal, so the next correction has
+  to move them together or fail.
+
+- ~~350~~ | DONE v1.51.1, FOUND WHILE BUILDING THE 1.51.1 BUNDLE | THE
+  RELEASE ZIP SHIPPED A SECOND COPY OF THE WHOLE PACKAGE, AND 1.51.0
+  WENT OUT THAT WAY.
+  `python -m build` leaves `build/lib/equipop/` and `dist/`, and
+  make_release_zip walks the whole tree. **The 1.51.0 working-tree zip
+  - the archive John unzips over C:\Data\EQP\ForGit\ and COMMITS -
+  contains all 40 modules twice**, the second set frozen at whatever
+  version last built. A grep of the tree would find every rule in two
+  places: this project's signature defect, arriving through the
+  directory layout rather than through the code, and the exact thing
+  272, 337 and 346 are each an instance of.
+  NOTHING NOTICED, and the reason is worth keeping. 156's check asks
+  whether a member can be EXTRACTED - drive letters, backslashes,
+  traversal - and every one of these names is perfectly valid. The
+  zip opens cleanly. A guard that checks the shape of a name cannot
+  see a file that should not be there at all.
+  FOUND BY READING THE SIZE. The 1.51.1 bundle's tree zip came out at
+  14.8 MB against 1.51.0's 12.0, which is the only reason I looked -
+  `dist/` had been swept in because I ran `python -m build` before the
+  zip this time. Checking 1.51.0 then showed `build/lib/` had been in
+  it all along, by the opposite ordering. **Both orderings are wrong
+  and the difference is which artefact you get**, which is why this
+  went in the TOOL and not in the release checklist - the tool's own
+  docstring makes that argument for 156 and it applies unchanged.
+  `build` and `dist` are in SKIP_DIRS, and a test walks a fake tree
+  through the builder's member list so it does not depend on whether a
+  build has happened in the checkout.
+  AND `.gitignore` HELD `dist/` BUT NOT `build/`, which is why the
+  committable copy was the one that shipped. It now ignores `build/`,
+  `*.egg-info/` and `arcgis/*.pyt.xml` - the last because those
+  sidecars are generated by make_help_xml.py and
+  test_packaging.py already fails if they are left in the tree, so the
+  tree was relying on a test to enforce what an ignore line states.
+  STILL JOHN'S, because I cannot see the git history from here: if
+  `build/` was ever actually committed, `git rm -r --cached build`
+  removes it without touching the working copy. Check with
+  `git ls-files build | head`. Same shape as 101's committed stray
+  CSVs, which are still in the public repository.
+
+- ~~348~~ | DONE v1.51.1, EXTERNAL REVIEW OF 1.51.0 (F9) | A
+  PROVENANCE RECORD THAT COULD NOT NAME ITS OWN OUTPUT.
+  THREE FAULTS IN ONE RECORD, all reproduced.
+  **One sidecar for every layer in a GeoPackage.** A QGIS destination
+  may carry a layer - `out.gpkg|layername=k20` - and write_provenance
+  split on "|" and threw the layer away, so k20 and k800 both wrote
+  `out.meta.json` and the second run OVERWROTE the first run's
+  provenance. Nothing in the survivor said which layer it described.
+  Several result layers in one container is the ordinary way to use a
+  GeoPackage. Each layer now gets its own sidecar - `out.k20.meta.json`
+  - and `run.output.destination` records the full string.
+  **The record documented field names the file did not have.** write()
+  renames a result column that clashes with one of the input's own
+  (316) and DISCARDED the mapping; write_provenance then described the
+  engine's result keys. With a source already carrying an N_20 the
+  layer held N_20 and N_20b while the record defined only `N_20` - THE
+  SOURCE'S COLUMN - so a reader looking up the run's own result found
+  somebody else's field described. Two functions written minutes
+  apart, neither knowing about the other.
+  AND FIXING THAT BROKE THE DEFINITION: `N_20b` matches none of the
+  patterns in _COLUMN_DOCS, which describe EquiPop's naming
+  convention, so the correctly-named field was documented as "(no
+  definition registered)". A definition belongs to the QUANTITY, so
+  _describe_columns now looks it up under the original name and
+  reports it under the new one, with `[renamed from N_20]`.
+  **The input was not identified at all.** The call read
+  `sourceName()`, which is the label in the layers panel - "my
+  points" - not a path, so add_input() found nothing to measure and
+  recorded md5=null. On the stub, which had NO sourceName, it recorded
+  the empty string: Path("") resolves to the current directory, _md5
+  raised IsADirectoryError, and `except Exception: pass` swallowed it.
+  EVERY QGIS PROVENANCE RECORD IN THE SUITE CARRIED `"inputs": []`
+  AND NO TEST ASKED. A simulator that omits a method cannot fail the
+  code that needs it, so tests/qgis_stub.py now has both.
+  `RunLog.set_output()` holds the schema, and render_txt() prints an
+  OUTPUT block - the .txt is what a QGIS user reads, so a record that
+  names its output only in the JSON names it only for programs.
+
+- ~~347~~ | DONE v1.51.1, EXTERNAL REVIEW OF 1.51.0 (F7) | 291 FIXED
+  ONE EXCEPTION TYPE, AND IT WAS THE ONE THAT ALMOST NEVER HAPPENS.
+  291 wrapped the fetch loop so "a failure must not erase what
+  succeeded" - and caught `FetchError`, the error this module raises
+  about its OWN checks. Every way a download actually dies went
+  straight past it: a reset connection or DNS failure (urllib raises
+  URLError), a timeout, a full disk or read-only folder (OSError), a
+  malformed response (HTTPException), or the user pressing Ctrl-C
+  forty files into fifty.
+  REPRODUCED with URLError on entry 2 of 3: file 1 downloaded,
+  verified, and left on disk WITH NO MANIFEST AT ALL - the exact
+  situation 291 exists to prevent, by the likeliest route to it. And
+  the consequence made it unrecoverable: with no record of where
+  pop_0.tif came from, the RETRY REFUSED TO CONTINUE rather than
+  attribute bytes it had not observed. Correctly. So the user could
+  neither resume nor repeat without moving files aside by hand.
+  TWO CHANGES. The manifest is committed AFTER EVERY VERIFIED ASSET
+  rather than once at the end, so what is on disk and what is recorded
+  never diverge by more than the file being fetched right now - a
+  kill -9 has no window to land in. And the wrapper catches whatever
+  arrives, records it BY CLASS AND MESSAGE ("timed out" and "no space
+  left on device" are different problems with different answers; str()
+  of some transport errors is empty), writes, and RE-RAISES THE
+  ORIGINAL - a transport failure must not come back dressed as a
+  FetchError.
+  Break-checked in both halves separately, which showed the per-asset
+  commit is the load-bearing one and the broad except adds the
+  attribution.
+
+- ~~346~~ | DONE v1.51.1, EXTERNAL REVIEW OF 1.51.0 (F4) | COHORTS ARE
+  PAIRS, AND THE CHECK VALIDATED TWO SETS.
+  279 asked whether a measure is entitled to its name. The check it
+  produced gathered the band numbers of whatever columns were
+  selected, compared that SET against the bands needed, and then -
+  separately - asked whether each sex appeared anywhere on the side.
+  BOTH SETS CAN BE COMPLETE WHILE NO PAIR IS.
+  Reproduced on the ageing index with f and m across every band except
+  `m_65`: f supplied 65 to the pooled age set, m appeared in the other
+  bands, no gap was reported, and "People 65 and over per person under
+  15" was published with MEN AGED 65-69 ABSENT FROM THE NUMERATOR. The
+  error is not loud - it biases the index by about one cohort of one
+  sex, in whichever direction the hole lies, and nothing in the output
+  says so.
+  MY FIRST PROBE WAS REFUSED and I nearly recorded the finding as
+  unconfirmed: giving f only the young bands and m only the old ones
+  IS caught, by the per-sex half. The hole is narrower than that and
+  needed a second attempt to find.
+  Now validated as the GRID - every (sex, band) the side covers,
+  which is what the sum ranges over - and the message names the
+  missing PAIR, because "fetch m_65" is an instruction and "the
+  numerator is incomplete" is not. allow_incomplete still records the
+  restriction, so a deliberate one stays legitimate; all four indices
+  on a full f/m grid, single-sex folders and 't'-only folders are
+  unchanged.
+  ALSO HERE, the review's housekeeping item: `effective_range` WAS
+  DEFINED TWICE, forty lines apart, so one was dead and nothing said
+  which. They were not identical in source - the dead one guarded the
+  open-ended top band with an extra branch - and I first reported that
+  "the executable logic differs", which was about the SOURCE and not
+  the behaviour. CHECKED RATHER THAN ASSUMED: over all 25,650
+  (lo, hi, plus) combinations the band table admits, ZERO differing
+  results, because _band_end() already returns None for the last band
+  start. The simpler one kept; an AST test now fails if a second
+  definition reappears. 272's lesson, which expected_bands() right
+  above it already carries: a second copy that happens to agree is
+  still a second copy waiting to stop agreeing.
+
+- ~~345~~ | DONE v1.51.1, FOUND WHILE FIXING 344 | FIVE ENGINE OPTIONS
+  WERE UNREACHABLE THROUGH THE TILED WRAPPER.
+  `run_knn_counts` accepts self_potential, overshoot_mode, self_rule,
+  seed and decay_eps. `run_knn_counts_tiled` accepted NONE of them, so
+  a tiled continental run silently took the defaults and the origin
+  rule a spatial regression needs could not be asked for at all.
+  FOUND BY TRYING TO FINGERPRINT THEM for 344: recording an option
+  that cannot be varied would have been theatre, and asking which
+  options the identity should cover is what exposed that five of them
+  had no way in.
+  Same shape as 340 (r_values honoured on the untiled branch and
+  dropped on the tiled one) and 341 (the bridge not telling the effort
+  engines which overshoot mode to use) - an option honoured on one
+  path and ignored on another, three times on the same branch. Now
+  threaded, and tests/test_rule_cross_product.py enumerates engine x
+  rule x mode so the next one of these fails a test instead of
+  shipping.
+  STILL OPEN, deliberately: the continental DOOR (`run_folder`) does
+  not expose them on EITHER branch, so this is a uniform gap rather
+  than a divergence. Exposing it means new door options, help text and
+  four-door parity - a feature, not a correctness fix, and it is not
+  going into a correctness release. See 349.
+
+- ~~344~~ | DONE v1.51.1, EXTERNAL REVIEW OF 1.51.0 (F3) | A RESUMABLE
+  RUN THAT COULD NOT SEE ITS OWN DATA.
+  276 taught resume to compare PARAMETERS, which stopped "k=100 then
+  k=200 into the same folder". What it recorded about the data was
+  `n_cells` and `unit_size`. REPRODUCED on two 9-cell tables with
+  identical geometry and different populations - 10 people per cell,
+  then 20 - where resuming the second against the first's folder
+  returned the FIRST run's numbers, reported success, and left a
+  manifest whose recorded parameters matched perfectly. The answers
+  genuinely differed: Dist_20 of 81.2 m against 56.4 m. A three-day
+  continental run is exactly where nobody will notice.
+  `CellData.fingerprint()` now digests everything the counting engine
+  reads - coordinates, population, each treatment's totals and
+  observed denominators - in a fixed order as little-endian float64,
+  so the digest does not depend on dtype or dict ordering. Value
+  arrays are deliberately OUT: the counts engine never reads them and
+  hashing a per-person list at continental scale would cost more than
+  the run it guards, which is written down in the method so a future
+  engine knows it owes this a line.
+  AND `calibration` WAS MISSING from the decay record, which is the
+  setting that turns a half-life into a beta - two runs at the same
+  half_life_m under the two calibrations have different betas,
+  different answers, and resume called them the same run.
+  `Decay.fingerprint()` now holds that knowledge with the class.
+  THE RULE FOR THE IDENTITY, written down: a key belongs there if
+  changing it changes a NUMBER, and must stay out if it changes only
+  the speed. m_neighbors and chunk are deliberately absent and a test
+  fails if they are added - a user who raises chunk to go faster must
+  not be told their finished run is a different analysis. The other
+  half of a good guard: no correct configuration may trip it.
+  ALSO: the manifest was written with `json.dump(man, open(mpath,
+  "w"))`, which TRUNCATES BEFORE IT WRITES, so a crash in that window
+  left a fragment and the whole finished run unresumable - the one
+  failure this module exists to survive. Tiles and manifest are now
+  written beside and renamed into place (os.replace is atomic within
+  a filesystem), and a failed write leaves no litter for the next run
+  to reason about. A hash mismatch also EXPLAINS ITSELF, because two
+  hex strings tell a user nothing.
+  This closes 119.
+
+- ~~343~~ | DONE v1.51.1, EXTERNAL REVIEW OF 1.51.0 (F2) | THE STATA
+  STATISTICS PATH ROUNDED PEOPLE AWAY, AND 118 HAD BEEN OPEN FOR IT
+  SINCE 1.29.
+  v1.16 implemented "weight by population" by repeating each row
+  np.round(weight) times - exact for whole numbers, and WorldPop
+  counts are not whole numbers. Three faults, all reproduced:
+  **Wrong answers.** Two cells, values [0, 10], weights [0.4, 0.6]:
+  the dispatcher reported a mean of 10 where the hand calculation and
+  the direct weighted-cells route both give 6.
+  **Deleted populations.** Six cells each weighing 0.4: every weight
+  rounds to zero, so the ENTIRE POPULATION VANISHED and every row got
+  N = 0 and a mean of MISSING. This is 118's WorldPop deletion -
+  measured on John's rasters at 50.5% of people lost, 39% in Rwanda
+  and 69% in Denmark, so the loss grew with latitude and any
+  Europe-against-Africa comparison was biased by construction -
+  reaching the Stata door EIGHT VERSIONS after the cell engine learned
+  to carry fractional weights. The engine had `value_weights` since
+  1.41; the door never used it.
+  **A memory ceiling set by the population, not the data.** Two rows
+  holding municipal totals materialised 5,000,000 rows, 3.25 s for an
+  answer that is two multiplications. Now 0.01 s and nothing
+  materialised.
+  The weight goes to `build_cells(weights=)` as a NUMBER. Median, Gini
+  and the percentiles come out weighted because run_knn_stats reads
+  `value_weights` rather than counting entries - checked against
+  hand-weighted arithmetic, and fractional against x10-whole weights
+  agree exactly, which is the test that distinguishes a weight from a
+  count. `Nv_` counts the WEIGHT of rows whose value is observed, which
+  is the denominator 168 ruled on. John's rule since 1.22.2 still
+  holds: a zero-count row is nobody's neighbour and still gets its own
+  results.
+  AND A NEGATIVE POPULATION WAS ACCEPTED BY BOTH MACHINES, which
+  disagreed about it: weights [-5, 10] gave N = 5 in machine 1 (it
+  summed them) and N = 10 in machine 2 (it zeroed the negative). A
+  population of minus five is not a quantity, it is a sentinel nobody
+  declared - the defect 168 closed for TREATMENTS and left open for
+  the weight itself. `validate_weight()` now refuses it in both, with
+  168's `missing()` guidance; a BLANK weight stays a blank, because
+  Stata's missing arrives that way and John's rule says a row with no
+  count still gets results.
+  ALSO FIXED, and correct only by accident until now:
+  `_add_empty_origin_cells` extended E, N, n, value_arrays and
+  binary_sums and left `value_weights` and `binary_valid` SHORT. Both
+  were always empty before this change, so the omission was invisible;
+  a zero-weight origin plus fractional weights is the combination that
+  finds it. Every parallel array now grows.
+  This closes 118.
+
+- ~~342~~ | DONE v1.51.0, EXTERNAL REVIEW OF 1.51.0 (F5) | A
+  SELF-CALIBRATING DECAY DREW TWO SEEDS AND REPORTED ONE.
+  Under `sampled` the seed decides which cells of a crossing ring are
+  admitted. A self-calibrating decay runs TWO passes - one to measure
+  each row's own Dist_k, one to use it - and each pass drew its own
+  seed, so the bandwidth was calibrated from one neighbourhood and
+  then applied to a different one, and NEITHER RUN WAS REPRODUCIBLE
+  FROM ITS OWN RECORD because the seed it reported was never the seed
+  it used. Reproduced on three cells 100 m apart, 10 people each,
+  k=15, whole: the whole-ring Dist_15 is 100 m at every origin and the
+  calibration pass reported 50-71 m - PROPORTIONAL's answer - giving
+  ND_15 [13.75, 15, 13.75] where the same bandwidth supplied as a
+  field gives [15, 20, 15].
+  The seed is now resolved ONCE in dispatch(), before anything can
+  draw its own, and reaches both passes and the provenance record as
+  one value. The calibration pass also gets `overshoot_mode`, which it
+  was never given.
+  AND THE FIX SHIPPED A REGRESSION THAT THE SUITE CAUGHT. Resolving
+  the seed means the engine below sees one, so it printed "sampled
+  order from seed N" - the line that means YOU chose - and
+  "[overshoot] no seed given; drew N. Enter that number to repeat this
+  exact run." disappeared from every door at once. My block had
+  written its own sentence instead of using `seed_message()`: a SECOND
+  VOICE on repeatability, in different words, which is 105's and 328's
+  fault exactly. test_6b - written after a deliberate break, for
+  precisely this - failed. seed_message() stays the one formatter and
+  the block appends a clause.
+
+- ~~341~~ | DONE v1.51.0, EXTERNAL REVIEW OF 1.51.0 (F1) | THE BRIDGE
+  DOCUMENTED THREE OPTIONS TO THE EFFORT ENGINES, RECORDED THEM IN THE
+  PROVENANCE, AND DID NOT PASS THEM.
+  `self_rule`, `overshoot_mode` and `seed` were accepted by dispatch,
+  taken by run_knn_friction and run_knn_slope, and dropped in between.
+  So a friction or slope run under `originrule(exclude)` included the
+  origin, and one under `overshoot(whole)` computed proportional.
+  WORSE THAN INCOMPLETE - ACTIVELY MISLEADING, because 293 had just
+  taught every run to record its settings from the engine's own
+  arguments: the record faithfully wrote down `overshoot_mode: whole`
+  while the engine computed something else. A provenance system makes
+  a pass-through gap into a false statement.
+  The suite had thorough coverage of each option and thorough coverage
+  of each engine, and NOTHING THAT CROSSED THE TWO.
+  tests/test_rule_cross_product.py now enumerates the pairs, and
+  catches this defect as shipped: reverting the fix fails four tests
+  that name exactly the two engines and the two options.
+
+- ~~340~~ | DONE v1.51.0, FOUND BY THE 1.51.0 CODE REVIEW | r_values
+  WAS HONOURED ON ONE BRANCH AND DROPPED ON THE OTHER.
+  The continental door accepted `r_values`, forwarded it on the
+  untiled branch, and silently dropped it on the tiled one - so a
+  tiled continental run asked for radii produced none, and a
+  RADIUS-ONLY tiled request reached the core with no neighbourhood at
+  all. Nothing compared the two branches' outputs, which is how a
+  parameter came to be honoured on one path and ignored on another.
+  See 341 and 345: the same defect twice more on the same branch.
+
+- ~~339~~ | DONE v1.51.0, EXTERNAL REVIEW OF 1.51.0 (F6), MY OWN
+  REGRESSION | THE TAU PRODUCER MOVED AND THE CONSUMER DID NOT.
+  337 replaced four separate float-to-label formatters with
+  equipop/labels.py. In friction.py I changed the producer to
+  `tau_suffix` and MISSED THE CONSUMER 110 lines below, which still
+  built its own name - so `tau=[2.5]` produced a column the caller
+  then looked for under a different spelling. My 337 test covered
+  RADII ONLY, so the suite was green on a half-landed rename, which is
+  the exact shape of the rename I had warned about in the same
+  release's comments. Fixed, and the test now covers tau: [3], [2.5],
+  [1000000] and [2.5, 3] all round-trip.
 
 - ~~334~~ | DONE v1.51.0, FOUND BY MARINA'S PULL REQUEST | `g` IS NOT
   THE ANCILLARY KEYWORD, AND 330 SHIPPED FOR A DAY BELIEVING IT WAS.

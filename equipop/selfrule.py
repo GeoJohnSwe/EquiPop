@@ -138,9 +138,17 @@ CHOICES = {
         "SDM, SLX) and what EquiPop's own weights builder has always "
         "used. Choose it for composition and regression work. On "
         "coarse units it changes results substantially: on US census "
-        "blocks averaging 113 people, isolation at k=100 fell 13.4% "
-        "for African Americans and 0.9% for Whites."),
+        "blocks averaging 113 people, isolation at k=100 fell 13.6% "
+        "for African Americans and under 1% for Whites."),
 }
+# BACKLOG 351. THIS SAID 13.4% UNTIL 1.51.2, which is the number the
+# header of this very file RETRACTS nineteen lines above - a capped
+# bench run that never reached k for remote blocks, superseded by the
+# field measurement. Nothing renders this text (the doors read
+# doors/help.py, which has always said 13.6%), so no user ever saw it;
+# a third copy of an explanation, disagreeing with the other two, is
+# still the defect 105 and 338 are about. The test below pins the
+# three together so a figure cannot move in one place again.
 
 
 def resolve(rule):

@@ -37,7 +37,25 @@ BAD_NAME = re.compile(
     """, re.VERBOSE)
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules",
-             "equipop.egg-info", ".mypy_cache", ".ruff_cache"}
+             "equipop.egg-info", ".mypy_cache", ".ruff_cache",
+             # BACKLOG 350, v1.51.1. `python -m build` leaves these,
+             # and the release zip swept them in - so the archive John
+             # unzips over his working tree and COMMITS carried a
+             # second, frozen copy of the whole package.
+             # 1.51.0 SHIPPED THAT: `build/lib/equipop/` held all 40
+             # modules, stale at whatever version last built, and
+             # nothing noticed because the file names are all valid
+             # and the zip extracts perfectly. A grep of the tree
+             # would then find every rule twice, which is this
+             # project's signature defect arriving through the
+             # directory layout rather than through the code.
+             # `dist/` is the same mistake 3 MB larger: the wheel and
+             # the source archive are SIBLINGS of this zip in the
+             # release bundle, so a copy inside it is pure
+             # duplication.
+             # In the tool, not in a checklist, for the reason the
+             # docstring above already gives.
+             "build", "dist"}
 SKIP_SUFFIX = (".pyc", ".pyo")
 
 

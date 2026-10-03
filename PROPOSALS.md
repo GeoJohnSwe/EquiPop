@@ -1,7 +1,42 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.51.0, 2 October 2026.**
-*Reviewed at 1.51.0: nothing in the positioning changes, but the
+**Last updated: 1.51.2, 3 October 2026.**
+*Reviewed at 1.51.2: nothing in the positioning changes. The
+release aligns every door's version number for teaching reasons
+and improves a refusal message; neither is a consortium-facing
+fact. The 1.51.1 note below stands unchanged.
+Reviewed at 1.51.1: ONE THING HERE WAS OVERSTATED AND IS NOW TRUE.
+The 1.50.0 note below says provenance "is a reviewer's question and it
+now has an answer" - and for the Stata and Pro doors it was. For QGIS
+the record could not name which layer it described: every result layer
+in one GeoPackage shared a single sidecar and each run overwrote the
+last, and where a field had been renamed the record documented the
+engine's name rather than the file's. A data-management plan that
+promises per-run provenance should not have been written against that,
+and can be now.
+MORE USEFUL FOR THE EXPOSOME CASE: the WorldPop deletion is closed on
+the Stata path (BACKLOG 343). The partner-facing claim this file makes
+- population-weighted exposure per group, per neighbourhood, at
+several scales, which eBoD needs and rarely has - ran through the one
+route that rounded fractional counts to whole people, losing a
+MEASURED 39% in Rwanda and 69% in Denmark. An Africa-against-Europe
+comparison, which is exactly what a global exposome consortium is, was
+biased by construction and by LATITUDE. That is now a sentence worth
+having rather than a hazard: the figure demonstrates both that the
+project measures its own defects and that this particular one is
+fixed, and a reviewer who asks "how do you handle gridded fractional
+counts" has a specific answer.
+AND THE CONTRIBUTABILITY CLAIM GOT STRONGER AGAIN. The 1.51.0 note
+below says the first outside pull request landed and every finding was
+real. A fuller external code review followed within the day, nine
+findings, all nine confirmed and fixed in 1.51.1 - two of them
+mistakes made in 1.51.0 itself. For a consortium section claiming an
+open, reviewable codebase, "two independent external reviews in two
+days, twelve findings, all acted on" is demonstrated rather than
+asserted. BACKLOG 349 is the one piece of continental capability
+deliberately left open, and it is the one an exposome partner would
+want: the origin rule is unreachable from the continental door.
+Reviewed at 1.51.0: nothing in the positioning changes, but the
 project took its first outside pull request and every finding in it
 was real - worth knowing for any consortium section that claims an
 open, contributable codebase, because it is now demonstrated rather

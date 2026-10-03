@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.51.0}{...}
+{* *! version 1.51.2}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.51.0)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.51.2)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -131,7 +131,7 @@ plain python.org Python for Stata.
 {p_end}
 
 {phang}
-{opt pop(varname)} How many each point stands for - people, jobs, dwellings, services, anything countable. Leave empty when every point counts as one. k counts these, so this field decides how far the k-search must travel - and in Value Statistics every statistic is weighted by it, so a point standing for 40 counts 40 times a point standing for one.
+{opt pop(varname)} How many each point stands for - people, jobs, dwellings, services, anything countable. Leave empty when every point counts as one. k counts these, so this field decides how far the k-search must travel - and in Value Statistics every statistic is weighted by it, so a point standing for 40 counts 40 times a point standing for one. It must be ZERO OR MORE: a neighbourhood grows outward until it holds k of these, so a total that can FALL with distance has no single radius at which k was reached, and the run is refused rather than guessed at. Fractions are fine - WorldPop counts are fractional and are carried as given. A quantity that is legitimately negative - population CHANGE, net migration, a balance - is a MEASUREMENT and not a population: put it in Value Statistics' value field and keep the headcount here, and you get its population-weighted mean, median and spread over each neighbourhood.
 {p_end}
 
 {phang}

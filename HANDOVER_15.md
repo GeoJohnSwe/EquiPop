@@ -1,7 +1,7 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.51.0**:
-1,342 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.51.2**:
+1,439 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself, a test that
 asks whether anybody can reach any of it, the published
@@ -10,14 +10,197 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.50.0 rather than superseded: same session. Read
-section 0 first - four of the last five releases were field findings,
-none of them from the backlog, and three were about the project
-telling a user something untrue. 1.50.0 is the exception: three items
-chosen FROM the backlog, and the first thing they found was that the
-backlog's own head was pointing at finished work.*
+*Amended through 1.51.2 rather than superseded: same session. Read
+section 0d first, then 0c, then 0b. **The session ended by being read from
+outside, twice in two days** - a pull request with four findings and a
+full code review with nine, thirteen in all, every one real. Four of
+the thirteen were mistakes made in this session's own releases. Before
+that, four of five releases were field findings, none from the
+backlog, and three were about the project telling a user something
+untrue. 1.50.0 is the exception: three items chosen FROM the backlog,
+and the first thing they found was that the backlog's own head was
+pointing at finished work - which the 1.51.0 review then found AGAIN,
+still pointing at it.*
 
 ---
+
+## 0d. 1.51.2 - ONE NUMBER EVERYWHERE, AND A GOOD QUESTION ANSWERED
+
+A small release with two things in it worth carrying forward.
+
+**JOHN ASKED WHETHER A NEGATIVE POPULATION COULD BE A WARNING**, on
+the grounds that it might be the n a place has LOST - net migration,
+depopulation - and that this "would clash with some stats but not
+all". He delegated the call. The answer is no, and **the reason is a
+step earlier than statistics, which is the part to remember**: k
+counts people and a neighbourhood grows outward until it holds k of
+them, so a weight that can be negative makes the running total
+non-monotone in radius. It can cross k several times or never, so
+"the radius at which k was reached" has no single answer and Dist_k
+is UNDEFINED rather than odd - and every self-calibrating bandwidth
+reads Dist_k. `proportional`, the default, divides by the crossing
+cell's population to take a share, so a negative denominator inverts
+the share. The statistics (mixed-sign weighted means landing outside
+the data's range, Gini having no definition, a cumulative-weight
+median having none) come last, not first.
+**But the REFUSAL was not the defect - the MESSAGE was.** It named one
+cause, an undeclared sentinel, and one remedy, missing(). For his
+actual case both are wrong, and he was left refused with nowhere to
+go. The route he needed already worked and had never been written
+where somebody hitting the refusal would see it: a signed quantity is
+a MEASUREMENT, so it goes in values() with the real headcount in
+pop(). **I verified that before answering rather than asserting it** -
+three places, ten people each, change [-50, +20, -5], k=20 gives
+Mean_chg_20 = [-15, -3.75, 7.5] and -15 is exactly the hand
+calculation. All three negative guards now name both causes and the
+route.
+THE GENERAL LESSON: **when a user asks for a guard to be relaxed,
+check whether what they want is already possible by another route
+before arguing about the guard.** It often is, and then the guard is
+right and its message is the thing that failed them.
+
+**THE REST OF THE RELEASE IS A VERSION ALIGNMENT, at John's request,
+for teaching.** The engine, the four .ado files, the QGIS plugin and
+the Pro toolbox install by different means and drift; he wanted a
+batch where every door reports the same number, because "run `equipop
+doctor`, both halves say 1.51.2" is a better first lesson than an
+explanation of why they differ. Worth knowing for a future session:
+I first argued against a new version, correctly on the facts - 1.51.1
+already stamped the ado at 1.51.1, and the real gap was that SSC held
+1.49.3 - and his reason was still better than mine. A teachable
+version story is a deliverable.
+**THE FLOOR IS NOT A VERSION AND MUST NOT BE MADE ONE.**
+`eqp_min_engine` stays 1.48.0 through both releases. It is the oldest
+engine the commands' own CALLS need, maintained by hand, and
+bump_version.py is forbidden to touch it. Raising it because a release
+number moved is exactly BACKLOG 332's mistake. In the doctor's report
+two numbers must match and a third must merely be satisfied, which is
+the distinction to explain rather than to paper over.
+
+**AND THE RELEASE TRIPPED OVER ITS OWN NEW LIST.** Section 4 below
+gained shape 7 - "asserting a phrase of a message" - in 1.51.1. Two
+tests written that same day matched "cannot be negative", so improving
+the message in 1.51.2 failed them while the guards they watch were
+untouched. Rewritten to assert the behaviour and that the refusal
+names the offending value; the wording is pinned by 351's own test,
+where it belongs. **A list of known failure shapes is only useful if
+you read it before writing the next assertion**, and I did not.
+
+## 0c. 1.51.1 - NINE FINDINGS, AND THE SHAPE THEY SHARE
+
+A full code review of 1.51.0, arriving the same day as Marina's pull
+request. **Nine findings. All nine reproduced before any code moved;
+none dismissed; two of them were mine from 1.51.0.** Read this before
+touching the Stata statistics path, bigrun, or anything that passes an
+option to an engine.
+
+**THE SHAPE, because it is the transferable part.** Three of the nine
+were THE SAME DEFECT: an option accepted at the door, documented, and
+not passed to the engine.
+
+- **F1** - `self_rule`, `overshoot_mode` and `seed` reached
+  run_knn_friction and run_knn_slope through a dispatch call that
+  omitted all three. So `originrule(exclude)` included the origin.
+- **340** (Marina's, same day) - `r_values` forwarded on the untiled
+  continental branch, dropped on the tiled one.
+- **345** (found while fixing F3) - FIVE options accepted by
+  run_knn_counts and by nothing in run_knn_counts_tiled.
+
+**F1 was worse than incomplete - it was a false statement**, because
+1.50.0 had just taught every run to record its settings from the
+engine's own arguments. The record faithfully wrote down
+`overshoot_mode: whole` while the engine computed proportional. **A
+provenance system turns a pass-through gap into a lie.** If you add a
+provenance field, you have made every pass-through a correctness
+surface.
+
+**WHY THE SUITE COULD NOT SEE ANY OF THEM.** It had thorough coverage
+of each option and thorough coverage of each engine, and nothing that
+crossed the two. `tests/test_rule_cross_product.py` now enumerates
+engine x origin rule x overshoot mode and asserts the two things that
+matter: the option CHANGES A NUMBER, and saying nothing gives what the
+documented default gives. Reverting F1 fails four tests that name
+exactly the two engines and the two options. **Write the pair test
+when you add an option, not the acceptance test** - every one of these
+three passed a test proving no exception was raised.
+
+**THE TWO THAT MOVE NUMBERS FOR SOMEBODY.**
+
+- **F2, BACKLOG 343.** The Stata statistics path implemented "weight
+  by population" by repeating each row `np.round(weight)` times. Six
+  cells each weighing 0.4 returned N = 0 and a mean of MISSING for
+  every row - **the whole population rounded away**. This is BACKLOG
+  118's WorldPop deletion, measured on John's rasters at 50.5% of
+  people lost, 39% Rwanda and 69% Denmark, **still live eight versions
+  after the cell engine learned to carry fractional weights**. 118 sat
+  on the backlog naming it. The engine had `value_weights` since 1.41
+  and the door never called it. If you find an open backlog item that
+  names a defect in a path you are touching, CHECK WHETHER IT IS STILL
+  TRUE - this one had been quoted in three release notes as
+  outstanding and nobody re-measured it.
+- **F3, BACKLOG 344.** Resume recorded `n_cells` and `unit_size` and
+  nothing about the data, so a folder of finished tiles answered a
+  different population's question: nine cells either way, success
+  reported, Dist_20 of 81.2 m returned where the truth was 56.4 m.
+  `CellData.fingerprint()` now digests what the engine reads.
+  **The rule for a run identity is written down in bigrun.py**: a key
+  belongs if changing it changes a NUMBER, and stays out if it changes
+  only the speed. A test fails if `chunk` or `m_neighbors` is added,
+  because a user who goes faster must not be told their three-day run
+  is a different analysis. That is the other half of every guard in
+  this project: no correct configuration may trip it.
+
+**AND ONE FIX SHIPPED A REGRESSION THAT THE SUITE CAUGHT.** F5
+resolves the sampling seed once in `dispatch`, which is right. But it
+meant the engines below now SEE a seed, so they printed "sampled order
+from seed N" - the line that means *you* chose - and
+`"[overshoot] no seed given; drew N. Enter that number to repeat this
+exact run."` vanished from every door at once. My block had written
+its own sentence instead of calling `seed_message()`: **a second voice
+on repeatability, in different words.** That is BACKLOG 105's and
+328's fault exactly, and `test_6b` - written after a deliberate break,
+for precisely this - failed. One formatter. Always.
+
+**WHAT ELSE TO KNOW, briefly:**
+
+- **F4 / 346.** The cohort completeness check compared age bands
+  pooled and sexes separately, so the grid had holes: every band for f
+  and m except `m_65` passed, and the ageing index shipped without men
+  65-69. **My first probe was refused and I nearly filed it as
+  unconfirmed** - the obvious construction (f young, m old) IS caught.
+  The hole is narrower. When a finding does not reproduce on the first
+  try, construct the case the reviewer described rather than the one
+  you thought of.
+- **F7 / 347.** BACKLOG 291 wrapped the fetch loop so a failure would
+  not erase success - and caught `FetchError` only, the error this
+  module raises about its own checks. URLError, OSError, Ctrl-C all
+  went past, leaving verified files with no provenance, after which
+  the retry correctly refused to continue. **Check what your except
+  clause actually catches against how the thing actually fails.**
+- **F9 / 348.** QGIS provenance could not name its own output: one
+  sidecar for every layer in a GeoPackage, each run overwriting the
+  last, and the record documented the engine's column names rather
+  than the file's. **And every QGIS provenance record in the suite
+  carried `"inputs": []` with no test asking**, because `qgis_stub._Source`
+  had no `sourceName()` at all and `except Exception: pass` swallowed
+  the result. **Another qgis_stub.py fidelity failure** - I will not
+  put a number on it, because the running count in MANUAL.md reached
+  "fifth" at 1.44.8 and then one release added five at once, so any
+  figure I quote here would be invented. A simulator that OMITS a
+  method cannot fail the code that needs it, which is a different
+  failure mode from the earlier ones: those were methods the stub had
+  and got wrong. That file remains the most dangerous in the
+  repository.
+- **The duplicate `effective_range`.** Defined twice, forty lines
+  apart. I first reported that "the executable logic differs" - that
+  was about the SOURCE. Checked properly: over all 25,650 inputs the
+  band table admits, **zero** differing results.
+- **The backlog head was stale for the third time**, and the review
+  said so: it still described RunLog as dead code (done in 1.50.0) and
+  still asked for 118 and 119. "An entry that is struck leaves this
+  list" is written six lines above the list that kept them. Striking
+  an item and updating the index are two actions and only the first
+  feels like finishing.
 
 ## 0b. 1.51.0 - THE FIRST PULL REQUEST FROM OUTSIDE
 
@@ -466,6 +649,45 @@ was caught by breaking the fix; none by the suite.
 | 1.49.2 | the 327 test again, differently | it called `updateMessages` and stopped, so it certified the VALIDATOR and could not see that the execution path had no such capability at all |
 | 1.49.3 | my own SMCL output check | once the five markup paragraphs moved off the escaper, nothing reached it with a brace, so breaking the escaper changed no shipped byte |
 | 1.49.3 | the reachability matrix itself (333) | a `no_door` entry names no file and no symbol, so nothing verifies it |
+| 1.51.0 | my own `g`-line .pkg test | it walked the `g` lines and checked the file existed, which it did - it validated the bug |
+| 1.51.0 | my 337 label test | covered RADII only, so the half-landed tau rename (339) stayed green |
+| 1.51.1 | `test_a_matching_resume_still_works` | asserted one PHRASE of the resume banner, so it failed for a wording change while a broken resume looked identical |
+| 1.51.1 | four of my OWN new review tests | see below - the break-check caught all four before they shipped |
+
+**FOUR MORE IN 1.51.1, ALL MINE, ALL CAUGHT BY THE BREAK-CHECK RATHER
+THAN BY REVIEW.** Written for the nine findings, each with a
+"BROKEN WITH:" line in its docstring, and then actually broken that
+way - 31 breaks applied mechanically
+(`tools/`-less, the script lived in the session scratchpad). Four of
+the 39 tests did not fail under any break:
+
+- **The large-weights "ceiling" test** asserted the mean and N, both
+  of which row expansion gets RIGHT, just slowly. It passed against
+  the behaviour its own docstring named. Now it reads the row count
+  build_cells prints, which is what distinguishes the two
+  implementations.
+- **The seed test** passed with `seed=` deliberately removed, because
+  the fixture gave every cell ten identical people and no treatment -
+  so whichever cell the sampled ring admitted, N came out the same.
+  **A sampled choice is unobservable without something to tell the
+  cells apart.** And once that was fixed it still passed for the slope
+  engine, because the hill DEM gave every neighbour a distinct cost
+  and left no tie to break.
+- **A zero-weight-origin test** named a break that does not break it:
+  the member/origin split was needed by the ROW-EXPANSION code (which
+  deleted a row repeated zero times) and is unnecessary once weights
+  are numbers. What carries the rule is `_add_empty_origin_cells`.
+- **An N_local test parametrised over four engines SKIPPED ALL FOUR**,
+  including the only engine that reports the column, because the skip
+  named the wrong one. **Four green skips read as coverage and were
+  nothing** - the same defect as an unfalsifiable assertion in
+  different clothes.
+
+Every one is recorded in its own docstring, including what it first
+got wrong, because "I checked" is not evidence a later session can
+use. The property finally asserted was not "each break fails a test"
+but **"every test function fails under at least one break"** - which
+is the question, and it is the one that found all four.
 
 **THE SHAPES TO WATCH FOR**, since they recur:
 1. **Asserting a string exists in a file.** Passes while the code that
@@ -480,6 +702,19 @@ was caught by breaking the fix; none by the suite.
    nothing could reach the escaper any more, so no change to it could
    be observed. If you cannot describe the input that would make the
    test fail, it is not a test.
+5. **A fixture that cannot show the difference.** 1.51.1: ten
+   identical people per cell, so which cell a sampled ring admits
+   changes no output; and a hill DEM that breaks every tie, so
+   sampling has nothing to choose. The assertion was right, the
+   arithmetic was right, and the test was empty. **Ask what in the
+   fixture would differ between the two implementations.**
+6. **A skip that reads as a pass.** A parametrised test that skips
+   every case looks green and is absent. If a skip is right, say why
+   in one line; if every case skips, the test is testing nothing.
+7. **Asserting a phrase of a message.** 1.51.1: a resume test checked
+   the words "parameters match", so it broke when the banner gained
+   "and cell data" and would NOT have broken if resume had stopped
+   working. Assert the behaviour; let the wording move.
 
 ---
 
@@ -510,6 +745,25 @@ EVERY HANDOVER FROM 16 ONWARD should carry two lines on where each
 stands. Both files say what only John can decide; neither is started.
 
 ## 5. WHAT IS OPEN
+
+**349 — the continental door offers none of the engine options.**
+Newest item, from 1.51.1. `run_knn_counts_tiled` now takes
+self_potential, overshoot_mode, self_rule, seed and decay_eps (345),
+and `run_folder` passes none of them on EITHER branch, nor `decay` at
+all. So nothing is inconsistent between tiled and untiled - it is a
+uniform gap, which is why it is not a correctness fix and stayed out
+of a correctness release. **It matters because `originrule(exclude)`
+is the w(ii)=0 convention spatial regression requires, and a
+continental run is exactly the scale at which somebody wants it**; the
+13.6% figure session 12 measured on US blocks is a published number a
+continental user cannot currently reproduce. Cost: four dialogs,
+shared help text through doors/help.py (NOT a second copy - see 105
+and 338), door-parity entries, and box-changes-the-answer tests to the
+standard 99 and 341 set.
+
+**118 and 119 ARE CLOSED** (343, 344), which matters for reading this
+file: earlier sections and the backlog head both described them as
+open, and the 1.51.0 review found the head still asking for them.
 
 **299 — Pro's join box still takes the centroid only.** 298 gave
 QGIS three fidelities and left Pro with one, so the two GIS doors now

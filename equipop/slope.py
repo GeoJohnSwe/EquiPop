@@ -242,6 +242,7 @@ def run_knn_slope(
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
     overshoot_mode: str | None = None,
     seed: int | None = None,
+    self_rule: str | None = None,        # BACKLOG 341
     **model_params,
 ) -> pd.DataFrame:
     """
@@ -266,4 +267,4 @@ def run_knn_slope(
                      roundtrip=roundtrip, **model_params)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
                             tau_values, self_potential,
-                            overshoot_mode, seed)
+                            overshoot_mode, seed, self_rule)

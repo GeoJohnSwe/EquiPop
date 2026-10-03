@@ -430,10 +430,21 @@ class _Source:
     """What parameterAsSource hands back: features, fields, CRS."""
 
     def __init__(self, table: pd.DataFrame, crs="EPSG:3006",
-                 geometry=True):
+                 geometry=True, source="", name=""):
         self._t = table.reset_index(drop=True)
         self._crs = QgsCoordinateReferenceSystem(crs)
         self._geometry = geometry
+        # BACKLOG 348. THE REAL CLASS HAS BOTH AND THE STUB HAD
+        # NEITHER, so base.py's provenance call reached
+        # getattr(source, "sourceName", lambda: "")(), recorded the
+        # empty string, and every QGIS provenance record in the suite
+        # carried "inputs": [] with no test noticing. A simulator that
+        # omits a method cannot fail the code that depends on it.
+        # source() is the provider URI - a path, possibly with
+        # |layername= - and sourceName() is the label in the layers
+        # panel.
+        self._source = source
+        self._name = name
         self._fields = QgsFields()
         for c in self._t.columns:
             if c in ("x", "y") and geometry:
@@ -442,6 +453,12 @@ class _Source:
                     if pd.api.types.is_numeric_dtype(self._t[c])
                     else QVariant.String)
             self._fields.append(QgsField(c, kind))
+
+    def source(self):
+        return self._source
+
+    def sourceName(self):
+        return self._name
 
     def fields(self):
         return self._fields

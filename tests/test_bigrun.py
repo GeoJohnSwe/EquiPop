@@ -137,13 +137,26 @@ def test_any_parameter_change_is_caught(tmp_path, change):
 
 
 def test_a_matching_resume_still_works(tmp_path, capsys):
-    """The check must not break the feature it guards."""
+    """The check must not break the feature it guards.
+
+    BACKLOG 344: this used to assert one phrase of the resume banner,
+    and the phrase moved when the cell fingerprint was added - so it
+    failed for a wording change while a broken resume would have
+    looked the same. It now asserts the BEHAVIOUR: the second call
+    recognises the folder, recomputes NO tile, and still returns every
+    one of them.
+    """
     cd = _small_cells()
-    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
-                         tile_m=2000.0)
-    run_knn_counts_tiled(cd, k_values=[100], out_dir=str(tmp_path),
-                         tile_m=2000.0)
-    assert "parameters match" in capsys.readouterr().out
+    first = run_knn_counts_tiled(cd, k_values=[100],
+                                 out_dir=str(tmp_path), tile_m=2000.0)
+    capsys.readouterr()                       # drop the first run's log
+    again = run_knn_counts_tiled(cd, k_values=[100],
+                                 out_dir=str(tmp_path), tile_m=2000.0)
+    said = capsys.readouterr().out
+    assert "resume: manifest found" in said
+    assert "origins flushed" not in said, \
+        "a matching resume recomputed a tile it already had"
+    assert set(again["tiles"]) == set(first["tiles"])
 
 
 def test_a_fresh_folder_is_unaffected(tmp_path):

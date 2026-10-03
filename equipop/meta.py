@@ -101,13 +101,30 @@ _COLUMN_DOCS = [
 ]
 
 
-def _describe_columns(cols):
+def _describe_columns(cols, under=None):
+    """Definitions for `cols`, matched on the engine's own names.
+
+    BACKLOG 348. `under` maps a column's name IN THE FILE to the
+    result key the engine produced it under, for the case where a door
+    had to rename it - QGIS renames a result that clashes with one of
+    the input's own fields (BACKLOG 316). The definition belongs to
+    the QUANTITY, not to the string: these patterns describe EquiPop's
+    naming convention, so `N_20b` matches nothing and was documented
+    as "(no definition registered)" the moment the record started
+    naming fields as the file holds them. Looked up under the original
+    and reported under the new one, the record both names what is
+    there and says what it means.
+    """
+    under = under or {}
     out = {}
     for c in cols:
+        key = under.get(c, c)
         for pat, doc in _COLUMN_DOCS:
-            m = re.match(pat, c)
+            m = re.match(pat, key)
             if m:
                 out[c] = doc.format(*m.groups())
+                if key != c:
+                    out[c] += f" [renamed from {key}]"
                 break
         else:
             out[c] = "(no definition registered)"
@@ -156,9 +173,45 @@ class RunLog:
         self.doc["data"].update(kw)
         self._flush()
 
+    def set_output(self, destination=None, layer=None,
+                   renamed_fields=None, carried_fields=None):
+        """WHICH artefact this record describes.
+
+        BACKLOG 348, external review of 1.51 (finding F9). The record
+        said what the run DID and never what it produced, which is
+        half an identity. Two consequences, both reproduced in QGIS:
+        a GeoPackage holding `out.gpkg|layername=k20` and
+        `out.gpkg|layername=k800` got ONE sidecar, out.meta.json,
+        because the layer name was split off and thrown away - the
+        second run silently overwrote the first run's provenance, and
+        nothing in the surviving file said which layer it was about.
+        And the FIELD NAMES documented were the engine's result keys,
+        while the layer on disk may hold renamed ones: with a source
+        that already carried an N_20, the output held N_20 and N_20b
+        and the record defined only `N_20` - the SOURCE's column -
+        so a reader looking up the run's own result found the
+        definition of somebody else's field.
+
+        `renamed_fields` is {result key: name in the file} for the
+        ones that moved; `carried_fields` is the input's own fields,
+        passed through untouched and named here so the record accounts
+        for every column a reader will see.
+        """
+        out = self.doc["run"].setdefault("output", {})
+        if destination is not None:
+            out["destination"] = str(destination)
+        if layer is not None:
+            out["layer"] = str(layer)
+        if renamed_fields:
+            out["renamed_fields"] = dict(renamed_fields)
+        if carried_fields is not None:
+            out["carried_fields"] = list(carried_fields)
+        self._flush()
+        return out
+
     # -------------------------------------------------------- finishing
     def finalize(self, df, output_path: str,
-                 write_txt: bool = True) -> str:
+                 write_txt: bool = True, under=None) -> str:
         """`df` is a DataFrame or a plain {column: array} mapping.
 
         BACKLOG 293: the mapping form is what the GIS doors actually
@@ -178,7 +231,14 @@ class RunLog:
         self.doc["run"]["duration_s"] = round(time.time() - self._t0, 2)
         self.doc["run"]["status"] = "completed"
         self.doc["data"].setdefault("output_rows", rows)
-        self.doc["columns"] = _describe_columns(cols)
+        # BACKLOG 348. `under` lets a renamed column keep its meaning;
+        # it defaults to the mapping this record already holds, so a
+        # door that called set_output() needs no second argument.
+        if under is None:
+            renamed = ((self.doc["run"].get("output") or {})
+                       .get("renamed_fields") or {})
+            under = {new: was for was, new in renamed.items()}
+        self.doc["columns"] = _describe_columns(cols, under)
         self._path = out.with_suffix(out.suffix + ".meta.json") \
             if out.suffix != ".json" else out
         self._path = out.parent / (out.stem + ".meta.json")
@@ -204,7 +264,23 @@ class RunLog:
         lines += [f"  {k} = {v}" for k, v in d["settings"].items()]
         lines += ["", "INPUTS:"]
         lines += [f"  {i['path']}  md5={i['md5']}  rows={i['rows']}"
-                  for i in d["inputs"]]
+                  for i in d["inputs"]] or ["  (none recorded)"]
+        # BACKLOG 348. WHICH ARTEFACT THIS DESCRIBES - the .txt is what
+        # a QGIS user actually reads, so a record that names its own
+        # output only in the JSON names it only for programs.
+        out = d["run"].get("output") or {}
+        if out:
+            lines += ["", "OUTPUT:"]
+            if out.get("destination"):
+                lines.append(f"  destination = {out['destination']}")
+            if out.get("layer"):
+                lines.append(f"  layer = {out['layer']}")
+            for was, now in (out.get("renamed_fields") or {}).items():
+                lines.append(f"  field renamed: {was} -> {now} "
+                             "(the input already had that name)")
+            if out.get("carried_fields"):
+                lines.append("  input fields carried through: "
+                             + ", ".join(out["carried_fields"]))
         lines += ["", "DATA:"]
         lines += [f"  {k} = {v}" for k, v in d["data"].items()]
         lines += ["", "EVENTS:"]

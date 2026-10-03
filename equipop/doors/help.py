@@ -66,12 +66,30 @@ HELP = {
               "(X/East/Easting/POINT_X...); no renaming is needed.",
     "yfield": "The northing column - only for tables or attribute "
               "mode.",
+    # BACKLOG 351, JOHN'S QUESTION. The last two sentences are here
+    # because the runtime refusal alone came too late: he asked
+    # whether a negative population could be allowed, meaning net
+    # migration, and the answer belongs where somebody chooses the
+    # field rather than only where they are stopped. Shared text, so
+    # all four doors say it - a second copy is how wording drifts
+    # (105, 338).
     "pop": "How many each point stands for - people, jobs, dwellings, "
            "services, anything countable. Leave empty when every point "
            "counts as one. k counts these, so this field decides how "
            "far the k-search must travel - and in Value Statistics "
            "every statistic is weighted by it, so a point standing for "
-           "40 counts 40 times a point standing for one.",
+           "40 counts 40 times a point standing for one. It must be "
+           "ZERO OR MORE: a neighbourhood grows outward until it holds "
+           "k of these, so a total that can FALL with distance has no "
+           "single radius at which k was reached, and the run is "
+           "refused rather than guessed at. Fractions are fine - "
+           "WorldPop counts are fractional and are carried as given. "
+           "A quantity that is legitimately negative - population "
+           "CHANGE, net migration, a balance - is a MEASUREMENT and "
+           "not a population: put it in Value Statistics' value field "
+           "and keep the headcount here, and you get its "
+           "population-weighted mean, median and spread over each "
+           "neighbourhood.",
     "treat": "Group counts: persons of the group at this point (use "
              "0/1 when points are individuals). Produces T_<group>_k "
              "(count) and R_<group>_k (share). These columns are "

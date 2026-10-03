@@ -224,6 +224,32 @@ class Decay:
         """Weight for a neighbour at dist_m metres from the origin."""
         return MODELS[self.model](dist_m, self.beta)
 
+    def fingerprint(self) -> dict:
+        """Everything that decides a weight, normalised for comparison.
+
+        BACKLOG 344, external review of 1.51 (F3). A resumable run
+        recorded model, half_life_m and gamma - and NOT `calibration`,
+        which is the setting that turns a half-life into a beta. Two
+        runs at the same half-life under the two calibrations have
+        different betas and different answers, and resume called them
+        the same run. `beta` goes in because it is what the weight
+        function actually uses, whichever route produced it, and
+        because a caller may give it directly; `_pw_scale` goes in
+        because for power+gamma it, not beta, carries the half-life.
+        """
+        fp = {"model": self.model,
+              "beta": None if self.beta is None else float(self.beta),
+              "half_life_m": (None if self.half_life_m is None
+                              else float(self.half_life_m)),
+              "gamma": None if self.gamma is None else float(self.gamma),
+              "calibration": self.calibration,
+              "calibration_requested": getattr(
+                  self, "calibration_requested", self.calibration)}
+        scale = getattr(self, "_pw_scale", None)
+        if scale is not None:
+            fp["pw_scale"] = float(scale)
+        return fp
+
     def describe(self) -> str:
         hl = (f", {self.calibration} {self.half_life_m:g} m"
               if self.half_life_m else "")

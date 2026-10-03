@@ -608,6 +608,98 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
     # file with a clashing name and refused to continue. The loop is
     # wrapped so whatever completed is recorded, the job is marked
     # incomplete, and the original error is raised afterwards.
+    #
+    # BACKLOG 347, external review of 1.51 (finding F7). 291 FIXED
+    # ONE EXCEPTION TYPE. The wrapper caught FetchError - the error
+    # this module raises about its own checks - and nothing else, so
+    # every way a download ACTUALLY dies went straight past it: a
+    # reset connection or a DNS failure (urllib raises URLError), a
+    # timeout, a full disk or a read-only folder (OSError), a
+    # malformed response (http.client.HTTPException), or the user
+    # pressing Ctrl-C forty files into fifty. In every one of those
+    # the files were on disk and the manifest was never written, which
+    # is the exact situation 291 exists to prevent and the likeliest
+    # way to reach it. Reproduced by making the transport raise
+    # URLError on the second of three entries: file 1 downloaded,
+    # verified, and left with no provenance at all, and the retry then
+    # refused to continue because it could not say where that file
+    # came from.
+    #
+    # Two changes. The manifest is now committed AFTER EVERY VERIFIED
+    # ASSET rather than once at the end, so what is on disk and what is
+    # recorded never diverge by more than the file being fetched right
+    # now - a kill -9 has no window to land in. And the wrapper catches
+    # whatever arrives, records it by class and message, writes, and
+    # RE-RAISES THE ORIGINAL: a transport failure must not come back
+    # dressed as a FetchError, because the two call for different
+    # things from the user.
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def commit(failure=None, complete=False):
+        """Write the manifest for whatever is verified so far.
+
+        Rebuilt from `prior` + `files` every time, with ONE fetch-log
+        entry for this run that is revised in place - appending per
+        file would turn a 50-file download into 50 fetches of one.
+        """
+        from .. import __version__
+        man = {
+            "fetched_by": f"EquiPop {__version__}",
+            "fetched_utc": stamp,
+            "provider": plan["provider"],
+            "folder": os.path.abspath(folder),
+            "files": files,
+        }
+        # WHATEVER THE ADAPTER CHOSE TO RECORD. This used to name
+        # project, category, iso3 and year explicitly - WorldPop's
+        # vocabulary, in the one function that should be common to
+        # every provider. A provider with tiles and releases instead
+        # of countries and years raised KeyError here, which is
+        # exactly what the fake second provider was written to find
+        # (BACKLOG 256).
+        for k, v in plan.items():
+            if k not in ("entries", "provider", "planned_utc"):
+                man.setdefault(k, v)
+        # THE MANIFEST ACCUMULATES; IT DOES NOT REPLACE. It was
+        # rewritten with only the current plan, so fetching a second
+        # country left the first files on disk and REMOVED THEIR
+        # PROVENANCE. A tampered file then verified as "1 unchanged,
+        # 0 changed" - the verifier said all was well about a folder
+        # it had forgotten half of (BACKLOG 275).
+        carried = [f for f in prior.get("files", [])
+                   if f["name"] not in {g["name"] for g in files}]
+        man["files"] = carried + files
+        man["fetches"] = list(prior.get("fetches", []))
+        man["fetches"].append({
+            "utc": stamp, "provider": plan["provider"],
+            # BACKLOG 291: a job that stopped part-way says so, and
+            # names how far it got. "complete" is a claim, so it is
+            # only made when every planned entry was accounted for -
+            # which is why `complete` is passed in by the one call
+            # site that has finished the loop, and is never inferred
+            # from the absence of an error.
+            "status": "complete" if complete else "incomplete",
+            "planned": len(plan["entries"]),
+            # BACKLOG 347: the CLASS as well as the text. "timed out"
+            # and "no space left on device" are different problems
+            # with different answers, and str() of some transport
+            # errors is empty.
+            "error": (None if failure is None else
+                      f"{failure.__class__.__name__}: {failure}".strip(": ")),
+            "files": [f["name"] for f in files],
+            **{k: v for k, v in plan.items()
+               if k not in ("entries", "provider", "planned_utc")}})
+
+        # ATOMIC. An interrupted write must not destroy the provenance
+        # of everything already fetched.
+        tmp = os.path.join(folder, MANIFEST + ".part")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(man, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, os.path.join(folder, MANIFEST))
+        return man
+
     failure = None
     try:
         for e in plan["entries"]:
@@ -654,6 +746,7 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
                                   "url": e["url"],
                                   "bytes": os.path.getsize(dest),
                                   "sha256": have, "reused": True})
+                    commit()                   # BACKLOG 347
                     continue
                 raise FetchError(
                     f"{e['name']} already exists in {folder}. Refusing to "
@@ -744,63 +837,38 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
                           "publisher_md5": want or None,
                           "publisher_check": checked,
                           "reused": False})
+            # THE ENTRY IS COMMITTED HERE, one line after the checks
+            # that earned it and before the next download starts. Every
+            # refusal above removes the file and raises, so nothing
+            # unverified can reach this line (BACKLOG 347).
+            commit()
             say(f"[fetch] {e['name']}  {n / 1e6:.1f} MB")
 
-    except FetchError as exc:
+    except BaseException as exc:
+        # EVERYTHING, and then re-raised unchanged. See BACKLOG 347
+        # above: the point is that no failure - network, disk, or the
+        # user's own Ctrl-C - can leave verified files on disk with no
+        # record of where they came from. Catching broadly is safe
+        # only because this handler does exactly two things, writes
+        # and re-raises, and claims nothing about what went wrong.
         failure = exc
-    from .. import __version__
-    man = {
-        "fetched_by": f"EquiPop {__version__}",
-        "fetched_utc": datetime.now(timezone.utc)
-        .strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "provider": plan["provider"],
-        "folder": os.path.abspath(folder),
-        "files": files,
-    }
-    # WHATEVER THE ADAPTER CHOSE TO RECORD. This used to name
-    # project, category, iso3 and year explicitly - WorldPop's
-    # vocabulary, in the one function that should be common to every
-    # provider. A provider with tiles and releases instead of
-    # countries and years raised KeyError here, which is exactly what
-    # the fake second provider was written to find (BACKLOG 256).
-    for k, v in plan.items():
-        if k not in ("entries", "provider", "planned_utc"):
-            man.setdefault(k, v)
-    # THE MANIFEST ACCUMULATES; IT DOES NOT REPLACE. It was rewritten
-    # with only the current plan, so fetching a second country left
-    # the first files on disk and REMOVED THEIR PROVENANCE. A tampered
-    # file then verified as "1 unchanged, 0 changed" - the verifier
-    # said all was well about a folder it had forgotten half of
-    # (BACKLOG 275).
-    carried = [f for f in prior.get("files", [])
-               if f["name"] not in {g["name"] for g in files}]
-    man["files"] = carried + files
-    man["fetches"] = list(prior.get("fetches", []))
-    man["fetches"].append({
-        "utc": man["fetched_utc"], "provider": plan["provider"],
-        # BACKLOG 291: a job that stopped part-way says so, and names
-        # how far it got. "complete" is a claim, so it is only made
-        # when every planned entry was accounted for.
-        "status": "incomplete" if failure is not None else "complete",
-        "planned": len(plan["entries"]),
-        "error": (str(failure) if failure is not None else None),
-        "files": [f["name"] for f in files],
-        **{k: v for k, v in plan.items()
-           if k not in ("entries", "provider", "planned_utc")}})
-
-    # ATOMIC. An interrupted write must not destroy the provenance of
-    # everything already fetched.
-    tmp = os.path.join(folder, MANIFEST + ".part")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(man, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, os.path.join(folder, MANIFEST))
-
-    if failure is not None:
+        try:
+            commit(failure)
+        except BaseException as writing:        # pragma: no cover
+            # If the manifest itself cannot be written - the full disk
+            # that caused the original failure, most likely - say so
+            # and still raise the ORIGINAL. A secondary error must not
+            # replace the one the user needs to read.
+            say(f"[fetch] could not write {MANIFEST} "
+                f"({writing.__class__.__name__}: {writing}) - the "
+                f"files listed above are on disk WITHOUT provenance.")
         say(f"[fetch] STOPPED after {fetched} downloaded and {kept} "
             f"already present, of {len(plan['entries'])} planned. "
             f"What arrived IS recorded in {MANIFEST}, so a retry "
             "will recognise it instead of refusing it.")
-        raise failure
+        raise
+
+    man = commit(complete=True)
 
     say(f"[fetch] {fetched} downloaded, {kept} already present, "
         f"{len(files)} recorded in {MANIFEST}.")

@@ -249,28 +249,6 @@ def parse_spec(text):
     return {"sexes": sexes, "ages": (lo, hi)}
 
 
-def effective_range(spec_side):
-    """What a requested age range ACTUALLY covers, in whole bands.
-
-    Asking for 0-17 selects bands 0, 1, 5 and 10 - ages 0 to 14 - and
-    ages 15, 16 and 17 are silently dropped. Whole bands are the right
-    rule when the data are banded, but the REQUESTED and EFFECTIVE
-    definitions must be distinguished (BACKLOG 279, review finding 3).
-    """
-    bands = expected_bands(spec_side)
-    if not bands:
-        return None
-    lo, hi = spec_side.get("ages", (None, None))
-    if spec_side.get("plus"):
-        hi = None
-    top = (None if bands[-1] == BAND_STARTS[-1] and hi is None
-           else _band_end(bands[-1]))
-    return {"asked": (lo, hi), "covers": (bands[0], top),
-            "bands": bands,
-            "exact": (bands[0] == lo
-                      and (hi is None or top == hi))}
-
-
 def expected_bands(spec_side):
     """The band starts a side SHOULD cover.
 
@@ -296,7 +274,20 @@ def effective_range(spec_side):
 
     Asking for 0-17 selects ages 0 to 14; 15, 16 and 17 are dropped.
     Whole bands are the right rule for banded data, but the REQUESTED
-    and EFFECTIVE definitions must be distinguished (review finding 3).
+    and EFFECTIVE definitions must be distinguished (BACKLOG 279,
+    review finding 3).
+
+    BACKLOG 346. THIS FUNCTION WAS DEFINED TWICE, forty lines apart,
+    and Python kept whichever came last - so one of the two was dead
+    and nothing said which. They were not identical in source: the
+    dead one guarded the open-ended top band with an extra branch.
+    Checked rather than assumed, over all 25,650 (lo, hi, plus)
+    combinations the band table admits: ZERO differing results,
+    because _band_end() already returns None for the last band start,
+    which is all that branch computed. The simpler one is kept. The
+    lesson is the one BACKLOG 272 and expected_bands() above already
+    record - one rule, written once - and a second copy that happens
+    to agree is still a second copy waiting to stop agreeing.
     """
     bands = expected_bands(spec_side)
     if not bands:
@@ -358,23 +349,45 @@ def plan(name, labels, year=None, num_spec=None,
     # "Dependency ratio". A deliberately restricted study is
     # legitimate - allow=True says so explicitly - but it must be
     # CHOSEN, not arrived at by absence (BACKLOG 279).
+    # BACKLOG 346, external review of 1.51 (finding F4). THE CHECK USED
+    # TO POOL. It gathered the band numbers of whatever columns were
+    # selected, compared that SET against the bands it needed, and then
+    # - separately - asked whether each sex appeared anywhere on the
+    # side. Both sets can be complete while no pair is: reproduced on
+    # the ageing index with f and m across every band except m_65, where
+    # f supplied 65 to the pooled age set, m appeared in the other
+    # bands, no gap was reported, and "People 65 and over per person
+    # under 15" was published while men aged 65-69 were simply absent
+    # from the numerator. The error is not loud: it biases the index by
+    # roughly the size of one cohort of one sex, in the direction the
+    # hole happens to lie, and nothing in the output says so.
+    #
+    # What is needed is the GRID - every (sex, band) the side claims to
+    # cover - because that is what the sum actually ranges over. A
+    # missing PAIR is now named as a pair, which is also the only form
+    # a user can act on: "fetch m_65" is a instruction, "the numerator
+    # is incomplete" is not.
     gaps = {}
     for side, want, have in (("numerator", num, top),
                              ("denominator", den, bot)):
         need = expected_bands(want)
-        got = {int(c.split("_")[1]) for c in have}
-        missing = [b for b in need if b not in got]
+        got = {(d["sex"], int(d["age"]))
+               for d in (_split(c) for c in have) if d is not None}
+        sexes_wanted = list(want["sexes"] or [])
+        missing = [f"{sx}_{b:02d}" for sx in sexes_wanted
+                   for b in need if (sx, b) not in got]
         if missing:
             gaps[side] = missing
-        for sx in (want["sexes"] or []):
-            if not any(c.startswith(sx + "_") for c in have):
-                gaps.setdefault(side + " sexes", []).append(sx)
     if gaps and not allow_incomplete:
         lines = [f"{spec['label']}: the data cannot support this "
                  "measure under its own name."]
         for where, missing in gaps.items():
             lines.append(f"  {where}: missing "
                          + ", ".join(str(m) for m in missing))
+        lines.append(f"  (cohort labels for {year}; a side is complete "
+                     "only when EVERY sex it covers carries EVERY band "
+                     "it covers - a band present for one sex and absent "
+                     "for the other is a hole, not a cohort.)")
         lines.append("What would be computed is a DIFFERENT quantity "
                      "wearing this one's label.")
         lines.append("Fetch the missing cohorts, choose an index the "

@@ -287,7 +287,48 @@ def test_the_release_zip_builder_refuses_unextractable_names():
         assert "REFUSING" in str(e.value), bad
 
 
-def test_every_module_a_shipped_runner_imports_is_in_the_wheel():
+def test_the_release_zip_leaves_build_outputs_out_of_the_tree():
+    """BACKLOG 350. 1.51.0 SHIPPED A SECOND COPY OF THE WHOLE PACKAGE.
+
+    `python -m build` leaves `build/lib/equipop/` and `dist/`, and the
+    release zip was built from the whole tree - so the archive John
+    unzips over his working tree and COMMITS carried all 40 modules
+    twice, the second set frozen at whatever version last built. A
+    grep of the tree would then find every rule in two places, which
+    is this project's signature defect arriving through the directory
+    layout rather than through the code. Nothing noticed, because
+    every name is valid and the zip extracts perfectly - the 156 check
+    above asks whether members can be EXTRACTED, not whether they
+    should be there.
+
+    `dist/` is the same mistake 3 MB larger: the wheel and the source
+    archive are siblings of this zip in the release bundle.
+
+    Checked by walking a FAKE TREE through the builder's own member
+    list, so the test does not depend on whether a build has happened
+    in this checkout.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_mkzip", os.path.join(ROOT, "tools", "make_release_zip.py"))
+    mk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mk)
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        for rel in ("equipop/cells.py", "README.md",
+                    "build/lib/equipop/cells.py",
+                    "dist/equipop-9.9.9.tar.gz",
+                    "equipop.egg-info/PKG-INFO",
+                    "equipop/__pycache__/cells.cpython-311.pyc"):
+            p = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as fh:
+                fh.write("x")
+        names = sorted(arc for _full, arc in mk.members(tmp))
+
+    assert names == ["README.md", "equipop/cells.py"], \
+        f"the builder swept in build outputs: {names}"
     """BACKLOG 241. run_fetch.py was delivered importing
     equipop.doors.fetching, which existed in the working tree and in
     NO WHEEL - so John got ModuleNotFoundError on his first command.

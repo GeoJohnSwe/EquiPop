@@ -48,7 +48,8 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
-from . import overshoot, selfpot
+from . import overshoot, selfpot, selfrule
+from .labels import tau_suffix          # BACKLOG 337/339
 
 
 def load_friction_table(
@@ -263,7 +264,7 @@ class FrictionGrid:
 def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                      tau_values=None,
                      self_potential=selfpot.DEFAULT_SELF_POTENTIAL,
-                     overshoot_mode=None, seed=None):
+                     overshoot_mode=None, seed=None, self_rule=None):
     """Shared origin loop: count cells in included-round order from a
     prepared grid (FrictionGrid or SlopeGrid). Tie convention: equal
     rounds form one atomic ring, as everywhere in EquiPop.
@@ -284,6 +285,23 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
     # BACKLOG 99: the effort engines take whole rings too, and an
     # effort ring overshoots exactly as a distance ring does.
     osm = overshoot.resolve(overshoot_mode)
+    # BACKLOG 341, FOUND BY THE 1.51.0 CODE REVIEW. The origin rule
+    # reached this engine as a keyword nobody forwarded and a rule
+    # nobody implemented, so `exclude` through the effort path was
+    # accepted and silently ignored - and from 1.50.0 the run record
+    # wrote down "self_rule: exclude" beside numbers computed with the
+    # origin included, which is worse than not recording it.
+    #
+    # THE CONTRACT IS selfrule.py's, not a new one: EXCLUDE drops the
+    # origin's OWN CELL - "not counting you or anyone sharing your
+    # cell" - and leaves N_local alone, because the _local columns are
+    # facts about the cell and not about the neighbourhood. One row of
+    # `pop` IS one cell here (FrictionGrid assigns rather than
+    # accumulates into count_all), so dropping ci == oi is exactly
+    # that, index-based, with no second definition of the rule.
+    srule = selfrule.resolve(self_rule)
+    drop_self = srule == selfrule.EXCLUDE
+    print(selfrule.message(srule, self_potential if drop_self else None))
     _sg = seed is not None
     os_seed = int(seed) if _sg else overshoot.draw_seed()
     if osm == overshoot.SAMPLED:
@@ -325,7 +343,6 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
             pending_tau = list(tau_values)
 
             def rec_tau(tv):     # effort isochrone: everything within tv
-                from .labels import tau_suffix    # BACKLOG 337
                 lab = tau_suffix(tv)
                 rec[f"N_{lab}"] = sum_all
                 if _has_group:
@@ -343,6 +360,16 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 ring = []
                 while j < n_pop and rr[order[j]] == r0:
                     ring.append(order[j]); j += 1
+                if drop_self:
+                    # BACKLOG 341. The origin's own cell is at round 0
+                    # and is therefore the FIRST ring; at equal effort
+                    # it can also sit inside a later one. Removing it
+                    # can empty a ring, and an empty ring has no
+                    # maximum extent, so it is skipped rather than
+                    # measured. `j` has already advanced past it.
+                    ring = [ci for ci in ring if ci != oi]
+                    if not ring:
+                        continue
                 ring_all = float(sum(ca[ci] for ci in ring))
                 ring_grp = float(sum(cg[ci] for ci in ring))
                 d_ring = max(
@@ -438,7 +465,17 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
             ("N", "Dist", "Rounds")
     tau_parts = ("N", "T", "R") if _has_group else ("N",)
     per_k = [f"{p}_{k}" for k in k_values for p in parts]
-    per_tau = [f"{p}_tau{tv:g}" for tv in tau_values
+    # BACKLOG 339, FOUND BY THE 1.51.0 CODE REVIEW. THE PRODUCER WAS
+    # UPDATED AND THIS CONSUMER WAS NOT. 337 changed rec_tau() above
+    # to name the column with tau_suffix(), so tau=2.5 produced
+    # N_tau2_5 while this line still asked for N_tau2.5 and the run
+    # died with KeyError: "['N_tau2.5'] not in index". tau=1000000
+    # failed the same way, as N_tau1e+06.
+    # THAT IS THE SHAPE 337 EXISTED TO FIX - two halves of one file
+    # formatting the same number differently - REINTRODUCED BY THE FIX
+    # FOR IT, in the same file, on the same day. A shared formatter is
+    # only shared if every site calls it, and nothing checked that.
+    per_tau = [f"{p}_{tau_suffix(tv)}" for tv in tau_values
                for p in tau_parts]
     return out[fixed + per_k + per_tau]
 
@@ -458,6 +495,7 @@ def run_knn_friction(
     self_potential: float = selfpot.DEFAULT_SELF_POTENTIAL,
     overshoot_mode: str | None = None,
     seed: int | None = None,
+    self_rule: str | None = None,        # BACKLOG 341
 ) -> pd.DataFrame:
     """
     Friction-aware k-NN for aggregated cell data.
@@ -485,7 +523,7 @@ def run_knn_friction(
                         count_all_col, count_group_col)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
                             tau_values, self_potential,
-                            overshoot_mode, seed)
+                            overshoot_mode, seed, self_rule)
 
 
 # ===================================================================

@@ -220,7 +220,16 @@ def run_folder(folders, *, k_values=None, r_values=None,
     with (speaking(channel) if channel is not None else _null()):
         if out_dir is not None:
             from ..bigrun import run_knn_counts_tiled
+            # BACKLOG 340, FOUND BY THE 1.51.0 CODE REVIEW. r_values
+            # was accepted by run_folder, forwarded by the UNTILED
+            # branch, and silently dropped here - so a tiled
+            # continental run asked for radii produced none, and a
+            # RADIUS-ONLY tiled request reached the core with no
+            # neighbourhood at all. Nothing compared the two branches'
+            # outputs, which is how a parameter came to be honoured on
+            # one path and ignored on the other.
             run = run_knn_counts_tiled(cd, k_values=list(k_values or []),
+                                       r_values=list(r_values or []),
                                        out_dir=out_dir, tile_m=tile_m)
             man["tiles"] = len(run.get("tiles", []))
             man["out_dir"] = out_dir
