@@ -3606,6 +3606,137 @@ that is how the last three staleness findings were made.*
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- ~~371~~ | DONE v1.53.1, JOHN'S MACHINE | A TRUE VERDICT THAT READ AS
+  "ALL FINE".
+  His report ended `machine 1 can run in this Python.` on the line
+  after `rasterio : BROKEN`. The sentence is CORRECT - machine 1 needs
+  none of the six optional libraries - and it is the last thing on
+  screen, which makes it the thing a user remembers. Rasters are most
+  of what he does. The verdict still answers the machine-1 question
+  and then names any optional library that is INSTALLED BUT BROKEN,
+  with the capability lost.
+  AN ABSENT LIBRARY IS DELIBERATELY NOT MENTIONED THERE. The OPTIONAL
+  heading already promises that "absent only means the feature is
+  unavailable", and a verdict grumbling about every library a user
+  chose not to install would make a healthy machine look faulty and
+  teach them to stop reading it. absent is a choice; BROKEN is a
+  fault. A test pins each half, because `!=ok` instead of `==BROKEN`
+  is a one-character way to lose the distinction.
+
+- ~~370~~ | DONE v1.53.1, JOHN'S MACHINE | THE TEST THAT WATCHED THE
+  MECHANISM AND NOT THE CONSEQUENCE.
+  `test_a_windows_dll_failure_is_recognised_separately` asserted
+  `tag == "DLL"` and passed for its whole life while nothing on earth
+  printed a DLL hint (368). It is not a test that COULD NOT fail -
+  break the classifier and it fails - it is a test watching the wrong
+  half of the mechanism. The suite knew the tag was computed and had
+  no opinion about whether a human ever read it.
+  **THE FIX IS A PROPERTY, NOT ANOTHER CASE.** Testing tags one at a
+  time is what hid this: a tag with no renderer is invisible to a
+  per-tag test. `test_every_tag_that_can_be_classified_has_something_
+  to_say` scrapes the tags `_describe_failure` can return and asserts
+  each produces output, so a new tag with no hint fails on the day it
+  is written. The old test stays - classification is worth pinning -
+  but it is no longer the only thing watching.
+  This is the eighth entry on the project's own list of ways a test
+  can be worthless, and the first one that is not "the test cannot
+  fail": **the test can fail, and still not be watching the thing
+  that matters.** 20 breaks applied across the file; every test
+  function fails under at least one, including the seven that existed
+  before.
+
+- ~~369~~ | DONE v1.53.1, JOHN'S MACHINE, AND THE ROOT CAUSE NOBODY
+  WAS LOOKING AT | A HALF-DELETED PACKAGE, ANNOUNCED FIVE TIMES AND
+  READ AS NOISE.
+      WARNING: Ignoring invalid distribution ~yproj
+  pip printed that line five times in one install and it is the most
+  useful line in the output. When pip cannot delete a directory on
+  Windows it RENAMES it with a `~` prefix and carries on, so `~yproj`
+  is the corpse of a `pyproj` uninstall that never finished - usually
+  because a running Python, QGIS, Pro or an antivirus scanner held a
+  file open.
+  **THAT INTERRUPTED RUN IS WHY FOUR DEPENDENCIES WENT MISSING AT
+  ONCE** rather than four separate accidents, which is the question
+  367 could describe and not explain. It was visible from inside
+  Python the entire time: one `os.listdir` of site-packages. The
+  doctor exists to explain broken machines and was not looking at the
+  directory the breakage was sitting in.
+  LEFTOVERS is printed BEFORE the libraries, for this file's standing
+  reason: the cause above the symptom, and anything that cannot crash
+  above anything that imports. Silent on a clean machine, because a
+  section that appears when there is nothing to report is a section
+  users learn to skip - and then it goes unread on the one machine
+  where it matters. Named, never removed: the first line of the report
+  promises nothing is changed, and this is the one directory where a
+  guessed deletion is unaffordable, from a command run to ASK A
+  QUESTION.
+
+- ~~368~~ | DONE v1.53.1, JOHN'S MACHINE | A CASE CLASSIFIED, TESTED,
+  AND NEVER PRINTED - FOR EIGHTEEN RELEASES.
+  `_describe_failure` has returned a `"DLL"` tag since 1.35 and
+  `report()` rendered `if tag == "ARCH"` and nothing else. **On
+  Windows "DLL load failed" is the single most likely way rasterio,
+  geopandas and pyproj fail**, so the case that most needed advice was
+  the one case with none - on the platform where every one of this
+  project's users is.
+  AND THE RENDERING WAS WRITTEN TWICE: the same `if tag == "ARCH"`
+  open-coded in the REQUIRED loop and again in OPTIONAL. That is
+  **354's lesson arriving one release later in a different file** - a
+  rule written twice is a rule that gets extended once, and here it
+  was extended zero times in two places. `_hint_lines(lib, tag)` is
+  the one renderer now and both sections read it, so adding a tag is
+  one edit in one place. A test fails if `report()` formats a hint
+  itself again.
+  The DLL hint says what the ARCH hint could not: close every Python,
+  QGIS and Pro window first, because a file held open is how the
+  half-installed state happens, and `where gdal*.dll` names the
+  conda or OSGeo4W copy that is usually supplying the wrong library.
+
+- ~~367~~ | DONE v1.53.1, JOHN'S MACHINE, AND THE ONE THAT COST HIM
+  THREE EXCHANGES | THE FIRST MISSING MODULE IS THE WRONG UNIT OF
+  TRUTH.
+      rasterio     : BROKEN  No module named 'click'
+  Correct, and it took three round trips to become useful. He
+  installed click; pip then said rasterio also wanted `attrs`,
+  `cligj` and `pyparsing`. The doctor had a remedy for a processor
+  mismatch and NONE for a missing dependency, which is the commonest
+  cause of exactly that line - so the diagnosis was right and the user
+  was left nowhere to go. Same shape as the negative-population
+  message in 1.51.2, which is why it was taken the day he asked.
+  **THE COUNT IS ITSELF THE DIAGNOSIS.** One missing package is an
+  accident; four is an interrupted pip run (369). Reporting one hid
+  the distinction that explains the machine.
+  `_missing_requirements` reads the library's own declared metadata
+  and names EVERY dependency that is not installed, with one install
+  command. Keyed on the DISTRIBUTION through importlib.metadata, not
+  on an import: importing is what is already failing, and the import
+  name often differs from the distribution name (`click-plugins`
+  imports as `click_plugins`), which would make it a guessing game.
+  Standard library since 3.8, and it reads metadata rather than
+  importing, so asking the question cannot trigger the failure being
+  diagnosed - which the module docstring's no-third-party-imports rule
+  demands.
+  **THE CONSTRAINT IS QUOTED, AND THAT IS NOT COSMETIC.**
+  `pip install cligj>=0.5` pasted into cmd.exe REDIRECTS: the shell
+  eats `>`, writes a file called `=0.5` into whatever directory the
+  user is standing in, and hands pip a bare `cligj`. The advice would
+  appear to work while installing an unconstrained version. A bare
+  name is left unquoted so the common case still reads like something
+  a human would type.
+  A requirement carrying an environment marker is SKIPPED, not
+  guessed at - evaluating markers needs `packaging`, which this file
+  must not import, and accusing a user of a package their platform
+  does not want is worse than silence. Same rule as `_as_numbers`: go
+  quiet rather than guess. And a ModuleNotFoundError naming something
+  the library does not declare gets the reason line and NO
+  explanation, which is the surviving intent of the test this change
+  amended.
+  ONE OF MY OWN NEW TESTS WAS WRONG RATHER THAN THE CODE: I asserted
+  the advice prose contained the word "pyproj" when it never had
+  reason to. Same category as the two break-check predictions I got
+  wrong in the 1.53.0 review, and the second time in two releases that
+  my expectation, not the suite, was the thing at fault.
+
 - ~~366~~ | DONE v1.53.0, THE 1.52 REVIEW, JOHN'S RULING | THE INDICES
   ARE BARE RATIOS AND NOW SAY SO.
   John: "keep the bare ratios." Kept - no number moves. What changes

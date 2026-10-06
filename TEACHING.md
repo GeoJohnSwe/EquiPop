@@ -1,6 +1,32 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.53.0, 6 October 2026.**
+**Last updated: 1.53.1, 6 October 2026.**
+*Reviewed at 1.53.1: NOTHING IN THE COURSE CONTENT MOVES - this
+release only changes what `equipop doctor` says. But it changes the
+FIRST HOUR of every workshop, which is the hour that decides whether
+students get to the material at all.
+The student installation guide's troubleshooting section can shrink.
+A broken install used to produce one line - `rasterio : BROKEN  No
+module named 'click'` - and a student who installed click would then
+meet `attrs`, then `cligj`, then `pyparsing`, which in a timetabled
+session means they are out for the morning. The doctor now names
+every missing dependency at once with one command to paste, and it
+flags the `~`-prefixed directories that mean an earlier pip run was
+interrupted - which on a university machine with antivirus and a
+roaming profile is the common case, not the exotic one.
+WORTH SAYING OUT LOUD IN THE SESSION, because it generalises past
+EquiPop: `WARNING: Ignoring invalid distribution ~yproj` is the line
+students are taught by habit to ignore, and it is the most useful
+line in the output. `~yproj` is a half-deleted `pyproj`. The lesson
+is that pip's warnings are not noise, and that a tool reporting the
+FIRST thing it found is not the same as a tool reporting what is
+wrong - which is the same lesson as 353, in the room rather than in
+the data.
+ONE THING FOR THE DEMONSTRATOR, not the students: tell them to close
+QGIS and Pro before running pip. A file held open is what leaves the
+half-installed state behind, so the fix and the cause are the same
+window.*
+
 *Reviewed at 1.53.0: NO FIGURE CHANGES - every course exercise uses
 WHOLE population counts and the default raster path is bit-identical,
 which is the safety argument for the whole release. TWO THINGS THE

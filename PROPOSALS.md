@@ -1,6 +1,32 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.53.0, 6 October 2026.**
+**Last updated: 1.53.1, 6 October 2026.**
+*Reviewed at 1.53.1: NO CLAIM IN THIS FILE CHANGES. One paragraph in
+the February text gets easier to write honestly, and it is a
+paragraph reviewers do read.
+A consortium work package that says partners will run the software on
+their own national data is making a claim about INSTALLABILITY, not
+just about method. Every partner will be on Windows, and on Windows
+the most likely way rasterio, geopandas or pyproj fails is `DLL load
+failed` - a case this project had classified and tested since 1.35
+and never once printed advice for. A partner meeting that message got
+a dead end from a tool whose own diagnostic knew what had happened.
+That is fixed, along with naming every missing dependency at once
+rather than the first, so the sentence about partners self-serving
+their data has something behind it.
+IT DOES NOT CHANGE THE SCOPE, and do not let it read as a capability
+in the proposal - a diagnostic is not a feature, and claiming it as
+one invites the reviewer to ask what else is only diagnosed. Mention
+it, if at all, in the data-management or risk section: "failure modes
+on partner machines are reported with their remedy" is the true
+version.
+BACKLOG 365 IS STILL THE ONE NOT TO PROMISE. Unchanged from 1.53.0
+and repeated because it is the item most likely to be written as done
+by accident: a continental DEMOGRAPHIC index has no tiled route, so
+Europe-wide dependency ratios remain the piece the software cannot do
+at scale. 353 made the exposure surfaces carriable; the index is a
+separate job.*
+
 *Reviewed at 1.53.0: THE CLIMATE-RASTER ENTRY BELOW WAS WRONG AND IS
 NOW CORRECTED IN PLACE - read it before writing the data-management
 section. It said machine 3 might need "nothing new" for heat, air

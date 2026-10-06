@@ -57,6 +57,53 @@ _ARCH_HINT = (
     "--only-binary=:all: {lib}"
 )
 
+# BACKLOG 368, v1.53.1. This hint did not exist. `_describe_failure`
+# classified the case, `tests/test_doctor.py` asserted the
+# classification, and NOTHING EVER PRINTED ANYTHING - the tag was
+# computed and dropped. On Windows "DLL load failed" is the single most
+# likely way rasterio, geopandas or pyproj fail, so the case that most
+# needed advice was the one with none. The test passed throughout
+# because it checked that the tag was produced, not that a user ever
+# saw it; see 370 for the rewrite that would have caught this.
+_DLL_HINT = (
+    "This is a MISSING SYSTEM LIBRARY, not a missing Python package. "
+    "The package is installed; a DLL it loads is absent, or a "
+    "different copy of one is being found first.\n"
+    "       Reinstall from a wheel, into THIS Python, and do it with "
+    "every\n"
+    "       Python, QGIS and ArcGIS Pro window CLOSED - a file still "
+    "open is\n"
+    "       how half-installed packages happen:\n"
+    "       python -m pip install --force-reinstall --no-cache-dir "
+    "--only-binary=:all: {lib}\n"
+    "       If it persists, a conda or OSGeo4W installation on PATH is "
+    "usually\n"
+    "       supplying the wrong copy. `where gdal*.dll` names the one "
+    "being found."
+)
+
+# BACKLOG 367, v1.53.1. See the module docstring's rule: no third-party
+# import at module level. `importlib.metadata` is standard library from
+# 3.8, and it reads INSTALLED METADATA rather than importing anything,
+# so asking "is this dependency present" cannot itself trigger the
+# failure being diagnosed.
+_MISSING_DEP_HINT = (
+    "{n} of this library's own declared dependencies {verb} not "
+    "installed:\n"
+    "       {names}\n"
+    "       The import fails before EquiPop is reached, so this is not "
+    "an\n"
+    "       EquiPop fault and reinstalling EquiPop will not touch it. "
+    "Install\n"
+    "       them into THIS Python, all at once:\n"
+    "       {exe} -m pip install {specs}\n"
+    "       A dependency set missing SEVERAL packages is usually an "
+    "interrupted\n"
+    "       pip run rather than several separate accidents - see "
+    "LEFTOVERS above\n"
+    "       if that section is present."
+)
+
 
 def _describe_failure(exc: BaseException) -> tuple[str, str]:
     """Turn an import failure into (one-line reason, advice).
@@ -72,7 +119,61 @@ def _describe_failure(exc: BaseException) -> tuple[str, str]:
         return first, "ARCH"
     if "dll load failed" in lowered:
         return first, "DLL"
+    if isinstance(exc, ModuleNotFoundError):
+        return first, "MISSING_DEP"
     return first, ""
+
+
+def _requirement_name(spec: str) -> str:
+    """'cligj>=0.5' -> 'cligj'. The distribution name only."""
+    head = spec.split(";")[0].strip()
+    for sep in ("[", "!", ">", "<", "=", "~", "(", " "):
+        head = head.split(sep)[0]
+    return head.strip()
+
+
+def _missing_requirements(lib: str) -> list[str]:
+    """Declared dependencies of `lib` that are not installed.
+
+    BACKLOG 367. Reporting only the FIRST missing module is the wrong
+    unit of truth. John's machine said `No module named 'click'`;
+    installing click revealed attrs, cligj and pyparsing were gone too,
+    so the one-line answer cost three round trips to find out that a
+    whole dependency set had been wiped. The number of missing packages
+    is itself the diagnosis: one is an accident, four is an interrupted
+    pip run.
+
+    Keyed on the DISTRIBUTION name through importlib.metadata, not on
+    an import, for two reasons. Importing is what is already failing,
+    and the import name often differs from the distribution name
+    (`click-plugins` imports as `click_plugins`), which would make this
+    a guessing game. metadata normalises that for us.
+
+    A requirement carrying an environment marker is SKIPPED rather than
+    guessed at: evaluating markers needs `packaging`, which this file
+    may not import, and the cost of being wrong is accusing the user of
+    a missing package that their platform does not want. Same rule as
+    `_as_numbers` - go quiet rather than guess. Nothing in the six
+    OPTIONAL libraries' own requirements carries a marker.
+    """
+    try:
+        import importlib.metadata as md
+        reqs = md.requires(lib) or []
+    except Exception:                        # noqa: BLE001
+        return []
+
+    missing = []
+    for spec in reqs:
+        if ";" in spec:                      # a marker - see docstring
+            continue
+        name = _requirement_name(spec)
+        if not name:
+            continue
+        try:
+            md.distribution(name)
+        except Exception:                    # noqa: BLE001 - absent
+            missing.append(spec)
+    return missing
 
 
 def _probe(name: str) -> tuple[str, str, str]:
@@ -112,6 +213,82 @@ def _lines_environment() -> list[str]:
     except Exception:                        # noqa: BLE001
         user = "(could not be determined)"
     out.append(f"  user packages: {user}")
+    return out
+
+
+def _package_dirs() -> list[str]:
+    """Every site-packages directory this Python will read."""
+    dirs = []
+    try:
+        import site
+        for d in list(site.getsitepackages()) + [site.getusersitepackages()]:
+            if d and d not in dirs:
+                dirs.append(d)
+    except Exception:                        # noqa: BLE001
+        pass
+    return dirs
+
+
+def _leftovers() -> list[tuple[str, str]]:
+    """Half-deleted packages: (directory, entry name).
+
+    BACKLOG 369. When pip cannot delete a directory on Windows it
+    RENAMES it with a `~` prefix and carries on, so `~yproj` is the
+    corpse of an interrupted `pyproj` uninstall. pip then prints
+    "Ignoring invalid distribution ~yproj" on every later operation,
+    which reads as noise and is actually the most useful line in the
+    output.
+
+    THIS IS THE ROOT CAUSE, NOT A TIDINESS ITEM. John's rasterio was
+    missing four dependencies at once and the doctor reported the first
+    of them. The thing that explained WHY - an interrupted pip run,
+    announced by exactly one `~yproj` directory sitting in his
+    site-packages - was visible from inside Python the whole time and
+    nobody was looking. A file left open by a running Python, QGIS, Pro
+    or an antivirus scanner is the usual cause, which is why the advice
+    is to close them before reinstalling.
+
+    Read-only, like everything here: this names them and never removes
+    them.
+    """
+    found = []
+    for d in _package_dirs():
+        try:
+            names = sorted(os.listdir(d))
+        except Exception:                    # noqa: BLE001
+            continue
+        for name in names:
+            if name.startswith("~"):
+                found.append((d, name))
+    return found
+
+
+def _lines_leftovers() -> list[str]:
+    """BACKLOG 369. Silent when the installation is clean."""
+    found = _leftovers()
+    if not found:
+        return []
+    out = ["", "LEFTOVERS - an interrupted pip run left these behind"]
+    for d, name in found[:12]:
+        out.append(f"  {name}")
+        out.append(f"       in {d}")
+    if len(found) > 12:
+        out.append(f"  ... and {len(found) - 12} more")
+    out += [
+        "",
+        "  A `~` prefix is pip's mark for a directory it could not "
+        "delete, so",
+        "  each one is a half-removed package. They are inert, but the "
+        "run that",
+        "  left them there DID NOT FINISH - which is the usual reason "
+        "several",
+        "  dependencies go missing together. If a library above says "
+        "BROKEN,",
+        "  this is probably why.",
+        "  Close every Python, QGIS and ArcGIS Pro window, delete the "
+        "entries",
+        "  named above, then reinstall whatever is reported broken.",
+    ]
     return out
 
 
@@ -259,6 +436,41 @@ def _lines_equipop(ado_version: str = "",
     return out
 
 
+def _hint_lines(lib: str, tag: str) -> list[str]:
+    """The advice for one failed import, or nothing.
+
+    BACKLOG 368. ONE PLACE. The ARCH hint was rendered by two
+    open-coded copies of the same `if`, in REQUIRED and again in
+    OPTIONAL, and the DLL hint was rendered by neither - which is how a
+    classified, tested case printed nothing for its whole life. This is
+    354's lesson arriving one release later in a different file: a rule
+    written twice is a rule that will be extended once. Adding a tag
+    now means adding it here, where both sections read it.
+    """
+    if tag == "ARCH":
+        return ["       " + _ARCH_HINT.format(lib=lib)]
+    if tag == "DLL":
+        return ["       " + _DLL_HINT.format(lib=lib)]
+    if tag == "MISSING_DEP":
+        missing = _missing_requirements(lib)
+        if not missing:
+            # ModuleNotFoundError naming something the library does not
+            # declare. Say nothing rather than invent a cause: the
+            # reason line already names the module, and a wrong
+            # explanation is worse than none.
+            return []
+        names = ", ".join(_requirement_name(s) for s in missing)
+        specs = " ".join(
+            s if s == _requirement_name(s) else f'"{s}"' for s in missing)
+        return ["       " + _MISSING_DEP_HINT.format(
+            n=len(missing),
+            verb="is" if len(missing) == 1 else "are",
+            names=names,
+            specs=specs,
+            exe=sys.executable)]
+    return []
+
+
 def report(ado_version: str = "",
            min_engine: str = "") -> list[str]:
     """The whole report as a list of lines, safest first.
@@ -273,29 +485,43 @@ def report(ado_version: str = "",
     and then the direction of the difference is the best available
     signal - see _lines_version_gap.
     """
-    out = _lines_environment() + _lines_equipop(ado_version, min_engine)
+    out = (_lines_environment() + _lines_leftovers()
+           + _lines_equipop(ado_version, min_engine))
 
     out += ["", "REQUIRED - machine 1 cannot run without these"]
     verdict_ok = True
     for lib in REQUIRED:
         state, detail, tag = _probe(lib)
         out.append(f"  {lib:<12} : {state:<7} {detail}")
-        if tag == "ARCH":
-            out.append("       " + _ARCH_HINT.format(lib=lib))
+        out += _hint_lines(lib, tag)
         if state != "ok":
             verdict_ok = False
 
     out += ["", "OPTIONAL - absent only means the feature is unavailable"]
+    broken_optional = []
     for lib, why in OPTIONAL:
         state, detail, tag = _probe(lib)
         out.append(f"  {lib:<12} : {state:<7} {detail}")
         out.append(f"       needed for {why}")
-        if tag == "ARCH":
-            out.append("       " + _ARCH_HINT.format(lib=lib))
+        out += _hint_lines(lib, tag)
+        if state == "BROKEN":
+            broken_optional.append((lib, why))
 
     out += ["", "VERDICT"]
     if verdict_ok:
         out.append("  machine 1 can run in this Python.")
+        # BACKLOG 371, v1.53.1. The verdict is about machine 1 and
+        # always was, which is correct and too easy to misread as "all
+        # fine". John's report said "machine 1 can run in this Python"
+        # directly under a BROKEN rasterio, and rasters are most of
+        # what he does. An ABSENT library is deliberately not mentioned
+        # here - that is a choice, not a fault, and the OPTIONAL
+        # heading already says so. A BROKEN one is a fault.
+        for lib, why in broken_optional:
+            out.append(f"  {lib} is INSTALLED BUT BROKEN, so {why} "
+                       "will fail")
+        if broken_optional:
+            out.append("  until it is fixed - see the lines above it.")
     else:
         out.append("  machine 1 CANNOT run here - see REQUIRED above.")
         out.append("  Install into THIS Python, the one whose path is "

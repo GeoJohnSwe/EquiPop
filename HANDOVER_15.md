@@ -1,7 +1,7 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.0**:
-1,490 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.1**:
+1,505 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself, a test that
 asks whether anybody can reach any of it, the published
@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.53.0 rather than superseded: same session. Read
-section 0f first, then 0e, 0d, 0c, 0b. **The session ended by being
+*Amended through 1.53.1 rather than superseded: same session. Read
+section 0g first, then 0f, 0e, 0d, 0c, 0b. **The session ended by being
 read from outside, three times in three days** - a pull request with
 four findings, a full code review with nine, and then a review I was
 asked to run on the project's own raster and demographic code, which
@@ -24,6 +24,100 @@ user something untrue. 1.50.0 is the exception: three items chosen
 FROM the backlog, and the first thing they found was that the
 backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
+
+---
+
+## 0g. 1.53.1 - A QUESTION, NOT A BUG REPORT
+
+John read the new doctor output and asked one thing: *"the message
+states that rasteria is broken - is that the way it should be?"* He
+was not reporting a defect. He was checking whether a word was too
+strong — the same instinct that produced the 1.51.2 work after Baum
+called the mismatch message confusing.
+
+**The answer was yes, and that is why this release exists.** `BROKEN`
+was correct: `click` really is imported at rasterio package-import
+time (`__init__.py:25 → _base.pyx → crs.pyx → errors.py:3`, verified
+by blocking click and nothing else), so rasterio genuinely could not
+load and every raster path was down. The status was right. **What
+followed it was not.** Five findings, all from one question.
+
+**IF YOU READ ONE THING: THE FIRST FAILURE IS THE WRONG UNIT OF
+TRUTH.** The doctor said `No module named 'click'`. He installed
+click. pip then told him rasterio also wanted `attrs`, `cligj` and
+`pyparsing`. **Three exchanges to learn that a whole dependency set
+had been wiped**, when the count was the diagnosis all along: one
+missing package is an accident, four is an interrupted pip run. The
+doctor now reads the library's own declared metadata and names every
+missing dependency with one install command (367).
+
+And the thing that EXPLAINED it was on his screen the whole time,
+printed five times, reading as noise:
+
+```
+WARNING: Ignoring invalid distribution ~yproj
+```
+
+`~yproj` is a half-deleted `pyproj` — when pip cannot delete a
+directory on Windows it renames it with a `~` prefix and carries on.
+So a pip run had been interrupted, which is why four dependencies went
+missing together. **One `os.listdir` of site-packages would have found
+it.** The doctor exists to explain broken machines and was not looking
+in the directory the breakage was sitting in (369). LEFTOVERS now
+prints above the libraries — cause before symptom — and is silent on a
+clean machine.
+
+**THE WORST ONE, AND THE ONE WITH A LESSON FOR THE SUITE.**
+`_describe_failure` has classified `"DLL load failed"` as its own case
+since 1.35. `report()` rendered `if tag == "ARCH"` and nothing else.
+**Eighteen releases of a case that was classified, tested, and never
+printed a single word** — on the platform every user of this project
+is on, for the failure most likely to hit rasterio, geopandas and
+pyproj. And the rendering was open-coded *twice*, in the REQUIRED loop
+and again in OPTIONAL: **354's lesson arriving one release later in a
+different file.** A rule written twice is a rule that gets extended
+once; this one was extended zero times in two places. `_hint_lines`
+is the single renderer now (368).
+
+**The test is the part to carry forward.**
+`test_a_windows_dll_failure_is_recognised_separately` asserted
+`tag == "DLL"` and passed throughout. It is **not** a test that could
+not fail — break the classifier and it fails. It is a test watching
+**the wrong half of the mechanism**: the suite knew the tag was
+computed and had no opinion about whether a human ever read it. That
+is a new entry on this file's own list, and the first that is not
+"the test cannot fail": *a test can fail, and still not be watching
+the thing that matters.*
+
+Testing tags one at a time is what hid it — a tag with no renderer is
+invisible to a per-tag test. So the fix is a **property**:
+`test_every_tag_that_can_be_classified_has_something_to_say` scrapes
+the tags the classifier can return and asserts each produces output.
+A new tag with no hint fails the day it is written (370).
+
+Last, the verdict. His report ended `machine 1 can run in this
+Python.` on the line below `rasterio : BROKEN`. **The sentence is
+true** — machine 1 needs none of the optional libraries — and it is
+the last thing on screen, so it is what a user remembers, and rasters
+are most of what he does. The verdict still answers the machine-1
+question and then names any optional library that is installed but
+broken, with the capability lost. An `absent` library is deliberately
+*not* mentioned: that is a choice, not a fault, and a verdict
+grumbling about uninstalled libraries is one users learn to skip (371).
+
+**20 breaks applied across `tests/test_doctor.py`, all caught; every
+test function in the file fails under at least one, including the
+seven that predate this release.** One of my own new tests was wrong
+rather than the code — I asserted the advice prose contained the word
+"pyproj" when it never had reason to. Second release running where my
+expectation, not the suite, was the thing at fault.
+
+**The general lesson, because it is the third time in three releases.**
+353 was a guard that could not be reached from the path it named. 368
+was a hint that was classified and never rendered. Both passed their
+tests. **When you add a case, follow it all the way to the thing a
+human sees** — and when a user asks whether a message is right, the
+message usually is and what comes after it usually is not.
 
 ---
 
