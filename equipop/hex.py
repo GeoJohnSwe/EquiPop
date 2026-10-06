@@ -103,7 +103,13 @@ def build_hex_cells(
     cd = CellData(
         E=cx, N=cy, n=np.array(n, dtype=np.int64),
         binary_sums={v: np.array(a, dtype=float) for v, a in bsums.items()},
-        value_arrays=varrs, unit_size=hex_size, labels=labels)
+        value_arrays=varrs, unit_size=hex_size,
+        # BACKLOG 158. `unit_size = hex_size` is right - the width
+        # across flats IS this grid's size - and it was all the engines
+        # were told, so they squared it and charged a hexagon a
+        # square's area. The shape travels with the data now.
+        cell_shape="hex",
+        labels=labels)
     print(f"[hex] {len(d)} points -> {len(cd)} hexagons "
           f"(width {hex_size} m, global N = {cd.n.sum()})")
     return cd

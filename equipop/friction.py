@@ -403,6 +403,10 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                         if d_k <= 0.0 and n_k >= k:
                             # the radius needs the people STANDING in
                             # the cell, not the share reported
+                            # BACKLOG 158: a FrictionGrid is
+                            # SQUARE by construction, so the
+                            # default shape is a fact about the
+                            # input and not an assumption.
                             d_k = selfpot.radius_for_k(
                                 grid.unit_size, k,
                                 float(sum_all + ring_all), sp)

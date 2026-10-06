@@ -1,7 +1,7 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.51.2**:
-1,439 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.0**:
+1,490 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself, a test that
 asks whether anybody can reach any of it, the published
@@ -10,19 +10,255 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.51.2 rather than superseded: same session. Read
-section 0d first, then 0c, then 0b. **The session ended by being read from
-outside, twice in two days** - a pull request with four findings and a
-full code review with nine, thirteen in all, every one real. Four of
-the thirteen were mistakes made in this session's own releases. Before
-that, four of five releases were field findings, none from the
-backlog, and three were about the project telling a user something
-untrue. 1.50.0 is the exception: three items chosen FROM the backlog,
-and the first thing they found was that the backlog's own head was
-pointing at finished work - which the 1.51.0 review then found AGAIN,
-still pointing at it.*
+*Amended through 1.53.0 rather than superseded: same session. Read
+section 0f first, then 0e, 0d, 0c, 0b. **The session ended by being
+read from outside, three times in three days** - a pull request with
+four findings, a full code review with nine, and then a review I was
+asked to run on the project's own raster and demographic code, which
+found fourteen more. Four of the first thirteen were mistakes made in
+this session's own releases; **one of the fourteen made a guard I had
+written two days earlier unreachable from the only path that could
+trip it.** Before that, four of five releases were field findings,
+none from the backlog, and three were about the project telling a
+user something untrue. 1.50.0 is the exception: three items chosen
+FROM the backlog, and the first thing they found was that the
+backlog's own head was pointing at finished work - which the 1.51.0
+review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0f. 1.53.0 - TWO LINES THAT DECIDED WHAT COUNTS AS DATA
+
+The first release of this session that came from **reading our own
+code on purpose**, not from a user's traceback and not from an
+outsider's review. John asked for it in those words: *"perhaps we
+should devote more time to the demographic machineries and how raster
+data is integrated in equipop ... see what are the easiest fruits to
+pick, alternatively the best weeds to pick"*. The reason is February:
+the Horizon call's exposome claim runs through exactly this code.
+
+Fourteen findings, every one measured before it was called real.
+Thirteen fixed, one (365) left open on purpose. Three went to John as
+rulings rather than as code, and **two of his three answers changed
+what I was going to do.**
+
+**THE WEED WAS TWO LINES, AND IT DEFINED "DATA" WRONGLY.**
+
+```python
+arr = np.where(np.isfinite(arr) & (arr != nod), arr, 0.0)
+rows, cols = np.nonzero(arr > 0)
+```
+
+`arr > 0` is three decisions wearing one mask. It says a pixel is
+absent unless it is positive - so **NoData and a real zero became the
+same thing**, and **every negative value was thrown away without a
+word.** The mask is `observed` now (finite AND not the declared
+nodata), `keep_zero` decides only whether an observed zero earns a
+row, and negatives are carried as given *and announced*, because
+silence is what let the rest of this happen.
+
+What that cost, all measured on real surfaces:
+
+- A temperature-anomaly field with a true mean of **-0.0046 degC came
+  back as +1.19 degC** - warming everywhere, every cooling pixel
+  silently discarded. A zero-floored PM2.5 surface came back **9.9%
+  high.** Population-weighted exposure per group per neighbourhood is
+  the first claim an exposome consortium will test, and it ran
+  through the one path that could not carry an exposure surface.
+- **`keep_zero` was completely dead, both branches.** A pixel zero
+  everywhere was never created, so `keep_zero=True` could not bring
+  it back; every row that existed was positive, so `keep_zero=False`
+  dropped nothing. Documented as working, exposed at the continental
+  door, doing nothing in either position since it was written.
+- **It made my own guard from two days earlier unreachable.**
+  `cells.py` refuses a negative population and says in its own
+  comment that it exists because *"rasterfolder hands a raster's own
+  column straight in, and a raster's NoData is frequently -9999"*. It
+  could never fire on that path: the negatives were gone forty lines
+  upstream. **The guard and the hole were in the same package, in the
+  same week, by the same hand.** If you write a guard, go and check
+  that the path it names can still reach it.
+
+**JOHN'S CORRECTION IS THE ONE TO CARRY FORWARD.** My first
+recommendation was to *remove* `keep_zero` as a dead option. He
+corrected me: *"if we have an instance where we used to have
+populations some years ago, and we want to compare how these places
+are doing now - we should have zeros in the deck. Then they add
+nothing to reference or treatment but they hold a place for results."*
+That is **his own rule from 1.22.2**, which the Stata path has
+honoured all along through `_add_empty_origin_cells`; the raster path
+had an option advertising it and delivering nothing. `dnk_f_15_2020`
+in the project's own fixture carries **1,201 observed zeros**, every
+one dropped. The lesson is not "ask before deleting" - it is that a
+dead option can be dead because *the feature was never finished*, and
+the author of the feature knows which it is. Lean on that.
+
+**TWO GATES, NOT ONE.** The default path is bit-identical - 267,632
+rows, total 91254.736115 exactly - asserted against the old two lines
+*recomputed from the files*, not against stored numbers. The
+break-check then found something worth recording: the identity has
+**two independent gates**, `pick` and the `keep_zero` row filter, and
+breaking either alone is caught by the other. That is in the test
+now, so nobody deletes one as redundant. It also nearly cost the fix:
+eight lines downstream, the `keep_zero=False` filter dropped rows
+whose measures *sum* to zero or less - fine for a headcount, fatal
+for a signed surface, where a pixel holding a single -1.2 degC
+anomaly sums negative and was deleted immediately after being
+rescued. **Fixing one without the other would have shipped a fix that
+did nothing.**
+
+**THE OTHER THIRTEEN, GROUPED BY WHAT THEY TEACH.**
+
+*One rule, four copies, and the fourth was stale (354).* "Which
+columns are measurements" was an exclusion list written in four
+places under a comment claiming it was "decided ONCE". The copy
+nobody updated was in `folder_to_cells` - the one function that
+INFERS THE WEIGHT - so `keep_index=True` made a good single-cohort
+folder un-runnable by presenting `gx` and `gy` to the user as people.
+And `compose=` broke the promise twice over: a composed column is a
+SUM of other columns, the list did not know that, and
+`compose={...}` with `sum_cohorts=True` counted everybody in it
+**exactly 2.0000x, measured** - once through the total, once through
+prefix-matching into the reference population. John's own documented
+use is `compose={"under5": [...]}` + `sum_cohorts`, which counted
+every child under five twice. `measurement_columns(frame, derived=())`
+is the one rule now, and a test fails if an open-coded copy reappears.
+
+*An input the code accepted and then misread (355-357).* A float year
+`2020.0` reached the label text as `"2020.0"`, matched nothing, and
+**was refused while being present** - one input, two answers. A group
+name equal to the weight produced shares from 0.0002 to 3.27 instead
+of 1.0 everywhere. A `pattern=` handed in at the door was written
+into the module-level `CONVENTIONS` registry and **outlived the call
+that supplied it**, so a later folder in the same session was parsed
+by a stranger's rule.
+
+*Four messages and a crash in machine 4 (358-366).* A year the data
+does not hold blamed the filenames instead of naming the years
+present (358); `fmt` is refused outright per John's ruling (359); a
+side made of two ranges reported one range's coverage for both (360);
+a folder holding one sex is **recorded, not refused** - also his
+ruling, *"user entered info as 'f' or 'm' or non, are done by
+experienced users"* (361); cohorts above 90 are no longer silently
+dropped (362, with the demographic ruling itself left open as 363);
+a tiled machine-4 run died with `KeyError: 'results'` and now refuses
+up front (364); and the field guide says the indices are **PER ONE,
+not per 100 or per 1,000** (366), which is the kind of thing a
+reviewer finds in a table rather than in the code.
+
+**WHAT I GOT WRONG IN THE REVIEW ITSELF**, because a fresh session
+will make the same two mistakes. I reported that a duplicated
+`effective_range` differed in executable logic; it did not - over
+25,650 inputs, zero disagree, and the duplication was structural
+only. I had to correct my own finding. And two of my break-check
+expectations were wrong rather than the tests being wrong: one break
+was caught by the *other* gate (above), and one fired a different and
+entirely correct test from the one I had predicted. **The break-check
+is evidence about the suite, not about my model of the suite.**
+
+`tests/test_raster_review.py` is 33 tests over findings 353-366, 31
+breaks applied, all caught, "never failed under any break: none".
+
+---
+
+## 0e. 1.52.0 - TWO CLAIMS THE SOFTWARE MADE ABOUT ITSELF
+
+Both from the external review of 1.29.6, both open for eight releases,
+and taken together because they are **one defect in two costumes: a
+module asserting a property it did not have.**
+
+**158 - THE DOCSTRING WAS THE BUG'S DEFENCE.**
+`selfpot.radius_for_k` said *"cell side in metres (cells are square by
+construction)"* while `hex.py` handed it a hexagon's width across the
+flats. The formula is area-based and correct; it was being given the
+wrong area - 10,000 m2 where the cell holds 8,660 - so the radius came
+out 7.46% too large.
+**THE SECOND HALF IS THE ONE TO REMEMBER.** `decay_distance` used
+MEAN_INTRACELL = 0.3826, which is a SQUARE's mean centre-to-point
+distance. A hexagon's is 0.3510. The radius is area-based; the decay
+distance is a mean distance. **Two constants, two derivations** - and
+fixing only the first would have looked finished while leaving the
+origin cell's decay weight 9% out, on the mass a run knows least about
+and carrying the largest single weight in the calculation. When an
+item names one number, check whether the module has two.
+**THE SHAPE IS THE ONE NEW FACT**, and everything is derived from it,
+so an area cannot be set that disagrees with its geometry. The square
+factors are exactly 1.0 and the existing constant, so the square path
+is an IDENTITY - asserted against the pre-1.52 formula itself rather
+than against stored numbers, which is the form of safety argument to
+reach for when touching something every published result used.
+**AN UNKNOWN SHAPE IS REFUSED.** `SHAPES.get(shape, square)` is the
+tempting line and it is this item's own defect: silently treating
+something unknown as a square is how a hexagon came to be charged a
+square's area for eight years.
+**A MONTE CARLO CHECK DISAGREED WITH THE CLOSED FORM** at 2.4e-4, and
+the closed form was right - quadrature confirms it to 1e-12. The
+sampling noise looked like a discrepancy. The answer was a better
+instrument, not a changed constant.
+**AND THE MATRIX ROW CHANGED CATEGORY**, which is 333's mechanism
+working as designed: hexes at the GIS doors were a RULING justified by
+this bug, and are now a GAP with a witness, so the day somebody adds
+the box the entry fails instead of going stale.
+
+**159 - "WRITTEN PROGRESSIVELY" WAS NEVER TRUE.**
+meta.py's first paragraph promised *"the file exists from start_run
+onward, so a crashed run still leaves a record"*. With the default
+constructor `_path` is None, so every `_flush()` was a no-op and
+nothing reached disk until finalize() - **and both GUI doors used the
+default constructor.** A QGIS or Pro run that died mid-analysis left
+nothing at all. The claim was in the docstring, the manual and the
+backlog's own description of item 2; it was never in the code.
+**THE DOORS ALREADY KNEW THE DESTINATION.** `parameters.get(self.OUT)`
+is read in base.py forty lines before the engine starts, for the
+field-name check. The information existed; it was simply not passed.
+**Before concluding something cannot be done early, check whether the
+value is already in scope.**
+**WHY NOW:** 1.51.1 gave TWO modules crash-survivable progressive
+records for exactly this reason - bigrun (344) and fetching (347). The
+class whose docstring claimed the property was the one that did not
+get it. If you fix a robustness defect in one module, grep for the
+others that claim the same thing.
+**HALF THE ENTRY DID NOT REPRODUCE.** It said a second output path at
+finalize leaves the first file marked "running" forever. Both said
+`completed` - because nothing was written before finalize at all. The
+symptom only becomes POSSIBLE once the record is progressive, so it is
+now guarded rather than inherited. **Re-measure an old entry before
+implementing from it.**
+
+**AND FOUR OF THIS RELEASE'S OWN TESTS COULD NOT FAIL**, caught by the
+break-check and not by review:
+- one asserted *atomicity* by re-reading the file in a loop, which a
+  single-threaded reader can never see fail. **"It is atomic" is not
+  observable from one thread; the CONSEQUENCE is** - a failed write
+  must leave the last good record intact, which is testable by making
+  serialisation raise.
+- one was called "finalize keeps the file the run was writing" and was
+  broken with "make finalize recompute the path" - which does not fail
+  it, because the two naming rules AGREE. The agreement is the design
+  working, so that is what the test should assert; the docstring was
+  describing a different test.
+- two more in the same family, recorded in their own docstrings.
+
+
+**AND THE RELEASE PROCESS ITSELF BROKE, TWICE, IN ONE AFTERNOON
+(BACKLOG 352).** Worth reading before cutting a release.
+- `python tools/bump_version.py X | head -4` **killed the tool
+  mid-write**: head exited, the fourth print raised BrokenPipeError,
+  and three of twelve declarations were written. **Never pipe a
+  file-mutating tool into `head`.** The tool now does every write
+  before any reporting, so it no longer depends on its own stdout.
+- The rewrite that fixed that introduced a worse bug: planning every
+  declaration from each file's ORIGINAL text and writing them all
+  means **two declarations in one file lose the first edit.** Two
+  files have two each. Edits accumulate per file now.
+- **BOTH WERE CAUGHT BY THE VERSION-AGREEMENT TESTS IN UNDER A
+  MINUTE.** Seven tests nobody thinks about until the day they fire.
+- And the obvious regression test for the second one **does not
+  work**: a bump round trip is self-healing, because the patterns
+  match any version rather than the old one, so the return trip
+  repairs what the first left wrong. The break-check found that. The
+  test that catches it asserts that after ONE bump nothing still
+  mentions the old version.
 
 ## 0d. 1.51.2 - ONE NUMBER EVERYWHERE, AND A GOOD QUESTION ANSWERED
 
@@ -746,8 +982,53 @@ stands. Both files say what only John can decide; neither is started.
 
 ## 5. WHAT IS OPEN
 
-**349 — the continental door offers none of the engine options.**
-Newest item, from 1.51.1. `run_knn_counts_tiled` now takes
+**THE STATA JOURNAL PAPER IS SUBMITTED** (5 October 2026): *equipop:
+Individualized spatial contexts in Stata*, st0000. It is no longer a
+planning item, and PROPOSALS.md section 2 now records what the paper
+**OBLIGES** instead - equation (5)'s adaptive radius (which is the
+formal reason a negative population is refused), the five decay
+families, the power family having no finite-area half-life, and
+**footnote 1, a correction to the published literature that the code
+must keep earning**: Östh et al. (2016)'s log-normal appendix sets an
+erf term to one half, which locates the third quartile rather than the
+median, and equipop solves the 50% cumulative-area condition directly.
+Verified on the shipped code the day of submission: the area below *h*
+is 0.500000 of the total. **A regression there would make a submitted
+paper wrong about the thing it claims to fix.**
+
+**158 AND 159 ARE CLOSED** in 1.52.0, so the detail below that refers
+to them as open is history. The hex blocker is gone; what remains is a
+dialog decision.
+
+**THE HORIZON CALL OPENS 29 OCTOBER 2026 AND CLOSES 17 FEBRUARY 2027.**
+Re-checked 5 October against two sources, one updated four days
+earlier. **February is the DEADLINE, not the opening** - a mistake now
+made twice by the same person five months apart, because the original
+schedule (open February, close April) is the memorable one and still
+circulates on aggregator sites. See PROPOSALS.md, which leads with it.
+
+**365 - MACHINE 4 HAS NO TILED PATH, AND THIS IS THE ONE THAT TOUCHES
+FEBRUARY.** Newest item, from 1.53.0, and left open deliberately
+rather than missed. A continental demographic run - machine 4 over a
+whole continent, which is the exposome claim's own scale - has no
+supported route. 364 made it **refuse clearly instead of dying with
+`KeyError: 'results'` after the tiles were already computed**, which
+is the honest state but not a capability. Do NOT describe
+population-weighted exposure at continental scale as done when
+writing the Horizon material: 353 made the *surfaces* carriable and
+365 is why the *index* still is not. Pairs naturally with 349 - both
+are the continental door being thinner than the single-extent one.
+
+**363 - NEEDS JOHN'S DEMOGRAPHIC RULING, NOT CODE.** What should
+happen to age bands above 90. 362 stopped the silent dropping and
+made the code SAY what it is leaving out, which is the part that
+needed no ruling; what it should DO - fold them into a 90+ band,
+offer them as extra bands, or refuse the folder - is a question about
+what "90+" means in a published figure, and that is his call, not
+mine. The 90 ceiling is WorldPop's convention, not every product's.
+
+**349 - the continental door offers none of the engine options.**
+From 1.51.1. `run_knn_counts_tiled` now takes
 self_potential, overshoot_mode, self_rule, seed and decay_eps (345),
 and `run_folder` passes none of them on EITHER branch, nor `decay` at
 all. So nothing is inconsistent between tiled and untiled - it is a

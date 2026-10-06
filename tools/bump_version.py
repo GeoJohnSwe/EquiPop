@@ -119,42 +119,78 @@ def main(argv):
     print(f"[bump] {old} -> {new}"
           + (" (check only, nothing written)" if check else ""))
 
+    # PLAN EVERYTHING, THEN WRITE, THEN REPORT - v1.52.0. This loop
+    # used to print and write file by file, and a version lives in a
+    # dozen places, so anything that stopped the process part-way left
+    # the repository HALF BUMPED: three files at the new version and
+    # nine at the old. That is not hypothetical - it happened while
+    # cutting 1.52.0, because the command was piped through `head -4`
+    # and the fourth print raised BrokenPipeError. Three files were
+    # written, the rest were not, and the repo was internally
+    # inconsistent in a way only the suite could see.
+    #
+    # THE SUITE DID SEE IT - eight version-agreement tests failed at
+    # once, which is exactly what they are for, and is why this was a
+    # ten-minute recovery rather than a shipped defect. But a tool
+    # that mutates a dozen files should not depend on its own stdout
+    # surviving. Reporting now happens after every write is done, so
+    # the worst a broken pipe can cost is the summary.
     missed = []
+    report = []                        # (rel, label), in declaration order
+    # EDITS ACCUMULATE PER FILE. stata/equipop.ado and
+    # equipop_test_pass.do each carry TWO declarations, so planning both
+    # from the file's original text and writing both would make the
+    # second write discard the first - which is exactly what the first
+    # version of this rewrite did, bumping `eqp_ado_version` and then
+    # overwriting the file with a copy that still had the old `*!`
+    # banner. Three version-agreement tests caught it within a minute,
+    # which is the second time in one release those tests have paid for
+    # themselves. Keyed by path, each declaration builds on the last.
+    pending = {}                       # path -> current text
     for entry in DECLARATIONS:
         rel, pat = entry[0], entry[1]
         path = os.path.join(ROOT, rel)
         if not os.path.exists(path):
             missed.append(f"{rel} (file missing)")
             continue
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        if path not in pending:
+            with open(path, encoding="utf-8") as f:
+                pending[path] = f.read()
         repl = new
         if len(entry) > 2 and entry[2] == "TODAY":
             import datetime
             repl = datetime.date.today().strftime("%Y%m%d")
         fixed, n = re.subn(pat, lambda m: m.group(1) + repl + m.group(2),
-                           text, flags=re.M)
+                           pending[path], flags=re.M)
         if not n:
             missed.append(f"{rel} ({pat})")
             continue
-        print(f"    {rel}  x{n}")
-        if not check:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(fixed)
+        pending[path] = fixed
+        report.append((rel, f"x{n}"))
 
     for rel in FILENAMES:
         path = os.path.join(ROOT, rel)
         if not os.path.exists(path):
             continue
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        if path not in pending:
+            with open(path, encoding="utf-8") as f:
+                pending[path] = f.read()
+        text = pending[path]
         fixed = text.replace(f"equipop-{old}", f"equipop-{new}")
         fixed = fixed.replace(f"equipop_qgis-{old}", f"equipop_qgis-{new}")
         if fixed != text:
-            print(f"    {rel}  (filenames)")
-            if not check:
+            pending[path] = fixed
+            report.append((rel, "(filenames)"))
+
+    # Every write first, then the report (see above).
+    if not check:
+        touched = {os.path.join(ROOT, r) for r, _ in report}
+        for path, text in pending.items():
+            if path in touched:
                 with open(path, "w", encoding="utf-8") as f:
-                    f.write(fixed)
+                    f.write(text)
+    for rel, label in report:
+        print(f"    {rel}  {label}")
 
     if missed:
         print("\n[bump] NOT FOUND - a declaration moved or was "

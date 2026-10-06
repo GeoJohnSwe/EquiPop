@@ -304,8 +304,13 @@ class ValueStatistics(EquipopAlgorithm):
                 f"{float(unit):g} m). Measures: " + " ".join(wanted))
         from equipop.meta import record          # BACKLOG 293
         runlog = record("stats", pts.n, {},
-                        source=getattr(source, "sourceName",
-                                       lambda: "")())
+                        # BACKLOG 159 / 348, as in alg_counts.py: the
+                        # destination is known before the run, so the
+                        # record is open from here; and the input is
+                        # identified by its provider URI rather than by
+                        # the label in the layers panel.
+                        destination=str(parameters.get(self.OUT) or ""),
+                        source=self.source_uri(source))
         with stage(ch, "calculating"), speaking(ch):
             res = dispatch("stats", pts.data["x"], pts.data["y"],
                            provenance=runlog, **kw)

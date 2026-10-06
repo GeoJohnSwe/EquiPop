@@ -1,6 +1,29 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.51.2, 3 October 2026.**
+**Last updated: 1.53.0, 6 October 2026.**
+*Reviewed at 1.53.0: THE CLIMATE-RASTER ENTRY BELOW WAS WRONG AND IS
+NOW CORRECTED IN PLACE - read it before writing the data-management
+section. It said machine 3 might need "nothing new" for heat, air
+quality and drought surfaces; measured, a temperature anomaly came
+back with the wrong SIGN. Fixed in this release, so the claim can be
+made in the present tense for the first time. The depopulation case
+came back with it.
+NOTHING ELSE IN THE POSITIONING CHANGES. One thing to keep in view
+for the WP description: a continental DEMOGRAPHIC index still has no
+tiled route (BACKLOG 365), so Europe-wide dependency ratios are the
+one piece of the exposome story the software cannot yet do at scale.
+It is measured work, not research - the tiles already carry both
+halves of the ratio - but do not promise it as done.
+*Reviewed at 1.52.0: ONE SENTENCE GETS STRONGER. This file argues
+that a general correction for unit granularity may be the
+intellectual core of the exposome work package rather than a feature
+of it. Until this release EquiPop could not have supported that claim
+with hexagons, because its own hex cells were being charged a
+square's area - the reachability matrix refused them at every door
+for exactly that reason. The engine half is correct now, so a MAUP
+comparison across cell GEOMETRIES, not only across cell sizes, is
+available to the research question. Nothing else in the positioning
+changes.
 *Reviewed at 1.51.2: nothing in the positioning changes. The
 release aligns every door's version number for teaching reasons
 and improves a refusal message; neither is a consortium-facing
@@ -96,19 +119,35 @@ John: **coordinator and PI.**
 
 ## Dates — CHECK THE PORTAL, NOT THIS FILE
 
-    opens     29 October 2026
+    opens     29 October 2026      single stage, RIA, EUR 45m
     deadline  17 February 2027
 
-The Commission **brought the 2027 Health deadlines forward**. John's
-recollection was of the earlier schedule (open February 2027, close
-April) and that is now wrong by roughly four months at the opening and
-two at the deadline. Two national contact points agree on the dates
-above; the Funding & Tenders portal is the authority and the dates
-have already moved once.
+**FEBRUARY IS THE DEADLINE, NOT THE OPENING.** That sentence is first
+because the mistake has now been made twice by the same person, in the
+same direction, five months apart.
 
-**Consequence:** drafting overlaps with the call being open rather
-than preceding it, and the consortium has to be settled well before
-either date.
+The Commission **brought the 2027 Health deadlines forward**. The
+earlier schedule — open February 2027, close April — is the one that
+sticks in the memory, and it is wrong by about four months at the
+opening and two at the deadline. The original April date still
+circulates: a funding aggregator was showing *deadline 2027-04-13* as
+recently as this week, which is the pre-change schedule, so a search
+will return both answers and the stale one looks reassuring.
+
+**RE-CHECKED 5 October 2026**, because John said the call was "not
+opening soon, but in february". Two sources agree with the table
+above: NCP Brussels (published 23 June 2026, updated 8 July) and an
+accelopment summary of the official Work Programme (last modified
+1 October 2026). I could not read the Funding & Tenders portal topic
+page directly — it renders its content through a script — so **the
+portal remains the authority and is still worth one look by a human.**
+
+**Consequence, and it is not small.** As of the re-check the call opens
+in **three and a half weeks** and closes in **nineteen**. Drafting
+overlaps with the call being open rather than preceding it, and a
+consortium RIA needing cohorts, health outcomes, biomarkers, SSH
+partners and clinical-study annexes has to be settled now rather than
+assembled after the opening.
 
 ## Why EquiPop fits
 
@@ -274,10 +313,34 @@ choosing work knows which choices serve two purposes at once:
   Machine 2 already computes weighted summaries of a numeric field
   within each k-neighbourhood, so a sampled PM2.5 or heat surface may
   need no new code at all. Worth demonstrating before promising.
-- **Climate rasters through machine 3.** Heat, air quality and
-  drought surfaces are continental rasters, which is what machine 3
-  already curates. Nothing new may be needed, which is worth knowing
-  before promising anything.
+- **Climate rasters through machine 3. SOMETHING WAS NEEDED, and it
+  is done.** This entry used to read "nothing new may be needed, which
+  is worth knowing before promising anything." It was worth knowing,
+  and it was wrong. Machine 3's loader selected pixels with
+  `arr > 0` - a POPULATION loader, and nothing said so. Measured on a
+  temperature-anomaly field whose true mean is -0.0046 degC: it came
+  back as **+1.19 degC, warming everywhere**, because every cooling
+  pixel was silently discarded. A zero-floored PM2.5 surface came back
+  **9.9% high**, because its clean-air pixels were read as absent.
+  The one claim this file makes that an exposome consortium will test
+  first - population-weighted exposure per group, per neighbourhood,
+  at several scales - ran through the one path that could not carry an
+  exposure surface.
+  **Fixed in 1.53.0 (BACKLOG 353).** The loader now distinguishes
+  OBSERVED from NoData, carries negative values as given, says so when
+  a raster is signed, and the default path for a population raster is
+  bit-identical to before. So the sentence can be written in the
+  present tense: heat, air quality and drought surfaces go through
+  machine 3, and a signed field keeps its sign.
+  **AND THE SAME FIX GAVE BACK DEPOPULATION.** `keep_zero` promised
+  to keep pixels that are zero everywhere and did nothing at all -
+  both branches were dead. A place that HELD people and now holds none
+  was simply absent from the output. It is a row again: nobody's
+  neighbour, contributing nothing to reference or treatment, and
+  entitled to its own result. That is John's own rule from 1.22.2, and
+  it is what makes a then-and-now comparison possible at all.
+  Worth a sentence in the data story: 1,201 such pixels were being
+  dropped from Denmark in the project's own test fixture.
 
 ## Status
 
@@ -287,14 +350,63 @@ choosing work knows which choices serve two purposes at once:
 
 ---
 
-# 2. Stata Journal — the software paper
+# 2. ~~Stata Journal — the software paper~~ **SUBMITTED**
 
-Mentioned in session 12 as near-term and never opened properly.
-Relevant here because it shares an artefact with TEACHING.md: the
-five-county Los Angeles worked example is the course exercise AND the
-paper's application AND the proposal's evidence. **Build it once.**
+**Submitted, 5 October 2026.** *equipop: Individualized spatial
+contexts in Stata*, The Stata Journal (2026), st0000. Struck as a
+planning item; what remains is what the paper now OBLIGES, below.
 
-Wording already agreed for the methods section, on the boundary rule:
+The application it was expected to feed turned out differently from
+the plan in this file: the paper does **not** use the five-county Los
+Angeles example. It validates twice — reproducing the multiscalar
+spatial-isolation workflow of Clark and Östh (2018), and comparing
+against an exact point-level benchmark — and then applies the command
+to **2023 LEHD Origin-Destination Employment Statistics workplace data
+for Dallas–Fort Worth**, contrasting equal-job with equal-distance
+employment contexts. The "build it once" argument therefore still
+stands for the course and the proposal; it simply has no paper half
+any more.
+
+## WHAT THE PAPER NOW PINS
+
+A submitted paper is a promise about behaviour. These are the claims a
+future session must not casually break, checked against the shipped
+1.51.2 code on the day of submission:
+
+- **Equation (5), the adaptive radius.**
+  `r_i(k) = inf { r : Σ_j p_j I(d_ij ≤ r) ≥ k }`. This is the formal
+  statement of why BACKLOG 351 refuses a negative population: the
+  infimum is the boundary of an **up-set**, which requires the
+  accumulating sum to be monotone in *r*. With a negative `p_j` it is
+  not, and equation (5) has no solution rather than an awkward one.
+  The ruling and the published definition now agree.
+- **Five decay families** — negative exponential, exponential normal,
+  exponential square root, log normal, power. Verified: exactly those
+  five in `decay.MODELS`, no more.
+- **Power has no finite area-under-the-curve half-life** and is
+  calibrated only by half-probability. Verified: the code says so and
+  falls back, which is BACKLOG 317.
+- **Footnote 1 is a correction to the published literature, and the
+  code must earn it.** The appendix of Östh et al. (2016) sets an
+  error-function term to one half; because the cumulative area for the
+  log-normal contains (1 + erf(z))/2, that condition locates the THIRD
+  QUARTILE and not the median. equipop solves the 50% cumulative-area
+  condition directly. **Verified numerically on the shipped code**:
+  the area below *h* is 0.500000 of the total. A regression here would
+  make a submitted paper wrong about the thing it claims to fix.
+- **Exclusion operates at the origin-CELL level** for gridded or
+  aggregated data — which is what `selfrule.EXCLUDE` does, and the
+  paper tells the reader to interpret it at the resolution of the
+  input.
+- **The place-based calibration distance is a TWO-CALL public
+  workflow**: one call computes `r_i(k_h)`, a second supplies it
+  through `halflifevar()`. Distinct from the engine's internal
+  self-calibrating pass, which BACKLOG 342 fixed; if that internal
+  route is ever promoted to the public workflow, the paper describes
+  the two-call one.
+
+Wording agreed earlier for the methods section, on the boundary rule,
+and still the clearest statement of it:
 
 > Neighbourhoods are grown outward until they contain *k* people.
 > Where the unit that crosses *k* would carry the total past it, that
@@ -305,4 +417,7 @@ Wording already agreed for the methods section, on the boundary rule:
 > thousand, and indices computed under the two rules are not
 > comparable.
 
-Open: nothing drafted; no timeline agreed.
+**Open:** referee response, if it comes back with one. And the
+availability statement, which was open before submission — worth
+checking it made it in, since SSC distribution is the answer and the
+archive now has it.

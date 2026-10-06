@@ -1,6 +1,42 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.51.2, 3 October 2026.**
+**Last updated: 1.53.0, 6 October 2026.**
+*Reviewed at 1.53.0: NO FIGURE CHANGES - every course exercise uses
+WHOLE population counts and the default raster path is bit-identical,
+which is the safety argument for the whole release. TWO THINGS THE
+COURSE GAINS, both good ones.
+FIRST, a worked example that was impossible before: "here is a place
+that had people and now has none." `keep_zero` promised that and did
+nothing - a depopulated pixel was simply absent from the output -
+and it works now. Denmark's fixture raster carries 1,201 of them. The
+lesson it teaches is John's own rule from 1.22.2, which the course
+already states for Stata: a place with nobody in it is nobody's
+neighbour AND still gets its own result. Students who have met that
+rule in one machine can now see it in another.
+SECOND, the distinction between a COUNT and a FIELD, which is the one
+students most often get wrong and which the software had got wrong
+itself. Machine 3 was selecting pixels with `arr > 0`, so a
+temperature anomaly with a true mean of -0.005 degC came back as
++1.19 - warming everywhere, every cooling pixel gone, no warning. Put
+that on a slide: the arithmetic was never wrong, the QUESTION the
+code was asking was. "Is this a headcount or a measurement?" decides
+whether zero means empty or means zero, and whether a negative is
+impossible or ordinary.
+A third, smaller: the demographic indices now say PER ONE in the
+field guide. A sex ratio of 0.97 is 97 men per 100 women, and a
+student who does not know that reads it as 1%.
+*Reviewed at 1.52.0: NO FIGURE CHANGES - every course exercise uses
+SQUARE cells, and the square path is an exact identity, which is the
+whole safety argument for the hex fix. ONE NEW TEACHING MOMENT, and a
+good one: EquiPop had been charging a hexagon a square's area for
+eight years because the only thing the engines were told was a LENGTH,
+and a hexagon's width and a square's side look identical in a diff.
+That is the modifiable areal unit problem arriving inside the
+software rather than in the data - which is the course's own subject.
+If hexes ever get a box at the GIS doors, the exercise writes itself:
+same points, same k, square against hexagon, and the difference is
+7.46% on the in-cell radius for a reason students can derive with a
+pencil.
 *Reviewed at 1.51.2: THIS RELEASE EXISTS FOR THIS FILE'S SAKE, more or
 less. John's reason for cutting it was pedagogical: the engine, the
 commands, the QGIS plugin and the Pro toolbox are installed by four

@@ -77,7 +77,8 @@ def build_distance_rings(max_radius_units: int):
             for dist, grp in groupby(offsets, key=lambda t: t[0])]
 
 
-def _interp_base(dist_m, unit_size, sp, ring_dist_m):
+def _interp_base(dist_m, unit_size, sp, ring_dist_m, *,
+                 shape: str = "square"):
     """Where a crossing ring's area-linear interpolation STARTS.
 
     BACKLOG 191. dist_m is the distance out to everything already
@@ -94,9 +95,14 @@ def _interp_base(dist_m, unit_size, sp, ring_dist_m):
     estimate. Raising it destroyed that signal and made two engines
     disagree - caught by the parity test, which is what it is for.
     """
+    # BACKLOG 158. run_knn is the GRID engine: it takes a DataFrame
+    # of E_grid/N_grid integer cells, never a CellData, so a hex
+    # grid cannot reach it and `square` is not a default here but a
+    # fact about the input. Same for the two effort engines in
+    # friction.py, which build their own square FrictionGrid.
     if dist_m > 0.0 or sp <= 0.0:
         return dist_m
-    return min(selfpot.radius_for_k(unit_size, 1.0, 1.0, sp),
+    return min(selfpot.radius_for_k(unit_size, 1.0, 1.0, sp, shape=shape),
                float(ring_dist_m))
 
 
@@ -635,7 +641,9 @@ def run_knn_stats(
                     # in the cell, not the share reported
                     _pop = (float(sum_n) if partial is None
                             else float(partial["cellpop"]))
-                    d_k = selfpot.radius_for_k(cd.unit_size, k, _pop, sp)
+                    d_k = selfpot.radius_for_k(cd.unit_size, k, _pop,
+                                               sp,
+                                               shape=cd.cell_shape)
                     scratch["selfpot"][k] = \
                         scratch["selfpot"].get(k, 0) + 1
                 if n_use >= 2 * k:                      # BACKLOG 94
@@ -718,7 +726,9 @@ def run_knn_stats(
                             for v in bin_vars},
                         "d": float(overshoot.radius(
                             _interp_base(dist_m, cd.unit_size, sp,
-                                         float(d)), float(d), f)),
+                                         float(d),
+                                         shape=cd.cell_shape),
+                            float(d), f)),
                         "cellpop": sum_n + ring_n,
                         "ok": {v: bin_ok[v] + float(sum(
                             cd.valid_for(v)[ci] * w

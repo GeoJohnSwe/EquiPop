@@ -610,11 +610,26 @@ def test_f4_a_single_sex_folder_is_not_a_gap(sexes):
 
     pick_sex() narrows an index that does not care about sex to
     whatever the folder holds - one sex, or the combined 't'.
+
+    AMENDED AT 1.53.0, BACKLOG 361. This test used to assert
+    `restricted is None` for BOTH cases, and that pinned a behaviour
+    John then ruled against: a women-only folder produced an "Ageing
+    index" labelled "People 65 and over per person under 15" with
+    nothing recording that the denominator was girls. It is still NOT
+    REFUSED - that part of this test's intent stands, and is the half
+    that matters - but the restriction is now written into the plan.
+    A 't'-only folder is genuinely unrestricted, because t is
+    everybody, and that case is unchanged.
     """
     p = _hush(demo.plan, "ageing_index",
               _labels(list(sexes), _all_bands("ageing_index")))
     assert p["sexes"] == list(sexes)
-    assert p["restricted"] is None
+    if set(sexes) == {"t"}:
+        assert p["restricted"] is None, \
+            "'t' is everybody - a t-only folder is not restricted"
+    else:
+        assert p["restricted"] == {"sexes": ["m"]}, \
+            "a folder missing a sex must say so in the plan (361)"
 
 
 def test_f4_effective_range_is_defined_once():

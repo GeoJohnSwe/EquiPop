@@ -103,6 +103,76 @@ def band_width(start: int) -> int | None:
     return None if hi is None else hi - lo + 1
 
 
+# --- WHICH COLUMNS HOLD A MEASURED QUANTITY, decided ONCE ------------
+# BACKLOG 354. The comment this replaces said "decided ONCE" and sat
+# above THREE copies of the same list comprehension; by 1.52 there were
+# FOUR, in two functions, and the fourth - in folder_to_cells, the one
+# place that infers the weight - was the copy nobody updated when
+# keep_index added gx and gy. So `keep_index=True` made a perfectly
+# good single-cohort folder un-runnable, reporting "this folder holds 3
+# population columns" where two of the three were grid indices.
+#
+# The lesson 272 and 232 already taught, now actually applied: AN
+# EXCLUSION LIST IS A PROMISE ABOUT EVERY COLUMN THAT WILL EVER EXIST,
+# and it is broken by the next column added. It cannot be kept by
+# copying it; it can only be kept by having one of it.
+NOT_MEASUREMENTS = ("gx", "gy", "iso3", "lon", "lat")
+
+
+def normalise_year(year):
+    """A year as the TEXT a cohort label carries, or None.
+
+    BACKLOG 355. A label's year is a string - "f_15_2020" - and the
+    comparisons against it were written as `== str(year)`. For an int
+    or a string that is right; for a FLOAT it is not, because
+    str(2020.0) is "2020.0", which no label ever equals. The two
+    machines then failed differently on the same input: machine 3
+    SILENTLY SUMMED EVERY YEAR in the folder (29,685 people became
+    59,369 - exactly double, no message), and machine 4 refused with
+    a message blaming the user's filenames. Floats arrive easily:
+    numerics from a spin box, a pandas value, anything read with
+    read_csv.
+
+    One normaliser, used by both, so there is nothing left for them to
+    disagree about. A year with a real fraction is refused rather than
+    truncated, because 2020.5 is not a typo it is safe to guess at.
+    """
+    if year is None:
+        return None
+    if isinstance(year, str):
+        y = year.strip()
+        if y.endswith(".0") and y[:-2].isdigit():
+            return y[:-2]
+        return y
+    try:
+        f = float(year)
+    except (TypeError, ValueError):
+        return str(year)
+    if f != int(f):
+        raise ValueError(
+            f"year={year!r} is not a whole year. Cohort labels carry a "
+            "year like 2020, so there is nothing for a fraction to "
+            "match.")
+    return str(int(f))
+
+
+def measurement_columns(frame, derived=()) -> list:
+    """The columns of `frame` that hold a measured quantity.
+
+    `derived` names columns that are SUMS OF OTHER COLUMNS - what
+    `compose=` builds. They are measurements to a reader and must
+    appear in the output, but they must never enter a TOTAL, because
+    their parts are already in it. BACKLOG 354: `compose={"under5":
+    [...]}` with `sum_cohorts=True` counted everybody under five
+    exactly twice - measured at 2.0000x on the test fixture - and the
+    same composed column was prefix-matched into `weight='sexes'`,
+    doubling the reference population there too. Both totals now ask
+    for the columns without the derived ones.
+    """
+    skip = set(NOT_MEASUREMENTS) | {str(d) for d in (derived or ())}
+    return [c for c in frame.columns if c not in skip]
+
+
 def totals_overlap_parts(labels) -> list:
     """Which 't' labels duplicate an 'f'/'m' pair already present.
 
@@ -125,11 +195,40 @@ def totals_overlap_parts(labels) -> list:
     return sorted(clash)
 
 
-def parse_name(stem: str, convention: str | None = None) -> dict:
-    """Filename stem -> fields. Never raises; degrades to the stem."""
-    names = [convention] if convention else list(CONVENTIONS)
-    for nm in names:
-        m = re.match(CONVENTIONS[nm], stem)
+def parse_name(stem: str, convention: str | None = None,
+               pattern: str | None = None) -> dict:
+    """Filename stem -> fields. Never raises; degrades to the stem.
+
+    BACKLOG 357. `pattern=` used to be installed into the module-global
+    CONVENTIONS dict as "_user" and NEVER REMOVED, so it outlived the
+    call that asked for it. In QGIS, ArcGIS Pro or Stata's embedded
+    Python the interpreter outlives the run: a second load_folder on a
+    DIFFERENT folder then got its labels from the first call's regex,
+    and the answer depended on call history. Verified - after one
+    patterned load, `parse_name('zzz_whatever')` with no arguments at
+    all returned {'sex': 'zzz', '_convention': '_user'}.
+    It also leaked between tests in one session.
+    The pattern is now an ARGUMENT, so it lives exactly as long as the
+    call, and `convention=` is validated rather than raising KeyError
+    on a name that is not in the registry - the docstring says this
+    function never raises.
+    """
+    tries = []
+    if pattern:
+        # AND IT IS TRIED BEFORE THE REGISTRY, which is what the
+        # load_folder docstring has always promised. The old code made
+        # `convention` exclusive instead, so giving a pattern for ONE
+        # oddly-named file silently turned off WorldPop parsing for
+        # the other 119 - every iso3 gone, every label changed.
+        tries.append(("_pattern", pattern))
+    if convention:
+        if convention not in CONVENTIONS:
+            return {"_convention": None, "_unknown_convention": convention}
+        tries.append((convention, CONVENTIONS[convention]))
+    else:
+        tries += list(CONVENTIONS.items())
+    for nm, rx in tries:
+        m = re.match(rx, stem)
         if m:
             d = m.groupdict()
             d["_convention"] = nm
@@ -200,8 +299,6 @@ def load_folder(folders, compose: dict | None = None,
     paths = _tif_paths(folders)
     if not paths:
         raise FileNotFoundError(f"No rasters found under {folders}")
-    if pattern:
-        CONVENTIONS["_user"] = pattern
 
     ref = None
     frames, seen = [], {}
@@ -209,7 +306,7 @@ def load_folder(folders, compose: dict | None = None,
 
     for p in paths:
         stem = os.path.splitext(os.path.basename(p))[0]
-        fields = parse_name(stem, "_user" if pattern else convention)
+        fields = parse_name(stem, convention, pattern=pattern)
         lab = (labels or {}).get(stem) or _label(stem, fields)
         if fields["_convention"] is None:
             man["unparsed"].append(stem)
@@ -281,8 +378,79 @@ def load_folder(folders, compose: dict | None = None,
                 "raster's, not a whole number. These rasters do not "
                 "share a lattice.")
 
-        arr = np.where(np.isfinite(arr) & (arr != nod), arr, 0.0)
-        rows, cols = np.nonzero(arr > 0)
+        # ---------------------------------------------------------------
+        # WHICH PIXELS ARE DATA. BACKLOG 353.
+        #
+        # This used to be two lines:
+        #     arr = np.where(np.isfinite(arr) & (arr != nod), arr, 0.0)
+        #     rows, cols = np.nonzero(arr > 0)
+        # and between them they threw away two different things that
+        # this module's own docstring says are different.
+        #
+        # ONE: "NOBODY LIVES HERE" BECAME "THIS IS THE SEA". The first
+        # line turns NoData into 0.0, after which nothing can tell an
+        # observed empty pixel from one outside the raster's footprint.
+        # The distinction is IN THE FILE - WorldPop ships
+        # nodata=-99999.0 - and dnk_f_15_2020 in the test fixture holds
+        # 1,201 pixels that are observed and zero. Every one was being
+        # dropped. John's case for them, which is the reason this is a
+        # defect and not a preference: "if we have an instance where we
+        # used to have populations some years ago, and we want to
+        # compare how these places are doing now - we should have zeros
+        # in the deck. Then they add nothing to reference or treatment
+        # but they hold a place for results." That is HIS OWN RULE from
+        # 1.22.2, which the Stata path honours through
+        # _add_empty_origin_cells and which `keep_zero` claimed to
+        # offer here while doing nothing at all: a pixel that is zero
+        # everywhere was never created, so keep_zero=True could not
+        # bring it back, and every row that did exist had a positive
+        # value, so keep_zero=False dropped nothing. Both branches were
+        # dead and the option was documented as working.
+        #
+        # TWO: `arr > 0` DISCARDS NEGATIVES WITHOUT A TRACE. Harmless
+        # for a headcount, fatal for anything else - and machine 3 is
+        # the documented route for climate and exposure surfaces, which
+        # are routinely signed. Measured on a temperature-anomaly field
+        # whose true mean is -0.005 degC: half the pixels (every
+        # cooling one) vanished and the field came back reading +1.19
+        # degC, warming everywhere, with no warning. A zero-floored
+        # PM2.5 surface came back biased 9.9% high because its clean
+        # pixels were read as absent. It also made the negative-weight
+        # refusal in cells.py unreachable from this path - the guard
+        # written for exactly this case, forty lines away in the same
+        # package, could never fire because the negatives were gone
+        # before build_cells saw them.
+        #
+        # So: OBSERVED is the mask, and what counts as a row is then a
+        # question about zeros alone. `nod is None` is handled
+        # explicitly rather than relying on `arr != None` broadcasting.
+        observed = np.isfinite(arr)
+        if nod is not None:
+            observed &= (arr != nod)
+        arr = np.where(observed, arr, 0.0)
+        # keep_zero decides ONLY whether an observed zero earns a row.
+        # The default keeps every non-zero pixel, which for a
+        # population raster with no negatives is exactly the old
+        # `arr > 0` - asserted as a bit-identity in the tests, because
+        # every published result came through the old line.
+        pick = observed if keep_zero else (observed & (arr != 0.0))
+        rows, cols = np.nonzero(pick)
+        # SAY WHEN A RASTER IS SIGNED. Silence here is what let the
+        # temperature field above come back with the wrong sign. A
+        # count cannot be negative, so this is either an exposure
+        # surface - fine, and now carried faithfully - or an undeclared
+        # sentinel, which build_cells will refuse by name further down
+        # the line. Either way the user should hear it from the loader.
+        n_neg = int(np.count_nonzero(observed & (arr < 0.0)))
+        if n_neg:
+            print(f"[folder] NOTE: {stem} holds {n_neg:,} negative "
+                  f"values (min {float(arr[observed].min()):,.4g}). "
+                  "They are carried as given. A COUNT cannot be "
+                  "negative, so if this is population the file is "
+                  "using an undeclared no-data sentinel - declare it "
+                  "with missing(), or the run will be refused when "
+                  "these become a population. If it is a CHANGE or an "
+                  "exposure surface, that is what this is for.")
         gx = cols + int(round(ox))
         gy = rows + int(round(oy))
         frames.append(pd.DataFrame({
@@ -353,19 +521,20 @@ def load_folder(folders, compose: dict | None = None,
         print(f"[folder] {name} = {len(parts)} columns, "
               f"{pts[name].sum():,.1f} people")
 
-    # WHICH COLUMNS ARE MEASUREMENTS - decided ONCE. This rule was
-    # written out three separate times as "everything except ...", and
-    # when keep_index added gx and gy one of the three was not
-    # updated, so THE GRID INDICES WERE SUMMED INTO THE POPULATION
-    # (BACKLOG 272). An exclusion list is a promise about every column
-    # that will ever exist, and it was broken by the next column added.
-    NOT_MEASUREMENTS = ("gx", "gy", "iso3", "lon", "lat")
-    measure_cols = [c for c in pts.columns
-                    if c not in NOT_MEASUREMENTS]
+    measure_cols = measurement_columns(pts)
 
-    if not keep_zero:
-        vals = measure_cols
-        pts = pts.loc[pts[vals].to_numpy().sum(axis=1) > 0].copy()
+    # BACKLOG 353. THIS LINE WOULD HAVE UNDONE THE FIX ABOVE. It
+    # dropped rows whose measures SUM to zero or less, which for a
+    # headcount is the same as "zero everywhere" and for a signed
+    # surface is not: a pixel holding a single -1.2 degC anomaly sums
+    # negative and was deleted eight lines after being rescued. The
+    # docstring has always said "pixels that are zero in EVERY layer",
+    # so that is what it now asks - and a row can only be zero
+    # everywhere when keep_zero let it in, which makes this a correct
+    # no-op rather than one that eats data.
+    if not keep_zero and measure_cols:
+        vals = pts[measure_cols].to_numpy()
+        pts = pts.loc[(vals != 0.0).any(axis=1)].copy()
 
     pts["lon"] = ref["c"] + (pts["gx"] + 0.5) * ref["a"]
     pts["lat"] = ref["f"] + (pts["gy"] + 0.5) * ref["e"]
@@ -376,8 +545,7 @@ def load_folder(folders, compose: dict | None = None,
     # machinery and most callers only want coordinates.
     if keep_index:
         front += ["gx", "gy"]
-    cols = front + [c for c in pts.columns
-                    if c not in NOT_MEASUREMENTS]
+    cols = front + measurement_columns(pts)
     pts = pts[cols].reset_index(drop=True)
 
     if sum_cohorts:
@@ -393,8 +561,7 @@ def load_folder(folders, compose: dict | None = None,
         # An exclusion list is a promise about every column that will
         # ever exist. `labels` is what the loader itself identified as
         # measurements, so it cannot drift.
-        lab_cols = [c for c in pts.columns
-                    if c not in NOT_MEASUREMENTS]
+        lab_cols = measurement_columns(pts, derived=(compose or {}))
         both = totals_overlap_parts(lab_cols)
         if both:
             raise ValueError(
@@ -523,8 +690,15 @@ def folder_to_cells(folders, weight: str | None = None,
     # the columns loaded - every year stays available - it confines
     # the REFERENCE POPULATION below, so a run of 2020 gives the same
     # answer whether or not 2030 is also on disk (BACKLOG 273).
-    value_cols = [c for c in pts.columns
-                  if c not in ("lon", "lat", "iso3")]
+    # BACKLOG 354. THE STALE FOURTH COPY LIVED HERE, and this is the
+    # one function that INFERS THE WEIGHT - so the copy nobody updated
+    # was the copy that decides whether a run happens at all. With
+    # keep_index=True it counted gx and gy as population columns and
+    # refused a single-cohort folder: "this folder holds 3 population
+    # columns", two of them grid indices, presented to the user as
+    # people. One rule now, in measurement_columns().
+    derived = tuple(compose or {})
+    value_cols = measurement_columns(pts, derived=derived)
 
     # WEIGHT MAY BE A WORD (John, on his real download): "it asks for
     # the population, but all are populations". With sixty cohorts
@@ -547,17 +721,34 @@ def folder_to_cells(folders, weight: str | None = None,
         # radii moved by up to 55 m, with the selected year's data
         # unchanged. A result that depends on which OTHER files are
         # present is not reproducible (BACKLOG 273).
-        year = kw.get("year")
+        # BACKLOG 355, two faults in four lines. The comparison was
+        # against `str(year)`, so a FLOAT year matched nothing; and
+        # `if same_year:` then fell back to KEEPING EVERY YEAR, with no
+        # message - which is the exact non-reproducible behaviour the
+        # paragraph above says 273 fixed, reachable by passing 2020.0
+        # instead of 2020. Measured: 29,685 people became 59,369.
+        # A year that matches nothing is now an ERROR naming the years
+        # that do exist, because asking for a year the folder does not
+        # carry is a question with no right answer, not a reason to
+        # answer a different question.
+        year = normalise_year(kw.get("year"))
         if year is not None:
             same_year = [c for c in picked
-                         if c.rsplit("_", 1)[-1] == str(year)]
-            if same_year:
-                dropped = len(picked) - len(same_year)
-                picked = same_year
-                if dropped:
-                    print(f"[folder] weight confined to {year}: "
-                          f"{dropped} column(s) from other years left "
-                          "out of the reference population")
+                         if c.rsplit("_", 1)[-1] == year]
+            if not same_year:
+                have = sorted({c.rsplit("_", 1)[-1] for c in picked})
+                raise ValueError(
+                    f"No {weight} column carries the year {year}. This "
+                    f"folder has {', '.join(have)}. Asking for a year "
+                    "that is not here would otherwise be answered by "
+                    "summing EVERY year, which is a different "
+                    "question.")
+            dropped = len(picked) - len(same_year)
+            picked = same_year
+            if dropped:
+                print(f"[folder] weight confined to {year}: "
+                      f"{dropped} column(s) from other years left "
+                      "out of the reference population")
         if not picked:
             raise ValueError(
                 f"No {weight} columns here. Found: {value_cols[:6]}"
@@ -648,13 +839,31 @@ def folder_to_cells(folders, weight: str | None = None,
     # multiply children by the total population. Convert to the share
     # of the weight, which the multiplication then turns back into the
     # count it started as.
+    # BACKLOG 356. `gname != weight` SKIPPED THE CONVERSION, and the
+    # right answer in that case is a share of 1.0 - the group IS the
+    # population - not the raw headcount. Left raw, build_cells
+    # computes sum(v * w) = THE SUM OF SQUARES of the population, and
+    # the reported share came out between 0.0002 and 3.27 where the
+    # truth is 1.0 everywhere. A share of 327% is not a number anybody
+    # reads as a loader bug. The natural way in is a single-cohort
+    # folder where the user names that cohort as the treatment, or
+    # weight='total' with groups=['t_15_2026'].
+    import numpy as _np
     for gname in (groups or []):
-        if gname in pts.columns and gname != weight:
-            w = pts[weight].to_numpy(dtype=float)
-            import numpy as _np
-            pts[gname] = _np.where(w > 0,
-                                   pts[gname].to_numpy(dtype=float) / w,
-                                   0.0)
+        if gname not in pts.columns:
+            raise ValueError(
+                f"groups names {gname!r}, which this folder does not "
+                f"have. It holds: {measurement_columns(pts)[:8]}"
+                f"{' ...' if len(measurement_columns(pts)) > 8 else ''}")
+        if gname == weight:
+            pts[gname] = 1.0
+            print(f"[folder] group '{gname}' IS the reference "
+                  "population, so its share is 1.0 everywhere")
+            continue
+        w = pts[weight].to_numpy(dtype=float)
+        pts[gname] = _np.where(w > 0,
+                               pts[gname].to_numpy(dtype=float) / w,
+                               0.0)
 
     cd = build_cells(pts, "_x", "_y", unit_size=unit_size,
                      binary_vars=groups or None, weights=weight)

@@ -513,6 +513,33 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
     # it was actually given - so this method is only about WHERE it
     # goes, which is the one part that is genuinely QGIS's own.
     # -----------------------------------------------------------------
+    @staticmethod
+    def source_uri(source) -> str:
+        """What IDENTIFIES the input layer, best available first.
+
+        BACKLOG 348 fixed write_provenance to stop using sourceName(),
+        the label in the layers panel - "my points", not a path, so
+        add_input() had nothing to measure. BACKLOG 159 then needed the
+        same thing at the other end of the run, where `record()` opens
+        the log, and that call was still passing sourceName(). The same
+        correction wanted in two places is a rule, so it lives in one.
+
+        source() is the provider URI; publicSource() is it with
+        credentials stripped; sourceName() is the human label and the
+        last resort. Returns "" for a layer that reports none - an
+        in-memory or scratch layer - which the caller must handle
+        rather than record as an input it cannot identify.
+        """
+        for attr in ("source", "publicSource", "sourceName"):
+            try:
+                got = getattr(source, attr, None)
+                uri = str(got() or "") if callable(got) else ""
+            except Exception:
+                uri = ""
+            if uri:
+                return uri
+        return ""
+
     def write_provenance(self, runlog, dest, result, ch, source=None):
         """A .meta.json and .meta.txt beside the output.
 
@@ -543,15 +570,7 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 # the data; sourceName() is kept as the human label
                 # when both exist. A failure now SAYS so instead of
                 # vanishing.
-                uri = ""
-                for attr in ("source", "publicSource", "sourceName"):
-                    try:
-                        got = getattr(source, attr, None)
-                        uri = str(got() or "") if callable(got) else ""
-                    except Exception:
-                        uri = ""
-                    if uri:
-                        break
+                uri = self.source_uri(source)
                 rows = None
                 try:
                     rows = int(source.featureCount())
@@ -622,12 +641,16 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
             # output's stem, so two layers of one GeoPackage collided;
             # the layer name goes into the stem when there is one, and
             # a plain out.shp is unchanged (BACKLOG 348).
-            stem = path
-            if layer:
-                base, ext = os.path.splitext(path)
-                safe = "".join(c if (c.isalnum() or c in "-_") else "_"
-                               for c in layer)
-                stem = f"{base}.{safe}{ext}"
+            # ONE SIDECAR PER LAYER, and the rule for which name lives
+            # in equipop.meta.sidecar_for() rather than here (BACKLOG
+            # 159). It was written here when only this function needed
+            # it; `record()` now needs the same answer BEFORE the run,
+            # to open the log at the right file, and a rule that two
+            # places need is a rule that belongs in one.
+            from equipop.meta import sidecar_for
+            side = sidecar_for(dest)
+            stem = (side[:-len(".meta.json")] + os.path.splitext(path)[1]
+                    if side else path)
             written = runlog.finalize(named, stem)
             ch.info(f"Run provenance written to "
                     f"{os.path.basename(written)} - every setting the "

@@ -666,8 +666,18 @@ class CountsAndShares(EquipopAlgorithm):
         # maintains a list of what to record.
         from equipop.meta import record
         runlog = record(engine, pts.n, {},
-                        source=getattr(source, "sourceName",
-                                       lambda: "")())
+                        # BACKLOG 159. The destination is already known
+                        # here - base.py reads the same parameter forty
+                        # lines earlier for the field-name check - so
+                        # the record can be OPEN from now on instead of
+                        # appearing only if the run survives.
+                        destination=str(parameters.get(self.OUT) or ""),
+                        # BACKLOG 348/351. sourceName() is the label in
+                        # the layers panel, not a path. source() is the
+                        # provider URI, which is what identifies the
+                        # data - the same correction write_provenance
+                        # got, in the second place it was needed.
+                        source=self.source_uri(source))
         with stage(ch, "calculating"), speaking(ch):
             res = dispatch(engine, pts.data["x"], pts.data["y"],
                            provenance=runlog, **kw)

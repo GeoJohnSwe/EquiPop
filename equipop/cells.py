@@ -56,6 +56,15 @@ class CellData:
     # Europe-against-Africa comparison was biased by construction.
     value_weights: dict = field(default_factory=dict)  # var -> list of arrays
     unit_size: float = 100.0
+    # BACKLOG 158. WHAT SHAPE THE CELLS ARE, because `unit_size` alone
+    # does not say: it is a square's SIDE and a hexagon's WIDTH ACROSS
+    # FLATS, and those enclose different areas. The self-potential
+    # radius is area-based, so hex cells were being charged a square's
+    # 10,000 m2 where they hold 8,660 - a 7.46% overstatement that
+    # nothing could see, because the number arrived through a field
+    # named for a length. Defaults to "square", which is every caller
+    # before 1.52 and an exact identity for them. See selfpot.SHAPES.
+    cell_shape: str = "square"
     labels: list | None = None    # optional per-cell ID/label (e.g. place, year)
 
     def __len__(self):

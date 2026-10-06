@@ -1,4 +1,4 @@
-*! equipop v1.51.2  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.53.0  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -515,7 +515,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.51.2"
+    local eqp_ado_version "1.53.0"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -565,7 +565,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.51.2"
+    local eqp_ado_version "1.53.0"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test

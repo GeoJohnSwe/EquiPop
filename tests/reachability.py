@@ -323,13 +323,39 @@ MATRIX = {
     },
     "hex cells": {
         "python": PYTHON,
-        "qgis": ruled_out(
-            "Square cells only at every door. Hex exists in the "
-            "package and its self-potential uses a SQUARE cell's "
-            "area, overstating the radius by 7.5% - so it should not "
-            "be offered at a door until that is fixed.", 158),
-        "pro": same_as("qgis"),
-        "stata": same_as("qgis"),
+        # BACKLOG 158, FIXED v1.52.0 - and the reason this row gave for
+        # offering hexes nowhere went with it. The entry USED to read
+        # "its self-potential uses a SQUARE cell's area, overstating
+        # the radius by 7.5% - so it should not be offered at a door
+        # until that is fixed". It is fixed: CellData carries the cell
+        # shape, selfpot derives area and mean intra-cell distance from
+        # it, and a hex run's in-cell radii fell by exactly 7.46%.
+        #
+        # So this stops being a RULING and becomes a GAP, which is the
+        # distinction 333 built: a ruling needs no witness because
+        # nobody intends to close it, and a gap names what would appear
+        # if somebody did. The witness is the box itself - a `hexsize`
+        # parameter in the QGIS algorithm - so the day one is added,
+        # this entry fails and has to be updated rather than quietly
+        # going stale, which is the whole point of the mechanism.
+        "qgis": not_yet(
+            "Square cells only at every door. The engine half is now "
+            "correct (158), so this is a dialog decision rather than a "
+            "correctness blocker: a hex box needs a size in width "
+            "across flats, and the two GIS doors would have to agree "
+            "on the wording.", 158,
+            absent=("qgis/equipop_qgis/alg_counts.py", "hexsize")),
+        "pro": not_yet(
+            "Square cells only at every door - see the QGIS row. Pro "
+            "would need the same box, and door_parity would then hold "
+            "the two to one wording.", 158,
+            absent=("arcgis/EquiPop.pyt", "hexsize")),
+        "stata": ruled_out(
+            "A Stata user hands over coordinates and gets variables "
+            "back; the cell grid is EquiPop's internal construction "
+            "and hexagons would be one more thing to explain for no "
+            "gain the GIS doors do not give better. Offered there "
+            "first if anywhere.", 158),
     },
     "tiled, resumable big runs": {
         "python": PYTHON,

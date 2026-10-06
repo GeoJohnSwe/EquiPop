@@ -126,14 +126,32 @@ def _split(label):
     return m.groupdict() if m else None
 
 
-def columns_for(spec: dict, labels, year=None) -> list:
-    """Which of `labels` this half of an index is made of."""
+def columns_for(spec: dict, labels, year=None, say=None) -> list:
+    """Which of `labels` this half of an index is made of.
+
+    BACKLOG 362. A BAND THE TABLE DOES NOT KNOW WAS DROPPED IN
+    SILENCE. BAND_STARTS stops at 90, where 90 means "90 and over" -
+    true of WorldPop, not of every product. A folder carrying f_95 or
+    f_100 had those cohorts excluded from every index while
+    `weight='sexes'` still counted them in the reference population,
+    because that picks columns by the f_/m_ PREFIX alone. So the
+    ageing index came out biased down by exactly the oldest cohorts,
+    with `restricted` reporting None, and the module docstring's "the
+    last is open at 90+" asserted as a fact about the data rather than
+    checked against it.
+    What SHOULD happen to them - folded into 90+, selected as further
+    bands, or refused - is a demographic ruling and is John's; it is
+    BACKLOG 363 and deliberately not decided here. What this release
+    fixes is the SILENCE, because a cohort that is present in the
+    folder, counted in N_k, and absent from the index is the worst of
+    the three outcomes whichever way the ruling goes.
+    """
     wanted = set(_bands_from(*spec["ages"]))
     if "plus" in spec:
         wanted |= set(_bands_from(*spec["plus"]))
     sexes = spec["sexes"]
 
-    out = []
+    out, unknown = [], set()
     for lab in labels:
         d = _split(lab)
         if d is None:
@@ -145,8 +163,18 @@ def columns_for(spec: dict, labels, year=None) -> list:
         # absent - decided in pick_sex() below, not here.
         if sexes is not None and d["sex"] not in sexes:
             continue
-        if int(d["age"]) in wanted:
+        age = int(d["age"])
+        if age in wanted:
             out.append(lab)
+        elif age > BAND_STARTS[-1]:
+            unknown.add(age)
+    if unknown and say is not None:
+        say("[demography] NOTE: this folder carries age band(s) "
+            + ", ".join(str(a) for a in sorted(unknown))
+            + f", above the {BAND_STARTS[-1]}+ band this table ends "
+            "at. They are NOT in this index, and they ARE in the "
+            "reference population, so the index is computed over a "
+            "younger group than the neighbourhood. See BACKLOG 363.")
     return out
 
 
@@ -206,6 +234,24 @@ def parse_spec(text):
                 raise DemographyError(
                     f"{''.join(bad)!r} is not a sex. Use f, m or t - "
                     "or several, like 'fm:15-49'.")
+            # BACKLOG 359, JOHN'S RULING: "fmt should not be accepted."
+            # 't' IS f+m, so naming it alongside either counts those
+            # people twice. The rule was written down at columns_for()
+            # - "mixing it with either double counts" - and enforced
+            # nowhere: 'fmt:0-14,65-' was accepted, gave 30 numerator
+            # columns where 'fm:' gives 20, and the SUM came out at
+            # exactly 2x the truth because t repeats f+m. Nothing
+            # flagged it: every sex carried every band, so the
+            # completeness grid saw a perfect side. The error message
+            # even advertised multi-sex specs.
+            # 't' ALONE stays fine - a t-only folder is ordinary.
+            if "t" in head and ({"f", "m"} & set(head)):
+                raise DemographyError(
+                    f"{head!r} names 't' together with f or m, and 't' "
+                    "IS f plus m - so those people would be counted "
+                    "twice and the index would come out at about "
+                    "double. Use 'fm:' for the two sexes separately, "
+                    "or 't:' for the combined column, not both.")
             sexes = tuple(head)
         raw = raw.strip()
     if not raw:
@@ -293,12 +339,47 @@ def effective_range(spec_side):
     if not bands:
         return None
     lo, hi = spec_side.get("ages", (None, None))
-    if spec_side.get("plus"):
-        hi = None
+    plus = spec_side.get("plus")
+
+    # BACKLOG 360. A SIDE MAY BE TWO RANGES AND THIS REPORTED IT AS
+    # ONE. The dependency numerator is "0-14 AND 65 and over"; with
+    # `plus` set, this function forced hi = None and returned
+    # covers = (0, None) - which reads as EVERY AGE, and every age is
+    # also its own denominator's range. A demographer reading the plan
+    # (it is attached to the manifest as man["plans"]) would conclude
+    # the two halves overlap. Worse, forcing hi = None made `exact`
+    # unconditionally True, which switched OFF the moved-boundary note
+    # for the one index that uses `plus`: asking for "0-17,65-" lost
+    # ages 15, 16 and 17 and still claimed to be exact.
+    #
+    # The columns selected were right all along - this was a reporting
+    # fault, not an arithmetic one. `ranges` is now the honest answer
+    # and `covers`/`asked` keep their old shape for the FIRST range,
+    # so nothing that reads them breaks.
+    main = [b for b in bands if plus is None or b < plus[0]]
+    tail = [b for b in bands if plus is not None and b >= plus[0]]
+    ranges = []
+    if main:
+        ranges.append({"asked": (lo, hi),
+                       "covers": (main[0], _band_end(main[-1])),
+                       "bands": main,
+                       "exact": main[0] == lo
+                       and (hi is None or _band_end(main[-1]) == hi)})
+    if tail:
+        ranges.append({"asked": (plus[0], plus[1]),
+                       "covers": (tail[0], _band_end(tail[-1])),
+                       "bands": tail,
+                       "exact": tail[0] == plus[0]})
+    first = ranges[0] if ranges else None
     top = _band_end(bands[-1])
-    return {"asked": (lo, hi), "covers": (bands[0], top),
+    return {"asked": (lo, hi if not plus else None),
+            "covers": (bands[0], top),
             "bands": bands,
-            "exact": bands[0] == lo and (hi is None or top == hi)}
+            # EVERY range, each with its own asked/covers/exact.
+            "ranges": ranges,
+            # and `exact` is now true only when EVERY range is, so the
+            # note fires for a dropped boundary in either half.
+            "exact": bool(ranges) and all(r["exact"] for r in ranges)}
 
 
 def plan(name, labels, year=None, num_spec=None,
@@ -328,11 +409,31 @@ def plan(name, labels, year=None, num_spec=None,
                 "labels of the form sex_age_year, such as f_15_2026.")
         year = yrs[0]
 
-    # NORMALISE THE YEAR. Labels carry it as text; a door may hand in
-    # an int from a spin box. Returning whichever type the caller
-    # happened to pass made the plan's own year not comparable with
-    # the labels it selected - caught by a test, not by reading.
-    year = str(year)
+    # NORMALISE THE YEAR, through the SAME helper machine 3 uses.
+    # BACKLOG 355: this said `year = str(year)`, which is right for an
+    # int and wrong for a float - str(2020.0) is "2020.0" and no label
+    # equals that. The two machines then failed DIFFERENTLY on one
+    # input: machine 3 silently summed every year in the folder,
+    # machine 4 refused with the message below about malformed labels.
+    # One normaliser, so there is nothing left to disagree about.
+    from ..rasterfolder import normalise_year
+    year = normalise_year(year)
+
+    # BACKLOG 358. A YEAR THE DATA DOES NOT CARRY WAS BLAMED ON THE
+    # FILENAMES. This check only ran when `year is None`, so asking
+    # for 2030 on a 2020 folder fell through to pick_sex(), found no
+    # cohort for that year, and raised "No columns here look like a
+    # cohort ... Machine 4 needs labels of the form sex_age_year" -
+    # about labels that are perfectly well formed. It sent the user to
+    # check their naming convention instead of their year box.
+    # `yrs` is computed six lines above and had the right answer all
+    # along.
+    if year is not None and yrs and year not in yrs:
+        raise DemographyError(
+            f"No cohort here carries the year {year}. These points "
+            f"have {', '.join(yrs)}. An index is computed for ONE "
+            "year, so name one of those - the labels themselves are "
+            "fine.")
     sexes = pick_sex(labels, year)
     num = dict(num_spec or spec["numerator"])
     den = dict(den_spec or spec["denominator"])
@@ -341,7 +442,10 @@ def plan(name, labels, year=None, num_spec=None,
     if den["sexes"] is None:
         den["sexes"] = sexes
 
-    top = columns_for(num, labels, year)
+    # `say=print` only on the numerator: the note is about the FOLDER,
+    # so saying it twice per index would say it eight times for four
+    # indices (BACKLOG 362).
+    top = columns_for(num, labels, year, say=print)
     bot = columns_for(den, labels, year)
 
     # IS THE MEASURE ENTITLED TO ITS NAME? Having ONE matching column
@@ -368,6 +472,28 @@ def plan(name, labels, year=None, num_spec=None,
     # a user can act on: "fetch m_65" is a instruction, "the numerator
     # is incomplete" is not.
     gaps = {}
+    # BACKLOG 361. A FOLDER MISSING ONE SEX PASSED UNFLAGGED, because
+    # the sexes a side "covers" is itself derived from what is PRESENT
+    # (pick_sex), so the absence of a sex could never be a gap. A
+    # women-only folder produced an "Ageing index", labelled "People 65
+    # and over per person under 15", with restricted = None - nothing
+    # saying the denominator was girls. That is 1.45.4's defect ("an
+    # incomplete measure wore a complete measure's name") surviving in
+    # the one dimension 346's grid cannot see, because 346 closed the
+    # BAND dimension and took the sex set as given.
+    #
+    # JOHN'S RULING on user-entered specs - experienced users, do not
+    # alter their choice - is what decides the remedy here: the index
+    # is COMPUTED, not refused, and the restriction is WRITTEN DOWN.
+    # That overrides nothing; it records what was done, which is the
+    # same principle as every run saying which origin rule it used. A
+    # 't'-only folder is NOT restricted: t is everybody.
+    # KEPT OUT OF `gaps` DELIBERATELY: gaps is what REFUSES a run, and
+    # the ruling is to compute and record, not refuse. `noted` is
+    # recorded in the plan and printed; it never stops anything.
+    noted = {}
+    if set(sexes) in ({"f"}, {"m"}):
+        noted["sexes"] = sorted({"f", "m"} - set(sexes))
     for side, want, have in (("numerator", num, top),
                              ("denominator", den, bot)):
         need = expected_bands(want)
@@ -415,7 +541,12 @@ def plan(name, labels, year=None, num_spec=None,
                           "denominator": effective_range(den)},
             # A DELIBERATE RESTRICTION IS RECORDED, so a reader of the
             # output can see the measure is not the general one.
-            "restricted": (dict(gaps) if gaps else None)}
+            # BACKLOG 361: `noted` joins it - a sex absent from the
+            # whole folder restricts the measure just as much as a
+            # missing band, and it is recorded for the same reason,
+            # without refusing the run.
+            "restricted": ({**noted, **gaps}
+                           if (noted or gaps) else None)}
 
 
 # ------------------------------------------------------------- running
@@ -433,6 +564,29 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
     from ..rasterfolder import load_folder
 
     say = channel.info if channel is not None else print
+    # BACKLOG 364. A TILED RUN DID ALL THE WORK AND THEN DIED. `out_dir`
+    # reaches run_folder through **kw, which sends machine 3 down its
+    # TILED branch - and that branch sets man["tiles"], never
+    # man["results"]. So the rasters loaded, the cells were built,
+    # every neighbourhood was computed, the parquet tiles were written
+    # - and then this function raised a bare KeyError: 'results',
+    # having never computed the index. Reproduced: 40 rasters, 2 tiles
+    # on disk, and tiles holding T_num_*/T_den_* with no index column
+    # in them.
+    # Refused UP FRONT instead, because a refusal after the expensive
+    # part is the one kind that costs the user something. Machine 3's
+    # own advice ("giving an output folder would tile it") does not
+    # apply to machine 4 yet, and that is BACKLOG 365 rather than
+    # something to half-do here.
+    if kw.get("out_dir") is not None:
+        raise DemographyError(
+            "A demographic index cannot be run TILED yet: the index is "
+            "computed from the whole result table, and a tiled run "
+            "writes its parts to parquet without one. Drop out_dir to "
+            "run it in memory, or compute the index yourself from the "
+            "T_num_/T_den_ columns a tiled machine-3 run leaves. This "
+            "is a missing capability, not a broken setting - see "
+            "BACKLOG 365.")
     check_folders(folders)      # before we peek at the labels
 
     # Look at the labels first, so the plan can be shown and refused
@@ -527,6 +681,29 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     from ..rasterfolder import load_folder
 
     say = channel.info if channel is not None else print
+    # BACKLOG 364. A TILED RUN DID ALL THE WORK AND THEN DIED. `out_dir`
+    # reaches run_folder through **kw, which sends machine 3 down its
+    # TILED branch - and that branch sets man["tiles"], never
+    # man["results"]. So the rasters loaded, the cells were built,
+    # every neighbourhood was computed, the parquet tiles were written
+    # - and then this function raised a bare KeyError: 'results',
+    # having never computed the index. Reproduced: 40 rasters, 2 tiles
+    # on disk, and tiles holding T_num_*/T_den_* with no index column
+    # in them.
+    # Refused UP FRONT instead, because a refusal after the expensive
+    # part is the one kind that costs the user something. Machine 3's
+    # own advice ("giving an output folder would tile it") does not
+    # apply to machine 4 yet, and that is BACKLOG 365 rather than
+    # something to half-do here.
+    if kw.get("out_dir") is not None:
+        raise DemographyError(
+            "A demographic index cannot be run TILED yet: the index is "
+            "computed from the whole result table, and a tiled run "
+            "writes its parts to parquet without one. Drop out_dir to "
+            "run it in memory, or compute the index yourself from the "
+            "T_num_/T_den_ columns a tiled machine-3 run leaves. This "
+            "is a missing capability, not a broken setting - see "
+            "BACKLOG 365.")
     check_folders(folders)      # before we peek at the labels
     names = list(names)
     if not names:
@@ -664,9 +841,20 @@ def explain_fields(columns, plans=None, epsg=None):
             code = INDICES[nm]["code"]
             mm = re.match(rf"^{code}_(\d+)$", c)
             if mm:
+                # BACKLOG 366. SAY THE UNITS. John's ruling is to keep
+                # the bare ratio, and this changes no number - it says
+                # which number it is. Conventionally a sex ratio is
+                # men per 100 women and a child-woman ratio is children
+                # per 1,000 women, so a column reading 0.97 will be
+                # read as 1% by anyone who expects 97. The `about` text
+                # implies per-one ("per woman", "per person of working
+                # age") and never reaches the attribute table.
                 out.append(f"  {c}: >>> {pl['label']} over the nearest "
                            f"{mm.group(1)} people. This is the answer; "
-                           "the T_ and R_ columns are its parts")
+                           "the T_ and R_ columns are its parts. "
+                           "PER ONE, not per 100 or per 1,000 - "
+                           "multiply if you want the conventional "
+                           "scale")
                 break
         else:
             if c.endswith("_local") and plans:

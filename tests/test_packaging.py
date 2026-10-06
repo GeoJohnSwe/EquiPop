@@ -899,3 +899,104 @@ def test_every_module_compiles_on_the_oldest_python_we_promise():
                             f"{floor[0]}.{floor[1]}, which pyproject "
                             f"promises to support")
     assert not bad, "\n".join(bad)
+
+
+def test_the_version_bump_survives_a_round_trip(tmp_path):
+    """BACKLOG 352. The version lives in a dozen declarations across
+    ten files, and TWO FILES CARRY TWO DECLARATIONS EACH -
+    stata/equipop.ado has a `*!` banner and `eqp_ado_version`,
+    equipop_test_pass.do has a header and a body line. Any rewrite of
+    the bump tool that plans each declaration from a file's ORIGINAL
+    text and then writes them all will make the second write discard
+    the first, leaving a file bumped in one place and not the other.
+
+    That happened while cutting 1.52.0 and was caught by the
+    version-agreement tests within a minute - twice, because the same
+    release also had the tool die part-way through its writes when its
+    stdout was piped into `head`, leaving three files bumped and nine
+    not. Both failure modes are invisible to a human reading the tool's
+    output, which reported success in the first case and nothing in the
+    second.
+
+    TWO CHECKS, because the obvious one is not enough. A round trip -
+    bump away and back, every file byte-identical - catches a
+    declaration that is MISSED and the half-written repo. It does NOT
+    catch last-write-wins, and the break-check is what revealed that:
+    the patterns match any version string rather than the old one
+    specifically, so the second bump repairs whatever the first left
+    behind and the round trip comes out clean over a file that was
+    wrong in between. The check that catches it is the direct one -
+    after ONE bump, no declared file may still mention the old version.
+
+    Run against a COPY of the declared files so the repository is never
+    left mid-bump by a test.
+    """
+    import hashlib
+    import shutil
+    import subprocess
+    import sys
+
+    spec_path = os.path.join(ROOT, "tools", "bump_version.py")
+    assert os.path.exists(spec_path), "the bump tool has moved"
+
+    declared = ["pyproject.toml", "equipop/__init__.py",
+                "qgis/equipop_qgis/__init__.py",
+                "qgis/equipop_qgis/metadata.txt", "arcgis/EquiPop.pyt",
+                "stata/equipop.pkg", "stata/equipop.ado",
+                "CITATION.cff", "equipop_test_pass.do", "INSTALL.md"]
+    for rel in declared:
+        src = os.path.join(ROOT, rel)
+        dst = tmp_path / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+    shutil.copytree(os.path.join(ROOT, "tools"), tmp_path / "tools")
+
+    # ONE DECLARATION IS STAMPED "TODAY" BY DESIGN, so it cannot
+    # survive a round trip across midnight. This test passed on the
+    # day it was written and failed the next morning, which makes it a
+    # test whose answer depends on the clock - the shape the project
+    # keeps finding under a different name. The date line is
+    # normalised out rather than the test being deleted, because
+    # everything else in the file still has to come back identical.
+    import re as _re
+    _TODAY_FIELD = _re.compile(rb"^(d Distribution-Date:).*$", _re.M)
+
+    def digests():
+        out = {}
+        for r in declared:
+            raw = (tmp_path / r).read_bytes()
+            raw = _TODAY_FIELD.sub(rb"\1 <today>", raw)
+            out[r] = hashlib.md5(raw).hexdigest()
+        return out
+
+    import equipop
+    here = equipop.__version__
+    before = digests()
+
+    def bump(version):
+        r = subprocess.run(
+            [sys.executable, str(tmp_path / "tools" / "bump_version.py"),
+             version], capture_output=True, text=True, cwd=str(tmp_path))
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    # (1) ONE bump forward: nothing may still say the old version.
+    bump("9.9.9")
+    stale = []
+    for rel in declared:
+        text = (tmp_path / rel).read_text(encoding="utf-8",
+                                          errors="replace")
+        for line in text.splitlines():
+            if here in line and "9.9.9" not in line:
+                stale.append(f"{rel}: {line.strip()[:72]}")
+    assert not stale, (
+        "a bump left these declarations at the old version - a second "
+        "declaration in the same file has overwritten the first, or "
+        "the tool stopped part-way:\n  " + "\n  ".join(stale))
+
+    # (2) and back again: every file byte-identical, which catches a
+    # declaration the tool does not know about at all.
+    bump(here)
+    moved = [r for r in declared if before[r] != digests()[r]]
+    assert not moved, (
+        "a bump round trip changed these files, so a declaration was "
+        f"written over or missed: {moved}")

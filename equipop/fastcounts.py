@@ -192,7 +192,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 # (BACKLOG 95). Same adjustment the old unbounded sum
                 # made, kept because the reason has not changed.
                 own = dwm[:, 0] <= 0.0
-                dwm[own, 0] = selfpot.decay_distance(cd.unit_size, sp)
+                dwm[own, 0] = selfpot.decay_distance(
+                    cd.unit_size, sp, shape=cd.cell_shape)
             wdec = decay.weight_vec(dwm.ravel()).reshape(dwm.shape)
             # Masked mass, not raw mass (BACKLOG 290): a decayed run
             # under i!=j must not weight people the rule removed.
@@ -361,7 +362,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                         # continuously at the cell boundary instead of
                         # stepping back to zero.
                         d_prev = min(
-                            selfpot.radius_for_k(cd.unit_size, 1.0, 1.0, sp),
+                            selfpot.radius_for_k(cd.unit_size, 1.0, 1.0, sp,
+                                                 shape=cd.cell_shape),
                             float(dd[hi]))
                     d_k = float(overshoot.radius(d_prev, float(dd[hi]), f))
                 rec[f"N_{k}"] = n_k
@@ -410,7 +412,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     # passing it turned the radius into a constant.
                     # Invisible under `whole`, where the two are equal.
                     d_k = selfpot.radius_for_k(cd.unit_size, k,
-                                               float(cp[pos]), sp)
+                                               float(cp[pos]), sp,
+                                               shape=cd.cell_shape)
                     if drop_self:
                         tally.setdefault("colocated", {})
                         tally["colocated"][k] = (

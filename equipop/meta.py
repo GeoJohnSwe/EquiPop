@@ -5,8 +5,24 @@ One immutable JSON sidecar per run, same basename as the output
 (out.csv + out.meta.json), containing SIX sections: run, environment,
 inputs (with md5 hashes), settings (structured as function parameters),
 data, events - plus, per decision, the full output column list with
-one-line definitions. Written progressively: the file exists from
-start_run onward, so a crashed run still leaves a record.
+one-line definitions.
+
+WRITTEN PROGRESSIVELY WHEN THERE IS SOMEWHERE TO WRITE. The file
+exists from the moment the destination is known, and every recording
+call updates it, so a run that dies half way still leaves a record
+saying what it was doing. BACKLOG 159, open since 1.29.6: this
+paragraph used to promise that unconditionally and the class did not
+deliver it. With the default constructor `_path` is None, so every
+_flush() was a no-op and nothing reached disk until finalize() - and
+BOTH GUI DOORS used the default constructor, so a QGIS or Pro run that
+crashed mid-analysis left nothing at all. The claim was in the
+docstring, the test suite, and the manual; it was never in the code.
+
+Where there is genuinely no file - a QGIS temporary layer, which is
+QGIS's own default destination, or a Stata run that writes variables
+into memory - there is nowhere to put a sidecar, and the record is
+PRINTED instead. That is a real limit and is now stated rather than
+papered over.
 
     from equipop.meta import RunLog
     rl = RunLog(settings={"engine": "stats", "k_values": [12, 25],
@@ -19,6 +35,7 @@ start_run onward, so a crashed run still leaves a record.
 
 import hashlib
 import json
+import os
 import platform
 import re
 import sys
@@ -28,6 +45,48 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+
+# --- WHERE A RECORD GOES, decided once (BACKLOG 159) ------------------
+# A GIS door's "destination" is not a path. It may carry a layer -
+# "out.gpkg|layername=k100" - or be one of the in-memory forms, which
+# have no folder to write beside. Turning one into a sidecar path was
+# done inside write_provenance, which meant the DOOR owned a rule the
+# RECORD depends on; and now that the record must be opened before the
+# run rather than after it, two places would have needed the same rule.
+# One place, and both callers read it.
+
+def sidecar_for(destination) -> str | None:
+    """The .meta.json path for a door's output destination.
+
+    None when there is nowhere to put one - an in-memory or temporary
+    layer, or a folder that does not exist. The caller then prints the
+    record instead, which is what a QGIS user's log is for.
+
+    The layer name goes INTO the stem (out.gpkg|layername=k100 ->
+    out.k100.meta.json), because every layer of one GeoPackage
+    otherwise shares a single sidecar and each run overwrites the last
+    one's provenance - BACKLOG 348, and the rule travels with this
+    function rather than being reimplemented beside it.
+    """
+    path, _, rest = str(destination or "").partition("|")
+    if (not path
+            or path.startswith(("memory:", "ogr:"))
+            or path.upper().startswith("TEMPORARY")):
+        return None
+    folder = os.path.dirname(path) or "."
+    if not os.path.isdir(folder):
+        return None
+    layer = ""
+    for part in rest.split("|"):
+        if part.lower().startswith("layername="):
+            layer = part.split("=", 1)[1]
+    base, ext = os.path.splitext(path)
+    if layer:
+        safe = "".join(c if (c.isalnum() or c in "-_") else "_"
+                       for c in layer)
+        base = f"{base}.{safe}"
+    return base + ".meta.json"
 
 
 def _md5(path, chunk=1 << 20):
@@ -239,9 +298,23 @@ class RunLog:
                        .get("renamed_fields") or {})
             under = {new: was for was, new in renamed.items()}
         self.doc["columns"] = _describe_columns(cols, under)
-        self._path = out.with_suffix(out.suffix + ".meta.json") \
-            if out.suffix != ".json" else out
-        self._path = out.parent / (out.stem + ".meta.json")
+        # BACKLOG 159. KEEP THE PATH THE RECORD WAS OPENED AT. A door
+        # that knew its destination before the run has been writing
+        # there all along, and recomputing here would leave that file
+        # frozen at "running" while a second one claimed success -
+        # which is half of what item 159 described. (The other half,
+        # that a different path at finalize leaves the first marked
+        # running forever, did NOT reproduce when checked: both files
+        # said "completed", so the entry was wrong about the symptom
+        # while right about the cause.)
+        derived = out.parent / (out.stem + ".meta.json")
+        if self._path is None:
+            self._path = derived
+        elif Path(self._path).resolve() != derived.resolve():
+            # Two destinations for one run. Say so in the record rather
+            # than silently leaving a stale file beside the output.
+            self.doc["run"]["moved_from"] = str(self._path)
+            self._path = derived
         self._flush()
         if write_txt:
             txt = out.parent / (out.stem + ".meta.txt")
@@ -252,9 +325,36 @@ class RunLog:
         return str(self._path)
 
     def _flush(self):
-        if self._path:
-            self._path.write_text(json.dumps(self.doc, indent=1,
-                                             default=str))
+        """Write the record, replacing it rather than truncating it.
+
+        BACKLOG 159. `write_text` opens the file for writing, which
+        EMPTIES IT, and then fills it - so for the whole of that window
+        the record on disk is neither the old one nor the new one. A
+        progressive record is written many times per run, so it is
+        exposed to that window many times, and the thing it exists to
+        survive is a crash. Written beside and renamed, the file is
+        always one complete version or the other. Exactly the fix
+        BACKLOG 344 made to bigrun's manifest a release earlier, for
+        the same reason, which is why it is the same shape here.
+
+        IT NEVER RAISES. A provenance write that loses a finished
+        analysis would be worse than having no provenance, which is the
+        state this replaces - the QGIS door already says so in
+        write_provenance. The failure is remembered on the doc so a
+        caller that wants to report it can.
+        """
+        if not self._path:
+            return
+        tmp = self._path.with_name(self._path.name + f".tmp.{os.getpid()}")
+        try:
+            tmp.write_text(json.dumps(self.doc, indent=1, default=str))
+            os.replace(tmp, self._path)
+        except Exception as exc:                      # pragma: no cover
+            self._write_error = f"{exc.__class__.__name__}: {exc}"
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
     def render_txt(self):
         d = self.doc
@@ -381,10 +481,24 @@ def settings_from_engine(kw: dict) -> dict:
 
 
 def record(engine: str, n_rows: int, kw: dict, path: str | None = None,
-           source: str | None = None) -> "RunLog":
-    """Open a RunLog for one engine call. The door supplies the output
-    path when it has one; `source` is the data analysed, which the
-    engine never sees - it receives arrays, not files."""
+           source: str | None = None,
+           destination: str | None = None) -> "RunLog":
+    """Open a RunLog for one engine call.
+
+    `path` is the sidecar file itself, when a caller has one.
+    `destination` is a GIS door's OUTPUT - possibly with a layer, and
+    possibly in-memory - from which the sidecar path is derived by
+    sidecar_for(). BACKLOG 159: passing it is what makes the record
+    progressive, because the record then exists from here rather than
+    from finalize(), and a run that dies in between leaves it behind
+    saying `"status": "running"`. Both GIS doors know their
+    destination before the engine starts; neither was passing it.
+
+    `source` is the data analysed, which the engine never sees - it
+    receives arrays, not files.
+    """
+    if path is None and destination is not None:
+        path = sidecar_for(destination)
     rl = RunLog(settings=settings_from_engine(kw), path=path)
     rl.doc["run"]["engine"] = engine
     rl.set_data(input_rows=int(n_rows))
