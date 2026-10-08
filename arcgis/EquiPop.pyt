@@ -345,6 +345,98 @@ def _numeric(arr, field, context):
     return out
 
 
+def _column_array(values):
+    """A list of raw cursor values as one usable column.
+
+    Numbers come back as float with None -> NaN, which is what the
+    missing-coordinate convention downstream reads. Anything else comes
+    back as text with None -> "", which is what the category code
+    already expects (it filters on str(v).strip()).
+    """
+    numeric = True
+    for v in values:
+        if v is None:
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            numeric = False
+            break
+    if numeric:
+        return np.array([np.nan if v is None else float(v)
+                         for v in values], dtype=float)
+    return np.array(["" if v is None else str(v) for v in values],
+                    dtype=object)
+
+
+def _read_columns(layer, fields, messages, sr=None, table=False,
+                  context="input"):
+    """Read these fields as {name: array}, tolerating what arcpy will
+    not.
+
+    BACKLOG 380, v1.53.3. John's field finding, 8 October 2026:
+
+        ValueError: cannot create NumPyArray. geometry type found
+
+    from FeatureClassToNumPyArray on a layer holding NULL GEOMETRY.
+    **THE HANDLING FOR THAT ALREADY EXISTED AND COULD NOT BE REACHED.**
+    Forty lines below the failing call, in this same function, is
+
+        n_missing = ... "rows with missing coordinates -> Null results
+                         (EquiPop convention)."
+
+    and `skip_nulls=False, null_value=np.nan` was passed *deliberately*
+    so the rows would survive as NaN and land there. The QGIS door does
+    exactly that - `if g is None or g.isEmpty(): xs.append(np.nan)` -
+    so one door honoured the convention, the engine announced it, and
+    Pro died before reaching it.
+    Fourth release in a row of that shape: 353 a guard unreachable from
+    the path that could trip it, 368 a hint classified and never
+    rendered, 373 a parse fixed downstream of the parse that breaks.
+
+    TWO DELIBERATE CHOICES HERE.
+
+    The fast path is kept, because FeatureClassToNumPyArray is far
+    quicker than a cursor on millions of rows, and the fallback only
+    runs when it refuses.
+
+    AND THE FALLBACK TRIGGERS ON ANY FAILURE, NEVER ON THE MESSAGE
+    TEXT. `if "geometry type" in str(exc)` would break the day Esri
+    rewords it - and 1.51.2 was already bitten by tests that matched a
+    phrase of the messages that release improved. It also means the
+    neighbouring arcpy limitation is covered for free: `null_value`
+    does not apply to TEXT fields, so a null in a category field can
+    kill the same call for an entirely different reason.
+    """
+    fast = (arcpy.da.TableToNumPyArray if table
+            else arcpy.da.FeatureClassToNumPyArray)
+    kw = {"skip_nulls": False, "null_value": np.nan}
+    if sr is not None and not table:
+        kw["spatial_reference"] = sr
+    try:
+        arr = fast(layer, fields, **kw)
+        return {f: arr[f] for f in arr.dtype.names}
+    except BaseException as exc:                 # noqa: BLE001
+        first = str(exc).strip().splitlines()[0] if str(exc).strip() \
+            else exc.__class__.__name__
+        messages.addWarningMessage(
+            f"The fast reader refused this {context} - \"{first}\" - "
+            "so EquiPop is reading it row by row instead. That is "
+            "slower and the ANSWER IS THE SAME: a row whose "
+            "coordinates cannot be read keeps its place and gets Null "
+            "results, which is EquiPop's convention for a row it "
+            "cannot locate. The usual cause is NULL GEOMETRY, or a "
+            "null in a text field.")
+
+    cur_kw = {}
+    if sr is not None and not table:
+        cur_kw["spatial_reference"] = sr
+    cols = {f: [] for f in fields}
+    with arcpy.da.SearchCursor(layer, fields, **cur_kw) as cur:
+        for row in cur:
+            for f, v in zip(fields, row):
+                cols[f].append(v)
+    return {f: _column_array(v) for f, v in cols.items()}
+
+
 def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
                 context="input", auto_project=False, table_sr=None):
     """THE SHARED LOADER (v1.16): one behaviour for both machines.
@@ -379,22 +471,17 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
         proj = (sr_used is not None
                 and str(getattr(desc.spatialReference, "type", ""))
                 == "Geographic")
-        arr = arcpy.da.FeatureClassToNumPyArray(
-            layer, [oid, "SHAPE@X", "SHAPE@Y"] + extra,
-            skip_nulls=False, null_value=np.nan,
-            spatial_reference=sr_used) if proj else \
-            arcpy.da.FeatureClassToNumPyArray(
-                layer, [oid, "SHAPE@X", "SHAPE@Y"] + extra,
-                skip_nulls=False, null_value=np.nan)
+        data = _read_columns(layer, [oid, "SHAPE@X", "SHAPE@Y"] + extra,
+                             messages, sr=sr_used if proj else None,
+                             context=context)
         if proj:
             messages.addWarningMessage(
                 f"Input was in degrees - AUTO-PROJECTED to "
                 f"{_utm_advice(desc)} for this analysis. The input "
                 "data itself is untouched; distances are metres in "
                 "that projection.")
-        data = {f: arr[f] for f in arr.dtype.names}
-        data["x"] = np.asarray(arr["SHAPE@X"], float)
-        data["y"] = np.asarray(arr["SHAPE@Y"], float)
+        data["x"] = np.asarray(data["SHAPE@X"], float)
+        data["y"] = np.asarray(data["SHAPE@Y"], float)
         sr_name = getattr(sr_used, "name", None) or getattr(
             getattr(desc, "spatialReference", None), "name", "unknown")
         sr_code = getattr(sr_used, "factoryCode", None) or getattr(
@@ -422,12 +509,10 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
     oid = desc.OIDFieldName if kind != "table" else None
     read = [xf, yf] + extra + ([oid] if oid and oid not in
                                ([xf, yf] + extra) else [])
-    arr = arcpy.da.TableToNumPyArray(layer, read,
-                                     skip_nulls=False,
-                                     null_value=np.nan)
-    data = {f: arr[f] for f in arr.dtype.names}
-    data["x"] = _numeric(arr[xf], xf, f"The {context}")
-    data["y"] = _numeric(arr[yf], yf, f"The {context}")
+    data = _read_columns(layer, read, messages, table=True,
+                         context=context)
+    data["x"] = _numeric(data[xf], xf, f"The {context}")
+    data["y"] = _numeric(data[yf], yf, f"The {context}")
     messages.addMessage(
         f"Coordinates from attribute fields: X = '{xf}', Y = '{yf}'"
         f" ({how}). X is the easting, Y the northing.")
@@ -619,7 +704,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.53.1"
+TOOLBOX_VERSION = "1.53.3"
 
 
 def _announce_version(messages):
@@ -827,9 +912,11 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
                 "Barrier table: pick the friction value field.")
         bxf, byf, how = _resolve_xy_fields(value, bxf, byf,
                                            "The barrier table")
-        arr = arcpy.da.TableToNumPyArray(
-            value, [bxf, byf, friction_field], skip_nulls=False,
-            null_value=np.nan)
+        # BACKLOG 380, second call site. Through the shared reader, so
+        # a barrier table with a null in it reaches the mask below
+        # instead of dying in arcpy.
+        arr = _read_columns(value, [bxf, byf, friction_field], messages,
+                            table=True, context="barrier table")
         fr = points_to_friction(
             _numeric(arr[bxf], bxf, "The barrier table"),
             _numeric(arr[byf], byf, "The barrier table"),
@@ -849,9 +936,15 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
             "(crossing cost in rounds).")
 
     if kind in ("point", "multipoint"):
-        arr = arcpy.da.FeatureClassToNumPyArray(
-            value, ["SHAPE@X", "SHAPE@Y", friction_field],
-            skip_nulls=False, null_value=np.nan)
+        # BACKLOG 380, THIRD CALL SITE AND THE ONE THAT PROVES THE
+        # POINT. The mask four lines below is already correct - it uses
+        # isfinite, counts the bad rows and reports them - and this
+        # call died before reaching it, with the very message John sent
+        # in. The first fix of this release went into _read_input only,
+        # which is how a sibling path goes unfixed in this codebase; a
+        # subagent audit of the property found this one, not me.
+        arr = _read_columns(value, ["SHAPE@X", "SHAPE@Y", friction_field],
+                            messages, context="barrier layer")
         xs = np.asarray(arr["SHAPE@X"], float)
         ys = np.asarray(arr["SHAPE@Y"], float)
         vs = _numeric(arr[friction_field], friction_field,
@@ -1003,9 +1096,22 @@ def _predict_result_fields(engine, k_text, r_text, tau_text,
     if _doors(strict=False) is None:
         return []
     from equipop.doors.fields import predict_result_fields
-    return predict_result_fields(engine, k_text, r_text, tau_text,
-                                 treat_names, value_fields,
-                                 stats_wanted, decaying, efforting)
+    try:
+        return predict_result_fields(engine, k_text, r_text, tau_text,
+                                     treat_names, value_fields,
+                                     stats_wanted, decaying, efforting)
+    except Exception:                                # pragma: no cover
+        # BACKLOG 373, v1.53.2. THIS RUNS INSIDE updateMessages, so an
+        # exception here breaks the DIALOG, not the run - and it did:
+        # a radius typed '500,5' raised `could not convert string to
+        # float` out of field-name prediction while the user was still
+        # typing, in both Pro doors. The prediction now parses
+        # properly, so a bad number raises BadNumber and the k/r check
+        # reports it against the right box. Nothing should reach here
+        # any more; it is caught because a half-working dialog is more
+        # use than one that will not open, which is the same argument
+        # the docstring above already makes about a missing package.
+        return []
 
 
 def _save_name_map(cat, rows, messages):
@@ -1944,7 +2050,17 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         # for the same reason: a door that names no rule cannot be
         # measured against an answer key pinned to one.
         kw["self_rule"] = str(originrule)
-    kw["k_values"] = [int(round(v)) for v in _numlist(k_text)] or None
+    # BACKLOG 377, v1.53.2. `int(round(v))` on a float list was the
+    # project's FOURTH k parser, and it is precisely the behaviour
+    # equipop.doors.numbers.to_int was written to refuse - its own
+    # docstring has said "a silently rounded k is a wrong answer that
+    # looks right" since 1.47, and no Pro door ever called it. So
+    # '1.000' in the k box ran with a neighbourhood of ONE PERSON and
+    # wrote Mean_<field>_1, which reads as plausible unless you are
+    # looking for it. John found it in machine 2 on 7 October 2026.
+    # Radii keep going through the measurement reader: 500,5 metres is
+    # a real distance and must stay valid - John's ruling, same day.
+    kw["k_values"] = _intlist(k_text) or None
     kw["r_values"] = _numlist(r_text) or None
     if tau_text:
         kw["tau_values"] = _numlist(tau_text)
@@ -3048,13 +3164,58 @@ def _to_float_local(text, default=None):
 
 def _numlist(text):
     """A space/semicolon separated list of numbers, locale-proof:
-    '344,5 500' and '344.5;500' both give [344.5, 500.0]."""
+    '344,5 500' and '344.5;500' both give [344.5, 500.0].
+
+    FOR MEASUREMENTS - radii, tau. k has its own reader below, and
+    the difference is deliberate (BACKLOG 375)."""
     out = []
     for tok in str(text or "").replace(";", " ").split():
         v = _to_float(tok)
         if v is not None:
             out.append(v)
     return out
+
+
+def _intlist(text):
+    """k values, through the shared COUNT reader.
+
+    BACKLOG 377. Thin on purpose, exactly like _to_float: the rule
+    lives in equipop.doors.numbers so the four doors cannot drift,
+    and this wrapper exists only to turn BadNumber into the
+    arcpy.ExecuteError that Pro will actually show a user. The
+    fallback keeps the toolbox usable against an older package.
+    """
+    try:
+        from equipop.doors.numbers import intlist, BadNumber
+    except Exception:                                # pragma: no cover
+        return [int(round(v)) for v in _numlist(text)]
+    try:
+        return intlist(text)
+    except BadNumber as bad:
+        raise arcpy.ExecuteError(str(bad))
+
+
+
+def _k_or_r_message(pm, need_one=True, k_required=False):
+    """Attach the shared k/r verdict to the box it belongs to.
+
+    BACKLOG 378, v1.53.2. ONE CALL, EVERY DOOR. The hand-written
+    version of this lived in CountsShares only, and tested
+    `if not _txt(pm, "k")` - which a single SPACE walks past, because
+    _txt does not strip and Pro's own `Required` is satisfied by any
+    value at all. machine 2 had no version of it whatsoever, which is
+    how a k box holding a space reached the engine as None and came
+    back as a traceback naming `k_values`.
+    """
+    try:
+        from equipop.doors.numbers import check_k_and_r
+    except Exception:                                # pragma: no cover
+        return
+    bad = check_k_and_r(_txt(pm, "k"), _txt(pm, "r"),
+                        need_one=need_one and pm.get("r") is not None,
+                        k_required=k_required)
+    if bad and pm.get(bad[0]) is not None:
+        pm[bad[0]].setErrorMessage(bad[1])
 
 
 def _p(name, display, dtype, **kw):
@@ -3842,20 +4003,29 @@ class ContinentalRasters:
         pmj["joincombine"].value = JOIN_COMBINE[0]
         return ps
 
+    def updateMessages(self, parameters):
+        """BACKLOG 378, v1.53.2. This door had no updateMessages at
+        all, so a k box holding one space - which Pro's `Required`
+        accepts, because a space is a value - reached the tiled engine with a silently truncated k. A BLANK k is a real choice here - it means the point table - so only the
+        parse is checked.
+        """
+        _k_or_r_message(_byname(parameters), need_one=False,
+                        k_required=False)
+        return
+
     def execute(self, parameters, messages):
         from equipop.doors.continental import (ContinentalError,
                                                run_folder)
         pm = _byname(parameters)
         ch = _channel(messages)
 
-        ks = []
-        for piece in _txt(pm, "k").replace(",", " ").split():
-            try:
-                ks.append(int(float(piece)))
-            except ValueError:
-                raise arcpy.ExecuteError(
-                    f"'{piece}' is not a number. Give one or more "
-                    "whole numbers of people, separated by spaces.")
+        # BACKLOG 377, v1.53.2. A SIXTH and SEVENTH open-coded k
+        # parser lived here, one per door, and the property test
+        # written for the other five is what found them - a per-door
+        # test could not have. `int(float(piece))` truncated silently,
+        # so '1.000' here asked for a neighbourhood of one person
+        # across a whole continent.
+        ks = _intlist(_txt(pm, "k"))
 
         epsg = _epsg_of(pm.get("crs"))
         try:
@@ -3949,6 +4119,16 @@ class SpatialDemography:
         ps[3].value = 1000.0
         return ps
 
+    def updateMessages(self, parameters):
+        """BACKLOG 378, v1.53.2. This door had no updateMessages at
+        all, so a k box holding one space - which Pro's `Required`
+        accepts, because a space is a value - reached the engine as nothing at all. k is compulsory here and has no radius to fall back on, so a
+        whitespace-only box is refused by name.
+        """
+        _k_or_r_message(_byname(parameters), need_one=False,
+                        k_required=True)
+        return
+
     def execute(self, parameters, messages):
         from equipop.doors.continental import ContinentalError
         from equipop.doors.demography import (INDICES, DemographyError,
@@ -3970,14 +4150,13 @@ class SpatialDemography:
         if not picked:
             raise arcpy.ExecuteError("Tick at least one index.")
 
-        ks = []
-        for piece in _txt(pm, "k").replace(",", " ").split():
-            try:
-                ks.append(int(float(piece)))
-            except ValueError:
-                raise arcpy.ExecuteError(
-                    f"'{piece}' is not a number. Give one or more "
-                    "whole numbers of people, separated by spaces.")
+        # BACKLOG 377, v1.53.2. A SIXTH and SEVENTH open-coded k
+        # parser lived here, one per door, and the property test
+        # written for the other five is what found them - a per-door
+        # test could not have. `int(float(piece))` truncated silently,
+        # so '1.000' here asked for a neighbourhood of one person
+        # across a whole continent.
+        ks = _intlist(_txt(pm, "k"))
 
         over = {}
         rows = pm["settings"].value or []
@@ -4364,24 +4543,13 @@ class CountsShares:
         idx = {p.name: i for i, p in enumerate(parameters)}
         _shared_messages(parameters, 0, 1, 2, 3, idx["outtable"],
                          idx["autoproj"])
-        # BACKLOG 305. NEITHER k NOR r, WHICH PRO LETS YOU RUN.
-        # Both are declared optional and they are - EITHER will do,
-        # and a radius-only run is a perfectly good question. What is
-        # not optional is having one of them, and nothing said so
-        # until the engine refused forty lines into a traceback with
-        # "give k_values and/or r_values" - words that name ENGINE
-        # ARGUMENTS rather than boxes, so the message does not even
-        # point at the dialog.
-        # John hit this teaching: his k values vanished while he
-        # worked down the dialog, Pro was content, and the failure
-        # arrived after Run.
-        if not _txt(pm, "k") and not _txt(pm, "r"):
-            pm["k"].setErrorMessage(
-                "Give a neighbourhood size here, or a radius in the "
-                "box below - EquiPop needs one of the two to know "
-                "what a neighbourhood is. Either alone is fine; both "
-                "together is also fine and gives you both sets of "
-                "columns.")
+        # BACKLOG 305, rewritten for 378 in v1.53.2. Both boxes are
+        # declared optional and they are - EITHER will do, and a
+        # radius-only run is a perfectly good question. What is not
+        # optional is having one of them. The rule, the wording and
+        # the whitespace handling now come from one place, because
+        # this door had them and the other three did not.
+        _k_or_r_message(pm)
         target = (_txt(pm, "outfc")
                   if _txt(pm, "outmode").startswith("New")
                   and _txt(pm, "outfc")
@@ -4651,6 +4819,13 @@ class ValueStatistics:
         idx = {p.name: i for i, p in enumerate(parameters)}
         _shared_messages(parameters, 0, 1, 2, 3, idx["outtable"],
                          idx["autoproj"])
+        # BACKLOG 378, v1.53.2. THE LINE THIS DOOR NEVER HAD. k is
+        # declared Required here, which Pro satisfies with any value
+        # including a single space, so a blank-looking box reached the
+        # engine and answered with "give k_values and/or r_values" -
+        # words naming engine arguments, from a dialog that had said
+        # nothing was wrong. John, 7 October 2026.
+        _k_or_r_message(pm)
         target = (_txt(pm, "outfc")
                   if _txt(pm, "outmode").startswith("New")
                   and _txt(pm, "outfc")

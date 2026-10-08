@@ -979,13 +979,34 @@ def test_the_version_bump_survives_a_round_trip(tmp_path):
              version], capture_output=True, text=True, cwd=str(tmp_path))
         assert r.returncode == 0, r.stdout + r.stderr
 
-    # (1) ONE bump forward: nothing may still say the old version.
+    # (1) ONE bump forward: no DECLARATION may still say the old
+    # version.
+    #
+    # v1.53.2: "declaration" is the point, and this used to test every
+    # LINE. The bump tool prints its own rule - "code comments,
+    # BACKLOG.md and MANUAL.md are left alone: a version in prose is a
+    # FACT ABOUT THE PAST" - and this test contradicted it, so the
+    # moment a release wrote `BACKLOG 377, v1.53.2` into a comment in
+    # EquiPop.pyt (a file that also holds a real declaration) the
+    # guard failed on nine comments that are CORRECT and must never
+    # move. A comment recording when something was fixed is history;
+    # bumping it would falsify the record.
+    # Narrowed to the patterns the bump tool itself declares, so the
+    # test now checks the thing its name says. Same mistake, third
+    # time this week: a test matching TEXT where it meant to match a
+    # KIND of line.
     bump("9.9.9")
+    sys.path.insert(0, str(tmp_path / "tools"))
+    for mod in ("bump_version",):
+        sys.modules.pop(mod, None)
+    import bump_version as _bv
     stale = []
-    for rel in declared:
+    for rel, pattern, *_rest in _bv.DECLARATIONS:
         text = (tmp_path / rel).read_text(encoding="utf-8",
                                           errors="replace")
         for line in text.splitlines():
+            if not re.search(pattern, line):
+                continue
             if here in line and "9.9.9" not in line:
                 stale.append(f"{rel}: {line.strip()[:72]}")
     assert not stale, (

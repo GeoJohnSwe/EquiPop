@@ -55,6 +55,11 @@ JOIN_AGG = ["sum", "max", "min", "mean"]
 
 
 class ContinentalRasters(EquipopAlgorithm):
+    # BACKLOG 378. k is this door's only neighbourhood box,
+    # so there is no either-or to check - but a k that will
+    # not parse still has to be refused before Run.
+    R_BOX = "-none-"
+
     """A folder of population rasters, straight to k-neighbourhoods."""
 
     # The key into equipop.doors.help, so this tool and the Pro tool
@@ -348,9 +353,17 @@ class ContinentalRasters(EquipopAlgorithm):
         """The rule this box had before 1.47.11 - kept, because for
         shops, clinics and bus stops a centroid IS the feature."""
         xs, ys, vals = [], [], []
+        # BACKLOG 383, v1.53.3. This `continue` was SILENT, so the
+        # count reported below could not be reconciled with the
+        # layer's own feature count - a user with 12,000 shops was
+        # told about 11,998 and had no way to learn why. Two lines
+        # further on, an unsupported geometry type IS counted, so the
+        # same function reported one kind of drop and hid another.
+        no_geom = 0
         for f in src.getFeatures():
             g = f.geometry()
             if g is None or g.isEmpty():
+                no_geom += 1
                 continue
             pt = g.centroid().asPoint()
             if tr is not None:
@@ -360,6 +373,12 @@ class ContinentalRasters(EquipopAlgorithm):
             if field:
                 v = f[field]
                 vals.append(float(v) if v is not None else 0.0)
+        if no_geom:
+            ch.warning(
+                f"{no_geom:,} feature(s) in the join layer have no "
+                "geometry and were skipped - they cannot be placed in "
+                "a cell. The count below is of the features that "
+                "could be.")
         if not xs:
             raise QgsProcessingException(
                 "That layer has no usable geometry.")
@@ -516,19 +535,24 @@ class ContinentalRasters(EquipopAlgorithm):
 
     @staticmethod
     def _numbers(text, box):
-        """'100 1000' or '100, 1000' -> [100, 1000], or refuse by name."""
-        out = []
-        for piece in str(text).replace(",", " ").split():
-            try:
-                out.append(int(float(piece)))
-            except ValueError:
-                raise QgsProcessingException(
-                    f"Box {box}: '{piece}' is not a number. Give one or "
-                    "more whole numbers of people, separated by spaces.")
+        """k values from a box, through the ONE reader.
+
+        BACKLOG 377, v1.53.2. This was a fifth open-coded k parser -
+        `int(float(piece))`, duplicated verbatim in alg_continental
+        and alg_demography - and it silently truncated: '1.000'
+        became ONE PERSON and `.replace(",", " ")` turned '1,000'
+        into the two values 1 and 0. equipop.doors.numbers exists so
+        that cannot happen, and its own docstring says so.
+        """
+        from equipop.doors.numbers import intlist, BadNumber
+        try:
+            out = intlist(text)
+        except BadNumber as bad:
+            raise QgsProcessingException(f"Box {box}: {bad}")
         if not out:
             raise QgsProcessingException(
-                f"Box {box}: give at least one neighbourhood size, or "
-                "leave it blank for the point table.")
+                f"Box {box}: give at least one neighbourhood size, or"
+                " leave it blank for the point table.")
         return out
 
     def _write(self, table, man, parameters, context, feedback):

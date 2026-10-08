@@ -170,6 +170,15 @@ def _install_fake_arcpy(table: pd.DataFrame):
     def FeatureClassToNumPyArray(_layer, fields, skip_nulls=False,
                                  null_value=np.nan,
                                  spatial_reference=None):
+        # BACKLOG 380. Real arcpy refuses some layers outright - John
+        # met `cannot create NumPyArray. geometry type found` on a
+        # feature class holding NULL GEOMETRY. The simulator cannot
+        # know WHEN arcpy refuses, so it is told: a test sets
+        # state["fc_array_raises"] and this raises what arcpy raised.
+        # That makes the test an honest test OF EQUIPOP'S FALLBACK and
+        # NOT of Esri's reader - see the test's own docstring.
+        if state.get("fc_array_raises"):
+            raise ValueError(state["fc_array_raises"])
         t = _df_for(_layer)
         if spatial_reference is not None:
             t = t.copy()
@@ -382,6 +391,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
 
     def TableToNumPyArray(table, fields, skip_nulls=False,
                           null_value=np.nan):
+        if state.get("fc_array_raises"):
+            raise ValueError(state["fc_array_raises"])
         # A GeoPackage's dataSource is a connection DESCRIPTION, and
         # arcpy refuses to reopen it (field, Malta, v1.20). The
         # simulator refuses it too, or the door can quietly pass a
@@ -405,10 +416,42 @@ def _install_fake_arcpy(table: pd.DataFrame):
         return out
 
     class SearchCursor:
-        """Rows = state["geom_layers"][layer]: tuples whose first
-        element is a fake geometry (see _geom)."""
+        """Barrier layers: rows = state["geom_layers"][layer], tuples
+        whose first element is a fake geometry (see _geom).
+
+        ANY OTHER LAYER: the attribute table, row by row, in the field
+        order asked for - which is what real arcpy does and what
+        BACKLOG 380's fallback reader needs. **A NULL COMES BACK AS
+        None, NOT AS NaN**, because that is what arcpy hands over for
+        null geometry, and the whole point of the fallback is to turn
+        it into the NaN the convention downstream reads. A simulator
+        that handed back NaN directly would skip the step being
+        tested.
+        """
         def __init__(self, layer, fields, spatial_reference=None):
-            self.rows = state["geom_layers"][_unalias(layer)]
+            key = _unalias(layer)
+            if key in state.get("geom_layers", {}):
+                self.rows = state["geom_layers"][key]
+                return
+            df = _df_for(key)
+            if spatial_reference is not None:
+                df = df.copy()
+                zone = spatial_reference.factoryCode % 100
+                cm = -183.0 + 6.0 * zone
+                lat = df["SHAPE@Y"].to_numpy(float)
+                df["SHAPE@X"] = ((df["SHAPE@X"].to_numpy(float) - cm)
+                                 * 111320.0 * np.cos(np.radians(lat)))
+                df["SHAPE@Y"] = lat * 110540.0
+            rows = []
+            for i in range(len(df)):
+                row = []
+                for f in fields:
+                    v = df.iloc[i][f] if f in df.columns else None
+                    if v is None or (isinstance(v, float) and v != v):
+                        v = None
+                    row.append(v)
+                rows.append(tuple(row))
+            self.rows = rows
 
         def __enter__(self):
             return iter(self.rows)

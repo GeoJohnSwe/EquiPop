@@ -1,6 +1,58 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.53.1, 6 October 2026.**
+**Last updated: 1.53.3, 8 October 2026.**
+*Reviewed at 1.53.3: NO EXERCISE CHANGES, and one thing to say out
+loud in the first session.
+A layer with features that have NO GEOMETRY is ordinary teaching
+data - a geocoder that failed on three addresses, a spreadsheet join
+that missed, a shapefile edited by hand. Until this release machine 1
+in ArcGIS Pro answered that with an arcpy traceback and the whole run
+was lost. It now keeps those rows, gives them Null results, and says
+how many - which is the SAME rule the course already teaches for
+Stata: a place with no usable data is nobody's neighbour and still
+gets its own row.
+THE TEACHABLE POINT, and it is a better one than the bug: the fix was
+not new behaviour. The rule was already in the engine, already named
+"EquiPop convention" in its own message, and already honoured by
+QGIS - so the two GUIs gave DIFFERENT answers to the same question
+for a year. Worth a slide for a methods class: when two
+implementations of one rule disagree, the interesting question is not
+which is faster but which one is wrong, and the answer is not always
+the one that crashed.
+FOR DEMONSTRATORS: if a student's Pro run dies with "cannot create
+NumPyArray", that is a pre-1.53.3 install. And tell them not to
+"fix" it by selecting the non-null features - it works, but their
+output then has fewer rows than their input, which breaks any
+before/after comparison they build on top of it.*
+*Reviewed at 1.53.2: ONE SLIDE TO ADD, AND IT IS A GOOD ONE, BUT READ
+THE WARNING FIRST.
+THE WARNING. Until this release, typing `1,000` or `1.000` in a k box
+gave a neighbourhood of ONE PERSON and the run finished normally. The
+only sign was a column called `N_1` where `N_1000` was expected. If
+any exercise was run with a thousands separator - and a Swedish or
+Norwegian keyboard makes that the natural thing to type - **those
+results are wrong, not oddly named**. Worth grepping old outputs for
+`N_1`, `N_10` and `Mean_*_1` before reusing any of them in class. It
+is refused now, per John's ruling, with a message naming the number
+it thinks was meant.
+THE SLIDE. "How does the software know what you typed?" is a better
+lesson than it sounds, because the answer differs BY BOX and the
+reason is substantive rather than technical. In a radius box `500,5`
+is five hundred and a half metres - half of Europe writes a decimal
+that way and it must keep working. In a k box `1,000` cannot be a
+decimal, because a fraction of a person is not a thing - which is
+exactly what frees the comma up to mean a thousands separator, and
+that is why the same character is read two ways one box apart. Ask
+the room which reading `300,500` should get. There is no right
+answer, and the software now refuses it and says so, which is the
+point: **a tool that guesses between two readings is worse than one
+that asks.**
+AND THE STUDENT-FACING HALF: a dialog that says nothing is wrong is
+not the same as a dialog that has checked. machine 2 accepted a k box
+holding one space - ArcGIS Pro counts a space as a value - and then
+answered with a traceback naming an argument nobody typed. Every door
+checks before Run now. If a student reports "it says give k_values",
+that is a pre-1.53.2 install.*
 *Reviewed at 1.53.1: NOTHING IN THE COURSE CONTENT MOVES - this
 release only changes what `equipop doctor` says. But it changes the
 FIRST HOUR of every workshop, which is the hour that decides whether

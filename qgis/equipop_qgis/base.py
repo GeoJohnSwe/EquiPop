@@ -172,8 +172,52 @@ def check_versions(channel):
 class EquipopAlgorithm(QgsProcessingAlgorithm):
     """Everything both tools do the same way."""
 
+    # BACKLOG 378, v1.53.2. Which boxes this door reads a
+    # neighbourhood from, and whether one of them is compulsory.
+    # Declared here so the check below is INHERITED: BACKLOG 305 put
+    # "you need k or r" into one algorithm of the four that can reach
+    # the engine's refusal, by hand, and the other three went without
+    # it for eighteen months. A new door now gets it by existing,
+    # and a door that wants out has to say so in one line.
+    K_BOX = "k"
+    R_BOX = "r"
+    NEEDS_A_NEIGHBOURHOOD = False     # machines 1 and 2: k OR r
+    K_IS_REQUIRED = False             # machine 4: k, and it is needed
+
     def group(self):
         return "EquiPop"
+
+    def checkParameterValues(self, parameters, context):
+        """Refuse a bad k or r BEFORE Run, not after.
+
+        QGIS offers this hook so the dialog can answer while the box
+        is still in front of you. machine 2 never implemented it, so
+        a k of '1.000' ran happily with a neighbourhood of ONE PERSON
+        and a radius of '500,5' produced the raw Python message
+        `could not convert string to float` - which is the message
+        BACKLOG 320 exists to prevent.
+
+        Doors with no k box at all (fetch, inventory) skip it.
+        """
+        from equipop.doors.numbers import check_k_and_r
+        names = {p.name() for p in self.parameterDefinitions()}
+        if self.K_BOX not in names and self.R_BOX not in names:
+            return super().checkParameterValues(parameters, context)
+
+        def _text(box):
+            if box not in names:
+                return ""
+            return (self.parameterAsString(parameters, box, context)
+                    or "")
+
+        bad = check_k_and_r(
+            _text(self.K_BOX), _text(self.R_BOX),
+            need_one=(self.NEEDS_A_NEIGHBOURHOOD
+                      and self.R_BOX in names),
+            k_required=self.K_IS_REQUIRED)
+        if bad:
+            return False, bad[1]
+        return super().checkParameterValues(parameters, context)
 
     def groupId(self):
         return "equipop"

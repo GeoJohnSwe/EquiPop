@@ -484,8 +484,21 @@ class _Source:
             f._id = int(i)
             f.setAttributes([row[c] for c in names])
             if self._geometry:
-                f.setGeometry(QgsGeometry.fromPointXY(
-                    QgsPointXY(row["x"], row["y"])))
+                # BACKLOG 380. A ROW WITH NO COORDINATES HAS NO
+                # GEOMETRY, and real QGIS hands back an EMPTY
+                # QgsGeometry for it - not a point at NaN. The stub
+                # built a point from the NaNs instead, so every test
+                # that thought it was exercising null geometry was
+                # exercising a point whose ordinates happened to be
+                # NaN, and the reader's `g.isEmpty()` branch had never
+                # been run by anything. A simulator that cannot
+                # produce the input cannot test the handling.
+                _x, _y = row["x"], row["y"]
+                if _x is None or _y is None or _x != _x or _y != _y:
+                    f.setGeometry(QgsGeometry())
+                else:
+                    f.setGeometry(QgsGeometry.fromPointXY(
+                        QgsPointXY(_x, _y)))
             yield f
 
 
@@ -526,9 +539,21 @@ class _Sink:
         names = self._fields.names()
         rows = [dict(zip(names, f.attributes())) for f in self.features]
         df = pd.DataFrame(rows, columns=names)
-        if self.features and self.features[0].hasGeometry():
-            df["x"] = [f.geometry().asPoint().x() for f in self.features]
-            df["y"] = [f.geometry().asPoint().y() for f in self.features]
+        # BACKLOG 380. An OUTPUT layer can hold a feature with no
+        # geometry - that is what the "missing coordinates -> Null
+        # results" convention writes for a row EquiPop could not
+        # locate. This assumed every feature had a point as soon as
+        # the FIRST one did, and died on `None.asPoint()`, so no test
+        # could ever read back an output containing such a row.
+        if self.features and any(f.hasGeometry() for f in self.features):
+            def _xy(f):
+                if not f.hasGeometry():
+                    return (np.nan, np.nan)
+                p = f.geometry().asPoint()
+                return (p.x(), p.y())
+            pairs = [_xy(f) for f in self.features]
+            df["x"] = [a for a, _ in pairs]
+            df["y"] = [b for _, b in pairs]
         return df
 
 

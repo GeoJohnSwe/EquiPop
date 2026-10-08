@@ -551,7 +551,26 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
     # reports this, with the ratio, so a second voice contradicting
     # the first is worse than no voice at all.
 
-    valid = df["_x"].notna() & df["_y"].notna()
+    # BACKLOG 381, v1.53.3. `.notna()` is False only for NaN and None,
+    # so an INFINITE coordinate passed this mask and reached the
+    # .astype(np.int64) below, where pandas refuses with a message
+    # about dtypes. dispatch() four hundred lines up already uses the
+    # right test - `valid = np.isfinite(x) & np.isfinite(y)` - and the
+    # counts branch is the one path that does not go through it, so the
+    # correct predicate existed and this path could not reach it.
+    # Same shape as 380 itself, in the same release.
+    # Kept as a Series: _map_back below calls valid.to_numpy().
+    # The to_numeric here IS load-bearing, unlike the one cells.py
+    # briefly grew: nothing coerces _x/_y on this path - they arrive
+    # as whatever array the caller built at line 531 - so a public
+    # caller handing in an object array would otherwise raise inside
+    # to_numpy(float).
+    valid = pd.Series(
+        np.isfinite(pd.to_numeric(df["_x"], errors="coerce")
+                    .to_numpy(float))
+        & np.isfinite(pd.to_numeric(df["_y"], errors="coerce")
+                      .to_numpy(float)),
+        index=df.index)
     dv = df[valid]
 
     # individuals -> cells (weights become cell population)

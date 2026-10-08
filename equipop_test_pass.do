@@ -1,4 +1,4 @@
-*! EquiPop 1.53.1 - a test pass over equipop_test_data.dta
+*! EquiPop 1.53.3 - a test pass over equipop_test_data.dta
 *!
 *! WHAT CHANGED IN 1.40.5, and why it matters:
 *!   Until now this file STATED its invariants and did not ENFORCE
@@ -59,7 +59,7 @@ global EQP_DATA ""
 * anyone installing from SSC will normally end up with, because
 * PyPI moves faster than the archive. BACKLOG 330.
 
-global EQP_EXPECT "1.53.1"
+global EQP_EXPECT "1.53.3"
 
 * ------------------------------------------------------------------
 * Nothing below here needs editing.

@@ -89,6 +89,16 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
         for f in feats:
             g = f.geometry()
             if g is None or g.isEmpty():
+                # BACKLOG 383, v1.53.3. This was `continue`, which
+                # dropped the feature BEFORE the isfinite mask eight
+                # lines below could count it - so the warning that
+                # exists to report dropped points undercounted, and
+                # the figure it printed could not be reconciled with
+                # the layer. NaN instead, and the mask that is already
+                # correct does the counting and the reporting.
+                xs.append(np.nan)
+                ys.append(np.nan)
+                vs.append(np.nan)
                 continue
             if tr is not None:
                 g.transform(tr)

@@ -3606,6 +3606,348 @@ that is how the last three staleness findings were made.*
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- ~~384~~ | DONE v1.53.3, MADE AND CAUGHT WHILE CUTTING 1.53.3 | I
+  KILLED MY OWN BREAK-CHECK WITH `| head` AGAIN.
+  `python bc153.py | head -14` - SIGPIPE kills the script once head
+  has its lines, so the FINAL `restore()` never ran and
+  alg_continental.py was left carrying the `383-join-silent` break.
+  The suite caught it inside a minute, as a test failure that read
+  like a real regression.
+  **THIS IS BACKLOG 352, IN THE SAME SESSION THAT RECORDED IT.** 352
+  is `| head -4` killing bump_version.py mid-write and leaving the
+  repository half-versioned. The entry is forty screens up in this
+  same file. Knowing a hazard and writing it down did not stop me
+  reaching for the same shortcut on a different script.
+  THE RULE, now stated so it is not a memory: a script that MUTATES
+  THE TREE is never piped. Redirect to a file and read the file.
+  `> bc153.log 2>&1; cat bc153.log` costs one line.
+  Two further breaks had gone stale in the same script - anchors into
+  a function I had since simplified - and the script reported them as
+  NOT APPLIED rather than passing silently, which is the one thing
+  that worked as designed.
+
+- ~~383~~ | DONE v1.53.3, THE 380 AUDIT | TWO SILENT DROPS THAT MADE
+  A REPORTED COUNT UNRECONCILABLE.
+  Both GUIs had a `continue` on null geometry sitting ABOVE the mask
+  that exists to count dropped features, so the warning printed
+  afterwards undercounted and the figure could not be matched against
+  the user's own layer. A user with 12,000 shops is told about 11,998
+  and has no way to find out why.
+  qgis/barriers.py point branch: `continue` -> append NaN, so the
+  `ok = isfinite(x) & isfinite(y) & isfinite(v)` eight lines below -
+  which was always correct - does the counting and the reporting.
+  alg_continental's centroid join: counted and reported at the drop
+  site, because there a NaN would flow into the lattice join and the
+  message belongs to the join layer rather than to points.
+  THE ASYMMETRY IS THE TELL: two lines further on in the same
+  function, an UNSUPPORTED GEOMETRY TYPE was already counted. One
+  kind of drop was reported and another hidden, side by side.
+
+- ~~382~~ | DONE v1.53.3, THE 380 AUDIT | THE ENGINE TRUSTED THE
+  DOORS.
+  `run_knn_stats` had 150 lines of validation - k, statistic names,
+  variable declarations, Gini negativity - and nothing about whether
+  a cell has a POSITION. Every door masks non-finite coordinates
+  before calling (in QGIS that is also how `keep_outside` is
+  implemented), so this was reachable only from the Python API.
+  Reached, it printed "[stats] 3 cells, k = [2]", built a distance
+  vector that was NaN throughout, sorted it in whatever order numpy
+  produced, and died on `int(nan)` with a bare numpy message - after
+  announcing that it was proceeding.
+  `fastcounts` is already strict here BY ACCIDENT: scipy's cKDTree
+  refuses non-finite input. So the counts engine was protected and
+  the stats engine was not, for no reason anybody chose.
+  **353's LESSON APPLIED ON PURPOSE**: a convention honoured at four
+  doors is still worth guarding in the engine, because the engine is
+  what a script calls. The refusal names the count and says what to
+  do - mask with isfinite before build_cells, or read through a door.
+
+- ~~381~~ | DONE v1.53.3, THE 380 AUDIT | `.isna()` AND `.notna()`
+  WHERE `isfinite` WAS MEANT, AND SOMEBODY ELSE'S VOICE REFUSING.
+  Two places tested coordinates for NaN-or-None when they meant
+  finite, so an INFINITE coordinate passed and reached an
+  `.astype(int)`, where pandas refuses with *"Cannot convert
+  non-finite values (NA or inf) to integer ... cast to Int64"* - a
+  sentence about pandas dtypes shown to somebody who typed a
+  coordinate.
+  **MEASURED, AND IT CORRECTS A CLAIM I MADE EARLIER IN THE AUDIT.**
+  I first recorded this as a SILENT WRONG ANSWER, on the grounds that
+  `np.array([inf]).astype(np.int64)` gives INT64_MIN - a cell
+  9.2e18 m away. That is true of raw numpy and NOT of the pandas path
+  these two actually take: pandas raises. **Nothing was silently
+  wrong; the answer was right and the voice was not EquiPop's.** The
+  audit over-claimed and the measurement corrected it, which is the
+  reason for the rule about measuring before recording.
+  cells.py: the right predicate was eight lines above, on the weight
+  column (`blank = ~np.isfinite(wv)`).
+  stata_bridge.py: `dispatch()` has used `np.isfinite(x) &
+  np.isfinite(y)` for releases and the COUNTS branch is the one path
+  that does not go through it - it re-derived a weaker mask of its
+  own. The correct predicate existed in the same file and this path
+  could not reach it: **380's shape, inside 380's own release.**
+  AND A FALSE CLAIM OF MY OWN, CAUGHT BY THE BREAK-CHECK. My first
+  version re-coerced the coordinate columns with
+  to_numeric(errors="coerce") and a test took credit for handling
+  non-numeric coordinates. Removing the coercion changed nothing:
+  build_cells already coerces both columns at the TOP of the
+  function, 200 lines earlier. The coercion came out and the test's
+  docstring now says what it actually covers. A test that takes
+  credit for a change it cannot see is how a suite comes to look more
+  thorough than it is.
+
+- ~~380~~ | DONE v1.53.3, JOHN'S FIELD FINDING | THE CONVENTION WAS
+  ANNOUNCED IN THE SAME FUNCTION THAT COULD NOT REACH IT.
+      ValueError: cannot create NumPyArray. geometry type found
+  from `arcpy.da.FeatureClassToNumPyArray` on a layer holding NULL
+  GEOMETRY, 8 October 2026. Forty lines below the failing call, in
+  the same function:
+      n_missing = int((~(np.isfinite(x) & np.isfinite(y))).sum())
+      if n_missing: ... "-> Null results (EquiPop convention)."
+  and `skip_nulls=False, null_value=np.nan` was passed DELIBERATELY
+  so those rows would survive as NaN and land there. The QGIS door
+  does it by hand and gets it right - `if g is None or g.isEmpty():
+  xs.append(np.nan)`. **So the convention was implemented in the
+  engine, named in its own message, honoured by one GUI, and
+  unreachable from the other.** Fourth release running of that shape:
+  353 a guard unreachable from the path that could trip it, 368 a
+  hint classified and never rendered, 373 a parse fixed downstream of
+  the parse that breaks.
+  JOHN'S WORKAROUND WAS SELECTING THE NON-NULL FEATURES, which works
+  and is NOT the same answer: those rows vanish from the output
+  instead of being present-and-Null. For the scenario comparison he
+  wants this for, present-and-Null is the one that matters - two runs
+  stay row-aligned, so a difference is a difference in the answer and
+  not a change of denominator. It is `keep_zero` from 1.53.0 one
+  layer up.
+  `_read_columns` keeps the fast reader and falls back to a cursor
+  only when it refuses, because FeatureClassToNumPyArray is far
+  quicker on millions of rows. **IT FALLS BACK ON ANY FAILURE AND
+  NEVER ON THE MESSAGE TEXT**: `if "geometry type" in str(exc)` would
+  break the day Esri rewords it, and 1.51.2 was already bitten by
+  tests that matched a phrase of the messages that release improved.
+  That also covers the neighbouring arcpy limitation for free -
+  `null_value` does not apply to TEXT fields, so a null in a category
+  column can kill the same call for an entirely different reason.
+  **MY FIRST FIX WENT INTO `_read_input` ONLY, AND WAS INCOMPLETE.**
+  A subagent audit of the property across the whole codebase found
+  the SAME defect at two more call sites - the barrier table and the
+  barrier point layer - each with a correct `isfinite` mask three or
+  four lines below a fast read that dies first. The regression test I
+  had written scanned only `_read_input`, so it could not have caught
+  them. The scan is module-wide now, and ALLOWS BY PROPERTY rather
+  than by name: a direct read is fine if it is inside a `try` (the
+  caller degrades) or reads an OBJECTID only (never null). The first
+  draft listed function names and every one of them was a guess the
+  test then corrected - a name list also goes stale on a rename,
+  which is how the reachability matrix went wrong in 333.
+  TWO SIMULATOR FAULTS FOUND IN PASSING, and both mattered:
+  the QGIS stub built a point from NaN ordinates instead of an EMPTY
+  geometry, so every test that believed it was exercising null
+  geometry was exercising a point at NaN and the reader's
+  `g.isEmpty()` branch had never been run by anything; and the sink
+  could not read back an output feature with no geometry, which is
+  exactly what the convention writes. **A simulator that cannot
+  produce the input cannot test the handling.**
+  AND THE TEST THAT GUARDED THE CORRECT DOOR WAS WATCHING ITS TEXT.
+  My first version asserted `re.search(r"g is None or g\.isEmpty\(\)")`
+  against the QGIS source, and a break that kept the condition while
+  turning `xs.append(np.nan)` into `continue` sailed past it - 370's
+  finding again, the mechanism watched and the consequence ignored.
+  Behavioural now, through the real reader, plus a test that the two
+  GUIs give the SAME answer for the same unlocatable row.
+  15 breaks, all caught, "never failed under any break: none".
+
+- ~~379~~ | DONE v1.53.2, JOHN'S MACHINE | THE PROPERTY TEST FOUND
+  TWO COPIES I HAD NOT.
+  The release began with FIVE k parsers counted by hand. The test
+  written to forbid a sixth found a sixth and a seventh immediately -
+  `int(float(piece))` inside Pro's ContinentalRasters.execute and
+  again in SpatialDemography.execute. I had read both files that
+  morning and not seen them.
+  **THAT IS THE ARGUMENT FOR PROPERTY TESTS IN ONE LINE.** A per-door
+  test asserts what its author already knows about; a property test
+  asks the codebase. 370 made the same case for tags last release and
+  this is the first time the method paid out on code I had just
+  edited.
+  THREE OF MY OWN BREAKS THEN FOUND THREE HOLES IN MY OWN TESTS,
+  which is the second half of the discipline and the more
+  uncomfortable half:
+  - Deleting `NEEDS_A_NEIGHBOURHOOD = True` from alg_stats reproduced
+    JOHN'S EXACT BUG and the whole suite stayed green. The test
+    checked that the shared hook existed and that no door had its own
+    copy, and never that a door DECLARED it needed a neighbourhood.
+    It now runs the real hook with both boxes empty.
+  - Restoring alg_stats' bare `[int(v) for v in k_text.split()]`
+    broke nothing: my ast scan looked for a call nested inside int(),
+    and the bare form passes a plain name. The scan now also refuses
+    int()/float() applied over a `.split()`.
+  - `test_the_engines_own_refusal_is_still_there` had never failed
+    under any break, because I never broke analysis.py.
+  Final: 19 breaks, all caught, "never failed under any break: none".
+
+- ~~378~~ | DONE v1.53.2, JOHN'S MACHINE, THE ONE THAT PRODUCED THE
+  TRACEBACK | 305's GUARD WENT INTO ONE DOOR OF FOUR, AND A SPACE
+  WALKED PAST IT.
+      ValueError: give k_values and/or r_values
+  BACKLOG 305 added "give me k or r" to the DIALOG in 1.47.11, after
+  John hit that same engine refusal while teaching. It went into
+  CountsShares in Pro and alg_counts in QGIS, by hand, and into
+  neither of the other two doors that reach the same refusal.
+  ValueStatistics had no such check at all - eighteen months - which
+  is why machine 2 answered with a traceback naming `k_values`, an
+  argument nobody typed, from a dialog that had reported nothing
+  wrong.
+  **AND THE DOOR THAT HAD THE GUARD COULD BE WALKED PAST.** It read
+  `if not _txt(pm, "k") and not _txt(pm, "r")`, and `_txt` does not
+  strip. Pro's `Required` asks whether a box holds A VALUE, and a
+  space IS a value - so one space satisfied Pro, satisfied the guard,
+  and reached the engine as None. Measured: `" "`, a non-breaking
+  space, a tab, `";"` and `"; ;"` all did it. `is_blank()` is the
+  question every door asks now.
+  THE CHECK LIVES IN EquipopAlgorithm FOR QGIS, so a new algorithm
+  gets it by existing rather than by somebody remembering; Pro has no
+  base class, so there the property is asserted against the source -
+  a class with a k box must have an updateMessages that calls
+  `_k_or_r_message`, and all four do.
+  THREE SHAPES, because the doors genuinely differ and flattening
+  them puts a wrong message in front of somebody: machines 1 and 2
+  take k OR r; machine 4 requires k and has no radius; machine 3
+  takes k and a BLANK k is a real choice, meaning the point table.
+  Also caught here: `1 500` in a RADIUS box reads as radii of 1 m and
+  500 m, both positive, so nothing downstream can refuse it - a 1 m
+  neighbourhood holds almost nobody. Same typo as k=1, in the box
+  John's ruling deliberately left permissive, so it is warned about
+  rather than reinterpreted.
+
+- ~~377~~ | DONE v1.53.2, JOHN'S MACHINE | SEVEN WAYS TO READ A k BOX,
+  AND THE CORRECT ONE WAS REACHED FROM ONE DOOR.
+  equipop/doors/numbers.py exists so that reading a typed number is
+  written once. Its docstring says so. `to_int` has said *"a silently
+  rounded k is a wrong answer that looks right"* since 1.47. Counted
+  at the start of this release:
+    1. doors.numbers.intlist      - correct; QGIS counts only
+    2. .pyt `int(round(_numlist))` - Pro counts and stats
+    3. alg_stats `[int(v) for v in k_text.split()]`
+    4. alg_continental._numbers   - `int(float(piece))`
+    5. alg_demography._numbers    - a verbatim copy of 4
+    6. Pro ContinentalRasters.execute - `int(float(piece))`
+    7. Pro SpatialDemography.execute  - a verbatim copy of 6
+  Six of the seven truncated silently, which is precisely what the
+  one correct reader was written to refuse. 6 and 7 were found by the
+  property test, not by me (379).
+  **THIS IS 354 AND 368 AGAIN AND THE COUNT IS NOW THE POINT.** 354
+  was four copies of the measurement rule, 368 two copies of the hint
+  rendering, this is seven copies of the k rule - three consecutive
+  releases of the same defect in different files. The shared module
+  being present and documented did not prevent any of them; what
+  prevents the eighth is a test that fails when a copy appears.
+
+- ~~376~~ | DONE v1.53.2, JOHN'S MACHINE | ONE FILE, ONE CHARACTER,
+  TWO MEANINGS.
+      to_float('1 000')  -> 1000.0     the space is a thousands separator
+      numlist('1 000')   -> [1.0, 0.0] the space is a list separator
+  Both in doors/numbers.py, which is the module whose whole purpose is
+  that there is one answer. The correct single-value reader was
+  destroyed by its own list wrapper, and '1 000' in a k box became
+  k=1 and k=0 and then refused with "got [0]" - a sentence about a
+  number the user never typed.
+  **THE AMBIGUITY IS REAL AND IS NOT RESOLVED SILENTLY.** '200 100'
+  IS two k values; nothing in the text distinguishes it from '1 000'.
+  So the split stays, and `thousands_hint()` adds the suggestion to a
+  refusal that was already justified - gated behind a zero in the k
+  list, or a radius under 10 m, so it never reaches a user whose
+  input was fine. A loose suggestion with a tight gate, said out loud
+  in the docstring so nobody tightens the wrong half.
+
+- ~~375~~ | DONE v1.53.2, JOHN'S RULING | '1,000' PEOPLE WAS ONE
+  PERSON, AND THE RUN FINISHED.
+      k typed as '1,000'  -> k = 1    writes Mean_income_1
+      k typed as '1.000'  -> k = 1
+      k typed as '10,000' -> k = 10
+  No refusal, no warning, columns written. The only evidence is a
+  name like `Mean_income_1` where `Mean_income_1000` was expected,
+  which reads as plausible unless you are looking for it. **A WRONG
+  ANSWER THAT COMPLETES IS WORSE THAN THE TRACEBACK THAT STARTED THIS
+  INVESTIGATION**, and John found the traceback first by luck.
+  THE CAUSE IS A GOOD FIX ONE NOTCH TOO WIDE. BACKLOG 320 made both
+  GUIs share one locale-proof reader so they could not drift - right
+  for a DISTANCE, where 500,5 metres is a real measurement a
+  Norwegian keyboard produces, and wrong for a COUNT OF PEOPLE, where
+  1,000 means one thousand in every notation anybody types. k is
+  coerced with int() immediately, so a fractional k is meaningless by
+  construction - which is the signal that tells the two apart.
+  JOHN'S RULING, 7 October 2026: *"yes - in the next round we should
+  refuse 1,000 - and good to keep it for radii"*. Refusing is the
+  honest half; interpreting guesses at intent, and the alternative
+  reading of '1,6' is one and a half people. The message suggests
+  without deciding.
+  TWO MISTAKES, TWO MESSAGES, which the first draft got wrong: a
+  thousands separator ('1,000') and a decimal ('1,6') are different
+  errors, and "write 1000" is nonsense advice for the second. The
+  test is the thousands PATTERN - three digits after the separator -
+  and NOT what `_clean()` makes of the text, because _clean is the
+  function that misreads it. My first version asked _clean and
+  advised *"if you meant 1, write 1"* for an input of '1,000'.
+  A COMMA STILL SEPARATES VALUES when it is not between digits.
+  Machines 3 and 4 have accepted '300, 500' since they were written
+  and test_qgis_continental asserts it - that test is what caught the
+  shared reader forbidding it, so the fix for one real defect would
+  have removed a real documented capability. A count cannot have a
+  decimal at all, which is exactly what frees the comma up.
+
+- ~~374~~ | DONE v1.53.2, JOHN'S MACHINE | 337's "ONE FORMATTER"
+  COVERED THE RADIUS AND LEFT k.
+  BACKLOG 337 made field-name PREDICTION and the engine share one
+  formatter, and the comment above `_fmt_num` says so. The line below
+  it read
+      ks = [t for t in (k_text or "").split()]
+  so k was never parsed at all. For k='1.000' the prediction promised
+  `N_1_000` while the engine made `N_1`: the shapefile-overflow
+  refusal, the "fields already exist" check and the user's own
+  preview all named columns the run would not produce. The prediction
+  now parses with the ENGINE'S OWN readers, so the two agree by
+  construction rather than by a test comparing them.
+
+- ~~373~~ | DONE v1.53.2, JOHN'S MACHINE, AND THE ONE THAT NAMES THE
+  PATTERN | THE FIX WAS PLACED AFTER THE FAILURE.
+  BACKLOG 320 exists to stop `could not convert string to float:
+  '500,5'` reaching a user. It added a locale-proof parse to
+  alg_counts at line 445. Field-name prediction, at line 395, had
+  ALREADY touched the same text with a bare `float()` through
+  labels.numeric_tag - so a decimal-comma radius produced **that
+  exact message, from 50 lines above 320's fix, in both QGIS doors**,
+  measured. 320 was never fixed; it was fixed in the second half of
+  one function, behind an earlier parse that failed first.
+  IN PRO IT IS WORSE: prediction runs inside `updateMessages`, so a
+  radius typed '500,5' crashed THE DIALOG'S VALIDATION CALLBACK while
+  the user was still typing, in both Pro doors. Measured through the
+  simulator.
+  **THE THIRD CONSECUTIVE RELEASE OF THIS SHAPE.** 353 was a guard
+  unreachable from the path that could trip it. 368 was a hint
+  classified and never rendered. This is a parse fixed downstream of
+  the parse that breaks. All three passed their tests. The rule worth
+  writing on the wall: **when you fix how an input is handled, start
+  at the EARLIEST point a door touches it, not at the line you happen
+  to be reading.**
+  numeric_tag is locale-proof now as well, though its callers no
+  longer hand it text - it is the last common point before a column
+  name, so a future caller must not be able to bring that message
+  back.
+
+- ~~372~~ | DONE v1.53.2, JOHN'S MACHINE | 320's OWN DEFECT, STILL
+  LIVE IN THE SIBLING DOOR.
+  doors/numbers.py's docstring describes the bug it was created for:
+  "alg_counts read k, radii and tau with bare int() and float()
+  straight on the typed text". alg_stats, written from the same
+  template, still did:
+      kw["k_values"] = [int(v) for v in k_text.split()]
+      kw["r_values"] = [float(v) for v in r_text.split()]
+  So the Norwegian student's radius of 500,5 that 320 was opened for
+  produced the raw Python message in machine 2 while machine 1 had
+  been protected since 1.47. A door-parity test does not catch it,
+  for the reason 320's own docstring already gives: parity compares
+  which BOXES exist, not how they are READ.
+
 - ~~371~~ | DONE v1.53.1, JOHN'S MACHINE | A TRUE VERDICT THAT READ AS
   "ALL FINE".
   His report ended `machine 1 can run in this Python.` on the line

@@ -46,9 +46,26 @@ def predict_result_fields(engine, k_text, r_text, tau_text,
     dispatch in the simulator suite, so this stays a prediction and
     does not drift into a guess."""
     from equipop.stats import stat_prefix
-    ks = [t for t in (k_text or "").split()]
-    rs = [_fmt_num(t) for t in (r_text or "").split()]
-    taus = [_fmt_num(t) for t in (tau_text or "").split()]
+    from equipop.doors.numbers import intlist, numlist
+    # BACKLOG 373/374, v1.53.2. THIS IS THE EARLIEST PLACE A DOOR
+    # TOUCHES THE TYPED TEXT, and it used to be the only place that
+    # did not parse it.
+    #   ks  = raw tokens, straight into a column name
+    #   rs  = _fmt_num(t) -> numeric_tag -> bare float(t)
+    # Two consequences, both measured. A radius typed '500,5' raised
+    # `could not convert string to float: '500,5'` FROM HERE - the raw
+    # Python message BACKLOG 320 exists to prevent - 45 lines before
+    # the protected parse 320 actually added, and inside Pro's
+    # updateMessages, so the dialog's validation crashed while the
+    # user typed. And k was never parsed at all, so this promised
+    # `N_1_000` for k='1.000' where the engine made `N_1`: BACKLOG
+    # 337's "the prediction and the engine now use ONE formatter"
+    # covered the radius and left k behind.
+    # Parsing through the ENGINE'S OWN readers makes the two agree by
+    # construction rather than by a test that compares them.
+    ks = [str(k) for k in intlist(k_text)] if k_text else []
+    rs = [_fmt_num(v) for v in numlist(r_text)] if r_text else []
+    taus = [_fmt_num(v) for v in numlist(tau_text)] if tau_text else []
     names = []
     if engine == "counts":
         sufs = [k for k in ks] + [f"r{r}" for r in rs]

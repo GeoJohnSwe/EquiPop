@@ -1,6 +1,46 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.53.1, 6 October 2026.**
+**Last updated: 1.53.3, 8 October 2026.**
+*Reviewed at 1.53.3: NO CLAIM CHANGES. One line of evidence for the
+risk section, and one note for the machine 7 entry below.
+A work package promising that partners run the software on their own
+national data is promising it survives THEIR data. Null geometry is
+what partner data has - failed geocodes, hand-edited shapefiles,
+joins that missed - and until this release one of the two GUI doors
+lost the whole run to it while the other handled it correctly. Fixed,
+and the two doors are now tested against EACH OTHER for the same
+input, which is the more useful claim: not "we handle missing data"
+but "our implementations agree".
+FOR MACHINE 7 (section 3): this release strengthens the case for the
+row-alignment argument made there. A row EquiPop cannot locate keeps
+its slot and returns Null, so two scenario runs stay aligned and a
+difference between them is a difference in the ANSWER rather than a
+change of denominator. That is the same property the agent model
+needs for its paired common-random-number comparison, and it is now
+true at every door rather than at one.
+BACKLOG 365 IS STILL THE ONE NOT TO PROMISE - fourth release
+running.*
+*Reviewed at 1.53.2: NO CLAIM CHANGES, and one risk sentence gets
+easier to write honestly.
+A consortium proposal says partners will run the software on their own
+national data. Every partner will be on Windows, and most of them will
+type a thousands separator into a box at some point, because that is
+how numbers are written in the countries this project is for. Until
+this release that produced a completed run with the wrong
+neighbourhood size and no warning - which is the one failure mode a
+reviewer of a methods work package should care about most, because it
+does not announce itself and it survives into published figures.
+It is refused now, in all four doors, through one reader that a test
+forbids anybody from bypassing. If the risk section needs a sentence:
+"inputs are validated at the dialog, before computation, through a
+single shared reader" is the true version. Do NOT present it as a
+feature - a validation layer is not a capability, and claiming it as
+one invites the question of what else is only validated.
+BACKLOG 365 IS STILL THE ONE NOT TO PROMISE, third release running
+and repeated because it is the item most likely to be written as done
+by accident: a continental DEMOGRAPHIC index has no tiled route, so
+Europe-wide dependency ratios remain the piece the software cannot do
+at scale.*
 *Reviewed at 1.53.1: NO CLAIM IN THIS FILE CHANGES. One paragraph in
 the February text gets easier to write honestly, and it is a
 paragraph reviewers do read.
@@ -447,3 +487,235 @@ and still the clearest statement of it:
 availability statement, which was open before submission — worth
 checking it made it in, since SSC distribution is the answer and the
 archive now has it.
+
+---
+
+# 3. MACHINE 7 — AGENT-BASED ACCESSIBILITY ASSIGNMENT
+
+**A thought experiment, 8 October 2026. John's idea; nothing is
+implemented and nothing should be until the decisions below are
+settled.** Recorded here rather than in the backlog because its first
+value is to a funding application, not to a release.
+
+John's question: could EquiPop generate agent-based models — barriers,
+frictions, decay and the reference/treatment split already present,
+plus a random component for choice, a number of users set per location
+by field or constant, destination capacity, and rounds to fill it —
+in order to simulate **how accessibility changes as the landscape is
+altered**?
+
+## THE REFRAMING, WHICH IS THE WHOLE REASON TO TAKE IT SERIOUSLY
+
+An accessibility simulation must answer two questions before any agent
+moves: **which destinations does this person consider**, and **what
+does distance cost them**. Standard practice fudges both — a fixed
+buffer, a fixed *n* nearest, or everything in the study area. That
+arbitrariness is the standing critique of the two-step floating
+catchment literature.
+
+**EquiPop's bespoke neighbourhood is a choice-set generator.** The
+choice set is the destinations inside the radius at which *k* people
+are reached: density-adaptive by construction, which is the argument
+the Stata Journal paper already makes in print.
+
+**And the decay families are already a choice kernel**, up to
+normalisation. `p_ij = w(d_ij)·A_j / Σ_j w(d_ij)·A_j` is a Huff model;
+competing-destinations is the same object with a competition term. So
+the "random component" is not new mathematics — it is **sampling from
+a kernel the engine already computes correctly**, including the
+own-cell weight and the shape-aware intra-cell distance that 1.52.0
+fixed and that most agent models ignore.
+
+So the proposal is **not** "add ABM to EquiPop". It is **expose an
+existing competence to a literature that needs it** — which is far
+cheaper to build and far easier to defend to a reviewer.
+
+The reference/treatment split carries straight over: the treatment
+population IS the agent pool (under-fives seeking a nursery place),
+the reference population IS the competition setting the denominator.
+`pop()`, `values()` and groups already specify who the agents are, so
+no new vocabulary is needed for that. Machine 4 is a natural upstream
+feeder — a dependency ratio identifies who needs care, which is an
+agent population for a care-accessibility run. That gives **365** (no
+tiled path for machine 4) a second reason to be closed.
+
+## WHAT IS FREE AND WHAT IS NOT
+
+| already built and tested | genuinely new |
+|---|---|
+| bespoke neighbourhood → the choice set | agent representation and memory model |
+| five decay families → choice probabilities | normalised kernel + a draw (*small*) |
+| barriers, tau/effort, roundtrip → friction | **capacity state, and its coupling** |
+| self-potential, hex/square intra-cell distance | the assignment and stopping rule |
+| seeded sampling, `seed_message` | an O-D output artefact |
+| run record, manifest, `cells_md5` | a stochastic test idiom |
+| tiling → continental scale | independent seed streams |
+| the 1.22.2 zero-population rule | |
+| signed rasters → environmental attractiveness | |
+
+The zero-population rule matters more here than anywhere: scenario
+work is precisely about places whose population changed, and 1.53.0
+made `keep_zero` actually deliver it.
+
+## THE ONE THING THAT BREAKS THE ARCHITECTURE
+
+**Capacity destroys per-origin independence.** Everything EquiPop does
+today is embarrassingly parallel — each neighbourhood is computed
+without reference to any other, which is *why* tiled continental runs
+exist. The moment destination *j* can fill, origin *i*'s outcome
+depends on what origin *i'* chose. The computation becomes a global
+iteration.
+
+That costs, concretely:
+
+- the tiled path cannot be reused naively
+- results become **order-dependent** unless the rule removes order
+- `cells_md5` stops being a sufficient run identity: the seed family,
+  the capacity vector, the rule and the iteration count all enter it
+- "rounds to capacity" is an arbitrary parameter unless it has a
+  defined endpoint
+
+**Two escapes from the last one.** A **stable matching** — agents rank
+destinations by kernel weight, destinations rank by distance or
+priority, run deferred acceptance — terminates on its own and is
+**independent of processing order**, which kills the reproducibility
+problem rather than managing it. Alternatively **queueing**, where
+congestion adds a waiting term that feeds back into the friction. The
+second is scientifically the more interesting, because it makes
+accessibility genuinely **endogenous**: your access depends on
+everyone else's choices. That is the research contribution hiding in
+the idea, and it is what distinguishes this from a faster 2SFCA.
+
+## VALIDATION — JOHN'S ANSWER, AND WHAT EACH PART IS WORTH
+
+This is the real risk. The project's credibility rests on nothing
+being claimed until it is measured, and on answers checkable against
+published work. **A simulation has no answer key**, so the plan has to
+be explicit. John's three proposals, 8 October, ranked by what they
+actually establish:
+
+**1. Conservation — "if the sum leaving all i and arriving at any j is
+the same, I am happy."** NECESSARY, NOT SUFFICIENT. It catches
+leakage, duplication and double-assignment and belongs as the first
+invariant. But a wrong model satisfies it: send everyone to their
+nearest destination, or shuffle at random, and the sums still balance.
+It validates the plumbing, not the behaviour.
+
+**2. Iterations against selection likelihood — THE REAL ONE, and
+stronger than stated.** For the unconstrained case the target is not
+empirical at all, it is **closed form**: `p_ij` above is computable
+exactly from the kernel. Run N replications, check the observed
+selection frequency converges to the analytic probability within a
+tolerance shrinking as 1/√N. That is an external answer key, not
+self-comparison, and it pins the kernel AND the draw together.
+It stops working once capacity binds — there is no closed form for
+realised shares then — which is exactly why it is the **zero-pressure
+degenerate case**: infinite capacity must reproduce the analytic
+probabilities, and capacity is then tested separately.
+
+**3. Aggregate behavioural statistics — right about variance, risky
+about inference.** Aggregate functionals converge far faster than
+per-pair shares, so the replication count genuinely falls. But
+"agents move toward dense areas" is a PREDICTION OF THE MODEL, so
+confirming it confirms the model does what its own assumptions
+dictate. That is face validity: good for catching sign flips and
+inverted kernels, good for a figure, blind to subtle error.
+**It becomes a real test as MONOTONICITY under a known perturbation:**
+raise a barrier and cross-barrier flow must not increase; steepen the
+decay and mean trip length must fall; add capacity at *j* and *j*'s
+load must not drop. Paired runs on the same seed make the comparison
+within-agent, so very few replications are needed.
+
+**Plus two the project should insist on itself:**
+
+- **The degenerate case must reduce EXACTLY.** Zero randomness and
+  infinite capacity must reproduce the existing deterministic measure
+  **bit-identically** — the same identity discipline as the 1.52.0
+  square-cell proof and the 1.53.0 default-path proof. Strongest test
+  available, and free.
+- **A doubly-constrained spatial interaction model solved by iterative
+  proportional fitting** on the same inputs has a known convergent
+  solution. Flow-mode results should match it. Also external.
+
+**And a labelling rule.** A machine 7 column is a SIMULATED quantity.
+It must never be mistakable for a machine 1–4 measurement, and the
+question "is that figure measured or simulated?" must have a one-word
+answer. The run record and sidecar already provide the machinery; the
+seed belongs in it.
+
+## DECISIONS ONLY JOHN CAN MAKE
+
+- **What is an agent?** A *flow* of fractional people (then it is a
+  spatial interaction model, fast, and not an ABM); an *individual*
+  per person (6M for Denmark is fine, 450M for Europe is not); or a
+  *cohort* carrying weight *m* — the pragmatic middle, which maps onto
+  the fractional-weight arithmetic the proportional overshoot mode
+  already performs. **Recommended: the cohort, stated in print.**
+- **One choice or a trip chain?** Single-destination assignment is a
+  one-shot problem. An activity schedule is a different and far larger
+  program. **Recommended: refuse the second explicitly in the docs.**
+- **What does capacity do when it binds?** Refuse-and-rechoose, queue
+  -and-wait, or degrade-with-load. Three different papers.
+- **Where does randomness enter?** At least four places — which
+  destination, how many users per origin, whether a person
+  participates at all, and the overshoot sampling that already exists.
+  They need **independent seed substreams**, not one global seed, or
+  variance cannot be attributed to its source. Cheap now, painful to
+  retrofit.
+- **Where does the output live?** Architectural. The whole output
+  convention is "columns on the origin table". An assignment produces
+  per-origin results, per-DESTINATION results (load, utilisation,
+  unmet demand) and a **pair-level flow matrix** — and an O-D matrix
+  has nowhere to go in the current shape. A third artefact beside the
+  point table and the manifest.
+
+## SCOPE — WHAT NOT TO BUILD
+
+Not "an ABM framework". NetLogo, MESA and GAMA exist and this would be
+a worse one. The defensible name is **"capacity-constrained stochastic
+accessibility assignment over bespoke neighbourhoods"** — unfashionable,
+precise, publishable, competing with nothing. If it grows agent
+memory, learning, inter-agent interaction or networks, it has become a
+worse MESA and should be stopped.
+
+Two costs the project should price in. The suite asserts exact numbers
+everywhere; a stochastic machine needs a different idiom — seeded
+byte-identity, distributional bounds derived from the replication
+count, and invariants. And the 1.53.2 release found **seven** copies of
+one number parser: any new numeric input — capacity, rounds, kernel
+parameters — comes through `doors/numbers.py` and the reachability
+matrix on day one, or it becomes copies eight through fourteen.
+
+## RECOMMENDED SEQUENCING
+
+**A strong proposal component and a weak immediate build.** The
+February application gains more from a credible work-package design —
+this section — than from a half-finished machine 7 standing beside two
+already-incomplete items (365, 349).
+
+**The cheap intermediate worth having on its own: a DETERMINISTIC
+capacity-aware accessibility measure.** No agents, no randomness —
+"how many people can reach this facility within their own bespoke
+neighbourhood, and does it have room for them." That is 2SFCA with the
+arbitrary catchment replaced by EquiPop's, which is a methodological
+contribution in its own right; it reuses everything above; it needs no
+new test idiom; and the agent model becomes its microsimulation
+extension rather than a from-scratch machine. It also forces the O-D
+output question early, while answering it is still cheap.
+
+## Status
+
+    [ ]  John to settle: agent representation, capacity behaviour
+    [ ]  Literature checked against sources, NOT from memory
+    [ ]  Decide whether the deterministic measure goes first
+    [ ]  Only then: a backlog entry, with doors deliberately deferred
+
+**Literature named from memory and NOT verified** — Huff on retail
+gravity, Fotheringham on competing destinations, Luo and Wang on
+2SFCA, Gale and Shapley on stable matching, and common random numbers
+as a variance-reduction technique. All are well known and all are
+plausible framings, but none has been checked against a source in this
+session. **Verify before any of it reaches a proposal.** The
+stable-matching suggestion in particular is this session's framing,
+not something seen applied to bespoke neighbourhoods — a lead, not a
+citation.

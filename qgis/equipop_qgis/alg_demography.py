@@ -67,6 +67,12 @@ def _index_names():
 
 
 class SpatialDemography(EquipopAlgorithm):
+    # BACKLOG 378. k is this door's only neighbourhood box,
+    # so there is no either-or to check - but a k that will
+    # not parse still has to be refused before Run.
+    R_BOX = "-none-"
+    K_IS_REQUIRED = True
+
     """Demographic indices over k-neighbourhoods, from a raster folder."""
 
     EQP_TOOL = "SpatialDemography"
@@ -267,14 +273,20 @@ class SpatialDemography(EquipopAlgorithm):
 
     @staticmethod
     def _numbers(text, box):
-        out = []
-        for piece in str(text).replace(",", " ").split():
-            try:
-                out.append(int(float(piece)))
-            except ValueError:
-                raise QgsProcessingException(
-                    f"Box {box}: '{piece}' is not a number. Give one or "
-                    "more whole numbers of people, separated by spaces.")
+        """k values from a box, through the ONE reader.
+
+        BACKLOG 377, v1.53.2. This was a fifth open-coded k parser -
+        `int(float(piece))`, duplicated verbatim in alg_continental
+        and alg_demography - and it silently truncated: '1.000'
+        became ONE PERSON and `.replace(",", " ")` turned '1,000'
+        into the two values 1 and 0. equipop.doors.numbers exists so
+        that cannot happen, and its own docstring says so.
+        """
+        from equipop.doors.numbers import intlist, BadNumber
+        try:
+            out = intlist(text)
+        except BadNumber as bad:
+            raise QgsProcessingException(f"Box {box}: {bad}")
         if not out:
             raise QgsProcessingException(
                 f"Box {box}: give at least one neighbourhood size.")

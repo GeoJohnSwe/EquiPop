@@ -315,31 +315,12 @@ class CountsAndShares(EquipopAlgorithm):
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 
-    def checkParameterValues(self, parameters, context):
-        """BACKLOG 305. Refuse BEFORE Run, not after.
-
-        processAlgorithm already refuses a run with neither k nor r,
-        which is right - but by then the user has pressed Run and the
-        answer arrives as a red exception. QGIS offers this hook so
-        the dialog can say so while the box is still in front of you,
-        and it was never implemented.
-
-        NEITHER BOX IS REQUIRED and that is deliberate: a radius-only
-        run is a perfectly good question, and so is k-only. What is
-        required is ONE OF THEM.
-        """
-        k = (self.parameterAsString(parameters, "k", context)
-             or "").strip()
-        r = (self.parameterAsString(parameters, "r", context)
-             or "").strip()
-        if not k and not r:
-            return False, (
-                "Give a neighbourhood size in box 3 (k - a number of "
-                "people), or a radius in box 4 - EquiPop needs one of "
-                "the two to know what a neighbourhood is. Either "
-                "alone is fine; both together gives you both sets of "
-                "columns.")
-        return super().checkParameterValues(parameters, context)
+    # BACKLOG 378, v1.53.2. The check this door used to carry by hand
+    # now lives in EquipopAlgorithm, so all four doors that can reach
+    # the engine's refusal share it. The hand-written version tested
+    # `if not k and not r`, which a single SPACE walks straight past -
+    # the inherited one asks is_blank().
+    NEEDS_A_NEIGHBOURHOOD = True
 
     def processAlgorithm(self, parameters, context, feedback):
         from equipop.doors.fields import predict_result_fields

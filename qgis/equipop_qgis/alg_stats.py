@@ -41,6 +41,11 @@ from .alg_counts import (OUTSIDE_MODES, OVERSHOOT_MODES,  # noqa: F401
 
 
 class ValueStatistics(EquipopAlgorithm):
+    # BACKLOG 378. This door had NO checkParameterValues at
+    # all, which is how John's k reached the engine as None
+    # and came back as a traceback naming `k_values`.
+    NEEDS_A_NEIGHBOURHOOD = True
+
 
     EQP_TOOL = "ValueStatistics"
     OUT = "outfc"
@@ -226,10 +231,21 @@ class ValueStatistics(EquipopAlgorithm):
                                              context) or [2])[0]],
                   values={v: pts.data[v] for v in vals},
                   stats={v: wanted for v in vals})
-        if k_text:
-            kw["k_values"] = [int(v) for v in k_text.split()]
-        if r_text:
-            kw["r_values"] = [float(v) for v in r_text.split()]
+        # BACKLOG 372, v1.53.2. These two lines were bare int() and
+        # float() on text a person typed - the exact defect BACKLOG
+        # 320 was opened for, named in equipop/doors/numbers.py's own
+        # docstring, fixed in alg_counts and left here. A Norwegian
+        # student's radius of 500,5 produced `could not convert
+        # string to float: '500,5'` in machine 2 while machine 1 had
+        # been protected since 1.47.
+        from equipop.doors.numbers import intlist, numlist, BadNumber
+        try:
+            if k_text:
+                kw["k_values"] = intlist(k_text)
+            if r_text:
+                kw["r_values"] = numlist(r_text)
+        except BadNumber as bad:
+            raise QgsProcessingException(str(bad))
         if pop:
             kw["weight"] = pts.data[pop]
         # v1.29.2, the ladder's third rung. John's rule, unchanged:

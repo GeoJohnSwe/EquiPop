@@ -100,7 +100,21 @@ def numeric_tag(value) -> str:
     so the result is safe in a Stata variable name, a shapefile field
     name and a GeoPackage column alike.
     """
-    v = float(value)
+    # BACKLOG 373, v1.53.2. `float(value)` here was reachable from a
+    # dialog with a user's typed text in hand, and produced the raw
+    # `could not convert string to float: '500,5'`. The callers are
+    # fixed to parse first, and this stays locale-proof anyway: this
+    # function is the LAST common point before a column name, so a
+    # future caller handing it text must not be able to resurrect that
+    # message. A number arriving from code takes the fast path.
+    if isinstance(value, str):
+        from equipop.doors.numbers import to_float
+        v = to_float(value)
+        if v is None:
+            raise LabelCollision(
+                "an empty value cannot become part of a column name.")
+    else:
+        v = float(value)
     if v != v or v in (float("inf"), float("-inf")):
         raise LabelCollision(
             f"{value!r} is not a finite number, so it cannot become "

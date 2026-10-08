@@ -440,6 +440,31 @@ def run_knn_stats(
     r_values = sorted(r_values or [])
     if not (k_values or r_values):
         raise ValueError("give k_values and/or r_values")
+    # BACKLOG 382, v1.53.3. A CELL WITH NO POSITION IS NOT A CELL.
+    # Every door masks non-finite coordinates before calling - that is
+    # the "missing coordinates -> Null results" convention, and in
+    # QGIS it is also how keep_outside is implemented - so this could
+    # only be reached from the Python API. Reached, it printed
+    # "[stats] 3 cells, k = [2]", computed a distance vector that was
+    # NaN throughout, sorted it in whatever order numpy happened to
+    # produce, and then died on `int(nan)` with a bare numpy message.
+    # fastcounts is already strict here, by accident: scipy's cKDTree
+    # refuses non-finite input. This says the same thing in EquiPop's
+    # voice, and says what to do about it.
+    # 353's lesson, applied on purpose: a convention honoured at four
+    # doors is still worth guarding in the engine, because the engine
+    # is what a script calls.
+    _bad_xy = ~(np.isfinite(np.asarray(cd.E, dtype=float))
+                & np.isfinite(np.asarray(cd.N, dtype=float)))
+    if _bad_xy.any():
+        raise ValueError(
+            f"[stats] {int(_bad_xy.sum())} of {_bad_xy.size} cells "
+            "have a missing or non-finite position, and a cell with no "
+            "position has no neighbourhood. Every EquiPop door drops "
+            "these rows and returns Null results for them; a script "
+            "calling the engine directly has to do the same - mask "
+            "with np.isfinite(E) & np.isfinite(N) before build_cells, "
+            "or read the points through a door.")
     osm = overshoot.resolve(overshoot_mode)
     _seed_given = seed is not None
     os_seed = int(seed) if _seed_given else overshoot.draw_seed()

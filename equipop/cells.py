@@ -206,10 +206,28 @@ def build_cells(
         df[weights] = wv.where(~blank, 0.0)
 
     # --- missing coordinates: drop with warning (spec 12) ---
-    bad = df[e_col].isna() | df[n_col].isna()
+    # BACKLOG 381, v1.53.3. This said `.isna()`, which is True only for
+    # NaN and None. An INFINITE or non-numeric coordinate passed it and
+    # reached the .astype(int) twelve lines below, where pandas refuses
+    # with "Cannot convert non-finite values (NA or inf) to integer ...
+    # cast to Int64" - a message about pandas dtypes handed to somebody
+    # who typed a coordinate. The ANSWER was never wrong, but the voice
+    # was not EquiPop's.
+    # The right predicate was already in this function, eight lines
+    # above, on the weight column: `blank = ~np.isfinite(wv)`.
+    # A NON-NUMERIC coordinate is NOT this release's fix: the loop at
+    # the top of this function already runs to_numeric(errors=
+    # "coerce") over both coordinate columns, so text has become NaN
+    # long before here. The first draft of this change re-coerced them
+    # and a test claimed credit for behaviour that predates it - the
+    # break-check is what exposed that, by removing the new coercion
+    # and watching the test pass anyway.
+    bad = pd.Series(~(np.isfinite(df[e_col].to_numpy(float))
+                      & np.isfinite(df[n_col].to_numpy(float))),
+                    index=df.index)
     if bad.any():
         print(f"[cells] WARNING: {bad.sum()} of {len(df)} rows have "
-              f"missing coordinates and are dropped.")
+              f"missing or non-finite coordinates and are dropped.")
         df = df[~bad]
 
     # --- snap to grid midpoints ---

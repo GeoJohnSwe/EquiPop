@@ -1,7 +1,7 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.1**:
-1,505 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.3**:
+1,542 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself, a test that
 asks whether anybody can reach any of it, the published
@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.53.1 rather than superseded: same session. Read
-section 0g first, then 0f, 0e, 0d, 0c, 0b. **The session ended by being
+*Amended through 1.53.3 rather than superseded: same session. Read
+section 0i first, then 0h, 0g, 0f, 0e, 0d, 0c, 0b. **The session ended by being
 read from outside, three times in three days** - a pull request with
 four findings, a full code review with nine, and then a review I was
 asked to run on the project's own raster and demographic code, which
@@ -24,6 +24,234 @@ user something untrue. 1.50.0 is the exception: three items chosen
 FROM the backlog, and the first thing they found was that the
 backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
+
+---
+
+## 0i. 1.53.3 - THE CONVENTION THAT COULD NOT BE REACHED
+
+John, ArcGIS Pro: `ValueError: cannot create NumPyArray. geometry type
+found`, from a layer holding null geometry. **Read this section for one
+thing: the handling already existed, forty lines below the call that
+died, in the same function.**
+
+```python
+# arcgis/EquiPop.pyt, inside _read_input
+arr = arcpy.da.FeatureClassToNumPyArray(...)   # <- dies here
+...                                            # 40 lines
+n_missing = int((~(np.isfinite(x) & np.isfinite(y))).sum())
+if n_missing:
+    messages.addMessage(f"{n_missing} rows with missing coordinates"
+                        " -> Null results (EquiPop convention).")
+```
+
+`skip_nulls=False, null_value=np.nan` was passed **deliberately** so
+those rows would survive as NaN and land there. The QGIS door does the
+same by hand and gets it right. So the convention was implemented in
+the engine, **named in its own message**, honoured by one GUI, and
+unreachable from the other — for as long as both doors have existed.
+
+**Fourth release in a row of that shape.** 353 a guard unreachable
+from the path that could trip it; 368 a hint classified and never
+rendered; 373 a parse fixed downstream of the parse that breaks; 380
+a convention announced by the function that cannot reach it. If a
+fresh session takes one habit from this file, take this one: **when
+something is already handled, check that the path can get there.**
+
+**AND MY FIRST FIX WAS INCOMPLETE, WHICH IS THE OTHER HALF.** I fixed
+`_read_input` and wrote a regression test scoped to `_read_input`. A
+subagent audit of the property across the whole codebase found the
+*same* defect at two more call sites — the barrier table and the
+barrier point layer — each with a correct `isfinite` mask three or
+four lines below a fast read that dies first. My test could not have
+caught either. 1.53.2 found seven copies of a k parser the same way.
+**The scan is module-wide now and allows by PROPERTY, not by name**: a
+direct read is fine if it sits inside a `try` (the caller degrades) or
+reads an OBJECTID only. My first draft listed function names and every
+one was a guess the test then corrected — and a name list goes stale
+on a rename, which is how the reachability matrix went wrong in 333.
+
+**John's workaround is worth understanding, because it is not the same
+answer.** He selected the non-null features, which runs — but those
+rows then *vanish* from the output instead of being present-and-Null.
+For scenario comparison, present-and-Null is the one that matters: two
+runs stay row-aligned, so a difference is a difference in the answer
+rather than a change of denominator. It is `keep_zero` from 1.53.0 one
+layer up, and it is the same property the machine 7 proposal needs.
+
+**TWO SIMULATOR FAULTS, AND BOTH MATTERED.** The QGIS stub built a
+point from NaN ordinates instead of an empty geometry — so every test
+that believed it was exercising null geometry was exercising a point
+at NaN, and the reader's `g.isEmpty()` branch **had never been run by
+anything**. And the sink could not read back an output feature with no
+geometry, which is exactly what the convention writes. *A simulator
+that cannot produce the input cannot test the handling* — the
+counterpart to this file's existing rule about suspecting the
+simulator when a door looks broken.
+
+**The test guarding the CORRECT door was watching its text.** My first
+version asserted `re.search(r"g is None or g\.isEmpty\(\)")` against
+the QGIS source, and a break that kept the condition while turning
+`xs.append(np.nan)` into `continue` sailed straight past. 370's
+finding again. Behavioural now, through the real reader, plus a test
+that **the two GUIs give the same answer for the same unlocatable
+row** — which is the more useful claim than either door being
+defensible alone.
+
+**THREE SMALLER FINDINGS FROM THE AUDIT**, all the same family: the
+answer was right and somebody else's error message was speaking for
+EquiPop. `cells.py` and the Stata counts path tested coordinates with
+`.isna()`/`.notna()` where they meant `isfinite`, so an infinite
+coordinate reached an `.astype(int)` and came back as a pandas
+sentence about dtypes (381). `run_knn_stats` had 150 lines of
+validation and nothing about whether a cell has a *position*, so the
+Python API could get "[stats] 3 cells" followed by a bare numpy
+message — while `fastcounts` was already strict **by accident**,
+because scipy refuses non-finite input (382). And both GUIs dropped
+null-geometry features *above* the mask that counts dropped features,
+so the warning undercounted and the number could not be reconciled
+with the user's layer (383).
+
+**I CORRECTED THE AUDIT ON ONE POINT AND IT MATTERS.** I first
+recorded 381 as a silent wrong answer, because raw numpy turns `inf`
+into INT64_MIN — a cell 9.2e18 m away. Measured, the pandas path these
+two actually take *raises*. Nothing was silently wrong. The audit
+over-claimed and the measurement corrected it; a subagent's report is
+evidence to check, not a finding to file.
+
+**And I killed my own break-check with `| head` — again.** SIGPIPE,
+the final `restore()` never ran, and a break was left applied in the
+tree. **That is BACKLOG 352, recorded forty screens up in this same
+file, in this same session.** Knowing a hazard and writing it down did
+not stop me reaching for the same shortcut on a different script. The
+rule, now stated rather than remembered: **a script that mutates the
+tree is never piped** — redirect to a file and read the file.
+
+15 breaks, all caught, "never failed under any break: none".
+
+---
+
+## 0h. 1.53.2 - SEVEN WAYS TO READ ONE BOX
+
+John, in ArcGIS Pro: `ValueError: give k_values and/or r_values`, then
+*"any idea?"*. Six defects behind it, one shipping since 1.35, and the
+release that fixed them found two more copies of the central one than
+I had counted.
+
+**THE DIAGNOSIS, IN THE ORDER IT UNFOLDED.** His k box held something
+Pro called valid and the engine called nothing: a space, a semicolon,
+a tab. **Pro's `Required` asks whether a box holds A VALUE, and a
+space is a value.** The dialog's own guard - BACKLOG 305, added
+eighteen months earlier *after he hit this same engine refusal while
+teaching* - read `if not _txt(pm, "k")`, which a space walks straight
+past. And it existed in **one door of the four** that reach that
+refusal; machine 2 had no version of it at all.
+
+Then, looking for why, the worse one. **`1,000` in a k box meant ONE
+PERSON and the run finished.**
+
+```
+k typed '1,000'  -> k = 1     writes Mean_income_1
+k typed '1.000'  -> k = 1
+k typed '10,000' -> k = 10
+```
+
+No refusal, no warning, columns written. The only evidence is
+`Mean_income_1` where `Mean_income_1000` belonged, which reads as
+plausible unless you are looking for it. **A wrong answer that
+completes is worse than the traceback that started the
+investigation**, and he found the traceback first by luck. The cause
+is a good fix one notch too wide: BACKLOG 320 made both GUIs share
+one locale-proof reader, which is right for a *distance* - `500,5`
+metres is what a Norwegian keyboard produces - and wrong for a *count
+of people*, where `1,000` means one thousand in every notation anybody
+types.
+
+**JOHN'S RULING**, 7 October: *"yes - in the next round we should
+refuse 1,000 - and good to keep it for radii."* Refusing is the honest
+half; interpreting guesses at intent, and the other reading of `1,6`
+is one and a half people. So the two readers are now deliberately
+different and the docstring says why, because that asymmetry is
+exactly what a later tidy-up would collapse.
+
+**SEVEN K READERS.** This is the number to remember.
+
+```
+1. doors.numbers.intlist          correct - QGIS counts ONLY
+2. .pyt  int(round(_numlist()))   Pro counts and stats
+3. alg_stats  [int(v) for v in k_text.split()]
+4. alg_continental._numbers       int(float(piece))
+5. alg_demography._numbers        a verbatim copy of 4
+6. Pro ContinentalRasters.execute int(float(piece))
+7. Pro SpatialDemography.execute  a verbatim copy of 6
+```
+
+Six of the seven truncated silently - precisely what the one correct
+reader exists to refuse, in a module whose docstring says it exists so
+this cannot happen, with `to_int` carrying the sentence *"a silently
+rounded k is a wrong answer that looks right"* since 1.47. **354 was
+four copies of the measurement rule. 368 was two copies of the hint
+rendering. This is seven copies of the k rule.** Three releases
+running. A shared module being present and documented prevented none
+of them.
+
+**I COUNTED FIVE. THE PROPERTY TEST FOUND SEVEN.** Numbers 6 and 7
+were in files I had read that morning, and the test written to forbid
+a *sixth* copy found a sixth and a seventh on its first run. That is
+the argument for property tests in one line: **a per-door test asserts
+what its author already knows about; a property test asks the
+codebase.**
+
+**AND THE PATTERN NAMED, because it is the third consecutive release.**
+BACKLOG 320 exists to stop `could not convert string to float: '500,5'`
+reaching a user, and it added a locale-proof parse to `alg_counts` at
+line 445. Field-name prediction, at **line 395**, had already touched
+the same text with a bare `float()`. So that exact message still
+reached users in both QGIS doors, from fifty lines *above* the fix
+meant to prevent it. In Pro it was worse: prediction runs inside
+`updateMessages`, so a decimal-comma radius **crashed the dialog's
+validation callback while the user typed.**
+
+> 353 was a guard unreachable from the path that could trip it.
+> 368 was a hint classified and never rendered.
+> 373 is a parse fixed downstream of the parse that breaks.
+> **All three passed their tests.**
+
+The rule: **when you fix how an input is handled, start at the
+earliest point a door touches it, not at the line you happen to be
+reading.**
+
+**THREE OF MY OWN TESTS WERE WRONG, and the breaks found them.** This
+is the uncomfortable half and the reason the discipline is worth the
+time.
+
+- Deleting one line - `NEEDS_A_NEIGHBOURHOOD = True` from alg_stats -
+  **reproduced John's exact bug and the entire suite stayed green.**
+  My test checked that the shared hook existed and that no door had
+  its own copy, and never that a door *declared* it needed a
+  neighbourhood. It now runs the real hook with both boxes empty.
+- Restoring alg_stats' bare `[int(v) for v in k_text.split()]` broke
+  nothing: my ast scan looked for a call *nested inside* `int()`, and
+  the bare form passes a plain name.
+- One test had never failed under any break, because I never broke the
+  file it guards.
+
+Final: **19 breaks, all caught, "never failed under any break: none".**
+
+**Two smaller things worth knowing.** A comma still separates *values*
+when it is not between digits - `300, 500` is two k values, machines 3
+and 4 have accepted that since they were written, and
+`test_qgis_continental` is what caught the shared reader forbidding
+it. The fix for one real defect would have removed a real documented
+capability, and an existing test is the only reason it did not.
+
+And `test_the_version_bump_survives_a_round_trip` failed on this
+release's own comments. The bump tool prints its rule - *"a version in
+prose is a FACT ABOUT THE PAST"* - and the test contradicted it, so
+writing `BACKLOG 377, v1.53.2` into a comment in `EquiPop.pyt` tripped
+a guard on nine comments that are correct and must never move. Now
+narrowed to the declaration patterns the tool itself publishes. **Same
+mistake as the other two: a test matching TEXT where it meant to match
+a KIND of line.**
 
 ---
 
