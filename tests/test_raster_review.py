@@ -622,17 +622,53 @@ def test_361_a_real_band_gap_still_refuses():
         demo.plan("ageing_index", labels)
 
 
-def test_362_a_band_above_the_table_is_not_dropped_in_silence(capsys):
-    """BROKEN WITH: removing the `elif age > BAND_STARTS[-1]` branch.
 
-    BAND_STARTS stops at 90, where 90 means "90 and over" - true of
-    WorldPop, not of every product. A folder carrying f_95 or f_100
-    had those cohorts excluded from every index while weight='sexes'
-    still counted them in the reference population, because that picks
-    columns by the f_/m_ PREFIX alone. So the ageing index came out
-    biased down by exactly the oldest cohorts, with restricted = None.
-    What SHOULD happen to them is a demographic ruling and is John's -
-    BACKLOG 363. What this fixes is the silence.
+@pytest.fixture(scope="module")
+def banded_folder(tmp_path_factory):
+    """A folder that can actually support an index, built once.
+
+    BACKLOG 365, v1.53.4. tests/fixtures/worldpop holds THREE
+    single-cohort rasters, which is all the older tests needed - and
+    365's tests are end-to-end runs of a real index, which needs every
+    band for both sexes or plan() refuses the measure its own name.
+    Worth saying why the old 364 test passed against the small
+    fixture: its refusal came BEFORE plan() validated anything, so it
+    never reached the check. Removing the refusal is what exposed the
+    fixture as too thin - a guard standing in front of a guard.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    d = tmp_path_factory.mktemp("banded")
+    px, H, W = 1.0 / 240, 32, 32
+    rng = np.random.default_rng(365)
+    for sex in ("f", "m"):
+        for age in list(demo.BAND_STARTS) + [95, 100]:
+            a = rng.integers(1, 40, (H, W)).astype("float32")
+            with rasterio.open(
+                    os.path.join(str(d),
+                                 f"bdi_{sex}_{age}_2026_CN_1km_R2025A_v1.tif"),
+                    "w", driver="GTiff", height=H, width=W, count=1,
+                    dtype="float32", crs="EPSG:4326", nodata=-99999.0,
+                    transform=from_origin(30.0, -2.0 + H * px, px, px)) as f:
+                f.write(a, 1)
+    return str(d)
+
+
+def test_362_a_band_above_the_table_is_not_dropped_in_silence(capsys):
+    """BROKEN WITH: removing the above_top_note call from plan().
+
+    AMENDED IN v1.53.4 BY JOHN'S RULING (BACKLOG 363). 362 fixed the
+    SILENCE and deliberately left open what should HAPPEN to a cohort
+    above the table's top band. The ruling is: fold it into 90+, and
+    note it in the output. So this test's property is unchanged - the
+    run must not be silent about them - and the sentence it looks for
+    is now the fold rather than the exclusion.
+    The 362 defect itself is pinned by the test below it: those people
+    are counted in the reference population by prefix, so an index
+    that excluded them was computed over a younger group than its own
+    neighbourhood. Folding closes that by construction.
     """
     labels = _labels("fm", _ALL) + [f"{s}_{a}_2020"
                                     for s in ("f", "m")
@@ -640,8 +676,89 @@ def test_362_a_band_above_the_table_is_not_dropped_in_silence(capsys):
     demo.plan("sex_ratio", labels)
     said = capsys.readouterr().out
     assert "95" in said and "100" in said
-    assert "NOT in this index" in said
-    assert "reference population" in said
+    assert "FOLDED INTO" in said, "the ruling is not being applied"
+    assert "90+" in said
+    assert "AS THIS FOLDER DEFINES IT" in said, (
+        "folding changes what 90+ MEANS in a published figure, and a "
+        "reader comparing two studies can only learn that here")
+
+
+def test_363_the_fold_only_reaches_a_side_that_wants_the_top_band():
+    """BROKEN WITH: `fold_here = True` in columns_for, i.e. folding
+    into every side regardless of its range.
+
+    JOHN'S RULING IS "FOLD INTO 90+", AND THE TRAP IS WHICH 90+.
+    A folder's f_95 belongs in an ageing index's numerator, which is
+    65 and over and open-ended. It does NOT belong in a children's
+    numerator, and a fold that ignored the side's own range would put
+    centenarians among the under-fives - a wrong answer that no
+    message would mention, because the note would be busy saying the
+    fold had happened.
+    """
+    labels = _labels("fm", _ALL) + [f"{s}_{a}_2020"
+                                    for s in ("f", "m")
+                                    for a in (95, 100)]
+    openside = demo.columns_for({"ages": (65, None), "sexes": ["f", "m"]},
+                                labels)
+    assert any(c.split("_")[1] in ("95", "100") for c in openside), (
+        "an open-ended side must absorb the bands above the top")
+    closed = demo.columns_for({"ages": (0, 14), "sexes": ["f", "m"]},
+                              labels)
+    assert not any(c.split("_")[1] in ("95", "100") for c in closed), (
+        "a side that stops at 14 absorbed a 95+ cohort")
+
+
+def test_363_a_fold_into_the_DENOMINATOR_is_announced_too():
+    """BROKEN WITH: putting the note back inside columns_for with
+    `say=print` on the numerator alone, as 362 had it.
+
+    THE HOLE THE RULING TURNED FROM COSMETIC INTO SUBSTANTIVE. 362
+    wired the note to the numerator, reasoning that the note is about
+    the folder so saying it twice would say it eight times for four
+    indices. True, and all four built-in indices happen to have the
+    open-ended side on top - but num_spec/den_spec are
+    user-overridable, so an index whose DENOMINATOR reaches the top
+    band folded cohorts into it and said nothing. A fold nobody is
+    told about is exactly what the ruling exists to prevent.
+    Asked where BOTH sides are known, there is one message and it is
+    the right one.
+    """
+    import contextlib
+    import io
+
+    labels = _labels("fm", _ALL) + [f"{s}_{a}_2020"
+                                    for s in ("f", "m")
+                                    for a in (95, 100)]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        p = demo.plan("ageing_index", labels,
+                      num_spec=demo.parse_spec("0-14"),
+                      den_spec=demo.parse_spec("65-"))
+    said = buf.getvalue()
+    assert any(c.split("_")[1] in ("95", "100")
+               for c in p["denominator"]), "the fold did not happen"
+    assert "FOLDED INTO" in said, (
+        "the fold landed in the denominator and nothing said so")
+    assert said.count("band(s)") == 1, (
+        "one message per index, not one per side")
+
+
+def test_363_a_closed_index_says_they_are_outside_it():
+    """BROKEN WITH: returning the fold sentence for an index neither
+    side of which reaches the top band.
+
+    child_woman_ratio is 0-4 over women 15-49: nothing folds, and the
+    note must then say what 362 originally said - those people are in
+    the reference population and not in the index. Claiming a fold
+    that did not happen would be worse than the original silence.
+    """
+    labels = _labels("fm", _ALL) + [f"{s}_{a}_2020"
+                                    for s in ("f", "m")
+                                    for a in (95, 100)]
+    note = demo.above_top_note(
+        labels, (demo.parse_spec("0-4"), demo.parse_spec("15-49")))
+    assert note and "FOLDED" not in note
+    assert "reference population" in note and "not in the index" in note
 
 
 def test_362_an_ordinary_folder_says_nothing(capsys):
@@ -654,33 +771,218 @@ def test_362_an_ordinary_folder_says_nothing(capsys):
     assert "above the 90+ band" not in capsys.readouterr().out
 
 
-def test_364_a_tiled_machine_4_run_is_refused_before_the_work():
-    """BROKEN WITH: removing the out_dir guard from run_index /
-    run_indices.
+def test_364_a_tiled_machine_4_run_now_WORKS(banded_folder, tmp_path):
+    """BROKEN WITH: removing the out_dir branch from run_index, which
+    puts back 364's refusal - or, worse, 364's original defect.
 
-    `out_dir` reaches run_folder through **kw, which sends machine 3
-    down its TILED branch - and that branch sets man["tiles"], never
-    man["results"]. So the rasters loaded, the cells were built, every
-    neighbourhood was computed, the parquet tiles were written, and
-    THEN this raised a bare KeyError: 'results', having never computed
-    the index. Reproduced on a 40-raster folder: 2 tiles on disk,
-    holding T_num_/T_den_ with no index column.
-
-    A refusal after the expensive part is the one kind that costs the
-    user something.
+    AMENDED IN v1.53.4: THE REFUSAL BECAME A CAPABILITY (BACKLOG 365,
+    John: "worth pursuing a solution").
+    364's finding was that `out_dir` reached run_folder through **kw,
+    sent machine 3 down its tiled branch, and left run_index raising a
+    bare KeyError: 'results' AFTER every neighbourhood had been
+    computed. It refused up front instead, which was honest and not a
+    capability.
+    Measured before building it: a tiled machine-3 run already writes
+    T_num_/T_den_ into every tile, so the index is a per-tile
+    post-pass with memory bounded at one tile. What this test pins is
+    that the work is no longer thrown away.
     """
-    d = tempfile.mkdtemp()
-    try:
-        for fn in (demo.run_index, demo.run_indices):
-            arg = "sex_ratio" if fn is demo.run_index else ["sex_ratio"]
-            with pytest.raises(demo.DemographyError,
-                               match="cannot be run TILED"):
-                fn(FIX, arg, k_values=[50], unit_size=1000.0,
-                   epsg=32735, out_dir=d)
-        assert not [f for f in os.listdir(d) if f.endswith(".parquet")], \
-            "it did the work before refusing"
-    finally:
-        shutil.rmtree(d, ignore_errors=True)
+    man = demo.run_index(banded_folder, "sex_ratio", k_values=[50],
+                         unit_size=500.0, epsg=32735,
+                         out_dir=str(tmp_path))
+    tiles = sorted(f for f in os.listdir(tmp_path)
+                   if f.endswith(".parquet"))
+    assert tiles, "no tiles were written"
+    assert "results" not in man, (
+        "a tiled run must NOT build a single result table - that is "
+        "the whole point of tiling")
+
+    from equipop.bigrun import load_tiled
+    back = load_tiled(str(tmp_path))          # verify=True: md5s must
+    idx = [c for c in back.columns if c.startswith("sex_ratio_")]
+    assert idx == ["sex_ratio_50"], (
+        f"the index column is missing from the tiles: {sorted(back.columns)}")
+    assert back["sex_ratio_50"].notna().any()
+
+
+def test_365_the_tiled_index_equals_the_in_memory_one(banded_folder, tmp_path):
+    """BROKEN WITH: changing either branch's arithmetic - which is
+    impossible without changing both, because they call one function.
+
+    THE SAFETY ARGUMENT. The two branches use the SAME apply_index
+    call, so they agree by construction rather than because this test
+    says so; the test exists to catch the construction being undone.
+
+    THE DIFFERENCE IS float32 TILE STORAGE AND NOTHING ELSE, measured:
+    machine 3 has stored tiles as float32 since it was written and its
+    manifest declares it, so the tiled index is
+        float32( float32(T_num) / float32(T_den) )
+    which is BIT-IDENTICAL to recomputing it that way from the
+    in-memory counts. Max relative difference against the float64
+    answer, over 1,980 origins: 1.3e-07, which is float32 epsilon.
+    """
+    import numpy as np
+
+    mem = demo.run_index(banded_folder, "sex_ratio", k_values=[50],
+                         unit_size=500.0, epsg=32735)["results"]
+    demo.run_index(banded_folder, "sex_ratio", k_values=[50], unit_size=500.0,
+                   epsg=32735, out_dir=str(tmp_path))
+    from equipop.bigrun import load_tiled
+    til = load_tiled(str(tmp_path))
+
+    a = mem.sort_values("CellId").reset_index(drop=True)
+    b = til.sort_values("CellId").reset_index(drop=True)
+    assert len(a) == len(b)
+
+    num = a["T_num_50"].to_numpy(float).astype(np.float32).astype(float)
+    den = a["T_den_50"].to_numpy(float).astype(np.float32).astype(float)
+    expect = np.where(den > 0, num / den, np.nan) \
+        .astype(np.float32).astype(float)
+    got = b["sex_ratio_50"].to_numpy(float)
+    assert np.array_equal(np.isnan(expect), np.isnan(got)), (
+        "the two branches disagree about which origins have no answer")
+    m = ~np.isnan(got)
+    assert np.array_equal(expect[m], got[m]), (
+        "the tiled index is not the float32 storage of the same "
+        "arithmetic - something other than precision differs")
+    raw = a["sex_ratio_50"].to_numpy(float)
+    rel = np.nanmax(np.abs((got[m] - raw[m]) / raw[m]))
+    assert rel < 1e-6, f"relative difference {rel:.2e} exceeds float32"
+
+
+def test_365_the_index_column_honours_the_declared_dtype(banded_folder, tmp_path):
+    """BROKEN WITH: dropping the dtype cast from bigrun.map_tiles.
+
+    The manifest records the run's storage dtype. A column added
+    afterwards has to honour it or the manifest is a lie about its own
+    tiles - and the first version of this did exactly that: counts
+    float32 as declared, index float64, because np.where on float64
+    returns float64.
+    """
+    import json
+
+    demo.run_index(banded_folder, "sex_ratio", k_values=[50], unit_size=500.0,
+                   epsg=32735, out_dir=str(tmp_path))
+    man = json.load(open(os.path.join(tmp_path, "manifest.json")))
+    declared = man["params"]["dtype"]
+    import pandas as pd
+    one = sorted(f for f in os.listdir(tmp_path)
+                 if f.endswith(".parquet"))[0]
+    df = pd.read_parquet(os.path.join(tmp_path, one))
+    assert str(df["sex_ratio_50"].dtype) == declared, (
+        f"manifest declares {declared}, the index column is "
+        f"{df['sex_ratio_50'].dtype}")
+
+
+def test_365_a_corrupt_tile_is_refused_not_rewritten(banded_folder, tmp_path):
+    """BROKEN WITH: removing the md5 check from the top of map_tiles.
+
+    THE TRAP THIS AVOIDS IS SUBTLE AND PERMANENT. A post-pass rewrites
+    the tile and computes a FRESH md5, so running it over an
+    already-corrupt tile would launder the corruption into a manifest
+    that agrees with it from then on - and load_tiled's verify would
+    never fire again. The one chance to notice is before the read.
+    """
+    from equipop.bigrun import map_tiles
+
+    demo.run_index(banded_folder, "sex_ratio", k_values=[50], unit_size=500.0,
+                   epsg=32735, out_dir=str(tmp_path))
+    one = sorted(f for f in os.listdir(tmp_path)
+                 if f.endswith(".parquet"))[0]
+    with open(os.path.join(tmp_path, one), "r+b") as fh:
+        fh.seek(8)
+        fh.write(b"\x00\x00\x00\x00")
+
+    with pytest.raises(IOError, match="BEFORE this pass touched"):
+        map_tiles(str(tmp_path), lambda df: df)
+
+
+
+def test_365_the_index_arithmetic_has_an_ANSWER_KEY():
+    """BROKEN WITH: `/ (b + 1e-9)` in apply_index, or any other change
+    to the ratio.
+
+    **THE GAP THE BREAK-CHECK FOUND IN MY OWN TESTS, AND IT IS WORTH
+    UNDERSTANDING.** test_365_the_tiled_index_equals_the_in_memory_one
+    compares the two branches - and both call apply_index, so a break
+    to apply_index moves BOTH of them identically and they still
+    agree. An identity test between two users of one function proves
+    the function is used consistently; it proves nothing about whether
+    the function is right. Changing `/ b` to `/ (b + 1e-9)` passed the
+    whole suite.
+    So the arithmetic needs a key computed OUTSIDE it. These are hand
+    numbers: 30/120 = 0.25, 75/150 = 0.5, 9/4 = 2.25.
+    """
+    import pandas as pd
+
+    frame = pd.DataFrame({"T_num_50": [30.0, 75.0, 9.0],
+                          "T_den_50": [120.0, 150.0, 4.0]})
+    demo.apply_index(frame, demo.index_triples([50], "idx"))
+    assert list(frame["idx_50"]) == [0.25, 0.5, 2.25], (
+        f"the ratio is wrong: {list(frame['idx_50'])}")
+
+
+def test_365_an_empty_denominator_is_MISSING_not_zero():
+    """BROKEN WITH: `0.0` instead of `_np.nan` in apply_index's where.
+
+    Nobody in the neighbourhood to divide by is a MISSING answer, not
+    a zero one - a dependency ratio of 0.0 says "no dependants here",
+    which is a finding, and the truth is that there was nobody to
+    count. Writing 0.0 would put a real-looking value into a map.
+    Uncaught by every other test in this file until the break-check
+    went looking.
+    """
+    import numpy as np
+    import pandas as pd
+
+    frame = pd.DataFrame({"T_num_50": [5.0, 0.0, 7.0],
+                          "T_den_50": [10.0, 0.0, 0.0]})
+    demo.apply_index(frame, demo.index_triples([50], "idx"))
+    got = frame["idx_50"].to_numpy(float)
+    assert got[0] == 0.5
+    assert np.isnan(got[1]) and np.isnan(got[2]), (
+        f"a zero denominator produced {got[1]}, {got[2]} - not missing")
+
+
+def test_365_an_interrupted_post_pass_still_leaves_a_READABLE_run(
+        banded_folder, tmp_path):
+    """BROKEN WITH: moving map_tiles' manifest write out of the loop to
+    the end, which is the obvious and wrong way to write it.
+
+    THE WHOLE REASON THE MANIFEST IS WRITTEN PER TILE. load_tiled
+    verifies every md5, so a pass that rewrote all the tiles and then
+    wrote one manifest would, if killed, leave a finished continental
+    run in which EVERY tile fails its checksum - days of compute
+    unreadable because a post-pass was interrupted.
+    Written progressively, an interrupt leaves a run that still reads
+    and is merely missing the new column on the tiles not yet reached.
+    Simulated by raising on the second tile.
+    """
+    from equipop.bigrun import load_tiled, map_tiles
+
+    demo.run_index(banded_folder, "sex_ratio", k_values=[50],
+                   unit_size=500.0, epsg=32735, out_dir=str(tmp_path),
+                   tile_m=6000.0)
+    n = len([f for f in os.listdir(tmp_path) if f.endswith(".parquet")])
+    assert n >= 2, "need at least two tiles to interrupt between them"
+
+    calls = {"n": 0}
+
+    def _boom(df):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise KeyboardInterrupt("killed between tiles")
+        df["added"] = 1.0
+        return df
+
+    with pytest.raises(KeyboardInterrupt):
+        map_tiles(str(tmp_path), _boom)
+
+    back = load_tiled(str(tmp_path))      # verify=True - the point
+    assert len(back) > 0
+    assert back["added"].notna().sum() < len(back), (
+        "the test did not actually interrupt anything")
+
 
 
 def test_366_the_field_guide_states_the_units():

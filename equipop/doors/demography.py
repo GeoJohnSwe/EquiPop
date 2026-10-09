@@ -151,7 +151,17 @@ def columns_for(spec: dict, labels, year=None, say=None) -> list:
         wanted |= set(_bands_from(*spec["plus"]))
     sexes = spec["sexes"]
 
-    out, unknown = [], set()
+    top_band = BAND_STARTS[-1]
+    # JOHN'S RULING, 8 October 2026 (BACKLOG 363): "fold into 90+ -
+    # but note to user in output if found in the run."
+    # FOLDED ONLY INTO A SIDE THAT ACTUALLY REACHES THE TOP BAND. A
+    # folder's f_95 belongs in an ageing index's numerator, which is
+    # 65+ and open-ended; it does NOT belong in a children's
+    # numerator, and a fold that ignored that would quietly put
+    # centenarians among the under-fives. So the test is whether this
+    # SIDE wants the 90+ band, not whether the folder has one.
+    fold_here = top_band in wanted
+    out, unknown, folded = [], set(), set()
     for lab in labels:
         d = _split(lab)
         if d is None:
@@ -166,16 +176,94 @@ def columns_for(spec: dict, labels, year=None, say=None) -> list:
         age = int(d["age"])
         if age in wanted:
             out.append(lab)
-        elif age > BAND_STARTS[-1]:
+        elif age > top_band:
             unknown.add(age)
+            if fold_here:
+                out.append(lab)
+                folded.add(age)
     if unknown and say is not None:
-        say("[demography] NOTE: this folder carries age band(s) "
-            + ", ".join(str(a) for a in sorted(unknown))
-            + f", above the {BAND_STARTS[-1]}+ band this table ends "
-            "at. They are NOT in this index, and they ARE in the "
-            "reference population, so the index is computed over a "
-            "younger group than the neighbourhood. See BACKLOG 363.")
+        bands = ", ".join(str(a) for a in sorted(unknown))
+        if folded:
+            # WHY THE NOTE IS NOT OPTIONAL. Folding is the right
+            # answer and it still CHANGES WHAT 90+ MEANS in whatever
+            # is published from the run: it is the folder's own top,
+            # not WorldPop's. A reader comparing two studies has to be
+            # able to find that out, and the only place they will look
+            # is the run's own output.
+            say("[demography] NOTE: this folder carries age band(s) "
+                + bands + f", above the {top_band}+ band this table "
+                f"ends at. They are FOLDED INTO the {top_band}+ band "
+                "(John's ruling), so nobody is dropped and the "
+                f"reference population matches the index - but "
+                f"'{top_band}+' in this run means {top_band} and over "
+                f"AS THIS FOLDER DEFINES IT, which is open above "
+                + str(max(unknown)) + ". Say so wherever the figure "
+                "is published.")
+        else:
+            say("[demography] NOTE: this folder carries age band(s) "
+                + bands + f", above the {top_band}+ band this table "
+                "ends at. This index does not reach the top band, so "
+                "they are not part of it - which is correct here, and "
+                "not the same as dropping them: a side that DOES "
+                "reach the top band folds them in.")
     return out
+
+
+
+def above_top_note(labels, specs, year=None):
+    """One sentence about cohorts above the table's top band, or None.
+
+    BACKLOG 363, JOHN'S RULING: fold them into 90+, and note it in the
+    output when the run finds them.
+
+    **WHY THIS IS NOT INSIDE columns_for.** The note is a fact about
+    the FOLDER, and whether the cohorts end up folded is a fact about
+    the INDEX - a side that reaches the top band absorbs them, a side
+    that stops below it does not. columns_for sees one side at a time,
+    so it can only ever say half of it: 362 wired the note to the
+    numerator alone and a user override making the DENOMINATOR the
+    open side folded silently. Asked here, where both sides are
+    known, there is one message and it is the right one.
+    `specs` is the sides, in order; only whether ANY of them reaches
+    the top band matters.
+    """
+    top = BAND_STARTS[-1]
+    unknown = set()
+    for lab in labels:
+        d = _split(lab)
+        if d is None:
+            continue
+        if year is not None and d["year"] != str(year):
+            continue
+        if int(d["age"]) > top:
+            unknown.add(int(d["age"]))
+    if not unknown:
+        return None
+    bands = ", ".join(str(a) for a in sorted(unknown))
+    folds = False
+    for spec in specs:
+        wanted = set(_bands_from(*spec["ages"]))
+        if "plus" in spec:
+            wanted |= set(_bands_from(*spec["plus"]))
+        if top in wanted:
+            folds = True
+            break
+    if folds:
+        return (
+            f"[demography] NOTE: this folder carries age band(s) {bands}, "
+            f"above the {top}+ band this table ends at. They are FOLDED "
+            f"INTO the {top}+ band (John's ruling), so nobody is dropped "
+            "and the index covers the same people as the reference "
+            f"population - but '{top}+' in this run means {top} and over "
+            f"AS THIS FOLDER DEFINES IT, open above {max(unknown)}. Say "
+            "so wherever the figure is published.")
+    return (
+        f"[demography] NOTE: this folder carries age band(s) {bands}, "
+        f"above the {top}+ band this table ends at, and NEITHER SIDE of "
+        "this index reaches the top band - so those people are in the "
+        "reference population and not in the index. That is correct for "
+        "a measure that stops below them, and worth knowing before the "
+        "index is read as covering everybody.")
 
 
 def pick_sex(labels, year=None) -> tuple:
@@ -442,11 +530,24 @@ def plan(name, labels, year=None, num_spec=None,
     if den["sexes"] is None:
         den["sexes"] = sexes
 
-    # `say=print` only on the numerator: the note is about the FOLDER,
-    # so saying it twice per index would say it eight times for four
-    # indices (BACKLOG 362).
-    top = columns_for(num, labels, year, say=print)
+    # BOTH SIDES SPEAK, AND THE DUPLICATES ARE DROPPED.
+    # 362 put `say=print` on the numerator alone, reasoning that the
+    # note is about the FOLDER so saying it twice per index would say
+    # it eight times for four indices. True - and it left a hole that
+    # John's ruling (363) turns from cosmetic into substantive: the
+    # numerator is the open-ended side in all four built-in indices,
+    # but num_spec/den_spec are user-overridable, so an index whose
+    # DENOMINATOR reaches the top band would fold cohorts into it and
+    # say nothing. A fold that is not announced is the thing the
+    # ruling exists to prevent.
+    # Collected and de-duplicated instead: both sides folding gives
+    # one line, which is the common case and the same volume 362
+    # wanted; sides that differ give two, and both are then true.
+    top = columns_for(num, labels, year)
     bot = columns_for(den, labels, year)
+    _note = above_top_note(labels, (num, den), year)
+    if _note:
+        print(_note)
 
     # IS THE MEASURE ENTITLED TO ITS NAME? Having ONE matching column
     # was enough, so f_00 + f_65 over f_15 was published as a
@@ -550,6 +651,50 @@ def plan(name, labels, year=None, num_spec=None,
 
 
 # ------------------------------------------------------------- running
+
+def index_triples(k_values, out_name, num_group="num", den_group="den"):
+    """(result column, numerator column, denominator column) per k.
+
+    BACKLOG 365, v1.53.4. THE COLUMN NAMES IN ONE PLACE. run_index and
+    run_indices named these differently and each built them inline -
+    `T_num_{k}` against `T_{code}_num_{k}` - so there were already TWO
+    copies of the naming and the arithmetic before this release, and
+    giving each of them a tiled branch would have made FOUR. That is
+    354 (four copies of the measurement rule), 368 (two copies of the
+    hint rendering) and 377 (seven copies of the k reader) arriving a
+    fourth time, and the only reason it did not is that the count was
+    noticed before the code was written.
+    """
+    return [(f"{out_name}_{k}", f"T_{num_group}_{k}", f"T_{den_group}_{k}")
+            for k in k_values]
+
+
+def apply_index(frame, triples):
+    """Add the index columns to a result frame, in place. Returns it.
+
+    THE ONE ARITHMETIC, used by the in-memory branch and by the
+    per-tile post-pass, so a tiled continental index and an in-memory
+    one agree BY CONSTRUCTION rather than by a test that compares
+    them. A denominator of zero gives NaN: nobody in the
+    neighbourhood to divide by is a missing answer, not a zero one.
+    """
+    import numpy as _np
+    for out, top, bot in triples:
+        if top in frame.columns and bot in frame.columns:
+            b = frame[bot].to_numpy(dtype=float)
+            # np.where EVALUATES BOTH BRANCHES, so the division runs
+            # on the zero denominators too and numpy warns about a
+            # value that is then thrown away. Harmless and noisy: a
+            # continental run with empty neighbourhoods would print
+            # "invalid value encountered in divide" into the user's
+            # log once per index, which teaches them to distrust the
+            # output for no reason.
+            with _np.errstate(divide="ignore", invalid="ignore"):
+                frame[out] = _np.where(
+                    b > 0, frame[top].to_numpy(dtype=float) / b, _np.nan)
+    return frame
+
+
 def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
               epsg=None, numerator=None, denominator=None,
               channel=None, **kw):
@@ -564,29 +709,21 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
     from ..rasterfolder import load_folder
 
     say = channel.info if channel is not None else print
-    # BACKLOG 364. A TILED RUN DID ALL THE WORK AND THEN DIED. `out_dir`
-    # reaches run_folder through **kw, which sends machine 3 down its
-    # TILED branch - and that branch sets man["tiles"], never
-    # man["results"]. So the rasters loaded, the cells were built,
-    # every neighbourhood was computed, the parquet tiles were written
-    # - and then this function raised a bare KeyError: 'results',
-    # having never computed the index. Reproduced: 40 rasters, 2 tiles
-    # on disk, and tiles holding T_num_*/T_den_* with no index column
-    # in them.
-    # Refused UP FRONT instead, because a refusal after the expensive
-    # part is the one kind that costs the user something. Machine 3's
-    # own advice ("giving an output folder would tile it") does not
-    # apply to machine 4 yet, and that is BACKLOG 365 rather than
-    # something to half-do here.
-    if kw.get("out_dir") is not None:
-        raise DemographyError(
-            "A demographic index cannot be run TILED yet: the index is "
-            "computed from the whole result table, and a tiled run "
-            "writes its parts to parquet without one. Drop out_dir to "
-            "run it in memory, or compute the index yourself from the "
-            "T_num_/T_den_ columns a tiled machine-3 run leaves. This "
-            "is a missing capability, not a broken setting - see "
-            "BACKLOG 365.")
+    # BACKLOG 365, v1.53.4. TILED NOW WORKS - and 364's refusal is
+    # gone rather than relaxed. What 364 found was that `out_dir`
+    # reached run_folder through **kw, sent machine 3 down its tiled
+    # branch, and left this function raising a bare KeyError:
+    # 'results' after every neighbourhood had been computed. It
+    # refused up front instead, which was the honest state and not a
+    # capability.
+    # The capability turns out to be small, which is why it is worth
+    # having: the index is T_num/T_den PER ORIGIN, and a tiled
+    # machine-3 run already writes both columns into every tile -
+    # measured, 9 tiles, both halves present in all of them. So the
+    # index is a per-tile post-pass with memory bounded at ONE TILE
+    # rather than at a continent, which is the whole point of tiling.
+    # bigrun.map_tiles does the file discipline; apply_index does the
+    # arithmetic, the same call the in-memory branch makes.
     check_folders(folders)      # before we peek at the labels
 
     # Look at the labels first, so the plan can be shown and refused
@@ -645,14 +782,20 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
                      groups=["num", "den"],
                      channel=channel, **kw)
 
-    res = man["results"]
-    for k in k_values:
-        top, bot = f"T_num_{k}", f"T_den_{k}"
-        if top in res.columns and bot in res.columns:
-            import numpy as np
-            b = res[bot].to_numpy(dtype=float)
-            res[f"{name}_{k}"] = np.where(
-                b > 0, res[top].to_numpy(dtype=float) / b, np.nan)
+    triples = index_triples(k_values, name)
+    if kw.get("out_dir") is not None:
+        from ..bigrun import map_tiles
+        map_tiles(kw["out_dir"], lambda df: apply_index(df, triples),
+                  what=f"{name} index")
+        say(f"The {name} index was added to each of the "
+            f"{man['tiles']} tiles in {kw['out_dir']} - column"
+            + ("s " if len(k_values) > 1 else " ")
+            + ", ".join(o for o, _t, _b in triples)
+            + ". Read it back with equipop.bigrun.load_tiled; there is "
+            "no single result table for a tiled run, which is what "
+            "lets it be bigger than memory.")
+    else:
+        apply_index(man["results"], triples)
     man["plan"] = p
     say("The index is a ratio of two counts over the SAME "
         "neighbourhood, so it inherits nothing from any administrative "
@@ -681,29 +824,13 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     from ..rasterfolder import load_folder
 
     say = channel.info if channel is not None else print
-    # BACKLOG 364. A TILED RUN DID ALL THE WORK AND THEN DIED. `out_dir`
-    # reaches run_folder through **kw, which sends machine 3 down its
-    # TILED branch - and that branch sets man["tiles"], never
-    # man["results"]. So the rasters loaded, the cells were built,
-    # every neighbourhood was computed, the parquet tiles were written
-    # - and then this function raised a bare KeyError: 'results',
-    # having never computed the index. Reproduced: 40 rasters, 2 tiles
-    # on disk, and tiles holding T_num_*/T_den_* with no index column
-    # in them.
-    # Refused UP FRONT instead, because a refusal after the expensive
-    # part is the one kind that costs the user something. Machine 3's
-    # own advice ("giving an output folder would tile it") does not
-    # apply to machine 4 yet, and that is BACKLOG 365 rather than
-    # something to half-do here.
-    if kw.get("out_dir") is not None:
-        raise DemographyError(
-            "A demographic index cannot be run TILED yet: the index is "
-            "computed from the whole result table, and a tiled run "
-            "writes its parts to parquet without one. Drop out_dir to "
-            "run it in memory, or compute the index yourself from the "
-            "T_num_/T_den_ columns a tiled machine-3 run leaves. This "
-            "is a missing capability, not a broken setting - see "
-            "BACKLOG 365.")
+    # BACKLOG 365, v1.53.4. TILED NOW WORKS, and this is the path
+    # that matters most for it: SEVERAL indices in ONE traverse was
+    # already John's preference at continental scale, and every one of
+    # them is a ratio of two columns the tiles already hold. So all of
+    # them are added in a SINGLE read and write per tile, not one pass
+    # per index - reading eleven million rows four times to add four
+    # columns would undo the reason for tiling.
     check_folders(folders)      # before we peek at the labels
     names = list(names)
     if not names:
@@ -748,19 +875,30 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
                      compose=compose, groups=groups, channel=channel,
                      **kw)
 
-    res = man["results"]
+    triples = []
     for nm in names:
         code = INDICES[nm]["code"]
-        for k in k_values:
-            top, bot = f"T_{code}_num_{k}", f"T_{code}_den_{k}"
-            if top in res.columns and bot in res.columns:
-                b = res[bot].to_numpy(dtype=float)
-                res[f"{code}_{k}"] = np.where(
-                    b > 0, res[top].to_numpy(dtype=float) / b, np.nan)
+        triples += index_triples(k_values, code,
+                                 f"{code}_num", f"{code}_den")
+    if kw.get("out_dir") is not None:
+        from ..bigrun import map_tiles
+        tman = map_tiles(kw["out_dir"],
+                         lambda df: apply_index(df, triples),
+                         what=f"{len(names)} index column(s)")
+        columns = list(tman.get("columns") or [])
+        say(f"{len(triples)} index column(s) added to each of the "
+            f"{man['tiles']} tiles in {kw['out_dir']}: "
+            + ", ".join(o for o, _t, _b in triples)
+            + ". Read it back with equipop.bigrun.load_tiled - a tiled "
+            "run has no single result table, which is what lets it be "
+            "bigger than memory.")
+    else:
+        apply_index(man["results"], triples)
+        columns = list(man["results"].columns)
     man["plans"] = plans
     say("")
     say("WHAT THE FIELDS MEAN:")
-    for line in explain_fields(list(res.columns), plans,
+    for line in explain_fields(columns, plans,
                                (man.get("projection") or {}).get("epsg")):
         say(line)
     say("")

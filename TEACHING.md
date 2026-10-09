@@ -1,6 +1,30 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.53.3, 8 October 2026.**
+**Last updated: 1.53.4, 8 October 2026.**
+*Reviewed at 1.53.4: ONE NEW EXERCISE IS NOW POSSIBLE, and one slide
+needs a correction.
+THE EXERCISE: a continental demographic index. Machine 4 can be run
+tiled, so a dependency ratio over bespoke neighbourhoods across
+several countries is a thing a student can actually run on a laptop -
+the memory stays at one tile rather than the whole continent. Read it
+back with `equipop.bigrun.load_tiled`. Worth doing because it makes
+the course's central argument concrete: the ratio is computed over the
+k nearest PEOPLE, so it inherits nothing from a municipality, a NUTS
+region or a national border, and the same code gives the same answer
+whether the extent is one city or a continent.
+THE CORRECTION: any slide saying bands above 90 are excluded is now
+wrong. John's ruling (363) folds them into 90+, so nobody is dropped
+and the index covers the same people as its own reference population.
+The teaching point is better than the old one: **"90+" now means 90
+and over AS THE FOLDER DEFINES IT**, which for a folder carrying f_95
+and f_100 is open above 100 rather than above 90. The run says so.
+Ask the room what that does to a comparison between two studies whose
+data stop at different ages - the answer is that it is fine if and
+only if both say which, which is exactly why the software prints it.
+ONE NOTE FOR A METHODS CLASS: a tiled index is stored as float32 and
+an in-memory one as float64, differing by about 1e-07 relative. A
+good five minutes on why that is a reporting question rather than an
+accuracy one.*
 *Reviewed at 1.53.3: NO EXERCISE CHANGES, and one thing to say out
 loud in the first session.
 A layer with features that have NO GEOMETRY is ordinary teaching

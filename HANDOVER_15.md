@@ -1,7 +1,7 @@
 # HANDOVER 15
 
-*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.3**:
-1,542 tests, SIX machines in QGIS and five in Pro, complete in-dialog
+*Session 12. Where 14 ended at **1.46.4**, this ends at **1.53.4**:
+1,551 tests, SIX machines in QGIS and five in Pro, complete in-dialog
 help in Pro for the first time, one analytical choice validated
 against a published paper rather than against itself, a test that
 asks whether anybody can reach any of it, the published
@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.53.3 rather than superseded: same session. Read
-section 0i first, then 0h, 0g, 0f, 0e, 0d, 0c, 0b. **The session ended by being
+*Amended through 1.53.4 rather than superseded: same session. Read
+section 0j first, then 0i, 0h, 0g, 0f, 0e, 0d, 0c, 0b. **The session ended by being
 read from outside, three times in three days** - a pull request with
 four findings, a full code review with nine, and then a review I was
 asked to run on the project's own raster and demographic code, which
@@ -24,6 +24,106 @@ user something untrue. 1.50.0 is the exception: three items chosen
 FROM the backlog, and the first thing they found was that the
 backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
+
+---
+
+## 0j. 1.53.4 - TWO RULINGS, AND A CAPABILITY THAT WAS SMALL
+
+The first release of this session built from John's rulings rather
+than from a defect. **365 had been at the head of the exposome arc for
+four releases and the warning not to promise it is now retired.**
+
+**365 - MEASURE FIRST, AND THE MEASUREMENT CHANGED THE JOB.** The
+backlog entry said "the tiles already carry both, so a post-pass over
+load_tiled() may be most of it. Worth measuring before promising."
+Measured: a tiled machine-3 run with `groups=["num","den"]` writes
+`T_num_k` AND `T_den_k` into every tile - 9 tiles, both halves in all
+of them - and a demographic index is nothing but their ratio per
+origin. So this was never an engine; it is a **per-tile post-pass with
+memory bounded at one tile**, which is the whole point of tiling. A
+continental dependency ratio runs on a laptop.
+
+`bigrun.map_tiles` is the primitive, and **two of its three decisions
+are the ones that would have been got wrong by writing it the obvious
+way:**
+
+- **The manifest is written PER TILE, not at the end.**
+  `load_tiled(verify=True)` checks every md5, so a pass that rewrote
+  all the tiles and then wrote one manifest would, if killed, leave a
+  finished continental run in which **every tile fails its
+  checksum** - days of compute unreadable because a post-pass was
+  interrupted. Tested by raising on the second tile.
+- **The md5 is verified BEFORE the read.** A rewrite computes a fresh
+  checksum, so a post-pass over an already-corrupt tile would launder
+  the corruption into a manifest that agrees with it from then on, and
+  the guard would never fire again. The one chance to notice is before
+  the read. Tested by corrupting four bytes.
+- And the new column honours the manifest's declared dtype. The first
+  version did not - counts float32 as declared, index float64, because
+  `np.where` on float64 returns float64 - which made the manifest a
+  lie about its own tiles.
+
+**THE COUNT WAS NOTICED BEFORE THE CODE WAS WRITTEN, for once.**
+`run_index` and `run_indices` each built the column names and the
+ratio inline, so there were already **two** copies, and giving each a
+tiled branch would have made **four**. One `index_triples` and one
+`apply_index` instead, so the in-memory and tiled branches agree by
+construction. That is 354, 368 and 377 not happening a fourth time,
+and the only reason is that the arithmetic was counted first.
+
+**The difference from an in-memory run is float32 tile storage and
+nothing else**, measured: the tiled index is
+`float32(float32(T_num)/float32(T_den))`, bit-identical to
+recomputing it that way from the in-memory counts, max relative
+difference 1.3e-07 over 1,980 origins. Machine 3 has stored float32
+since it was written and its manifest declares it.
+
+**363 - THE RULING HAD A TRAP IN IT.** John: *"fold into 90+ - but
+note to user in output if found in the run."* Taken literally, a
+fold into every side would put centenarians among the under-fives: a
+folder's `f_95` belongs in an ageing index's numerator, which is 65
+and over and open-ended, and not in a children's. **The fold reaches
+only a side that actually wants the top band** - and that is a wrong
+answer no message would have mentioned, because the note would have
+been busy reporting that the fold had happened.
+
+And the note moved to where both sides are known. 362 wired it to the
+numerator alone, reasoning correctly that the note is about the
+FOLDER. The ruling turned the hole that left from cosmetic into
+substantive: all four built-in indices carry the open-ended side on
+top, but the specs are user-overridable, so an index whose
+**denominator** reached the top band folded cohorts into it and said
+nothing. `above_top_note` is asked once, with both specs.
+
+**WHAT THE NOTE HAS TO SAY.** Folding is right and it still changes
+what 90+ MEANS in a published figure - it becomes the folder's own
+top, open above 100 rather than above 90 - and a reader comparing two
+studies can only learn that from the run's own output.
+
+**THE BREAK-CHECK FOUND A REAL WEAKNESS IN MY TEST DESIGN, and it is
+the most useful thing in this section.** Changing `/ b` to
+`/ (b + 1e-9)` in `apply_index` passed the entire suite. My identity
+test compares the tiled branch against the in-memory one - and **both
+call the same function, so a break moves both together and they still
+agree.** An identity test between two users of one function proves the
+function is used consistently and proves *nothing* about whether it is
+right. The fix is an **answer key computed outside the code**: 30/120
+= 0.25, 75/150 = 0.5, 9/4 = 2.25, by hand. Two more gaps came out of
+the same pass: a zero denominator silently becoming 0.0 rather than
+missing (a dependency ratio of 0.0 reads as "no dependants here",
+which is a finding, when the truth is there was nobody to count), and
+the progressive manifest write being removable unnoticed.
+
+13 breaks, all caught, "never failed under any break: none".
+
+**Two tests from earlier releases were AMENDED, not fixed**, because
+their premises were what the rulings changed: 362's test asserted the
+cohorts were excluded and now asserts they are folded; 364's asserted
+a tiled run is refused and now asserts it works. Both kept their
+original property. And removing 364's refusal exposed
+`tests/fixtures/worldpop` as too thin - three single-cohort rasters,
+which the old test never noticed because its refusal came *before*
+`plan()` validated anything. A guard standing in front of a guard.
 
 ---
 

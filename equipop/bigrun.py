@@ -315,3 +315,79 @@ def load_tiled(out_dir: str, columns=None,
     print(f"[bigrun] loaded {len(df):,} rows from "
           f"{len(man['tiles'])} verified tiles")
     return df
+
+
+def map_tiles(out_dir: str, fn, *, what: str = "column") -> dict:
+    """Apply `fn(frame) -> frame` to every tile IN PLACE.
+
+    BACKLOG 365, v1.53.4. The primitive a tiled machine-4 run needs: a
+    demographic index is a RATIO OF TWO COLUMNS THE TILES ALREADY
+    CARRY, so it can be added per tile, with memory bounded at one
+    tile rather than at a continent.
+
+    THE MANIFEST IS UPDATED PER TILE, NOT AT THE END, and that is the
+    whole discipline of this module repeated. `load_tiled(verify=True)`
+    checks every md5, so a pass that rewrote all the tiles and then
+    wrote one manifest would, if interrupted, leave a run whose every
+    tile fails its checksum - the finished continental run unreadable
+    because a post-pass was killed. Progressive, so an interrupt
+    leaves a run that still READS and is merely missing the new
+    column on the tiles not yet reached.
+
+    AND THE md5 IS VERIFIED BEFORE READING, which matters more here
+    than in load_tiled. Rewriting a tile computes a FRESH checksum, so
+    a post-pass over an already-corrupt tile would launder the
+    corruption into a manifest that then agrees with it forever. The
+    one chance to notice is before the read.
+    """
+    mpath = os.path.join(out_dir, "manifest.json")
+    if not os.path.exists(mpath):
+        raise IOError(f"[bigrun] no manifest.json in {out_dir} - this "
+                      "is not a tiled run directory")
+    man = json.load(open(mpath))
+    names = sorted(man.get("tiles") or {})
+    if not names:
+        raise IOError(f"[bigrun] {out_dir} holds no tiles to work on")
+    dtype = (man.get("params") or {}).get("dtype")
+    t0 = time.time()
+    cols = []
+    for n_done, name in enumerate(names, 1):
+        p = os.path.join(out_dir, name)
+        if not os.path.exists(p):
+            raise IOError(f"[bigrun] {name} is in the manifest and not "
+                          "on disk - re-run that tile (resume=True)")
+        if _md5(p) != man["tiles"][name]["md5"]:
+            raise IOError(
+                f"[bigrun] {name} fails md5 BEFORE this pass touched "
+                "it, so the tile was already wrong. Refusing rather "
+                "than rewriting it, because a rewrite would give the "
+                "corrupt tile a fresh checksum and the manifest would "
+                "agree with it from then on. Delete that tile and its "
+                "manifest entry, then re-run with resume=True.")
+        df = pd.read_parquet(p)
+        out = fn(df)
+        if out is None:
+            out = df
+        # THE MANIFEST DECLARES THE RUN'S STORAGE dtype, so a column
+        # added afterwards has to honour it or the manifest becomes a
+        # lie about its own tiles. Measured on the first version of
+        # this: the counts were float32 as declared and the index
+        # column came out float64, because np.where on float64 inputs
+        # returns float64. The manifest's honesty is a property of the
+        # RUN DIRECTORY rather than of whoever is calling, which is
+        # why it is enforced here and not left to the caller.
+        if dtype is not None:
+            fcols = out.select_dtypes(include=[np.floating]).columns
+            out[fcols] = out[fcols].astype(dtype)
+        _atomic_write_parquet(out, p)
+        man["tiles"][name] = {"rows": int(len(out)), "md5": _md5(p)}
+        _atomic_write_json(man, mpath)               # progressive
+        cols = list(out.columns)
+        print(f"[bigrun] {what} on tile {n_done}/{len(names)} "
+              f"({name}): {len(out):,} rows "
+              f"[{time.time() - t0:,.0f} s elapsed]")
+    man["columns"] = cols
+    _atomic_write_json(man, mpath)
+    print(f"[bigrun] {what} written to {len(names)} tiles; read it "
+          "back with equipop.bigrun.load_tiled")
+    return man

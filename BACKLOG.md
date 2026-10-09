@@ -48,39 +48,40 @@ that is how the last three staleness findings were made.*
    part of why it has stayed at the top is that the half that closes
    it is not Claude's to do.
 
-### Next — the exposome arc, now that the loader can carry it
-2. **365** — machine 4 has no tiled path, so a continental demographic
-   index (Europe-wide dependency ratios - the exposome case) has no
-   supported route. 364 made it refuse instead of dying after the
-   work; the capability is absent. The index is T_num/T_den per
-   origin and the tiles already carry both, so a post-pass over
-   `load_tiled()` may be most of it. **Measure before promising.**
-3. **363** — needs John's demographic ruling, not code: what should
-   happen to age bands above 90. Folding them into 90+ changes what
-   "90+" means in a published figure, so this is his call. 362 made
-   the current behaviour say so out loud, which needed no ruling.
-4. **349** — the continental door exposes none of the five engine
+### Next — the exposome arc, now that machine 4 tiles
+**365 AND 363 ARE BOTH CLOSED** in 1.53.4, which is the item this
+list had at the head of the exposome arc for four releases. A
+continental demographic index now has a supported route: the tiles
+already carried T_num/T_den per origin, so it is a per-tile post-pass
+with memory bounded at one tile. **That changes what PROPOSALS.md may
+claim** - Europe-wide dependency ratios are no longer the piece the
+software cannot do at scale, and the standing warning not to promise
+them is retired. What is still true: the tiled index is float32,
+because machine 3 stores tiles that way and says so in its manifest.
+
+2. **349** — the continental door exposes none of the five engine
    options the tiled wrapper takes (345), nor `decay` on either
-   branch. A uniform gap, so nothing is inconsistent - but
+   branch, and it is now the LAST thing between a continental run and
+   the full engine. A uniform gap, so nothing is inconsistent - but
    `originrule(exclude)`, the w(ii)=0 convention spatial regression
    requires, is unreachable from a continental run, and the 13.6%
    figure session 12 measured is a published number a continental user
    cannot reproduce. Cheaper than it looks: `run_index` forwards
    `**kw`, so machine 4 comes free once `run_folder`'s signature
    grows, and machine 3 has no Stata door, so it is two dialogs.
-5. **hex cells at the GIS doors** — 158 removed the correctness
+3. **hex cells at the GIS doors** — 158 removed the correctness
    blocker in 1.52.0, so this is now a dialog decision rather than a
    defect. `tests/reachability.py` holds it as a GAP with a witness in
    each door's file, so the entry fails the day a box is added.
-6. **102 + 42** — QGIS variable bandwidth and its explanation.
-7. **117 + 120** — shared validation and construction, as those paths
+4. **102 + 42** — QGIS variable bandwidth and its explanation.
+5. **117 + 120** — shared validation and construction, as those paths
    are touched. 120 is confined to machine 1; machines 3, 4 and 5 have
    none of it, so it gates changes to counts and nothing else.
-8. **134, 132** — a golden dataset per host; a public ArcGIS Online
+6. **134, 132** — a golden dataset per host; a public ArcGIS Online
    item.
 
 ### Housekeeping, worth pairing with a release rather than owning one
-9. **101** — the suite writes run manifests into the working
+7. **101** — the suite writes run manifests into the working
    directory, and seven such files have been committed to the public
    repository for over a year. The test-side fix is Claude's; the
    `git rm -r --cached` is John's. **350** found the same shape in the
@@ -3756,6 +3757,15 @@ that is how the last three staleness findings were made.*
   Behavioural now, through the real reader, plus a test that the two
   GUIs give the SAME answer for the same unlocatable row.
   15 breaks, all caught, "never failed under any break: none".
+  **CONFIRMED IN THE FIELD, 8 October 2026**, on the layer that
+  produced the traceback: John ran it with the null-geometry features
+  LEFT IN and it completed. That is the half of this finding the
+  simulator could not establish - the stub is this project's own code,
+  so the tests proved the fallback and could never prove that arcpy
+  fails where he saw it fail, nor that a cursor succeeds against a
+  real geodatabase. It does. Recorded because the entry otherwise
+  ends by saying the last word is his, and a later session would have
+  no way to learn that it came.
 
 - ~~379~~ | DONE v1.53.2, JOHN'S MACHINE | THE PROPERTY TEST FOUND
   TWO COPIES I HAD NOT.
@@ -4088,32 +4098,91 @@ that is how the last three staleness findings were made.*
   expects 97. The `about` text implies per-one ("per woman", "per
   person of working age") and never reaches the attribute table.
 
-- 365 | open v1.53.0 | MACHINE 4 HAS NO TILED PATH.
-  364 made a tiled demographic run REFUSE instead of dying after the
-  work. The capability is still absent: the index is computed from the
-  whole result table, and a tiled run writes its parts to parquet
-  without one. Machine 3 advises tiling above 400,000 cells and
-  machine 4 inherits that advice through the same door, so a
-  continental demographic index - Europe-wide dependency ratios, which
-  is exactly the exposome case - has no supported route.
-  WHAT IT WOULD TAKE: the index is T_num/T_den per origin, both of
-  which the tiles already carry, so a post-pass over load_tiled() may
-  be most of it. Worth measuring before promising.
+- ~~365~~ | DONE v1.53.4, JOHN: "WORTH PERSUING A SOLUTION" | MACHINE
+  4 CAN BE RUN TILED, AND THE CAPABILITY WAS SMALL BECAUSE THE SHAPE
+  WAS RIGHT.
+  364 made a tiled demographic run refuse up front instead of dying
+  after the work. **MEASURED BEFORE BUILDING ANYTHING**, as this
+  entry asked: a tiled machine-3 run with `groups=["num","den"]`
+  already writes `T_num_k` AND `T_den_k` into EVERY tile - 9 tiles,
+  both halves present in all of them - and the index is nothing but
+  their ratio per origin. So the capability is a PER-TILE POST-PASS
+  with memory bounded at one tile, which is the whole point of
+  tiling, rather than a new engine.
+  `bigrun.map_tiles(out_dir, fn)` is the primitive, and two of its
+  three design decisions are the ones that would have been got wrong:
+  **THE MANIFEST IS WRITTEN PER TILE, NOT AT THE END.**
+  `load_tiled(verify=True)` checks every md5, so a pass that rewrote
+  all the tiles and then wrote one manifest would, if interrupted,
+  leave a finished continental run in which EVERY tile fails its
+  checksum - days of compute unreadable because a post-pass was
+  killed. Progressive, an interrupt leaves a run that still READS and
+  is merely missing the column on the tiles not reached. Tested by
+  raising on the second tile.
+  **AND THE md5 IS VERIFIED BEFORE THE READ.** Rewriting a tile
+  computes a FRESH checksum, so a post-pass over an already-corrupt
+  tile would launder the corruption into a manifest that agrees with
+  it from then on, and load_tiled's guard would never fire again. The
+  one chance to notice is before the read. Tested by corrupting four
+  bytes of a tile.
+  **AND THE NEW COLUMN HONOURS THE MANIFEST'S DECLARED dtype.** The
+  first version did not: the counts were float32 as declared and the
+  index came out float64, because np.where on float64 returns
+  float64, so the manifest became a lie about its own tiles. The
+  manifest's honesty is a property of the RUN DIRECTORY, not of
+  whoever is calling, which is why map_tiles enforces it.
+  **ONE ARITHMETIC, AND THE COUNT WAS NOTICED BEFORE THE CODE WAS
+  WRITTEN.** run_index and run_indices each built the column names and
+  the ratio inline - `T_num_{k}` against `T_{code}_num_{k}` - so there
+  were already TWO copies, and giving each a tiled branch would have
+  made FOUR. `index_triples` names them and `apply_index` divides,
+  once; the in-memory and tiled branches agree BY CONSTRUCTION. That
+  is 354 (four copies of the measurement rule), 368 (two of the hint
+  rendering) and 377 (seven k readers) not happening a fourth time.
+  **THE DIFFERENCE FROM AN IN-MEMORY RUN IS float32 TILE STORAGE AND
+  NOTHING ELSE**, measured: machine 3 has stored tiles as float32
+  since it was written and its manifest declares it, so the tiled
+  index is float32(float32(T_num)/float32(T_den)), which is
+  BIT-IDENTICAL to recomputing it that way from the in-memory counts.
+  Max relative difference against the float64 answer over 1,980
+  origins: 1.3e-07, float32 epsilon.
+  TWO SMALLER THINGS. run_indices adds ALL the indices in ONE read
+  and write per tile - reading eleven million rows four times to add
+  four columns would undo the reason for tiling. And np.where
+  evaluates both branches, so a zero denominator made numpy print
+  "invalid value encountered in divide" into the user's log for a
+  value that is then discarded; silenced where it is meaningless,
+  because a warning nobody can act on teaches them to distrust the
+  output.
 
-- 363 | open v1.53.0, NEEDS JOHN'S DEMOGRAPHIC RULING | AGE BANDS
-  ABOVE 90.
-  BAND_STARTS ends at 90, where 90 means "90 and over" - true of
-  WorldPop, not of every product. 362 stopped a folder's f_95 or
-  f_100 cohorts being dropped in SILENCE; it did not decide what
-  should happen to them, because that is a demographic question:
-  **fold them into the 90+ band** (which changes what "90+" means in
-  any published figure), **select them as further bands** (which makes
-  the index's top open-ended differently per folder), or **refuse the
-  folder** as an unknown convention. Until John rules, they are
-  excluded and the run says so, naming the bands and warning that
-  they ARE in the reference population while being absent from the
-  index - so the ageing index is computed over a younger group than
-  the neighbourhood it is drawn from.
+- ~~363~~ | DONE v1.53.4, JOHN'S RULING | AGE BANDS ABOVE 90 FOLD INTO
+  90+, AND THE RUN SAYS SO.
+  John, 8 October 2026: *"I think we should fold into 90+ - but note
+  to user in output if found in the run."*
+  **FOLDED ONLY INTO A SIDE THAT ACTUALLY REACHES THE TOP BAND**,
+  which is the trap in the ruling as stated. A folder's f_95 belongs
+  in an ageing index's numerator, which is 65 and over and
+  open-ended. It does NOT belong in a children's numerator, and a
+  fold that ignored the side's own range would put centenarians among
+  the under-fives - a wrong answer no message would mention, because
+  the note would be busy reporting that the fold had happened.
+  **THE NOTE MOVED TO WHERE BOTH SIDES ARE KNOWN.** 362 wired it to
+  the numerator alone, reasoning that the note is about the FOLDER so
+  saying it twice per index would say it eight times for four
+  indices. True - and the ruling turned the hole that left from
+  cosmetic into substantive: all four built-in indices happen to carry
+  the open-ended side on top, but num_spec/den_spec are
+  user-overridable, so an index whose DENOMINATOR reaches the top band
+  folded cohorts into it and said NOTHING. A fold nobody is told about
+  is precisely what the ruling exists to prevent. `above_top_note`
+  is asked once, with both specs, and gives one message: the fold
+  where anything folds, and 362's original exclusion warning where
+  neither side reaches the top.
+  WHAT THE NOTE HAS TO SAY, and why it is not optional: folding is
+  the right answer and it still CHANGES WHAT 90+ MEANS in whatever is
+  published. It becomes the folder's own top, open above 100 rather
+  than above 90, and a reader comparing two studies can only learn
+  that from the run's own output.
 
 - ~~362~~ | DONE v1.53.0, THE 1.52 REVIEW | A COHORT THE TABLE DOES
   NOT KNOW WAS DROPPED IN SILENCE.

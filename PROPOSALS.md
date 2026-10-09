@@ -1,6 +1,34 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.53.3, 8 October 2026.**
+**Last updated: 1.53.4, 8 October 2026.**
+*Reviewed at 1.53.4: **THE STANDING WARNING IN THIS FILE IS RETIRED.**
+Four releases running, this section said BACKLOG 365 was the one piece
+not to promise as done - a continental DEMOGRAPHIC index had no tiled
+route, so Europe-wide dependency ratios were the thing the software
+could not do at scale. John ruled it worth pursuing and it is done:
+the tiles already carried both halves of the ratio per origin, so it
+is a per-tile post-pass with memory bounded at one tile.
+**WHAT MAY NOW BE WRITTEN IN THE PRESENT TENSE**: population-weighted
+exposure surfaces (1.53.0) AND demographic indices over bespoke
+neighbourhoods, both at continental scale, in one traverse of the
+data. That is the whole exposome claim rather than half of it, and it
+is the first time this file has been able to say so.
+TWO THINGS TO STATE ACCURATELY RATHER THAN QUIETLY. A tiled run's
+index is stored as float32, because machine 3 stores tiles that way
+and declares it in the manifest - max relative difference against the
+in-memory float64 answer, measured, 1.3e-07. That is irrelevant to a
+ratio reported to three decimals and it should still be in a methods
+footnote rather than discovered by a reviewer. And age bands above 90
+are now FOLDED INTO the 90+ band (John's ruling, 363), which means
+"90+" in a published figure is the FOLDER'S top, not WorldPop's - the
+run says so, and so should the methods section.
+**349 IS NOW THE LAST GAP** between a continental run and the full
+engine: the continental door exposes none of the five engine options,
+so `originrule(exclude)` - the w(ii)=0 convention spatial regression
+requires - is unreachable at that scale. Smaller than 365 was, and it
+is what the next pass should take.
+MACHINE 7 (section 3) is unchanged and still waiting on John's two
+decisions and a literature check.*
 *Reviewed at 1.53.3: NO CLAIM CHANGES. One line of evidence for the
 risk section, and one note for the machine 7 entry below.
 A work package promising that partners run the software on their own

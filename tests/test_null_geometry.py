@@ -39,6 +39,12 @@ and the convention is applied - which is the part that is ours. The
 handover's own rule applies in both directions: when a door looks
 broken in a way that makes no sense, suspect the simulator.
 
+THE FIELD HALF CAME BACK GREEN. 8 October 2026, John, on the layer
+that produced the traceback, with the null-geometry features left in:
+the run completed. So arcpy does refuse where he saw it refuse, and a
+cursor does succeed against a real geodatabase - neither of which
+anything in this file can show.
+
 Each test's docstring names what it was BROKEN WITH, and each was
 actually broken that way.
 """
