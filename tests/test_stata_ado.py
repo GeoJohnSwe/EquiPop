@@ -371,24 +371,48 @@ def test_no_ado_hands_none_to_stata(ado):
     Data.store(variable, observation, VALUES). A None in the SECOND
     position is correct and means every observation; a None anywhere
     in the THIRD is the fault that killed the first field run.
+
+    DISPATCHED ON THE OBJECT, not on the method name alone. sfi has
+    more than one `store`: Matrix.store(name, VALUES) takes two
+    arguments, and matching every `.store` by name meant a legitimate
+    Matrix.store (BACKLOG 385's r(advice)) tripped a rule about
+    Data.store. Narrowing by name alone would have let an unknown
+    third `store` through silently, so every `.store` is still
+    examined and each known object gets its own shape - with the
+    position of the VALUES argument recorded per object.
     """
     text = _read(ado)
     block = _python_block(text)
     if block is None:
         pytest.skip(f"{ado} has no python: block")
+    # object name -> (minimum args, index of the VALUES argument)
+    shapes = {"Data": (3, 2), "Matrix": (2, 1)}
     tree = ast.parse(block)
+    seen = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         if getattr(node.func, "attr", None) != "store":
             continue
-        assert len(node.args) >= 3, f"{ado}: odd Data.store call"
-        values = node.args[2]
+        obj = getattr(node.func.value, "id", None)
+        assert obj in shapes, (
+            f"{ado}: {obj}.store() is a `store` this test does not "
+            f"know the shape of - say how many arguments it takes and "
+            f"which one holds the VALUES, or a None among them goes "
+            f"unnoticed")
+        need, vi = shapes[obj]
+        seen.add(obj)
+        assert len(node.args) >= need, f"{ado}: odd {obj}.store call"
+        values = node.args[vi]
         for sub in ast.walk(values):
             assert not (isinstance(sub, ast.Constant) and sub.value is None), (
-                f"{ado}: Data.store is handed None among its VALUES - "
+                f"{ado}: {obj}.store is handed None among its VALUES - "
                 f"Stata refuses it with 'the specified value should be "
                 f"a numeric value'. Use to_stata_values().")
+    assert "Data" in seen, (
+        f"{ado}: no Data.store call found at all - either the glue "
+        f"stopped writing variables, or it writes them under another "
+        f"name and this test has stopped guarding anything")
 
 
 # ---------------------------------------------------------------
@@ -446,6 +470,163 @@ def test_the_help_file_exists_and_is_current():
     assert r.returncode == 0, (
         "stata/equipop.sthlp is out of date - "
         "run python tools/make_sthlp.py\n" + r.stdout + r.stderr)
+
+
+def test_every_help_paragraph_survives_into_the_file_as_PROSE():
+    """REVIEW FINDING 1, 1.54.2. THE RELEASE-BLOCKING ONE.
+
+    BROKEN WITH: `for line in _wrap(text): add(line)` anywhere in
+    make_sthlp.py.
+
+    `_wrap()` returns ONE STRING of joined lines. Iterating it yields
+    CHARACTERS, so that loop wrote the unit-advice paragraph one
+    character per line: 746 consecutive one-character lines, and
+    `help equipop` unreadable from that point on, in both the SSC and
+    net-install archives.
+
+    NOTHING CAUGHT IT, and each reason is worth knowing:
+      * `make_sthlp.py --check` compares the malformed output against
+        the malformed generator and reports the file current.
+      * test_the_help_file_holds_no_broken_smcl counts braces per
+        line, and a line holding one letter has none.
+      * I inspected the generated file by GREPPING for the strings I
+        expected. A grep cannot tell that a paragraph has been spread
+        one character per line, because every character is still
+        there.
+
+    So the property is about PROSE: each paragraph this file takes
+    from the shared help source must appear in the output as
+    contiguous words. Whitespace-normalising both sides is what makes
+    it work - "What" split one letter per line normalises to "W h a t"
+    and does not match. General over every HELP entry used, not just
+    the one that broke.
+    """
+    sys.path.insert(0, os.path.dirname(STATA_DIR))
+    from equipop.doors.help import HELP
+    from tools.make_sthlp import _smcl_escape
+
+    h = _read("equipop.sthlp")
+    flat = " ".join(h.split())
+
+    used = [k for k in HELP
+            if re.search(r'HELP\[[\'"]%s[\'"]\]' % re.escape(k),
+                         open(os.path.join(os.path.dirname(STATA_DIR),
+                                           "tools", "make_sthlp.py"),
+                              encoding="utf-8").read())]
+    assert used, (
+        "make_sthlp.py no longer takes any paragraph from HELP by "
+        "name - this test has stopped guarding anything")
+    for key in used:
+        want = " ".join(_smcl_escape(HELP[key]).split())
+        assert want in flat, (
+            f"HELP[{key!r}] does not appear in equipop.sthlp as "
+            f"continuous prose. Either it is not written out, or it "
+            f"is written one character per line - which is what "
+            f"`for line in _wrap(...)` does, because _wrap returns a "
+            f"string and not a list.")
+
+    # AND THE SHAPE, directly: a run of single-character lines is not
+    # something any correct generator produces.
+    # NO ESCAPED MARKUP IN PROSE. `_wrap` escapes braces by design,
+    # so SMCL written inside a wrapped paragraph reaches the user as
+    # the literal text `{c -(}cmd:equipop unit{c )-}`. Found by
+    # inspecting the SHIPPED file rather than the generator - the
+    # paragraph was well-formed and read wrong.
+    for i, line in enumerate(h.splitlines(), 1):
+        assert "{c -(}cmd:" not in line and "{c -(}opt " not in line, (
+            f"line {i} of equipop.sthlp shows escaped SMCL as text: "
+            f"{line.strip()[:70]!r}. _wrap() is for prose; markup has "
+            f"to be written outside it.")
+
+    runs, run = [], 0
+    for line in h.splitlines():
+        if len(line.strip()) == 1:
+            run += 1
+        else:
+            if run:
+                runs.append(run)
+            run = 0
+    if run:
+        runs.append(run)
+    worst = max(runs) if runs else 0
+    assert worst <= 3, (
+        f"equipop.sthlp has a run of {worst} consecutive "
+        f"one-character lines - a paragraph is being written out "
+        f"character by character")
+
+
+def test_the_unit_subcommands_own_options_are_explained():
+    """REVIEW FINDING 1's second half.
+
+    BROKEN WITH: removing the unit-only options paragraph from
+    make_sthlp.py.
+
+    `candidates()`, `tolerance()` and `nocache` appeared in the
+    `equipop unit` syntax line and were explained NOWHERE. The
+    existing option test walks OPTION_HELP, which is the RUN's option
+    list, so an option belonging only to the subcommand had no route
+    into it and no test noticed its absence.
+
+    Read off the generated syntax line rather than from a list here,
+    so a new subcommand option is covered the moment it is offered.
+    """
+    h = _read("equipop.sthlp")
+    i = h.index("{cmd:equipop unit}")
+    syntax = h[i:h.index("{synoptset", i)]
+    opts = {o.lower() for o in re.findall(r"\{opt ([a-zA-Z_:]+)\(", syntax)}
+    opts |= {o.lower() for o in re.findall(r"\{opt ([a-zA-Z_]+)\}", syntax)}
+    # {opt cand:idates(...)} - the colon marks the abbreviation
+    opts = {o.replace(":", "") for o in opts}
+    assert {"candidates", "tolerance", "nocache"} <= opts, (
+        f"the unit syntax line no longer offers them: {sorted(opts)}")
+
+    body = h[h.index("{cmd:equipop unit}"):]
+    for opt in sorted(opts):
+        assert re.search(r"\b%s\b" % re.escape(opt), body), (
+            f"`{opt}` is offered in the equipop unit syntax line and "
+            f"explained nowhere in the help")
+
+
+def test_the_help_documents_every_r_result_the_SUBCOMMAND_returns():
+    """REVIEW FINDING 1's third half, and the strongest of the three.
+
+    BROKEN WITH: removing r(applies) from the generated scalar table.
+
+    `r(applies)` exists SO a script can tell "no candidate size
+    serves this k" from "the criterion does not apply to your origin
+    rule" - both of which arrive as a missing `r(unit)`. It was
+    returned by the ado and documented nowhere, which makes it
+    unusable for the single job it has.
+
+    DERIVED FROM THE ADO, not from a list kept here. A result added
+    to `_equipop_unit` and not documented now fails this test, which
+    is the only arrangement that cannot go stale.
+    """
+    ado = _ado_text()
+    prog = ado.split("program define _equipop_unit,", 1)[1] \
+              .split("\nend", 1)[0]
+    returned = set(re.findall(
+        r"return (?:scalar|local|matrix)\s+(\w+)", prog))
+    assert returned, "the subcommand returns nothing - or it moved"
+
+    h = _read("equipop.sthlp")
+    # BOUNDED at the end of the subcommand's own table. Running the
+    # slice to end-of-file swept in later prose about r(varlist) and
+    # the reverse check reported it as documented-but-not-returned -
+    # which was the test's fault, not the help's.
+    start = h.index("{cmd:equipop unit} stores")
+    section = h[start:h.index("{p2colreset}", start)]
+    for name in sorted(returned):
+        assert "r(%s)" % name in section, (
+            f"equipop unit returns r({name}) and the help's own "
+            f"stored-results list for the subcommand does not "
+            f"mention it")
+    # and nothing is documented that is not returned
+    documented = set(re.findall(r"\{cmd:r\((\w+)\)\}", section))
+    extra = documented - returned
+    assert not extra, (
+        f"the help documents r() results the subcommand does not "
+        f"set: {sorted(extra)}")
 
 
 def test_every_option_is_documented_in_the_help():

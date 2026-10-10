@@ -309,6 +309,64 @@ def build():
     add("{p 8 17 2}")
     add("{cmd:equipop setup} [{cmd:, repair}]")
     add("")
+    # BACKLOG 385. The third subcommand, and its text is HELP's
+    # "unitadvice" rather than written here - the condition John set
+    # when he ruled help ahead of projection was one source, four
+    # doors, and a subcommand documented only in Stata would break it.
+    add("{pstd}")
+    # ONE add(), as every other paragraph in this file does.
+    #
+    # This was `for line in _wrap(...): add(line)` - and `_wrap`
+    # returns ONE STRING of joined lines, so iterating it yielded
+    # CHARACTERS. The generated help carried 746 consecutive
+    # one-character lines and `help equipop` was unreadable from the
+    # unit-advice paragraph onward, in both Stata archives.
+    #
+    # `--check` did not catch it because it compares the malformed
+    # output against the malformed generator and finds them in
+    # agreement. Nor did my own inspection: I grepped the output for
+    # the strings I expected, and a grep cannot tell that a paragraph
+    # has been spread one character per line, because every character
+    # is still there. The test that catches it is in
+    # tests/test_packaging.py and is about the SHAPE of the file.
+    add(_wrap(HELP["unitadvice"]))
+    add("")
+    add("{p 8 17 2}")
+    add("{cmd:equipop unit} {it:xvar} {it:yvar} {ifin} "
+        "[{cmd:fweight}{cmd:=}{it:varname}]")
+    add("[{cmd:,} {opt pop(varname)} {opt k(numlist)} "
+        "{opt cand:idates(numlist)} {opt tol:erance(#)} "
+        "{opt originrule(string)} {opt nocache}]")
+    add("")
+    # Review finding 1. Three options appeared in the syntax line
+    # above and were explained nowhere - the options section below is
+    # built from OPTION_HELP, which is the RUN's option list, so an
+    # option belonging only to the subcommand had no route into it.
+    # A test now requires every option named in this syntax line to
+    # have text somewhere in the file.
+    add("{pstd}")
+    # PLAIN PROSE, no SMCL. `_wrap` escapes braces - correctly, that
+    # is its contract and a test pins it - so markup written in here
+    # reaches the user as the literal text `{c -(}cmd:...{c )-}`.
+    # Caught by checking the SHIPPED file rather than the generator.
+    add(_wrap(
+        "Options for equipop unit alone. pop() or [fweight=] "
+        "gives the population each row stands for, exactly as on a "
+        "run. k() takes a numlist and the advice is reported per k, "
+        "because the answer depends on it; without k() the report "
+        "says it is advising for k=100. candidates() replaces the "
+        "ladder of cell sizes tried - the size you are currently "
+        "using is always added to it, so your own row is always "
+        "there. tolerance() is the share of people whose radius may "
+        "be estimated rather than measured before a size is "
+        "rejected; the default 0.01 means fewer than one answer in a "
+        "hundred. originrule() decides whether the criterion applies "
+        "at all rather than merely labelling the output - under "
+        "exclude an origin's own cell is never its whole "
+        "neighbourhood, so no size is recommended and the report "
+        "says why. nocache recomputes instead of reading the advice "
+        "stored on the dataset."))
+    add("")
     add("{synoptset 24 tabbed}{...}")
     add("{synopthdr}")
     add("{synoptline}")
@@ -422,6 +480,60 @@ def build():
             ("r(calibration)", "half-life or half-probability, as APPLIED")):
         add("{synopt:{cmd:%s}}%s{p_end}" % (nm, desc))
     add("{p2colreset}{...}")
+    add("")
+    # BACKLOG 385. The subcommand's own r(), listed separately because
+    # it is a different command and sharing one table would suggest a
+    # run returns these too.
+    add("{pstd}{cmd:equipop unit} stores the following in {cmd:r()}:")
+    add("")
+    add("{synoptset 20 tabbed}{...}")
+    add("{p2col 5 20 24 2: Scalars}{p_end}")
+    for nm, desc in (
+            ("r(unit)", "the RECOMMENDED cell size for the first k, "
+                        "in metres - missing if no candidate serves it"),
+            ("r(cells)", "cells that size would make"),
+            ("r(estimated)", "share of people whose radius would be "
+                             "estimated at that size"),
+            ("r(tolerance)", "the share treated as acceptable"),
+            ("r(N)", "points with usable coordinates"),
+            ("r(people)", "population those points carry"),
+            # Review finding 1. This exists SO a script can tell the
+            # two reasons r(unit) is missing apart, and it was
+            # returned by the ado and documented nowhere - which
+            # makes it unusable for the one job it has.
+            ("r(applies)",
+             "1 if the criterion applies to the origin rule in "
+             "force, 0 under originrule(exclude) where an origin's "
+             "own cell is never its whole neighbourhood. r(unit) is "
+             "missing both when no size serves k and when the "
+             "criterion does not apply, so this is what tells them "
+             "apart")):
+        add("{synopt:{cmd:%s}}%s{p_end}" % (nm, desc))
+    add("{p2col 5 20 24 2: Macros}{p_end}")
+    for nm, desc in (
+            # Found by the test below the moment it was written:
+            # these two differ for the subcommand (r(cmd) is
+            # "equipop unit", not "equipop") and were listed only
+            # under the run.
+            ("r(cmd)", "equipop unit"),
+            ("r(cmdline)", "subcommand as typed"),
+            ("r(k)", "k values the advice is about"),
+            ("r(originrule)", "the origin rule in force"),
+            ("r(fingerprint)", "digest of the coordinates advised on")):
+        add("{synopt:{cmd:%s}}%s{p_end}" % (nm, desc))
+    add("{p2col 5 20 24 2: Matrices}{p_end}")
+    add("{synopt:{cmd:r(advice)}}one row per candidate size: "
+        "unit, cells, thin, then sat/shcells/shpeople per k{p_end}")
+    add("{p2colreset}{...}")
+    add("")
+    add("{pstd}")
+    add(_wrap(
+        "r(unit) is a recommendation and nothing more - EquiPop never "
+        "sets the cell size for you. Two runs on the same data would "
+        "otherwise be able to use different sizes without saying so, "
+        "and a published figure would depend on a heuristic that "
+        "might change between versions. If you want the recommended "
+        "size, pass it yourself: unit(`r(unit)')."))
     add("")
     add("{pstd}")
     add(_wrap(

@@ -1,6 +1,68 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.53.4, 8 October 2026.**
+**Last updated: 1.54.2, 10 October 2026.**
+*Reviewed at 1.54.2: NOTHING IN THIS FILE CHANGES. The second
+review's findings were a malformed help file, two test-isolation
+defects, a fractional k accepted by the Python advisory, an
+ordering mistake in the downloader and a cache that validated the
+question but not the answer. None of them touch the course
+material or any number in it.
+One thing worth knowing if a student calls the Python API rather
+than the Stata command: `advise_unit(k_values=[100.9])` used to
+come back as advice labelled k=100. It is refused now, as the
+typed doors have always refused it - k counts PEOPLE. `100.0` is
+accepted, because a Python caller writing that means 100.*
+*Reviewed at 1.54.1: **ONE SENTENCE TO ADD TO THE SUGGESTED EXERCISE
+BELOW, and it is a better teaching point than the exercise itself.**
+
+An external review of 1.54.0 found the unit-size advisory giving
+`originrule(exclude)` users include-rule advice. Fixed; and the
+measurement behind the fix belongs in the course.
+
+Under `exclude` - the w(ii)=0 convention, the one this course already
+spends time on because it changes African American isolation by 13.6%
+- the engine removes the origin's own cell before searching. So an
+origin's own cell can NEVER be its whole neighbourhood, the saturated
+count is structurally zero, and **k keeps its meaning at every cell
+size.** The advisory therefore shows no k columns and recommends
+nothing under that rule, and says why.
+
+**THE POINT FOR STUDENTS: the two conventions do not merely give
+different numbers, they have different failure modes.** Include is the
+published convention and the one where a coarse cell size can quietly
+stop k from being a parameter. Exclude is immune to that particular
+problem. Neither is "safer" overall - they answer different questions -
+but a student who has run the advisory under both has seen that a
+methodological choice can change which errors are even possible. Have
+them run it both ways on the LA blocks; the second table being nearly
+empty is the lesson.*
+*Reviewed at 1.54.0: **A NUMBER THIS FILE ALREADY KNEW IS NOW
+SOMETHING THE SOFTWARE SAYS.**
+
+Two places below are amended in place rather than appended to, and
+both are about the same thing: the unit-size advisory (BACKLOG 385).
+
+"Three levers, best first" put RAISE THE CELL SIZE first and left how
+far to a judgement about the question being asked. `equipop unit`, or
+the note any run now prints when no cell size was given, answers it
+with a measurement: per candidate size, how many cells the data makes
+and **what share of PEOPLE land in a cell that already holds k on its
+own** - whose radius is then estimated rather than measured, and for
+whom k has stopped being a parameter.
+
+That share is the number recorded further down as **41% of LA County
+at 100 m**, found while chasing BACKLOG 304. A student would have met
+it as a column of zeroes in exercise 1 step 3; they can now see it
+before the run. The teaching point is sharper than the feature: the
+same 250 m that is defensible at k=332 is indefensible at k=25, on
+the same data, because what matters is whether a cell already
+contains the neighbourhood you asked for. Two runs of the advisory at
+two k values make that land in one table, and an exercise to that
+effect is suggested where the levers are listed.
+
+It changes no default, which is worth saying to students explicitly:
+EquiPop reports the trade-off and the choice stays theirs, for the
+same reason a meaningful zero is refused rather than substituted.*
 *Reviewed at 1.53.4: ONE NEW EXERCISE IS NOW POSSIBLE, and one slide
 needs a correction.
 THE EXERCISE: a continental demographic index. Machine 4 can be run
@@ -520,6 +582,31 @@ extent 90 km further south**, and the graph covers all that ocean.
    400,000 and collapses blocks into fewer origins. For a barrier
    question at k=332 it is defensible anyway - you are asking which
    side of a motorway somebody is on, not resolving buildings.
+
+   **AND SINCE 1.54.0 THE SOFTWARE WILL SAY HOW FAR YOU CAN GO**
+   (BACKLOG 385), which turns this lever from a judgement into a
+   measurement. `equipop unit X_local Y_local, k(332)` - or the note
+   printed at the end of any run that did not set a cell size -
+   reports, per candidate size, how many cells the data makes and
+   **what share of PEOPLE end up in a cell that already holds k on
+   its own.** Those people have no measured radius: the whole
+   neighbourhood is that one cell, `Dist_k` comes from the
+   self-potential formula, and k has stopped being a parameter.
+
+   That is the number to raise the cell size against, and **it is the
+   same number this file already records below**: 41% of LA County at
+   100 m. The advisory exists so a student learns that before the run
+   rather than from a column of zeroes afterwards. It never changes
+   the size - it reports and the choice stays theirs.
+
+   **A teaching point worth making explicitly.** Raising the cell
+   size is cheap in time and expensive in meaning, and the two costs
+   are not on the same axis: 250 m may be defensible at k=332 and
+   indefensible at k=25, on the same data, because the question is
+   whether a cell already contains the neighbourhood you asked for.
+   Have students run the advisory at two very different k values on
+   the LA blocks and compare the recommendations. The point lands in
+   one table.
 2. **SELECT A SUBSET IN PRO AND RUN ON THE SELECTION.** John's note,
    session 12, and it is the neatest of the three: the tool reads
    through the LAYER, so a selection is honoured with no settings
@@ -544,6 +631,19 @@ was.
 
 **Exercise 1 step 3 asks a student to sort by `Dist_100` and find the
 smallest. They would have found a zero on the first attempt.**
+
+**AND 1.54.0 CLOSES THE OTHER HALF OF THAT.** 304 fixed the rounding
+so the correction fires; the zero is gone and the radius is estimated
+instead. But an estimated radius on 41% of LA County is still
+something a student has to be told about, and until now the only
+notice came after the run. The unit-size advisory (BACKLOG 385)
+reports the same share **before** one, at every candidate cell size -
+so "41% of LA County" stops being a thing this file knows and becomes
+a thing the software says. The slack `304` needed turns out to matter
+there too, and for a second reason: a WorldPop pixel carries a
+fractional population, so a cell total is an accumulated float sum
+and 1,000 pixels of 0.1 come to 99.9999999999986. Same trap, found
+twice, in two different places.
 
 That is the third defect this dataset has found, after the geodatabase
 and the shapefile sidecars. The pattern is consistent enough to state

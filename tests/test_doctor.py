@@ -11,6 +11,153 @@ import pytest
 
 from equipop import doctor
 
+# ---------------------------------------------------------- review F6
+# RASTERIO'S DECLARED REQUIREMENTS, AS JOHN'S MACHINE HAD THEM on
+# 6 October 2026 - recorded as a FIXTURE instead of read live.
+#
+# Three tests below used the installed rasterio as both the fixture
+# AND the subject: they made `cligj` absent and then expected the
+# doctor to name it, which only works while rasterio declares cligj.
+# Rasterio 1.5.2 does not, so on a current environment the doctor was
+# correctly silent and all three tests failed - which is why the
+# 1.54.0 claim of "1,588 tests pass" did not reproduce for the
+# reviewer. The pass was real; it was real about rasterio 1.4.4.
+#
+# The behaviour under test is EquiPop's - does it name every missing
+# dependency, does it quote a constraint, does it count them - and
+# none of that should move when a third party edits its packaging. So
+# the metadata is supplied. These strings are the real ones from his
+# case, so the field evidence is preserved rather than mocked away;
+# what is gone is the dependency on what rasterio happens to declare
+# today. A separate compatibility test still looks at the live
+# package, and asserts only what is true of any version.
+JOHNS_RASTERIO_REQUIRES = [
+    "affine",
+    "attrs",
+    "certifi",
+    "click!=8.2.*,>=4.0",
+    "cligj>=0.5",
+    "numpy>=1.24",
+    "click-plugins",
+    "pyparsing",
+    # a marker, kept so these tests still prove it is SKIPPED rather
+    # than guessed at (doctor._missing_requirements' own rule)
+    "ipython>=2.0; extra == 'ipython'",
+]
+
+
+def _fixed_requires(monkeypatch, reqs=None, lib="rasterio"):
+    """Make importlib.metadata.requires answer from the fixture.
+
+    One read to patch - doctor._missing_requirements calls
+    `md.requires(lib)` once - so the whole question becomes
+    deterministic without touching how the doctor works.
+    """
+    import importlib.metadata as md
+
+    real = md.requires
+
+    def fake(name):
+        if str(name).replace("_", "-").lower() == lib:
+            return list(JOHNS_RASTERIO_REQUIRES if reqs is None else reqs)
+        return real(name)
+
+    monkeypatch.setattr(md, "requires", fake)
+    # AND PROVE IT TOOK EFFECT. Break-check found that disabling this
+    # patch left the three tests passing - because they then fell
+    # back to the LIVE rasterio, which on this machine still declares
+    # cligj. The gap only shows up on the reviewer's rasterio, which
+    # is the very environment-dependence F6 is about. Returning the
+    # installed list lets each test assert it is the one in force, so
+    # a bypass fails everywhere rather than somewhere.
+    installed = list(JOHNS_RASTERIO_REQUIRES if reqs is None else reqs)
+    assert md.requires(lib) == installed, (
+        "the requirement fixture is not in force - these tests would "
+        "silently fall back to whatever the installed package "
+        "declares, which is what review F6 was about")
+    return installed
+
+
+def _absent(monkeypatch, gone, present=None):
+    """A COMPLETE fake installed set: `gone` is missing, everything
+    else in the fixture is present, and nothing is asked of the real
+    environment.
+
+    REVIEW FINDING 2, 1.54.2. This used to force only the named
+    packages absent and delegate every other lookup to the live
+    environment - so the answer still depended on what happened to be
+    installed. The fixture declares `click-plugins`; on a machine
+    without it the doctor correctly reported FOUR missing dependencies
+    where the test expected three, and the historical-case tests
+    failed again on a defect that was not there. **Half of F6's fix
+    was the declared requirements; this is the other half.**
+
+    A lookup for something neither in the fixture nor in `gone` is an
+    ERROR rather than a silent pass to the real environment, because a
+    silent pass is how this came back a second time.
+    """
+    import importlib.metadata as md
+
+    gone = {g.replace("_", "-").lower() for g in gone}
+    if present is None:
+        present = {_requirement_dist(spec)
+                   for spec in JOHNS_RASTERIO_REQUIRES
+                   if ";" not in spec}
+    present = {p.replace("_", "-").lower() for p in present} - gone
+
+    class _FakeDist:
+        """Only what the doctor asks of a distribution: that it
+        exists. _missing_requirements calls md.distribution(name) and
+        looks at nothing on the result."""
+        def __init__(self, name):
+            self.name = name
+
+    def fake(name):
+        norm = str(name).replace("_", "-").lower()
+        if norm in gone:
+            raise md.PackageNotFoundError(name)
+        if norm in present:
+            return _FakeDist(norm)
+        # RECORDED, NOT RAISED. `_missing_requirements` wraps this
+        # call in `except Exception` and treats any failure as
+        # "absent", which is right for the doctor and means an
+        # exception here would be SWALLOWED exactly where it matters.
+        # The autouse fixture below turns the record into a failure
+        # after the test, where nothing can catch it.
+        _UNACCOUNTED.append(norm)
+        raise md.PackageNotFoundError(name)
+
+    monkeypatch.setattr(md, "distribution", fake)
+
+
+def _requirement_dist(spec):
+    """The distribution name out of a requirement string."""
+    return doctor._requirement_name(spec) or spec
+
+
+#: Names `_absent` was asked about that its caller did not account
+#: for. Review finding 2: a fall-through to the real environment is
+#: how the second half of that finding came back after 393 fixed the
+#: first, so it is now impossible to leave one unnoticed.
+_UNACCOUNTED: list = []
+
+
+@pytest.fixture(autouse=True)
+def _no_unaccounted_lookups():
+    """Fail any test whose fake installed set was incomplete.
+
+    AFTER the test, because the doctor catches everything the lookup
+    can throw. A post-condition is the only form this guard can take
+    and still be reachable.
+    """
+    _UNACCOUNTED.clear()
+    yield
+    assert not _UNACCOUNTED, (
+        f"the doctor was asked about {sorted(set(_UNACCOUNTED))}, "
+        f"which the test's fake installed set did not account for - "
+        f"the answer would have depended on what happens to be "
+        f"installed on this machine (review finding 2)")
+
 
 # The real message macOS produces when a library built for Intel is
 # loaded by an Apple-Silicon Python. This is Umut's, from 1.37, with
@@ -119,21 +266,24 @@ def test_a_broken_library_names_every_missing_dependency(monkeypatch):
     diagnosis: one missing package is an accident, four is an
     interrupted pip run.
 
-    Checked against rasterio's REAL declared metadata, with exactly the
-    three pip named made absent, so this asserts the behaviour on his
-    case rather than on a mock of it.
+    Checked against rasterio's declared metadata AS HIS MACHINE HAD
+    IT, with exactly the three pip named made absent - so this
+    asserts the behaviour on his case rather than on an invented one.
+
+    REVIEW F6: that metadata is now SUPPLIED rather than read from the
+    installed rasterio. It used to be read live, which made the
+    installed package both the fixture and the subject: rasterio
+    1.5.2 stopped declaring cligj, so the doctor was correctly silent
+    and this test failed on a defect that was not there. The strings
+    are still the real ones from his case.
     """
-    import importlib.metadata as md
+    installed = _fixed_requires(monkeypatch)
+    assert any("cligj" in r for r in installed), (
+        "the fixture no longer carries cligj, so this test is not "
+        "about John's case any more")
 
     gone = {"attrs", "cligj", "pyparsing"}
-    real = md.distribution
-
-    def fake(name):
-        if str(name).replace("_", "-").lower() in gone:
-            raise md.PackageNotFoundError(name)
-        return real(name)
-
-    monkeypatch.setattr(md, "distribution", fake)
+    _absent(monkeypatch, gone)
 
     missing = doctor._missing_requirements("rasterio")
     names = {doctor._requirement_name(s) for s in missing}
@@ -151,6 +301,126 @@ def test_a_broken_library_names_every_missing_dependency(monkeypatch):
     assert text.count("-m pip install") == 1
 
 
+def test_an_incomplete_fake_installed_set_is_RECORDED(monkeypatch):
+    """BROKEN WITH: letting `_absent` fall through to the real
+    environment without recording it.
+
+    REVIEW FINDING 2's guard, and break-check found my first version
+    of it unreachable. I had `_absent` RAISE on an unknown name - but
+    `_missing_requirements` wraps that call in `except Exception` and
+    treats any failure as "absent", which is correct for the doctor
+    and means the guard was swallowed exactly where it mattered.
+
+    So it records instead, and an autouse fixture turns the record
+    into a failure after the test, where nothing can catch it. This
+    test checks the record directly, which is the only way to assert
+    the mechanism without failing itself.
+
+    The point of the guard: 393 controlled rasterio's declared
+    requirements and left the installed-state lookups going to the
+    live machine, so two tests failed again on a defect that was not
+    there. A fall-through must not be quiet a third time.
+    """
+    _fixed_requires(monkeypatch)
+    # deliberately incomplete: the fixture declares affine, numpy,
+    # click, pyparsing and click-plugins too
+    _absent(monkeypatch, {"cligj"}, present={"attrs", "certifi"})
+
+    doctor._missing_requirements("rasterio")
+    unaccounted = set(_UNACCOUNTED)
+    _UNACCOUNTED.clear()          # or the autouse fixture fails too
+
+    assert "affine" in unaccounted and "numpy" in unaccounted, (
+        f"an incomplete fake set went unrecorded: {sorted(unaccounted)}")
+    assert "attrs" not in unaccounted, "a declared-present name was recorded"
+    assert "cligj" not in unaccounted, "a declared-absent name was recorded"
+
+    # and the three historical tests account for everything, which is
+    # what the autouse fixture proves for them on every run
+    complete = {_requirement_dist(spec)
+                for spec in JOHNS_RASTERIO_REQUIRES if ";" not in spec}
+    assert {"affine", "numpy", "click-plugins"} <= complete, (
+        "the recorded fixture no longer lists the packages whose "
+        "absence from the live machine caused finding 2")
+
+
+def test_the_post_condition_itself_fails_a_test(monkeypatch):
+    """BROKEN WITH: `assert True` in the _no_unaccounted_lookups
+    fixture.
+
+    TESTING THE GUARD, not just the recording. Break-check found that
+    neutering the fixture's assertion changed nothing, because the
+    test above inspects the record directly - so the record was
+    covered and the thing that turns it into a failure was not. That
+    is the same shape as everything else in this review round: a
+    check that exists and nothing reaches.
+
+    The fixture's underlying generator is driven by hand here, which
+    is the only way to assert that a fixture fails without failing.
+    """
+    gen_fn = getattr(_no_unaccounted_lookups, "__wrapped__",
+                     _no_unaccounted_lookups)
+    gen = gen_fn()
+    next(gen)                                  # the setup half
+    _UNACCOUNTED.append("something-nobody-declared")
+    with pytest.raises(AssertionError, match="did not account for"):
+        next(gen, None)                        # the teardown half
+    _UNACCOUNTED.clear()
+
+    # and a clean run passes through it
+    gen = gen_fn()
+    next(gen)
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_the_dependency_scan_still_works_on_the_INSTALLED_rasterio():
+    """REVIEW F6's other half: keep the real package in view, and
+    assert only what is true of ANY version of it.
+
+    BROKEN WITH: `_missing_requirements` returning a name that is not
+    in the library's declared requirements at all.
+
+    The three tests above now supply rasterio's metadata, which is
+    right - they are about EquiPop's logic. The risk in supplying it
+    is the opposite failure: the fixture drifts from reality and every
+    one of them passes about a world that no longer exists.
+
+    So this one reads the LIVE package and checks the properties that
+    cannot depend on its packaging: the scan returns a subset of what
+    is actually declared, it skips markers, and it does not crash. It
+    asserts nothing about WHICH packages rasterio wants, which is the
+    thing that changed under the reviewer and broke the suite.
+    """
+    import importlib.metadata as md
+
+    try:
+        md.distribution("rasterio")
+    except Exception:
+        pytest.skip("rasterio is not installed in this environment")
+
+    declared = md.requires("rasterio") or []
+    missing = doctor._missing_requirements("rasterio")
+    assert set(missing) <= set(declared), (
+        f"the scan reported {sorted(set(missing) - set(declared))}, "
+        f"which rasterio does not declare at all")
+    assert not any(";" in spec for spec in missing), (
+        "a requirement with an environment marker was reported - the "
+        "doctor's own rule is to skip those rather than guess, "
+        "because accusing a user of a package their platform does not "
+        "want is worse than silence")
+    for spec in missing:
+        assert doctor._requirement_name(spec), (
+            f"{spec!r} produced an empty package name")
+    # and with nothing absent the hint stays quiet, whatever rasterio
+    # declares today
+    if not missing:
+        assert doctor._hint_lines("rasterio", "MISSING_DEP") == [] or \
+            all("not installed" not in ln
+                for ln in doctor._hint_lines("rasterio", "MISSING_DEP")), (
+            "nothing is missing and the doctor still advises about it")
+
+
 def test_a_version_constraint_in_the_install_command_is_quoted():
     """BROKEN WITH: `specs = " ".join(missing)`, unquoted.
 
@@ -163,19 +433,18 @@ def test_a_version_constraint_in_the_install_command_is_quoted():
 
     A bare name with no constraint is left unquoted, so the common case
     still reads as something a human would type.
+
+    REVIEW F6: `cligj>=0.5` comes from the recorded fixture rather
+    than from whatever the installed rasterio declares - the point is
+    that EquiPop quotes a constraint, not that rasterio has one.
     """
-    import importlib.metadata as md
-
-    real = md.distribution
-
-    def fake(name):
-        if str(name).lower() in {"cligj", "attrs"}:
-            raise md.PackageNotFoundError(name)
-        return real(name)
-
     import pytest as _pytest
     with _pytest.MonkeyPatch.context() as mp:
-        mp.setattr(md, "distribution", fake)
+        installed = _fixed_requires(mp)
+        assert any(r.startswith("cligj>=") for r in installed), (
+            "the fixture no longer carries a CONSTRAINED requirement, "
+            "so there is nothing for this test to check quoting on")
+        _absent(mp, {"cligj", "attrs"})
         text = "\n".join(doctor._hint_lines("rasterio", "MISSING_DEP"))
 
     assert '"cligj>=0.5"' in text, (
@@ -656,21 +925,18 @@ def test_johns_machine_is_explained_in_one_run(tmp_path, monkeypatch):
     printed as a warning nobody reads. One report must now carry all of
     it - what is missing, all of it, and the interrupted pip run that
     took it away.
-    """
-    import importlib.metadata as md
 
+    REVIEW F6: the requirement list is the recorded fixture, so this
+    acceptance test keeps asserting what the release was for without
+    depending on rasterio's current packaging.
+    """
     d = _fake_site(tmp_path, ["~yproj", "rasterio"])
     monkeypatch.setattr(doctor, "_package_dirs", lambda: [str(d)])
 
+    installed = _fixed_requires(monkeypatch)
+    assert any("cligj" in r for r in installed)
     gone = {"attrs", "cligj", "pyparsing", "click"}
-    real = md.distribution
-
-    def fake(name):
-        if str(name).replace("_", "-").lower() in gone:
-            raise md.PackageNotFoundError(name)
-        return real(name)
-
-    monkeypatch.setattr(md, "distribution", fake)
+    _absent(monkeypatch, gone)
     monkeypatch.setattr(doctor, "_probe", lambda name: (
         ("BROKEN", "No module named 'click'", "MISSING_DEP")
         if name == "rasterio" else ("ok", "9.9.9", "")))

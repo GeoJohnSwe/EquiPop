@@ -313,3 +313,153 @@ def test_9c_a_query_string_never_becomes_part_of_a_filename():
     assert url_filename("https://x/a/name%20with%20space.tif") == \
         "name with space.tif"
     assert url_filename("https://x/a/") == "download"
+
+
+# --------------------------------------------------- review H1, 1.54.1
+def test_only_http_and_https_are_downloaded():
+    """BROKEN WITH: removing the _check_scheme call from any of the
+    three download paths.
+
+    REVIEW H1, and the reason it is worth doing rather than noting.
+    `urlopen` accepts `file://`, and a bare path with no scheme it
+    reads as a LOCAL FILE - so a mistyped or pasted string could make
+    `fetch()` copy something off this machine and print
+    `[fetch] saved ...` as if it had downloaded it. No exploit was
+    demonstrated and none is needed: there is no case where a data
+    provider needs anything but http(s), so the refusal costs nothing
+    and removes the question.
+
+    ONE READER, called by all three paths, because three copies of a
+    scheme check is how one of them comes to be missing.
+    """
+    import pytest as _pytest
+
+    # NOT `from equipop import fetch` - the lazy export map makes
+    # that name the FUNCTION, so the module has to be asked for by
+    # path. (Found by this test failing with "'function' object has
+    # no attribute '_check_scheme'".)
+    import importlib
+
+    fetch_mod = importlib.import_module("equipop.fetch")
+    fetching_mod = importlib.import_module("equipop.doors.fetching")
+
+    for bad in ("file:///etc/passwd", "ftp://example.org/x.tif",
+                "/etc/passwd", "C:\\Windows\\win.ini",
+                "data:text/plain,hello", "javascript:alert(1)"):
+        with _pytest.raises(ValueError, match="http"):
+            fetch_mod._check_scheme(bad)
+    for good in ("https://example.org/x.tif", "http://example.org/x.tif",
+                 "HTTPS://EXAMPLE.ORG/X.TIF"):
+        fetch_mod._check_scheme(good)      # must not raise
+
+    # and every download path has to call it. Checked on the source
+    # as a property - each function that opens a URL must reach the
+    # one reader - because a path that skips it cannot be caught by
+    # calling the reader directly.
+    import ast
+    import inspect
+
+    for mod in (fetch_mod, fetching_mod):
+        src = inspect.getsource(mod)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            body = ast.dump(node)
+            opens = "urlopen" in body
+            if not opens:
+                continue
+            assert "_check_scheme" in body, (
+                f"{mod.__name__}.{node.name} opens a URL without "
+                f"checking its scheme")
+
+
+def test_a_forbidden_scheme_is_refused_BEFORE_the_cache_is_consulted(
+        tmp_path):
+    """BROKEN WITH: moving _check_scheme back inside fetch()'s
+    download branch, which is where 1.54.1 put it.
+
+    REVIEW FINDING 4, 1.54.2. `fetch()` builds its destination from
+    the URL's BASENAME and returns the cached file when one exists -
+    and the scheme check sat below that, in the download branch only.
+    So with `payload.bin` already in the work directory,
+    `fetch("file:///etc/payload.bin", wd)` printed `[fetch] cached`
+    and returned the path, reporting a forbidden request as
+    satisfied. Nothing forbidden is read in that case, so it is not
+    the local-file-copy risk itself; it is worse as a CONTRACT,
+    because the caller is handed an unrelated file and believes it
+    holds that URL's content.
+
+    AND THE PREVIOUS TEST COULD NOT CATCH IT. It asserted, over the
+    AST, that every function containing `urlopen` also contains
+    `_check_scheme` - which proves PRESENCE and says nothing about
+    POSITION. Ordering needs a behavioural test, so this one actually
+    primes the cache and calls fetch.
+    """
+    import importlib
+
+    import pytest as _pytest
+
+    fetch_mod = importlib.import_module("equipop.fetch")
+
+    wd = tmp_path / "work"
+    wd.mkdir()
+    (wd / "payload.bin").write_bytes(b"an unrelated cached file")
+
+    for bad in ("file:///etc/payload.bin",
+                "ftp://example.org/payload.bin",
+                "/etc/payload.bin"):
+        with _pytest.raises(ValueError, match="http"):
+            fetch_mod.fetch(bad, str(wd))
+
+    # a cache HIT on a permitted scheme still works - the check is
+    # about the scheme, not about refusing to use the cache
+    got = fetch_mod.fetch("https://example.org/payload.bin", str(wd))
+    assert str(got).endswith("payload.bin")
+    assert (wd / "payload.bin").read_bytes() == b"an unrelated cached file"
+
+    # and the refusal happens before the work directory is created,
+    # so a forbidden call leaves nothing behind
+    fresh = tmp_path / "never"
+    with _pytest.raises(ValueError, match="http"):
+        fetch_mod.fetch("file:///etc/x.bin", str(fresh))
+    assert not fresh.exists(), (
+        "a refused fetch created its work directory anyway")
+
+
+def test_the_md5_uses_are_declared_non_security():
+    """BROKEN WITH: dropping usedforsecurity=False.
+
+    REVIEW H1's second half, done for a reason stronger than quieting
+    a scanner: on a FIPS-enabled host `hashlib.md5()` RAISES, so
+    `cells.fingerprint()`, the tile manifests and the unit-size cache
+    key would all crash on an institutional machine configured that
+    way. The flag makes the intent explicit and makes the call work
+    there.
+
+    AND IT CHANGES NO STORED VALUE, which is the part that had to be
+    checked before touching it: bigrun writes tile checksums to disk
+    and verifies them on every read, so a different digest would make
+    every existing tiled run on John's machines fail verification.
+    Measured: identical for empty, short and 2,560-byte payloads and
+    for incremental updates.
+    """
+    import hashlib
+    import inspect
+
+    for payload in (b"", b"hello", bytes(range(256)) * 10):
+        assert hashlib.md5(payload).hexdigest() == \
+            hashlib.md5(payload, usedforsecurity=False).hexdigest(), (
+            "the digest changed - every stored tile checksum and every "
+            "cached fingerprint would now fail to verify")
+
+    from equipop import bigrun, cells, meta, unitsize
+    from equipop.doors import fetching
+
+    for mod in (bigrun, cells, meta, unitsize, fetching):
+        src = inspect.getsource(mod)
+        bare = src.count("hashlib.md5()")
+        assert bare == 0, (
+            f"{mod.__name__} calls hashlib.md5() without "
+            f"usedforsecurity=False at {bare} site(s) - it will raise "
+            f"on a FIPS-enabled host")

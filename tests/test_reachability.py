@@ -201,8 +201,11 @@ def test_4_every_module_is_either_a_capability_or_declared_internal():
     undeclared = sorted(found - R.INTERNAL)
     assert not undeclared, (
         f"{undeclared} are new since the reachability matrix was "
-        "written. Add each to tests/reachability.py - either as a "
-        "capability with its doors, or to INTERNAL as machinery. "
+        "written. Add each to R.INTERNAL in tests/reachability.py - "
+        "every module goes there, which is what this check reads. If "
+        "it is a capability somebody would ASK for rather than "
+        "machinery, give it a MATRIX row naming its four doors as "
+        "well; a row on its own does not satisfy this test. "
         "This is the step that was missing when inventory.py and "
         "vectorjoin.py shipped with no way to reach them")
 

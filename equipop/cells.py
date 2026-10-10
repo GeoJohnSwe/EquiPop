@@ -104,7 +104,7 @@ class CellData:
         at continental scale would cost more than the run it guards.
         Any future engine that reads them owes this method a line.
         """
-        h = hashlib.md5()
+        h = hashlib.md5(usedforsecurity=False)
         h.update(f"equipop-cells-1|{float(self.unit_size)!r}|"
                  f"{len(self.n)}".encode())
         for arr in (self.E, self.N, self.n):

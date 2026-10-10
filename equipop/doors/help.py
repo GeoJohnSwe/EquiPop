@@ -356,7 +356,28 @@ HELP = {
     "unit": "The grid cell size in metres. Bigger cells mean fewer "
             "origins and much faster runs; smaller cells mean finer "
             "geography. This is the strongest speed control you "
-            "have.",
+            "have. If you are not sure what to put here, ask the "
+            "data: the unit-size report shows, for each candidate "
+            "size, how many cells it makes and how many of your "
+            "people would end up in a cell that already holds k - "
+            "the point at which k stops making any difference.",
+    # BACKLOG 385. One text, four doors: `equipop unit` in Stata, the
+    # report in the QGIS log and the Pro messages, and
+    # equipop.unitsize.advise_unit() in Python.
+    "unitadvice":
+        "What cell size does this data want? A read-only report, and "
+        "a cheap one - it needs no neighbour search, only a count per "
+        "candidate size. For each size it gives the number of cells "
+        "(the cost) and the share of people living in a cell that "
+        "already holds k on its own. Those people have no measured "
+        "radius: their whole neighbourhood is that one cell, the "
+        "distance comes from the self-potential formula instead of "
+        "from the data, and asking for a bigger k returns the same "
+        "answer. It also flags sizes finer than the data itself, "
+        "where the extra cells buy nothing. There is deliberately no "
+        "single recommended number, because density is not uniform - "
+        "what you get is the trade-off, and the choice stays yours. "
+        "Nothing is changed by running it.",
     "selfpot": "Self-potential: how far away what is LOCAL - what "
                "your own cell already holds, the quantity "
                "reported as N_local - is treated as being. Rows "

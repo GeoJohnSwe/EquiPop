@@ -326,11 +326,23 @@ def test_every_engine_symbol_the_ado_imports_exists(block):
     for module, names in found:
         mod = importlib.import_module(module)
         for name in _names(names):
-            assert hasattr(mod, name), (
-                f"equipop.ado imports {name} from {module} and the "
-                f"installed engine has no such name - raise "
-                f"eqp_min_engine, or the commands will fail with "
-                f"ImportError at run time")
+            if hasattr(mod, name):
+                continue
+            # A SUBMODULE rather than an attribute. `from equipop
+            # import unitsize` (BACKLOG 385) is a legal import that
+            # hasattr cannot see until the submodule has been loaded,
+            # so a bare hasattr reported the engine was missing a name
+            # it has. Importing it is the same question asked the way
+            # Python asks it - and a name that really is absent still
+            # fails, which is the whole point of this test.
+            try:
+                importlib.import_module(f"{module}.{name}")
+            except Exception:
+                raise AssertionError(
+                    f"equipop.ado imports {name} from {module} and the "
+                    f"installed engine has neither such attribute nor "
+                    f"such submodule - raise eqp_min_engine, or the "
+                    f"commands will fail with ImportError at run time")
 
     # the one call that is a KEYWORD rather than a name, so hasattr
     # cannot see it: BACKLOG 317's calibration, which is what sets

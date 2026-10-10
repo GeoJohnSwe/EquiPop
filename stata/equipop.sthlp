@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.53.4}{...}
+{* *! version 1.54.2}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.53.4)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.54.2)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -34,6 +34,38 @@ Install or update the calculating engine, into the Python this Stata is using. A
 
 {p 8 17 2}
 {cmd:equipop setup} [{cmd:, repair}]
+
+{pstd}
+What cell size does this data want? A read-only report, and a cheap one
+- it needs no neighbour search, only a count per candidate size. For
+each size it gives the number of cells (the cost) and the share of
+people living in a cell that already holds k on its own. Those people
+have no measured radius: their whole neighbourhood is that one cell, the
+distance comes from the self-potential formula instead of from the data,
+and asking for a bigger k returns the same answer. It also flags sizes
+finer than the data itself, where the extra cells buy nothing. There is
+deliberately no single recommended number, because density is not
+uniform - what you get is the trade-off, and the choice stays yours.
+Nothing is changed by running it.
+
+{p 8 17 2}
+{cmd:equipop unit} {it:xvar} {it:yvar} {ifin} [{cmd:fweight}{cmd:=}{it:varname}]
+[{cmd:,} {opt pop(varname)} {opt k(numlist)} {opt cand:idates(numlist)} {opt tol:erance(#)} {opt originrule(string)} {opt nocache}]
+
+{pstd}
+Options for equipop unit alone. pop() or [fweight=] gives the population
+each row stands for, exactly as on a run. k() takes a numlist and the
+advice is reported per k, because the answer depends on it; without k()
+the report says it is advising for k=100. candidates() replaces the
+ladder of cell sizes tried - the size you are currently using is always
+added to it, so your own row is always there. tolerance() is the share
+of people whose radius may be estimated rather than measured before a
+size is rejected; the default 0.01 means fewer than one answer in a
+hundred. originrule() decides whether the criterion applies at all
+rather than merely labelling the output - under exclude an origin's own
+cell is never its whole neighbourhood, so no size is recommended and the
+report says why. nocache recomputes instead of reading the advice stored
+on the dataset.
 
 {synoptset 24 tabbed}{...}
 {synopthdr}
@@ -127,7 +159,7 @@ plain python.org Python for Stata.
 {p_end}
 
 {phang}
-{opt unit(#)} The grid cell size in metres. Bigger cells mean fewer origins and much faster runs; smaller cells mean finer geography. This is the strongest speed control you have.
+{opt unit(#)} The grid cell size in metres. Bigger cells mean fewer origins and much faster runs; smaller cells mean finer geography. This is the strongest speed control you have. If you are not sure what to put here, ask the data: the unit-size report shows, for each candidate size, how many cells it makes and how many of your people would end up in a cell that already holds k - the point at which k stops making any difference.
 {p_end}
 
 {phang}
@@ -217,6 +249,34 @@ plain python.org Python for Stata.
 {synopt:{cmd:r(decay)}}decay model, with decay(){p_end}
 {synopt:{cmd:r(calibration)}}half-life or half-probability, as APPLIED{p_end}
 {p2colreset}{...}
+
+{pstd}{cmd:equipop unit} stores the following in {cmd:r()}:
+
+{synoptset 20 tabbed}{...}
+{p2col 5 20 24 2: Scalars}{p_end}
+{synopt:{cmd:r(unit)}}the RECOMMENDED cell size for the first k, in metres - missing if no candidate serves it{p_end}
+{synopt:{cmd:r(cells)}}cells that size would make{p_end}
+{synopt:{cmd:r(estimated)}}share of people whose radius would be estimated at that size{p_end}
+{synopt:{cmd:r(tolerance)}}the share treated as acceptable{p_end}
+{synopt:{cmd:r(N)}}points with usable coordinates{p_end}
+{synopt:{cmd:r(people)}}population those points carry{p_end}
+{synopt:{cmd:r(applies)}}1 if the criterion applies to the origin rule in force, 0 under originrule(exclude) where an origin's own cell is never its whole neighbourhood. r(unit) is missing both when no size serves k and when the criterion does not apply, so this is what tells them apart{p_end}
+{p2col 5 20 24 2: Macros}{p_end}
+{synopt:{cmd:r(cmd)}}equipop unit{p_end}
+{synopt:{cmd:r(cmdline)}}subcommand as typed{p_end}
+{synopt:{cmd:r(k)}}k values the advice is about{p_end}
+{synopt:{cmd:r(originrule)}}the origin rule in force{p_end}
+{synopt:{cmd:r(fingerprint)}}digest of the coordinates advised on{p_end}
+{p2col 5 20 24 2: Matrices}{p_end}
+{synopt:{cmd:r(advice)}}one row per candidate size: unit, cells, thin, then sat/shcells/shpeople per k{p_end}
+{p2colreset}{...}
+
+{pstd}
+r(unit) is a recommendation and nothing more - EquiPop never sets the
+cell size for you. Two runs on the same data would otherwise be able to
+use different sizes without saying so, and a published figure would
+depend on a heuristic that might change between versions. If you want
+the recommended size, pass it yourself: unit(`r(unit)').
 
 {pstd}
 r(varlist) is the useful one: it hands back the names just created, so a

@@ -57,6 +57,9 @@ class FetchError(Exception):
 # everything else is testable.
 def _get_json(url, timeout=60):                     # pragma: no cover
     import urllib.request
+
+    from ..fetch import _check_scheme          # review H1, one reader
+    _check_scheme(url)
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -66,6 +69,9 @@ def _get_text(url, timeout=60):                     # pragma: no cover
     larger. Capped so a mis-typed URL cannot stream a raster into
     memory (BACKLOG 291)."""
     import urllib.request
+
+    from ..fetch import _check_scheme          # review H1, one reader
+    _check_scheme(url)
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return r.read(64 * 1024).decode("utf-8", "replace")
 
@@ -183,7 +189,10 @@ def _get_file(url, dest, timeout=900):              # pragma: no cover
     partial was kept and .part files were being left behind.
     """
     import urllib.request
-    sha, md5, n = hashlib.sha256(), hashlib.md5(), 0
+
+    from ..fetch import _check_scheme          # review H1, one reader
+    _check_scheme(url)
+    sha, md5, n = hashlib.sha256(), hashlib.md5(usedforsecurity=False), 0
     tmp = dest + ".part"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r, \

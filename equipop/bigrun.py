@@ -41,7 +41,7 @@ from .fastcounts import run_knn_counts
 
 
 def _md5(path, blocksize=1 << 20):
-    h = hashlib.md5()
+    h = hashlib.md5(usedforsecurity=False)
     with open(path, "rb") as f:
         while True:
             b = f.read(blocksize)

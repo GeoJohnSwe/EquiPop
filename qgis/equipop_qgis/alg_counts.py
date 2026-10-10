@@ -669,7 +669,54 @@ class CountsAndShares(EquipopAlgorithm):
             dest = self.write(parameters, context, source, res, order,
                               feedback)
         self.write_provenance(runlog, dest, res, ch, source=source)
+        self._unit_advice(ch, pts, kw, float(unit))
         return {self.OUT: dest}
+
+    # ---------------------------------------------------------------
+    def _unit_advice(self, ch, pts, kw, unit):
+        """BACKLOG 385. What cell size did this data want? Last, and
+        often nothing.
+
+        John, 9 October 2026: "knowing the unit size is a battle
+        between computing time and detail." The engine has just
+        measured both sides of it, so it would be a waste not to say
+        so - and QGIS is the door where the cell size is a spinbox the
+        user may never have opened.
+
+        `unit_was_set` is "did they move it off the default", which is
+        the same question the Stata door asks about a missing unit().
+        A user who deliberately typed 100 is told they could go
+        coarser, which is advice rather than a wrong number.
+
+        SILENT ON FAILURE, and deliberately: the output layer is
+        already written by this point, and an advisory must never be
+        the reason a finished run reports an error.
+        """
+        # The dialog's own default, read rather than retyped - but in
+        # its OWN try, so a QGIS version that will not give it up
+        # degrades to the documented 100 instead of silently costing
+        # the whole advisory. The broad except below is what makes an
+        # advisory safe to add after the output is written; it is also
+        # what would hide a mistake forever, so as little as possible
+        # lives inside it.
+        try:
+            default = float(
+                self.parameterDefinition("unit").defaultValue())
+        except Exception:
+            default = 100.0
+        try:
+            from equipop import unitsize
+
+            adv = unitsize.advise_unit(
+                pts.data["x"], pts.data["y"], kw.get("weight"),
+                k_values=kw.get("k_values") or [100], current=unit,
+                self_rule=kw.get("self_rule") or "include")
+            for line in unitsize.advise_on_run(
+                    adv, unit=unit,
+                    unit_was_set=abs(unit - default) > 1e-9):
+                ch.info(line)
+        except Exception:
+            pass
 
     # ---------------------------------------------------------------
     def _effort_ingredients(self, parameters, context, ch, unit,

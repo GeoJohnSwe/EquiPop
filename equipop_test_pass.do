@@ -1,4 +1,4 @@
-*! EquiPop 1.53.4 - a test pass over equipop_test_data.dta
+*! EquiPop 1.54.2 - a test pass over equipop_test_data.dta
 *!
 *! WHAT CHANGED IN 1.40.5, and why it matters:
 *!   Until now this file STATED its invariants and did not ENFORCE
@@ -59,7 +59,7 @@ global EQP_DATA ""
 * anyone installing from SSC will normally end up with, because
 * PyPI moves faster than the archive. BACKLOG 330.
 
-global EQP_EXPECT "1.53.4"
+global EQP_EXPECT "1.54.2"
 
 * ------------------------------------------------------------------
 * Nothing below here needs editing.
@@ -909,12 +909,77 @@ if `rc' eqpcheck 0 "block 22 stopped with Stata error r(`rc')"
 
 
 * ==================================================================
+* 23. `equipop unit` - the unit-size advisory, new in 1.54.0
+*     (BACKLOG 385). THIS BLOCK IS THE ONLY PLACE THE SUBCOMMAND IS
+*     EXERCISED BY STATA ITSELF: the Python suite can read the .ado
+*     and bind the keywords, and it cannot parse a syntax line or
+*     prove that -return add- hands r() up. That is this block's job.
+* ==================================================================
+capture noisily {
+    use "$EQP_DATA", clear
+
+    equipop unit X_local Y_local [fweight=ValCount], k(100 1000)
+
+    local runit  = r(unit)
+    local rcells = r(cells)
+    local rest   = r(estimated)
+    local rk     "`r(k)'"
+    local rfp    "`r(fingerprint)'"
+    matrix EQP_ADV = r(advice)
+
+    * A recommendation is either a positive cell size or MISSING -
+    * never zero. Missing means no candidate size serves that k, which
+    * is a fact about k and not a failure, so both are a pass here.
+    local ok = (`runit' > 0 | `runit' == .)
+    eqpcheck `ok' "block 23: r(unit) is a cell size or missing, not zero"
+
+    local ok = ("`rk'" == "100 1000")
+    eqpcheck `ok' "block 23: r(k) reports both k values, in order"
+
+    local ok = (`rest' >= 0 & `rest' <= 1) | (`rest' == .)
+    eqpcheck `ok' "block 23: r(estimated) is a share between 0 and 1"
+
+    local ok = (length("`rfp'") == 32)
+    eqpcheck `ok' "block 23: r(fingerprint) is a 32-character digest"
+
+    * One row per candidate size, and 3 + 3 per k columns.
+    local ok = (rowsof(EQP_ADV) >= 8 & colsof(EQP_ADV) == 9)
+    eqpcheck `ok' "block 23: r(advice) is a table of candidates by k"
+
+    * AND IT MUST NOT HAVE TOUCHED THE DATA. A read-only report that
+    * added a variable or dropped a row would be the one thing this
+    * feature promises it never does.
+    local nvars = c(k)
+    local nobs  = c(N)
+    equipop unit X_local Y_local [fweight=ValCount], k(100)
+    local ok = (c(k) == `nvars' & c(N) == `nobs')
+    eqpcheck `ok' "block 23: the advisory changed no variable and no row"
+
+    * The SECOND call should come from the cached characteristic, so
+    * the digest has to match the first. A cache keyed on content
+    * cannot survive the data changing - that is BACKLOG 344 - and it
+    * must survive the data NOT changing, or it is doing nothing.
+    local ok = ("`r(fingerprint)'" == "`rfp'")
+    eqpcheck `ok' "block 23: the same data gives the same digest twice"
+
+    * An ordinary run sets no unit(), so it should ADVISE. Nothing to
+    * assert about the words; what matters is that it still returns
+    * its results with the advisory attached.
+    equipop [fweight=ValCount], x(X_local) y(Y_local) k(200) prefix(adv_)
+    local ok = ("`r(varlist)'" != "")
+    eqpcheck `ok' "block 23: a run with no unit() still returns r(varlist)"
+}
+local rc = _rc
+if `rc' eqpcheck 0 "block 23 stopped with Stata error r(`rc')"
+
+
+* ==================================================================
 * THE VERDICT
 * ==================================================================
 * The number of checks is PINNED. If fewer run than expected, a block
 * died before reaching its checks and the reason is above in this log.
 
-global EQP_EXPECT_CHECKS = 57
+global EQP_EXPECT_CHECKS = 65
 
 display as text ""
 display as text "=================================================="

@@ -90,7 +90,7 @@ def sidecar_for(destination) -> str | None:
 
 
 def _md5(path, chunk=1 << 20):
-    h = hashlib.md5()
+    h = hashlib.md5(usedforsecurity=False)
     with open(path, "rb") as f:
         while b := f.read(chunk):
             h.update(b)

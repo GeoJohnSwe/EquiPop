@@ -1,6 +1,96 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.53.4, 8 October 2026.**
+**Last updated: 1.54.2, 10 October 2026.**
+*Reviewed at 1.54.2: NO CLAIM IN THIS FILE CHANGES, and the
+corrected sentence from the 1.54.1 note below still stands as
+written. The second review's findings were a malformed Stata help
+file, two test-isolation defects, a fractional k accepted by the
+Python advisory, an ordering mistake in the downloader's scheme
+check and a cache that validated the request but not the stored
+answer. All of them are correctness and packaging work; none
+touches the exposome positioning, the origin-rule measurement or
+the MAUP argument.
+ONE THING NOT TO PUT IN A PROPOSAL: the review rounds themselves.
+It is tempting to offer a software-quality claim on the strength
+of three external reviews in two days, and a reviewer would be
+right to read that as an admission rather than a credential.
+What belongs in a proposal is the measurement, not the process
+that produced it.*
+*Reviewed at 1.54.1: **ONE SENTENCE IN THE 1.54.0 NOTE BELOW WAS
+OVER-CLAIMING AND IS CORRECTED HERE.** It offered, for a methods or
+comparability section: "the share of neighbourhoods whose radius is
+estimated rather than measured is reported for every cell size."
+
+That is true only under `originrule(include)`. An external review of
+1.54.0 found the advisory handing include-rule counts to `exclude`
+runs; measured, under `exclude` the engine drops the origin's whole
+cell, so the saturated count is structurally zero and the criterion
+describes nothing. **The true version of the sentence names the
+rule**: "under the published include convention, the share of
+neighbourhoods whose radius is estimated rather than measured is
+reported for every cell size; under the w(ii)=0 convention the
+question does not arise, because an origin's own cell is never its
+neighbourhood."
+
+**THAT SECOND HALF IS WORTH HAVING IN THE PROPOSAL RATHER THAN BEING
+AN ASIDE.** This file's strongest card is the origin-rule measurement
+- that excluding the origin changes African American isolation by
+13.6% and flattens the scale profile sixfold. The new finding says
+something adjacent and useful: the w(ii)=0 convention that spatial
+regression requires is ALSO the one in which cell size cannot quietly
+destroy k. A reviewer asking "how do you know your scale profile is
+not an artefact of the grid" has a cleaner answer under exclude than
+under include, and that is an argument for the convention rather than
+only a caveat about it.
+
+Nothing else changes. The MAUP trap named in the 1.54.0 note stands,
+and now has a sharper form: it applies to an include-rule scale
+profile specifically.*
+*Reviewed at 1.54.0: **NO CLAIM CHANGES, AND ONE ARGUMENT THIS FILE
+ALREADY MAKES GETS AN INSTRUMENT - PLUS A TRAP IT SHOULD NAME.**
+
+This file says, under the candidates below, that whether a *general*
+correction for unit granularity is possible "might be the intellectual
+core of the WP rather than a feature". 1.54.0 does not answer that
+question. It supplies something the question needs first: a
+measurement of **when a cell size has destroyed the parameter**.
+
+Once a cell holds k people on its own, the whole neighbourhood IS
+that cell - the radius stops being measured and comes from the
+self-potential formula, and k=200 and k=2000 return the same number.
+BACKLOG 95 named this in 2026 and the engine has reported it after
+every run since 1.29.5; the release reports it BEFORE one, across a
+ladder of cell sizes, as a share of CELLS and a share of PEOPLE.
+Measured against the engine on three shapes rather than derived.
+
+**THE TRAP, AND IT BEARS ON THE STRONGEST CARD ABOVE.** The
+measurement this file leads with is a scale profile - the origin rule
+flattening African American isolation sixfold between k=100 and k=800
+on US blocks averaging 113 people. A MAUP comparison *across cell
+sizes* is the natural companion to it, and at the coarse end of any
+such ladder **some of the cells have already swallowed the whole
+neighbourhood**, so those points are not comparisons at different
+scales: they are the same answer repeated, with k no longer the
+parameter being varied. On LA County at 100 m that is 41% of blocks
+(TEACHING.md measured it). Any scale profile across unit sizes has to
+report the saturated share at each size or a reviewer can ask whether
+the flattening is the method or the grid - and that is a question
+better answered in the methods section than at review.
+
+**DO NOT PRESENT IT AS A CAPABILITY.** Same rule this file applies to
+the shared input reader at 1.53.2 and the Windows diagnostics at
+1.53.1: an advisory is not a feature, and claiming it as one invites
+the question of what else is only advised about. For the methods or
+comparability section: "the share of neighbourhoods whose radius is
+estimated rather than measured is reported for every cell size" is
+the true version. **It changes no default and chooses nothing** - if
+the software picked the cell size, two runs on the same data could
+use different ones and a published figure would rest on a heuristic
+that might change between versions.
+
+349 remains the last gap between a continental run and the full
+engine, unchanged. MACHINE 7 (section 3) is unchanged and still
+waiting on John's two decisions and a literature check.*
 *Reviewed at 1.53.4: **THE STANDING WARNING IN THIS FILE IS RETIRED.**
 Four releases running, this section said BACKLOG 365 was the one piece
 not to promise as done - a continental DEMOGRAPHIC index had no tiled
@@ -531,6 +621,113 @@ plus a random component for choice, a number of users set per location
 by field or constant, destination capacity, and rounds to fill it —
 in order to simulate **how accessibility changes as the landscape is
 altered**?
+
+## AMENDED 9 OCTOBER 2026 - MOST OF THIS IS ALREADY BUILT
+
+**THE RECOMMENDATION BELOW WAS WRONG AND IS CORRECTED HERE RATHER
+THAN DELETED**, because the mistake is instructive. "Recommended
+sequencing" told John to build a deterministic capacity-aware
+accessibility measure first - 2SFCA with the arbitrary catchment
+replaced by EquiPop's - as a cheap stepping stone. **`equipop/fca.py`
+has been that since it was written.** From its own docstring:
+
+    reach="k"      kFCA: each catchment GROWS until it contains k
+                   units of the opposite side's MASS - fixed-population
+                   catchments, the EquiPop signature
+    reach="effort" weights from SLOPE/FRICTION effort (optionally
+                   round-trip); decay half-life is then in ROUNDS
+    method="2sfca" / "3sfca"
+    balance=n      doubly-constrained (Wilson) balancing
+
+So 2SFCA, 3SFCA, bespoke catchments and friction-based effort are all
+present - AND `balance=n` is the doubly-constrained spatial
+interaction model that the VALIDATION section below nominates as the
+external answer key. **The answer key is in the package.** Tobler is
+too: `slope.py` carries the hiking function and it is the DEFAULT
+model in both `access.py` and `fca.py`, so the DEM half of John's
+scenario costs nothing.
+THE LESSON, which is this session's own recurring one pointed at
+Claude rather than at the code: a capability that nothing surfaces is
+a capability nobody has. Five releases of this session found a guard,
+a hint, a parse, a convention and an index column that existed and
+could not be reached. This is the sixth, and the unreachable thing was
+reachable all along to anyone who read the module.
+
+## JOHN'S TWO SCENARIOS, 9 OCTOBER, AGAINST WHAT EXISTS
+
+**SCENARIO 1 - nearest shop, customers per shop, then counterfactuals
+with decay, barriers, friction and a DEM.** Expressible today, read as
+an FCA with the roles that way round:
+
+    fca(demand=residents, supply=shops, reach="k", k=1)
+
+Each resident's catchment grows until it contains ONE shop, so W_ij is
+the nearest-shop indicator and **sum_i W_ij D_i is exactly "customers
+of shop j"**. `decay=` turns winner-takes-all into shares;
+`reach="effort"` brings in friction, barriers and Tobler slope; the
+counterfactual is two runs differenced.
+
+**THE ONE THING MISSING IS THE OUTPUT, AND IT IS ONE COLUMN.** In
+fca.py:
+
+    denom = ...                 # sum_i W_ij D_i - the customers
+    R = Sm / denom
+    supply_out["R"] = R         # only the ratio comes back
+
+The number John wants is computed and discarded. Recoverable as
+S_j / R_j, and that breaks wherever R = 0, and nobody should have to
+know to do it. The i-j relationships he wants kept are the same story:
+that is W, built and dropped - sparse at k=1, one entry per demand
+cell, so cheap to return; dense with decay, which is where the cost
+actually is.
+TWO THINGS TO MEASURE BEFORE PROMISING. The assignment is to a CELL,
+not to a shop, so unit_size is the spatial resolution and a cell
+holding two shops cannot tell them apart - that wants a diagnostic.
+And the tie convention for reach="k" says equidistant cells enter
+wholly; what k=1 does with a MULTI-SHOP cell is unmeasured, and it
+decides whether a customer goes to one shop or is split between them.
+
+**SCENARIO 2 - a random walk instead of road distance.** The
+randomness is probably redundant, and there is a test for whether it
+is. A random walk over a friction surface converges IN EXPECTATION to
+what a decay kernel gives in closed form, so many replications recover
+a function that can be evaluated once. The question to put to the walk
+is therefore: **what do you want that is PATH-DEPENDENT?**
+  - ARRIVAL outcomes - customers per shop, access scores, catchments.
+    Deterministic. The averaged baseline and averaged counterfactual
+    each collapse to ONE run.
+  - PATH outcomes - which bridge was used, flow per link, where
+    congestion lands. Genuinely new, and **the deterministic route
+    beats a walk**: take the i->j assignment, compute the least-cost
+    path over the friction surface, accumulate flow onto cells. That
+    answers "how many people cross this bridge to reach their shop"
+    exactly, and closing the bridge is a paired deterministic
+    difference. Flow accumulation over an assignment tree - the same
+    machinery as all-or-nothing assignment in transport, or D8
+    accumulation in hydrology.
+A walk earns its place only to model IMPERFECT KNOWLEDGE or
+route-choice heterogeneity - people not taking the best path. That is
+a behavioural claim to defend to a referee, not a technical
+necessity.
+BFS, which John wondered about, is what the engine already does: the
+search is a breadth-first expansion over the cell lattice. The
+algorithm is there; the RECORDED PATH is not.
+
+**AND THE VALIDATION PROBLEM LARGELY DISSOLVES**, which is the
+strongest argument for doing Scenario 1 first whatever happens to the
+agent model. With no randomness: conservation is exactly checkable
+rather than approximately; the degenerate case has a real external key
+(no barriers, no decay, flat DEM -> the assignment must equal
+straight-line nearest, which cKDTree gives in three lines, bit-
+identical or wrong); monotonicity under an added barrier is a
+pass/fail; and `balance=n` supplies a second independent key from
+inside the package.
+
+**ON THE NAME.** Scenario 1 is not an agent-based model and should not
+be called one in print - it is catchment generation, or all-or-nothing
+assignment. Calling it an ABM invites "where are your agents, and what
+did they learn?" and gets the work reviewed against the wrong
+literature.
 
 ## THE REFRAMING, WHICH IS THE WHOLE REASON TO TAKE IT SERIOUSLY
 

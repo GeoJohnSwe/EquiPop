@@ -901,6 +901,90 @@ def test_every_module_compiles_on_the_oldest_python_we_promise():
     assert not bad, "\n".join(bad)
 
 
+def test_the_bump_tool_does_not_translate_line_endings(tmp_path):
+    """REVIEW F5, and it reproduced only on Windows.
+
+    `bump_version.py` read and wrote in text mode with Python's
+    default newline handling. On Windows that converts every LF to
+    CRLF on write, so a release operation there rewrites EVERY LINE of
+    all ten declared files - including the 4,932-line ArcGIS toolbox -
+    and the byte-identical round-trip test below reports all ten as
+    changed. No analytical output moves; what it costs is whole-file
+    diffs and merge conflicts at exactly the moment a release is being
+    reviewed.
+
+    TWO CHECKS, because this platform cannot see the defect.
+
+    The READ side is directly testable anywhere: with newline="" a
+    CRLF file comes back with its CRLFs intact, and without it
+    Python's universal-newline translation silently turns them into
+    LF - so the tool would "fix" line endings it was never asked to
+    touch. That half is measured here.
+
+    The WRITE side cannot be measured on Linux, because text mode
+    writes LF as LF here whatever the setting. So it is asserted
+    structurally instead: every open-for-write in the tool must pass
+    newline="". A property over the AST rather than a grep, and the
+    honest statement of its limit is that it checks the mechanism
+    while the round-trip test below checks the result - on whichever
+    platform it runs.
+    """
+    import ast
+
+    spec_path = os.path.join(ROOT, "tools", "bump_version.py")
+    src = open(spec_path, encoding="utf-8").read()
+
+    # --- the read side, for real
+    f = tmp_path / "crlf.txt"
+    f.write_bytes(b'version = "1.0.0"\r\nsecond line\r\n')
+    with open(f, encoding="utf-8", newline="") as fh:
+        kept = fh.read()
+    assert "\r\n" in kept, (
+        "newline='' no longer preserves CRLF on this platform, so the "
+        "guarantee this test is about has changed")
+    with open(f, encoding="utf-8") as fh:
+        translated = fh.read()
+    assert "\r\n" not in translated, (
+        "universal newlines no longer translate, so the defect this "
+        "test is about is no longer possible and the test is stale")
+
+    # --- the write side, structurally
+    writes = []
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "id", None)
+        if name != "open":
+            continue
+        mode = ""
+        for arg in node.args[1:2]:
+            if isinstance(arg, ast.Constant):
+                mode = str(arg.value)
+        for kw in node.keywords:
+            if kw.arg == "mode" and isinstance(kw.value, ast.Constant):
+                mode = str(kw.value.value)
+        if "w" not in mode and "a" not in mode:
+            continue
+        has = any(kw.arg == "newline" and
+                  isinstance(kw.value, ast.Constant) and
+                  kw.value.value == "" for kw in node.keywords)
+        writes.append((node.lineno, has))
+    assert writes, (
+        "no open-for-write found in bump_version.py - it writes "
+        "through something else now and this check has stopped "
+        "guarding anything")
+    bad = [ln for ln, has in writes if not has]
+    assert not bad, (
+        f"bump_version.py writes at line(s) {bad} without "
+        f"newline='' - on Windows that rewrites every line ending in "
+        f"every declared file")
+    # and the text those writes carry must have been read the same
+    # way, or the round trip is not byte-for-byte either
+    reads = re.findall(r"open\((?:path|p)[^)]*\)", src)
+    assert all('newline=""' in r for r in reads if '"w"' in r or
+               "'w'" in r), "a write path reads without newline=''"
+
+
 def test_the_version_bump_survives_a_round_trip(tmp_path):
     """BACKLOG 352. The version lives in a dozen declarations across
     ten files, and TWO FILES CARRY TWO DECLARATIONS EACH -

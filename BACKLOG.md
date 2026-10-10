@@ -3607,6 +3607,498 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- ~~395~~ | DONE v1.54.2, SECOND EXTERNAL REVIEW, FINDING 1 | `help
+  equipop` WAS 746 LINES OF ONE CHARACTER EACH, AND I HAD LOOKED AT
+  THE FILE.
+  `_wrap()` returns ONE STRING of joined lines. Every other call site
+  in make_sthlp.py does `add(_wrap(...))`; mine was
+  `for line in _wrap(...): add(line)`, which iterates the string and
+  yields CHARACTERS. The generated help carried 816 one-character or
+  blank lines out of 1,103, and `help equipop` was unreadable from the
+  unit-advice paragraph onward - **in both the SSC submission and the
+  net-install archive.** A release blocker, and it shipped in the
+  1.54.0 and 1.54.1 bundles.
+  **FOUR THINGS FAILED TO CATCH IT, and each is worth knowing:**
+  - `make_sthlp.py --check` compares the malformed output against the
+    malformed generator and reports the file current. A currency check
+    cannot see a defect that is in the generator.
+  - `test_the_help_file_holds_no_broken_smcl` counts braces per line;
+    a line holding one letter has none.
+  - the paragraph's own words are all present, in order, so **any grep
+    for its content succeeds.**
+  - and I did grep it. I checked that the strings I expected were
+    there and never looked at the SHAPE of the file. `wrote ... (1103
+    lines)` was printed to me twice and I had no correct version to
+    compare it against - it is 385 lines now.
+  THE TEST: for every paragraph make_sthlp takes from HELP by name,
+  the whitespace-normalised text must appear in the whitespace-
+  normalised output. "What" split one letter per line normalises to
+  "W h a t" and does not match. General over every HELP entry, not
+  just the one that broke. Plus a direct shape check - no run of more
+  than three one-character lines.
+  TWO MORE DOCUMENTATION GAPS came with it, both found by writing the
+  tests rather than by reading: `r(applies)` was returned by the ado
+  and documented nowhere, which makes it useless for the one job it
+  has; and `candidates()`, `tolerance()` and `nocache` appeared in the
+  syntax line and were explained nowhere, because the options section
+  is built from OPTION_HELP - the RUN's option list - so a
+  subcommand-only option had no route into it.
+  **THE STRONGEST OF THE NEW TESTS DERIVES THE DOCUMENTED `r()` NAMES
+  FROM THE ADO'S OWN RETURN STATEMENTS**, in both directions. It found
+  `r(cmd)` and `r(cmdline)` missing too, the moment it was written -
+  the third and fourth undocumented results in the same block.
+
+- ~~396~~ | DONE v1.54.2, SECOND EXTERNAL REVIEW, FINDING 2 | HALF OF
+  393'S FIX WAS A FIX.
+  393 made rasterio's DECLARED requirements a recorded fixture.
+  `_absent()` still forced only the named packages absent and passed
+  every other lookup to the live environment - so the answer still
+  depended on what happened to be installed. The fixture declares
+  `click-plugins`; on a machine without it the doctor correctly
+  reported FOUR missing dependencies where the test expected three,
+  and two historical-case tests failed again on a defect that was not
+  there. **The same class of error, in the fix for that class of
+  error, one release later.**
+  A COMPLETE FAKE INSTALLED SET now: everything in the fixture is
+  present unless named in `gone`, and a lookup for anything in
+  neither list **raises** rather than falling through. A silent
+  fall-through is how this came back a second time, so it is no longer
+  silent.
+  VERIFIED BY SIMULATING BOTH HALVES of the reviewer's environment -
+  rasterio declaring no cligj/attrs/pyparsing/click-plugins AND
+  click-plugins uninstalled - under which all 37 doctor tests pass.
+
+- ~~397~~ | DONE v1.54.2, SECOND EXTERNAL REVIEW, FINDING 3 | A
+  FRACTIONAL k WAS SILENTLY TRUNCATED BY THE PUBLIC ADVISORY.
+  `_resolve_ks` did `int(k)`, so `k_values=[100.9]` came back as
+  advice labelled k=100 with nothing said. **The project already has a
+  rule about this**: the shared door reader refuses a non-whole k
+  because k counts PEOPLE and quietly rounding a count of people
+  produces a plausible wrong answer (320, 371). The new public
+  function undid a rule the typed doors enforce - and its own comment
+  claimed it validated what the engine would refuse.
+  `100.0` IS ACCEPTED, `100.9` IS NOT. A Python caller writing 100.0
+  means 100; the door reader is stricter about the typed string
+  "100.0" because a decimal point a human put into a count is a fact
+  about the human, which is a different question from this one.
+  A BOOL IS NOW REFUSED. `k_values=[True]` was accepted as k=1,
+  because bool is an int subclass - nobody's intention, and the sort
+  of value that arrives from a mis-indexed array. `nan` and `inf` were
+  raising raw ValueError and OverflowError from `int()`; they get
+  EquiPop's message now.
+  One resolver, used by `advise_unit` AND `request_key`, so 100 and
+  100.0 cannot be the same advice under two different cache keys.
+
+- ~~398~~ | DONE v1.54.2, SECOND EXTERNAL REVIEW, FINDING 4 | THE
+  SCHEME CHECK SAT BELOW THE CACHE LOOKUP.
+  394 put `_check_scheme` inside `fetch()`'s download branch. The
+  cache check comes first and builds its destination from the URL's
+  BASENAME - so with `payload.bin` already in the work directory,
+  `fetch("file:///etc/payload.bin", wd)` printed `[fetch] cached` and
+  returned the path. Nothing forbidden is read in that case, so it is
+  not the local-file-copy risk itself; it is worse as a CONTRACT,
+  because the caller is handed an unrelated file and believes it holds
+  that URL's content.
+  **AND MY TEST COULD NOT HAVE CAUGHT IT.** It asserted over the AST
+  that every function containing `urlopen` also contains
+  `_check_scheme` - which proves PRESENCE and says nothing about
+  POSITION. Ordering is a behavioural property and needs a
+  behavioural test: the new one primes the cache, calls fetch with a
+  forbidden scheme, and also checks that a refused call leaves no
+  work directory behind.
+  THE GENERAL LESSON, and it applies to several tests written in this
+  session: **an AST or source-text assertion can prove that something
+  is there and never that it runs first.** Where ordering is the
+  property, the test has to execute the path.
+
+- ~~399~~ | DONE v1.54.2, SECOND EXTERNAL REVIEW, FINDING 5 | THE
+  CACHE VALIDATED THE QUESTION AND NOT THE ANSWER.
+  389's key covers the REQUEST - fingerprint, k values, tolerance,
+  ladder, rule - and says nothing about the stored result. Measured:
+  editing `recommended` to 999999, a cell count to -42 or a share to
+  7.5 (750%) was accepted and returned.
+  **THE WORST CASE IS `applies`.** Flipped to false under `include` it
+  delivers the 388 defect straight out of a cache - the exact thing
+  CACHE_VERSION 2 was bumped to keep out - and flipped to true under
+  `exclude` it puts include-rule columns back onto an exclude report.
+  Two fields that must agree, with nothing requiring them to.
+  `_advice_is_coherent` now checks what `advise_unit` guarantees on
+  the way out: the rule is known, `applies` is DERIVED from it, the k
+  maps match `k_values`, shares are finite and within 0-1, saturated
+  cells do not exceed the cell count, an exclude payload carries
+  absences and never numbers, and **the recommendation follows from
+  the shares it was supposedly derived from** - the coarsest size
+  within tolerance, or none.
+  AND THE 1.54.1 NOTE WAS WRONG TO IMPLY A SECURITY BOUNDARY. Anybody
+  who can edit a dataset characteristic can recompute whatever we
+  store beside it. This is corruption and version-skew detection, and
+  the claim is now that a payload which does not describe a coherent
+  answer to the request is refused. **The reviewer was right that the
+  guarantee was broader than the protection; the fix narrows the words
+  and widens the protection.**
+
+- ~~388~~ | DONE v1.54.1, EXTERNAL REVIEW F1 | `originrule(exclude)`
+  WAS SHOWN INCLUDE-RULE ADVICE, AND I HAD WRITTEN DOWN WHY THAT WAS
+  WRONG BEFORE SHIPPING IT.
+  `advise_unit` took `self_rule` and used it as a LABEL ONLY. The
+  numbers were computed identically under either rule; the report then
+  announced "Assumes originrule(exclude)" over include-rule counts and
+  a footnote below said those counts do not apply. All three
+  ordinary-run doors pass the user's real rule in, so an exclude run
+  was told `100.0% of people are in a cell that already holds k` - and
+  given a recommendation derived from it.
+  **THE PART THAT MAKES THIS MINE RATHER THAN AN OVERSIGHT.** 385's
+  own module docstring says the criterion "IS ONLY TRUE UNDER THE
+  `include` ORIGIN RULE", and `tests/test_unitsize.py` ASSERTED the
+  engine differs under exclude. The knowledge was written down, tested
+  and then not used by the code path. That is 353, 368, 373 and 380 -
+  the four releases before 1.54.0 - committed again in the release
+  whose own handover section is about them.
+  **MEASURED, AND IT IS STRONGER THAN THE REVIEW SAID.** Not
+  "unreliable under exclude": fastcounts drops the origin's WHOLE CELL
+  (`keep = idx != oi_range`, fastcounts.py:164), so the saturated
+  count is STRUCTURALLY ZERO. Checked on four shapes, including one
+  where a single cell holds every person and k=1000 - include reports
+  1 saturated origin, exclude reports 0. The advisory was predicting a
+  phenomenon that cannot occur.
+  **AND A CORRECT EXCLUDE CRITERION DOES NOT EXIST IN THE CHEAP
+  FORM.** I guessed one: under exclude, a huge neighbouring cell
+  should serve every k, so Dist_k would stop varying. MEASURED AND THE
+  GUESS WAS WRONG - with a 10,000-person cell 100 m away, Dist_k came
+  back 57.02, 62.17 and 81.19 for k=100, 1000 and 5000, because the
+  engine spreads a cell's population across its area. So k keeps its
+  meaning under exclude at every cell size, and there is nothing to
+  warn about. Good news stated as such rather than as a limitation.
+  THE FIX: the rule now DECIDES whether the criterion applies.
+  `applies` is in the advice dict; under exclude the per-k fields are
+  **None rather than 0** (a zero reads as a measurement, and the next
+  step is to pick the coarsest size on the strength of it), the k
+  columns are not printed, no size is recommended, and a note says
+  why. The cost and resolution-floor columns stay, because they are
+  about the GRID and hold under either rule. `r(applies)` is new, so a
+  do-file can tell "too dense for any size" from "this criterion does
+  not apply" - both of which arrive as a missing `r(unit)`.
+  AND THE RULE IS VALIDATED EVERYWHERE. It used to be a free string in
+  the subcommand, so `originrule(inclde)` would have silently selected
+  the exclude branch. One `_equipop_originrule` reader now serves the
+  main command and the subcommand, carrying the `i=j` / `i!=j` aliases
+  and the refusal that previously existed in one place only.
+
+- ~~389~~ | DONE v1.54.1, EXTERNAL REVIEW F2 | THE CACHE ANSWERED A
+  DIFFERENT QUESTION AND REPORTED A HIT.
+  `unpack_advice` validated the format version, the data fingerprint,
+  the k values and the tolerance - and NOT the candidate ladder or the
+  origin rule. Reproduced: advice cached for candidates 25 and 50
+  under include was returned to a request for candidates 1,000 and
+  5,000 under exclude, with the old two rows and the old label, and
+  the user was told "read from this dataset's stored advice".
+  **THE RELEASE NOTE SAID "EVERY WAY OF BEING STALE RETURNS A MISS."**
+  It was false, and the reason nobody noticed is in the test: my own
+  `test_a_stale_cache_misses_rather_than_lying` checked three of the
+  five components and called that every. A test named after a property
+  it only partly checks is worse than no test, because it answers the
+  question for the next reader.
+  **FIXED STRUCTURALLY, AFTER THE FIRST FIX WAS WRONG.** The first
+  attempt added `candidates` and `self_rule` as optional keyword
+  arguments - and an optional check is one a caller can forget, which
+  would restore the same silent stale hit by a different route and is
+  the exact shape of 353/368/373/380. The request is now ONE value
+  from `request_key()`, `unpack_advice` REQUIRES it positionally, and
+  omitting it raises TypeError. Both sides build the key through the
+  same two resolvers `advise_unit` uses, so a key cannot describe a
+  differently-normalised request than the advice it validates; and the
+  key is re-derived from the stored advice on read, so a hand-edited
+  payload cannot pass by carrying a matching key field.
+  CACHE_VERSION is 2, so no v1 string already saved in a .dta can be
+  read back - a v1 advice has no `applies` field and would be treated
+  as applying, which is 388 arriving out of a cache.
+
+- ~~390~~ | DONE v1.54.1, EXTERNAL REVIEW F3 | THE DEGREE WARNING WAS
+  BUILT AND THEN THROWN AWAY.
+  `advise_on_run` appends the degree-envelope note to `out` at the
+  top, and three later branches returned a FRESH EMPTY LIST: when the
+  chosen unit is not on the ladder, when it does not saturate, and
+  when there is nothing better to recommend. Measured: degree-like
+  coordinates with a safe current unit gave a full report carrying the
+  warning and an `advise_on_run` returning zero lines.
+  **AND THOSE ARE THE BRANCHES WHERE IT MATTERS MOST**, which is the
+  part worth remembering. They are the quiet ones - nothing else is
+  printed - so the note was not competing with other output, it was
+  the only output there would have been. `return out` in all four
+  places, and a parametrised test per branch.
+  THE SHAPE: a warning assembled in a variable and discarded by a
+  later `return []` is invisible to every test that checks the full
+  report, because the full report is produced by a different function.
+  Worth looking for wherever two functions share a message.
+
+- ~~391~~ | DONE v1.54.1, EXTERNAL REVIEW F4 | A PUBLIC FUNCTION THAT
+  ACCEPTED INPUTS THE ENGINE REFUSES.
+  `advise_unit` took anything: a negative population, a zero total, a
+  tolerance of 5.0, an origin rule of "banana", and a candidate size
+  of `inf`. An advisory that accepts inputs the engine refuses is
+  advice about a run that cannot happen.
+  MEASURED, each one:
+  - weights `[10, -9]` in two cells -> total population 1, saturated
+    population 10, so `share_people` came out **10.0 - one thousand
+    percent** - and that was compared against the tolerance to choose
+    a cell size. `build_cells` has refused a negative population since
+    1.22.2 with a reason; now this refuses it in the same terms.
+  - a tolerance of 5.0 means every candidate passes, so `max(good)`
+    names the coarsest size on the ladder every time: a confident
+    recommendation to use 5,000 m cells, from a threshold that cannot
+    bind.
+  - `float("inf") > 0` is **True**, so inf passed the candidate filter
+    and produced a table row at an infinite cell size, sorting last
+    and therefore eligible to be recommended as "coarsest". `isfinite`
+    is the test that was meant. Zero, negative and nan were already
+    filtered, which is why this one survived review by eye.
+  - a zero total population divides every share by nothing.
+
+- ~~392~~ | DONE v1.54.1, EXTERNAL REVIEW F5 | THE VERSION BUMPER
+  REWROTE EVERY LINE ENDING ON WINDOWS.
+  `bump_version.py` read and wrote in text mode with Python's default
+  newline handling. The sources are LF; on Windows each write converts
+  them to CRLF, so a release operation there rewrites EVERY LINE of
+  all ten declared files - the 4,932-line ArcGIS toolbox included -
+  and `test_the_version_bump_survives_a_round_trip` reports all ten as
+  changed. Nothing analytical moves; the cost is whole-file diffs and
+  merge conflicts at exactly the moment a release is being reviewed.
+  `newline=""` on both the read and the write, so the round trip is
+  byte-for-byte whatever the file already uses.
+  THE TEST PROBLEM IS THE INTERESTING PART: the existing round-trip
+  test was CORRECT and was failing on Windows for the right reason -
+  it just never ran there. So the new test does the half that is
+  measurable anywhere (with `newline=""` a CRLF file round-trips; with
+  universal newlines it does not) and asserts the write side
+  structurally over the AST, with its limit stated in the docstring
+  rather than implied.
+
+- ~~393~~ | DONE v1.54.1, EXTERNAL REVIEW F6 | MY OWN TEST COUNT WAS
+  NOT A PORTABLE CLAIM.
+  Three doctor tests made `cligj` absent and expected the doctor to
+  name it - which works only while rasterio DECLARES cligj. Rasterio
+  1.5.2 does not; the reviewer's environment has 1.5.2 and mine has
+  1.4.4, so three tests failed for them and passed for me. **"1,588
+  tests pass" was true about rasterio 1.4.4 and I reported it as a
+  fact about the release.**
+  THE DEFECT IS USING THE INSTALLED PACKAGE AS BOTH FIXTURE AND
+  SUBJECT. The behaviour under test is EquiPop's - does it name every
+  missing dependency, does it quote a constraint, does it count them -
+  and none of that should move when a third party edits its packaging.
+  The requirement list is now a recorded fixture, and the strings are
+  the real ones from John's machine on 6 October, so the field
+  evidence is preserved rather than mocked away.
+  VERIFIED BY SIMULATING THE REVIEWER'S ENVIRONMENT: with rasterio
+  patched to drop cligj, attrs, pyparsing and click-plugins, all 37
+  doctor tests pass; and the counterfactual holds - under that
+  simulation the live-metadata scan returns `[]`, so the old
+  assertion failed on a defect that was not there.
+  A COMPATIBILITY TEST KEEPS THE REAL PACKAGE IN VIEW, asserting only
+  what is true of any version: the scan returns a subset of what is
+  actually declared, skips environment markers, and never produces an
+  empty package name. The risk of a supplied fixture is that it drifts
+  from reality and every test passes about a world that no longer
+  exists; that test is the guard against it.
+  **FOR FUTURE RELEASE NOTES: a test count is an environment
+  measurement, not a property of the release.** Say which environment,
+  or do not say the number.
+
+- ~~394~~ | DONE v1.54.1, EXTERNAL REVIEW H1 | DOWNLOADER SCHEMES, AND
+  AN MD5 FLAG THAT TURNED OUT TO MATTER.
+  A static scan flagged unrestricted `urlopen()` at three sites. No
+  exploit was demonstrated and none is needed to justify the fix:
+  `urlopen` accepts `file://`, and a bare path with no scheme it reads
+  as a LOCAL FILE, so a mistyped or pasted string could make `fetch()`
+  copy something off the machine and print `[fetch] saved ...` as if
+  it had downloaded it. One `_check_scheme` reader, called by all
+  three paths, http(s) only - one WorldPop mirror still serves plain
+  http, so that stays allowed.
+  THE MD5 HALF WAS WORTH MORE THAN THE SCANNER THOUGHT. Every md5 here
+  is non-adversarial - cache identity, change detection, or comparing
+  against a publisher-supplied md5 - so `usedforsecurity=False` is the
+  honest declaration. It is also FUNCTIONAL: on a FIPS-enabled host
+  `hashlib.md5()` RAISES, so `cells.fingerprint()`, the tile manifests
+  and the unit-size cache key would all crash on an institutional
+  machine configured that way - a plausible partner machine in a
+  consortium. Checked before touching it that the digest VALUE is
+  unchanged (identical for empty, short and 2,560-byte payloads and
+  for incremental updates), because bigrun verifies stored tile
+  checksums on every read and a different digest would make every
+  existing tiled run on John's disks fail verification.
+
+- ~~387~~ | DONE v1.54.0, MADE AND CAUGHT WHILE CUTTING 1.54.0 | I
+  EDITED FILES WHILE A BREAK-CHECK HELD A SNAPSHOT OF THEM.
+  `breakcheck_doors.py` reads every target file once, then for each
+  break writes a modified copy, runs the suite, and writes the
+  original back - with a final restore in a `finally`. Correct, and it
+  means **the script's snapshot wins over anything edited while it
+  runs.** I ran it in the background and kept working: four edits to
+  `stata/equipop.ado` - the fweight block, the `markout`, the
+  `gl("wvar")` read and the `unit_was_set=` argument at the call site
+  - were silently reverted by its next restore.
+  AND KILLING IT LEFT A BREAK APPLIED, the same end state as 384's
+  SIGPIPE: `pkill` interrupted a break between write and restore.
+  **THIS IS 352 AND 384 FOR THE THIRD TIME**, in the same family and
+  the same session that recorded 384. 352 was `| head -4` killing
+  bump_version mid-write; 384 was `| head -14` killing a break-check
+  before its final restore; this is neither a pipe nor a signal but
+  the identical hazard - **a script that mutates the tree owns the
+  tree while it runs.**
+  THE RULE, extended from 384's: a script that mutates the tree is
+  never piped, AND nothing else touches those files until it has
+  finished. If there is other work to do, do it on files the script
+  does not list - the documents, the backlog - or wait.
+  HOW IT WAS CAUGHT: a test, within a minute, for the second time -
+  `test_the_subcommand_takes_a_WEIGHT_both_ways_and_reads_it` failed
+  on an assertion I had written minutes earlier precisely because the
+  behaviour it checks is invisible at run time. Which is the argument
+  for writing that kind of test: the lost edit was the one whose
+  absence would have produced a plausible, complete, silently
+  unweighted table.
+  AND A SECOND LESSON FROM THE SAME HOUR, about break-checks
+  themselves: **a break anchor that is not unique reports a false
+  SURVIVED.** Verifying the weight test, I wrote a quick script whose
+  anchor - the "not both - they mean the same thing" refusal - exists
+  TWICE in equipop.ado, once in the main command and once in the new
+  subcommand. `src.replace(find, repl, 1)` took the first, broke the
+  main command's copy, and the subcommand's test passed: reported as
+  a gap in the test when it was a gap in the script. The standing
+  break-check scripts assert `src.count(find) == 1` for exactly this
+  reason; the ad-hoc one did not. Anchored on the last occurrence
+  instead, the break was caught at once.
+  **An ad-hoc break-check needs the same uniqueness assertion as a
+  standing one, because a false SURVIVED sends you to rewrite a test
+  that was already correct.**
+
+- 386 | open v1.54.0, FOUND WHILE BUILDING 385 | THE UNIT-SIZE
+  ADVICE HAS NO STANDALONE DOOR IN QGIS OR PRO.
+  Stata got `equipop unit`, a read-only subcommand a user can run
+  before committing to anything, and Python has
+  `equipop.advise_unit`. At both GIS doors the advice arrives ONLY
+  attached to a finished machine-1 run - so to get a cheap answer
+  about what cell size to use, a GIS user has to pay for the
+  expensive run first, at whatever size they were already unsure
+  about. The advisory itself costs 0.07 s on 100,000 rows; the run it
+  is currently bolted to can take hours.
+  Declared as a `door` in the reachability matrix rather than a gap,
+  and that is correct as far as it goes: the capability IS reachable
+  at all four doors. The asymmetry is in WHEN, and the matrix has no
+  vocabulary for that - worth knowing when reading the row.
+  WHAT IT COSTS TO CLOSE: a QGIS algorithm registered in
+  `provider.py` and a Pro tool in `EquiPop.pyt`, both thin - two
+  input fields, an optional population field, a k numlist, and the
+  table printed to the log or the messages. The text already exists
+  in `doors/help.py` under `unitadvice`, so no second copy. Pro would
+  need a sixth help XML sidecar from `make_help_xml.py`.
+  NOT URGENT: a GIS user sees the cell size in a box and gets the
+  advice after their first run, which is the point at which they
+  would reconsider anyway. Recorded so a future session does not
+  rediscover it, and because the dialog wording is John's call.
+
+- ~~385~~ | DONE v1.54.0, JOHN'S QUESTION, 9 OCTOBER 2026 | WHAT CELL
+  SIZE DOES THIS DATA WANT?
+  *"in all machines we assume that the unit size of grid should be 100
+  - it has a visual setting in GIS, but in stata it has to be claimed
+  with unit() to change. I wonder - is there a cheap way to determine
+  the average nearest neighbour or similar - that would enable us to
+  recommend a unit size? ... This is not an easy task to settle - in
+  many gis cases, you will have many things close, and others a great
+  distances - knowing the unit size is a battle between computing
+  time and detail."*
+  **THE CRITERION IS NOT NEAREST-NEIGHBOUR SPACING.** That says when
+  cells start being EMPTY; it does not say when the answer stops
+  being an answer. There is a precise threshold for that and this
+  file already named it, in 95: once a cell holds >= k people, the
+  whole neighbourhood IS the origin cell, `Dist_k` comes from
+  `selfpot.radius_for_k` rather than from the data, and **k has
+  stopped being a parameter** - k=200 and k=2000 return the same
+  number. So the question has an exact answer: at each candidate
+  size, how many cells already hold k, and how many people live in
+  them.
+  **MEASURED AGAINST THE ENGINE, not derived on paper.** The claim is
+  that `count(cell population >= k)` equals the figure fastcounts
+  reports after a run as `[selfpot] k=N: the whole neighbourhood was
+  the origin cell for X of Y origins`. Checked by RUNNING the engine
+  and parsing its own message, on three shapes - one dense cell among
+  sparse, four cells at four densities, and population as a WEIGHT
+  rather than a row count - with the boundary values of k in each. It
+  agrees exactly. It is also only true under `originrule(include)`:
+  under `exclude` the origin's own mass is removed before the search,
+  so measured, the advisory predicts 1 and the engine reports 0. The
+  report says which rule it assumed.
+  **BOTH SHARES ARE PRINTED, because they answer different questions
+  and differ by an order of magnitude.** On the Denmark fixture 1% of
+  cells can hold 40% of the people. The engine's own message counts
+  ORIGINS, so a reader has to be able to reconcile the two, and the
+  recommendation uses the PEOPLE share because a study is about
+  people.
+  **TWO THINGS THE OBVIOUS IMPLEMENTATION GETS WRONG**, both found by
+  break-check and both measured rather than argued:
+  - the `>= k - 1e-9` slack is load-bearing for a SECOND reason
+    beyond 304's. A WorldPop pixel carries a FRACTIONAL population,
+    so a cell total is an accumulated float sum: 1,000 pixels of 0.1
+    come to 99.9999999999986, short of 100 by 1.4e-12. Without the
+    slack the advisory reports 0 saturated cells where the engine
+    reports 1 - on exactly the data EquiPop is usually pointed at.
+  - the two grid indices are paired into one key, and the multiplier
+    has to be MEASURED. A fixed 1000 collides on a 120 km by 300 m
+    strip - an ordinary extent: 1,201 cells become 1,200, the largest
+    population reads 2.0 where every real cell holds 1.0, and k=2
+    goes from 0 saturated cells to 1. A recommendation off the back
+    of a hash collision. Checked against `build_cells`, which grids
+    by pandas group-by and pairs nothing.
+  **NO SINGLE RECOMMENDED NUMBER, AND NO DEFAULT IS CHANGED.** John's
+  own objection is the reason for the first: density is heterogeneous,
+  so one unit cannot be right everywhere, and a single number would
+  hide the variation that makes the question hard. What the user gets
+  is the trade-off. The second is 116's rule - reported, never
+  substituted: if EquiPop chose the unit, two runs on the same data
+  could silently use different ones and a published figure would
+  depend on a heuristic that might change between versions.
+  **THE CACHE JOHN ASKED FOR, AND THE MEASUREMENT THAT JUSTIFIES
+  IT.** `advise_unit` costs 0.07 s on 100,000 rows, 0.84 s on a
+  million and 16 s on ten million - nine linear passes, and
+  `np.add.at` is already the fastest of the three groupings tried
+  (bincount and argsort+reduceat are both slower at 10M). The
+  fingerprint that validates a cache costs 0.55 s, so the cache earns
+  its place on big data and is pointless on small. It lives in
+  `char _dta[equipop_unitsize]`, which travels with the data,
+  survives `save` and dies with `clear` - the right lifetime for a
+  fact about this dataset. Keyed on a digest of the COORDINATES, not
+  a path or a row count, because that is 344: a resumed run returned
+  the first run's numbers since counting rows could not tell two
+  tables apart. Every way of being stale returns a miss.
+  **ON AN ORDINARY RUN IT IS USUALLY SILENT**, and it runs on every
+  machine-1 run because it is free: measured against a real run on
+  the same data, 0.3% of `build_cells` plus the kNN search, at both
+  20,000 and 60,000 individuals. It speaks when the user did not set
+  a unit and a different one would do, or when they DID set one and
+  it saturates - with their own number. Otherwise nothing, because a
+  note printed after every run is noise and noise is how a real
+  warning gets missed.
+  **`Unit(real 100)` HAD TO GO.** It delivers 100 both when the user
+  typed `unit(100)` and when they said nothing, so the advisory could
+  not tell a choice from a default and would have nagged everybody or
+  nobody. Read as a string, defaulted in the body where the fact can
+  be recorded. `r(unit)` unchanged.
+  WHAT SHIPPED: `equipop/unitsize.py`; `equipop unit xvar yvar` as a
+  third subcommand beside `doctor` and `setup`, with `r(unit)`,
+  `r(cells)`, `r(estimated)`, `r(tolerance)`, `r(N)`, `r(people)`,
+  `r(k)`, `r(originrule)`, `r(fingerprint)` and the matrix
+  `r(advice)` - named `advice` and not `table` because `r(table)` is
+  by universal Stata convention an estimation command's coefficient
+  table; the advisory on a run at all three GUI/command doors; the
+  text in `doors/help.py` so one source still serves four doors.
+  THE TEST THAT MATTERS: every door calls the advisory inside
+  `except Exception: pass`, which is right - the output is already
+  written and an advisory must never turn a finished run into an
+  error - and is also a machine for hiding a mistake forever. A
+  single mistyped keyword would mean no door ever printed anything
+  and no test failed. So `tests/test_unitsize_doors.py` BINDS every
+  call site's keywords against the live signature, and checks that
+  both of Pro's two exits pass through the advisory. That is 353,
+  368, 373 and 380 turned into a test instead of a lesson.
+
 - ~~384~~ | DONE v1.53.3, MADE AND CAUGHT WHILE CUTTING 1.53.3 | I
   KILLED MY OWN BREAK-CHECK WITH `| head` AGAIN.
   `python bc153.py | head -14` - SIGPIPE kills the script once head

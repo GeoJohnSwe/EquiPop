@@ -363,6 +363,19 @@ MATRIX = {
         "pro": door("arcgis/EquiPop.pyt", "tiles"),
         "stata": ruled_out("Machine 3 has no Stata door either."),
     },
+    # BACKLOG 385. A capability and not machinery: "what cell size
+    # does this data want?" is a question a person asks, and John
+    # asked it. Declared with four witnesses because the matrix is the
+    # step that was missing when inventory.py and vectorjoin.py
+    # shipped unreachable - and an ADVISORY is the easiest thing in
+    # the project to ship unreachable, since every door calls it
+    # inside `except Exception: pass`.
+    "unit-size advice (what cell size does this data want?)": {
+        "python": door("equipop/__init__.py", "advise_unit"),
+        "qgis": door("qgis/equipop_qgis/alg_counts.py", "_unit_advice"),
+        "pro": door("arcgis/EquiPop.pyt", "_unit_advice"),
+        "stata": door("stata/equipop.ado", "_equipop_unit"),
+    },
     "diagnostics (the doctor)": {
         "python": PYTHON,
         # BACKLOG 333: this was `pro: same_as("qgis")`, and a
@@ -420,4 +433,24 @@ INTERNAL = {
     "doors.rungs", "doors.registry", "doors.reference",
     "doors.decaynames", "doors.demography", "doors.continental",
     "doors.fetching", "doors.inventory",
+    # BACKLOG 385. Listed here like every other module - see the note
+    # below on what this set actually means - AND carrying a row of
+    # its own in MATRIX, because the cell size a study uses is
+    # something a person asks about rather than machinery they never
+    # see. It is the fifth new module this check has stopped from
+    # shipping undeclared, after inventory, vectorjoin, doors.numbers
+    # and labels.
+    "unitsize",
 }
+
+#: WHAT THIS SET MEANS, because the name says less than it does.
+#: test_4 checks every module in the package against INTERNAL and
+#: nothing else, so EVERY module belongs here, capability or not; a
+#: capability then ALSO gets a row in MATRIX naming its four doors.
+#:
+#: The assertion used to offer "either ... or", which was not true of
+#: the code underneath it: a module given a MATRIX row and left out of
+#: here still failed, with a message telling the author they had
+#: already done enough. A guard whose instructions do not match its
+#: behaviour is the same defect this file exists to catch, one level
+#: up - so the wording was corrected rather than the check loosened.

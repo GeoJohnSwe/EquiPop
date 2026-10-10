@@ -154,7 +154,7 @@ def main(argv):
             missed.append(f"{rel} (file missing)")
             continue
         if path not in pending:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8", newline="") as f:
                 pending[path] = f.read()
         repl = new
         if len(entry) > 2 and entry[2] == "TODAY":
@@ -173,7 +173,7 @@ def main(argv):
         if not os.path.exists(path):
             continue
         if path not in pending:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8", newline="") as f:
                 pending[path] = f.read()
         text = pending[path]
         fixed = text.replace(f"equipop-{old}", f"equipop-{new}")
@@ -187,7 +187,7 @@ def main(argv):
         touched = {os.path.join(ROOT, r) for r, _ in report}
         for path, text in pending.items():
             if path in touched:
-                with open(path, "w", encoding="utf-8") as f:
+                with open(path, "w", encoding="utf-8", newline="") as f:
                     f.write(text)
     for rel, label in report:
         print(f"    {rel}  {label}")

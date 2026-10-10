@@ -704,7 +704,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.53.4"
+TOOLBOX_VERSION = "1.54.2"
 
 
 def _announce_version(messages):
@@ -2244,6 +2244,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             engine_record=_finished(_runlog, res)), messages)
         messages.addMessage("[time] TOTAL: " + _hms(time.time()
                                                     - t_all))
+        _unit_advice(messages, x, y, kw, float(unit))
         return
 
     names = {c: _field(c) for c in res}
@@ -2422,6 +2423,44 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                             "the radius each point needed to gather "
                             "its k people (k fixes population, the "
                             "radius floats). Not an error - a finding.")
+    _unit_advice(messages, x, y, kw, float(unit))
+
+
+def _unit_advice(messages, x, y, kw, unit, default=100.0):
+    """BACKLOG 385. What cell size did this data want? Last, and
+    usually nothing.
+
+    John, 9 October 2026: "knowing the unit size is a battle between
+    computing time and detail." The run has just measured both sides,
+    so the only cost here is saying so.
+
+    CALLED FROM BOTH EXITS of the machine-1 tool. Pro returns early
+    for a table output and again at the end for a feature class, and a
+    note added at one of them only is this project's most repeated bug
+    - a thing that exists which the path cannot reach, five releases
+    running (BACKLOG 353, 368, 373, 380). One helper, two call sites,
+    so there is one place to look.
+
+    `unit_was_set` is "did they move it off the default", the same
+    question the Stata door asks about a missing unit().
+
+    SILENT ON FAILURE: the output is already written by the time this
+    runs, and an advisory must never turn a finished run into an
+    error.
+    """
+    try:
+        from equipop import unitsize
+
+        adv = unitsize.advise_unit(
+            x, y, kw.get("weight"),
+            k_values=kw.get("k_values") or [100], current=unit,
+            self_rule=kw.get("self_rule") or "include")
+        for line in unitsize.advise_on_run(
+                adv, unit=unit,
+                unit_was_set=abs(unit - float(default)) > 1e-9):
+            messages.addMessage(line)
+    except Exception:
+        pass
 
 
 def _manifest_rows(engine, layer, unit, k_text, r_text, tau_text,
