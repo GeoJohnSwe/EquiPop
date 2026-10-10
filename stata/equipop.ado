@@ -1,4 +1,4 @@
-*! equipop v1.54.3  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.54.4  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -574,7 +574,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.54.3"
+    local eqp_ado_version "1.54.4"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -624,7 +624,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.54.3"
+    local eqp_ado_version "1.54.4"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -1490,8 +1490,39 @@ def _equipop_doctor_py(ado_version="", min_engine=""):
     # real machines. Passing it to one of them raises TypeError, so
     # the call falls back - an ado must never break on an engine older
     # than itself when the only loss is a line of the report.
+    # ASKED, NOT CAUGHT. This was
+    #
+    #     try:    run(ado_version=..., min_engine=...)
+    #     except TypeError: run(ado_version=...)
+    #
+    # and `run()` did not accept min_engine AT ALL until 1.54.4 - so
+    # the TypeError fired on every single doctor run, the fallback
+    # reported with no floor, and BACKLOG 332's floor check was dead
+    # from this door for six releases. A blanket `except TypeError`
+    # around a call cannot tell a missing parameter from a TypeError
+    # raised deep inside the report, and it degraded in silence
+    # either way, which is why nobody found out.
+    #
+    # Inspecting the signature asks the question directly, and when
+    # the answer is no the report SAYS the floor could not be
+    # checked. A silent degrade is the thing to avoid here, not the
+    # old engine.
+    import inspect
     try:
+        takes_floor = "min_engine" in inspect.signature(run).parameters
+    except Exception:
+        takes_floor = False
+    if takes_floor:
         run(ado_version=ado_version, min_engine=min_engine)
-    except TypeError:
+    else:
         run(ado_version=ado_version)
+        print("")
+        print(f"  (this engine is too old to be told which engine the "
+              f"commands need:")
+        print(f"   they need {min_engine} or newer, and the lines above "
+              f"could not check it.")
+        print("   Any version remark above compares two RELEASE "
+              "numbers, which move for")
+        print("   different reasons - `equipop setup` brings the engine "
+              "up to date.)")
 end

@@ -545,16 +545,28 @@ def report(ado_version: str = "",
     return out
 
 
-def run(stream=None, ado_version: str = "") -> None:
+def run(stream=None, ado_version: str = "",
+        min_engine: str = "") -> None:
     """Print the report, flushing every line.
 
     The flush is not tidiness. If a compiled library takes the whole
     process down mid-report - which is what Stata plus Anaconda does on
     Windows - the lines already written are the only evidence there
     will be, and an unflushed buffer dies with the process.
+
+    `min_engine` WAS MISSING HERE FOR SIX RELEASES, and that made
+    BACKLOG 332 dead from the Stata door. 332 made the FLOOR decide
+    whether an engine/commands difference matters - `report()` takes
+    it and uses it - but the .ado calls `run()`, which did not, so
+    every doctor run raised TypeError, hit the ado's fallback, and
+    reported with no floor at all. John's 10 October output is the
+    proof: engine 1.54.2 against commands 1.54.3, the floor 1.48.0
+    satisfied, and a loud "THE ENGINE IS OLDER THAN THE COMMANDS, and
+    that combination does break" where the correct line is "needs
+    engine : 1.48.0 or newer - satisfied".
     """
     stream = stream or sys.stdout
-    for line in report(ado_version):
+    for line in report(ado_version, min_engine):
         stream.write(line + "\n")
         try:
             stream.flush()

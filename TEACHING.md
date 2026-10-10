@@ -1,6 +1,14 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.54.3, 10 October 2026.**
+**Last updated: 1.54.4, 10 October 2026.**
+*Reviewed at 1.54.4: ONE SENTENCE CHANGES IN THE CELL-SIZE
+SLIDE. John read `help equipop` and said the unit() entry did
+not say HOW to ask the data - it reported that an advisory
+exists and never named the loop. The help now describes it:
+leave the size unset, run, read the note the run prints, set
+the size, run again. Teach that sequence rather than the
+option, and `equipop unit xvar yvar, k(100)` for asking
+without a run at all.*
 *Reviewed at 1.54.3: ONE LINE WORTH ADDING TO THE FIRST
 SESSION. `equipop help` now works, as well as Stata's own
 `help equipop` - John typed the first and was told it was an

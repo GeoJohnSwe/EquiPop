@@ -1,6 +1,14 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.54.3, 10 October 2026.**
+**Last updated: 1.54.4, 10 October 2026.**
+*Reviewed at 1.54.4: NO CLAIM CHANGES. Help wording, and a
+diagnostic that had been comparing the wrong two numbers since
+1.49.3 - the commands declare which engine they need and the
+doctor was never given it, so it judged release numbers
+instead. Worth one line in a risk section IF asked how
+partner-machine problems are found: they are found by partners
+sending output, which is why the doctor is read-only and
+copyable. Not a capability; do not present it as one.*
 *Reviewed at 1.54.3: NO CLAIM IN THIS FILE CHANGES. The release
 adds `equipop help` as a subcommand, two lines to the doctor's
 clean verdict, and three tests that derive a documented list

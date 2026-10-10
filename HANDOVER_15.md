@@ -27,6 +27,76 @@ review then found AGAIN, still pointing at it.*
 
 ---
 
+## 0o. 1.54.4 - SIX RELEASES OF A FLOOR CHECK THAT NEVER RAN
+
+John sent a doctor report that worked, with "see if you find
+something". It said:
+
+```
+  engine       : 1.54.2   (the Python package)
+  commands     : 1.54.3   (the .ado files)
+
+  THE ENGINE IS OLDER THAN THE COMMANDS, and that combination does break:
+```
+
+**The floor those commands declare is 1.48.0, and 1.54.2 satisfies
+it.** The correct line is `needs engine : 1.48.0 or newer -
+satisfied`. Nothing was wrong with his install.
+
+**THE CAUSE.** `report()` takes `min_engine`. **`run()` did not.** The
+`.ado` calls `run()`. So `run(ado_version=..., min_engine=...)` raised
+`TypeError` on every doctor run since BACKLOG 332 landed, the ado's
+fallback re-ran without the floor, and the report judged by comparing
+two RELEASE NUMBERS - which is precisely what 332 exists to prevent.
+Its docstring in `doctor.py` reads:
+
+> The loud message belongs to the second and now goes only there.
+
+It never went only there. **Six releases.** Built, documented at
+length, tested through `report()` directly, and unreachable from the
+only door that passes the argument.
+
+**HIDDEN BY A BROAD EXCEPT, whose own comment said what it was for:**
+"min_engine is newer than the argument list of every engine before
+1.49.3". A blanket `except TypeError` around a call cannot tell a
+missing parameter from a `TypeError` raised deep inside the report,
+and it degraded in silence either way. The ado now ASKS
+`inspect.signature(run)` and, when the answer is no, prints that the
+floor went unchecked. **A silent degrade was the problem, not the old
+engine.**
+
+**AND I HAD ALREADY WRITTEN THE TEST THAT CATCHES THIS.** Section 0k
+above describes `test_every_door_calls_the_advisory_with_arguments_it_accepts`
+- it binds every call site's keywords against the live signature, and
+its docstring explains exactly why: *"a call inside `except
+Exception: pass` would fail SILENTLY at every run, forever."* I
+pointed it at three doors and not at the `doctor` and `setup` calls
+**in the same file**. It is now general over every engine function the
+block calls by keyword.
+
+**That is the sixth instance of one pattern in this session** - 353,
+368, 373, 380, 388, this - and the first found by a user rather than
+by a review or a break-check. The generalisable rule: **when a test
+is written because a construct can hide failure, apply it to every
+instance of that construct, not to the one that prompted it.**
+
+**THE HELP REWRITE IS SMALLER AND WORTH NOTING TOO.** John: the
+`unit(#)` entry "doesn't indicate how to ask the data (i.e. run and
+rerun with information described in output)". He was right, and the
+defect has a name: it stated that the advisory EXISTS and never said
+how to see it. **A fact where an instruction was needed** - it read
+as documentation of a feature rather than advice to somebody with a
+dataset and no idea what to type. It now names the loop, with the
+Stata command in the `STATA_EXTRA` half because the same paragraph is
+read in QGIS and Pro where there is nothing to type. A blank line in
+shared help text now becomes its own `{phang2}` block instead of
+rendering flush-left outside the option's indent.
+
+(The `the unit-size hows` mangling in his paste is a copy artifact,
+not a defect: the shipped file has "report shows", and `unit(#)` at
+433 characters is one of the SHORTER option lines - `overshoot` is
+1,455 and renders fine.)
+
 ## 0n. 1.54.3 - A WORTHLESS TEST, FOUND BY ONE LINE OF JOHN'S CONSOLE
 
 He sent two things in one message: the doctor's clean verdict, and

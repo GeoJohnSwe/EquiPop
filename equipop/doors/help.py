@@ -353,14 +353,27 @@ HELP = {
                 "word 'unknown'. Only projected (metric) systems are "
                 "accepted: EquiPop measures neighbourhoods in metres, "
                 "and a degree is not a length.",
+    # JOHN, 10 OCTOBER 2026: "it doesn't indicate how to ask the data
+    # (i.e. run and rerun with information described in output)". The
+    # old text said the report exists and never said how to see it,
+    # which makes it a fact rather than an instruction. The LOOP is
+    # the answer and it is door-neutral: leave the size unset, read
+    # the note the run prints, set the size, run again.
     "unit": "The grid cell size in metres. Bigger cells mean fewer "
             "origins and much faster runs; smaller cells mean finer "
             "geography. This is the strongest speed control you "
-            "have. If you are not sure what to put here, ask the "
-            "data: the unit-size report shows, for each candidate "
-            "size, how many cells it makes and how many of your "
-            "people would end up in a cell that already holds k - "
-            "the point at which k stops making any difference.",
+            "have.\n\n"
+            "NOT SURE WHAT TO PUT HERE? Ask the data, in two runs. "
+            "Leave the size unset and run as usual: at the end, "
+            "EquiPop reports whether another size would suit this "
+            "data better, naming one. Then set it and run again. "
+            "The report gives, for each candidate size, how many "
+            "cells it makes - the cost - and what share of your "
+            "people would end up in a cell that already holds k on "
+            "its own. Those people have no measured radius: their "
+            "whole neighbourhood is that one cell, so k stops making "
+            "any difference to them. Nothing is ever changed for "
+            "you; the size stays whatever you set or inherited.",
     # BACKLOG 385. One text, four doors: `equipop unit` in Stata, the
     # report in the QGIS log and the Pro messages, and
     # equipop.unitsize.advise_unit() in Python.

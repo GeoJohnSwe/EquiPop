@@ -555,6 +555,80 @@ def test_every_help_paragraph_survives_into_the_file_as_PROSE():
         f"character by character")
 
 
+def test_the_cell_size_help_says_HOW_to_ask_the_data():
+    """JOHN, 10 OCTOBER 2026, reading `help equipop` on a working
+    1.54.3 install: "can you reformulate the help around the unit(#)
+    description - it doesn't indicate how to ask the data (i.e. run
+    and rerun with information described in output)".
+
+    BROKEN WITH: removing the two-run loop from HELP["unit"], or the
+    Stata command from STATA_EXTRA.
+
+    He was exactly right, and the defect is a kind worth naming: the
+    old text said the unit-size report EXISTS and never said how to
+    see it. **A fact where an instruction was needed.** It read as
+    documentation of a feature rather than advice to a person with a
+    dataset and no idea what to type.
+
+    So the shared text now describes the LOOP, which is door-neutral:
+    leave the size unset, run, read the note the run prints, set the
+    size, run again. The Stata spelling cannot live in the shared
+    text - the same paragraph is read in QGIS and Pro, where there is
+    no command to type - so it is appended through STATA_EXTRA, the
+    mechanism BACKLOG 338 added for exactly this.
+    """
+    sys.path.insert(0, os.path.dirname(STATA_DIR))
+    from tools.make_sthlp import option_text
+
+    text = option_text("unit(#)")
+    flat = " ".join(text.split())
+
+    # the loop, in the shared half
+    assert "run as usual" in flat and "run again" in flat, (
+        "the help still does not say how to ask the data - it has to "
+        "describe the two-run loop, not merely report that an "
+        "advisory exists")
+    assert "Leave the size unset" in flat, (
+        "nothing tells the user that NOT setting it is how to be "
+        "asked")
+    # the Stata way of asking without a run, in the door-specific half
+    assert "equipop unit xvar yvar" in flat, (
+        "the Stata help does not name the command that answers the "
+        "question without running the analysis")
+    assert "changes nothing" in flat, (
+        "a user about to try an unfamiliar subcommand on real data "
+        "is not told it is safe")
+    # and it still promises nothing is applied for them
+    assert "Nothing is ever changed for you" in flat
+
+    # the shared half must stay door-neutral: no Stata syntax in the
+    # text QGIS and Pro also show
+    from equipop.doors.help import HELP
+
+    shared = " ".join(HELP["unit"].split())
+    for stata_only in ("equipop unit", "fweight", "r(", "-help "):
+        assert stata_only not in shared, (
+            f"{stata_only!r} is in the SHARED cell-size help, which "
+            f"QGIS and ArcGIS Pro also display - door-specific facts "
+            f"belong in STATA_EXTRA")
+
+    # and it reaches the generated file as more than one paragraph
+    h = _read("equipop.sthlp")
+    # ANCHORED AT LINE START. `{opt unit(#)}` appears first inside
+    # `{synopt:{opt unit(#)}}` in the summary table, which comes
+    # BEFORE the options section - so an unanchored index sliced
+    # backwards and gave an empty string. The options entry is the
+    # one that BEGINS a line.
+    start = h.index("\n{opt unit(#)} ") + 1
+    block = h[start:h.index("\n{opt pop(varname)} ", start)]
+    assert block.count("{p_end}") >= 2, (
+        "the cell-size help is emitted as one paragraph - a blank "
+        "line in the shared text has to become its own SMCL block, "
+        "or the second paragraph renders outside the option's indent")
+    assert "{phang2}" in block, (
+        "a continuation paragraph is not indented under the option")
+
+
 def test_every_subcommand_appears_in_the_HELP_as_well():
     """BROKEN WITH: dispatching a subcommand and not documenting it.
 

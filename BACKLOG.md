@@ -3607,6 +3607,44 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- ~~401~~ | DONE v1.54.4, JOHN'S DOCTOR OUTPUT, 10 OCTOBER 2026 | 332'S
+  FLOOR CHECK HAD NEVER ONCE BEEN CONSULTED FROM STATA.
+  He sent a working doctor report and said "see if you find
+  something". It shows engine 1.54.2 against commands 1.54.3 and:
+  ```
+    THE ENGINE IS OLDER THAN THE COMMANDS, and that combination does break:
+  ```
+  **The floor those commands declare is 1.48.0, and 1.54.2 satisfies
+  it.** The correct line is `needs engine : 1.48.0 or newer -
+  satisfied`, and nothing was wrong with his install at all.
+  THE CAUSE, REPRODUCED: `report()` takes `min_engine`. **`run()` did
+  not.** The .ado calls `run()`. So `run(ado_version=..., min_engine=...)`
+  raised TypeError on EVERY doctor run since 332 landed, the ado's
+  fallback re-ran without the floor, and the report fell back to
+  comparing two RELEASE NUMBERS - which is the exact thing 332 exists
+  to stop, and whose docstring in this very file says "The loud
+  message belongs to the second and now goes only there."
+  **SIX RELEASES. The feature was built, documented at length, tested
+  through `report()` directly, and unreachable from the only door that
+  passes the argument.** 353, 368, 373, 380, 388 - and now this, found
+  not by a review but by a user pasting output that looked fine to him.
+  HIDDEN BY A BROAD EXCEPT, and the comment beside it even said what
+  it was for: "min_engine is newer than the argument list of every
+  engine before 1.49.3". A blanket `except TypeError` around a call
+  **cannot tell a missing parameter from a TypeError raised deep
+  inside the report**, and it degraded in silence either way.
+  THE FIX: `run()` takes and forwards `min_engine`; the ado ASKS
+  `inspect.signature(run)` instead of catching; and when the answer is
+  no, the report SAYS the floor could not be checked. A silent degrade
+  is the thing to avoid, not the old engine.
+  **AND I HAD ALREADY WRITTEN THE TEST THAT CATCHES THIS.** 1.54.0's
+  `test_every_door_calls_the_advisory_with_arguments_it_accepts` binds
+  every call site's keywords against the live signature, and its
+  docstring explains why: a call inside a broad except would fail
+  forever in silence. I pointed it at three doors and not at the
+  doctor and setup calls **in the same file**. It is now general over
+  every engine function the .ado's python block calls by keyword.
+
 - ~~400~~ | DONE v1.54.3, JOHN'S FIELD REPORT, 10 OCTOBER 2026 | THE
   ONE WORD A CONFUSED USER TYPES, REFUSED BY THE THING THEY WERE
   ASKING ABOUT.

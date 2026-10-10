@@ -281,6 +281,188 @@ def test_an_old_ado_that_sends_no_floor_still_gets_one(
     assert "equipop>=1.48.2" in cmd, cmd
 
 
+def test_every_engine_call_the_ado_makes_is_one_the_engine_accepts():
+    """JOHN'S DOCTOR OUTPUT, 10 OCTOBER 2026, AND SIX RELEASES OF DEAD
+    CODE.
+
+    BROKEN WITH: removing `min_engine` from doctor.run's signature, or
+    calling it with a keyword the engine does not take.
+
+    His report showed engine 1.54.2 against commands 1.54.3 with a
+    loud "THE ENGINE IS OLDER THAN THE COMMANDS, and that combination
+    does break" - and the floor those commands declare, 1.48.0, was
+    satisfied. The correct line is "needs engine : 1.48.0 or newer -
+    satisfied".
+
+    THE CAUSE: `report()` takes `min_engine` and `run()` did not. The
+    .ado calls `run()`. So every doctor run since BACKLOG 332 raised
+    TypeError, fell back to a call without the floor, and reported by
+    comparing two RELEASE numbers - which 332 exists to stop. **The
+    floor check was never once consulted from the Stata door.**
+
+    AND IT WAS HIDDEN BY A BROAD EXCEPT, written for an engine older
+    than 1.49.3: `except TypeError` cannot tell a missing parameter
+    from a TypeError raised deep inside the report, and it degraded
+    silently either way.
+
+    I WROTE THIS EXACT TEST IN 1.54.0 and pointed it at three doors -
+    "every door calls the advisory with arguments it accepts" - after
+    reasoning that a call inside a broad except would fail forever in
+    silence. I did not point it at the doctor and setup calls in the
+    same file. So: every engine function the block calls by keyword,
+    bound against the live signature.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    src = _block_source()
+    tree = ast.parse(src)
+
+    origin = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and \
+                (node.module or "").startswith("equipop"):
+            for alias in node.names:
+                origin[alias.asname or alias.name] = (node.module,
+                                                      alias.name)
+    assert origin, "the block imports nothing from the engine"
+
+    checked = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "id", None)
+        if name not in origin:
+            continue
+        module, attr = origin[name]
+        fn = getattr(importlib.import_module(module), attr, None)
+        if not callable(fn) or inspect.isclass(fn):
+            continue
+        try:
+            sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            continue
+        kwargs, starred = {}, False
+        for kw in node.keywords:
+            if kw.arg is None:
+                starred = True
+            else:
+                kwargs[kw.arg] = None
+        if starred:
+            continue
+        try:
+            sig.bind(*[None] * len(node.args), **kwargs)
+        except TypeError as exc:
+            raise AssertionError(
+                f"equipop.ado calls {module}.{attr}("
+                f"{', '.join(sorted(kwargs))}) at line {node.lineno} "
+                f"of the python block, and the engine's signature is "
+                f"{attr}{sig} - {exc}. This is what made BACKLOG "
+                f"332's floor check dead from the Stata door for six "
+                f"releases: the call raised TypeError every time and "
+                f"a fallback reported without it.")
+        checked += 1
+    assert checked >= 1, (
+        f"only {checked} engine call(s) with keywords were checked - "
+        f"if the block stopped calling the engine by keyword, this "
+        f"test has stopped guarding anything")
+
+
+def test_the_ado_asks_whether_the_engine_takes_the_floor():
+    """BROKEN WITH: dropping `min_engine=` from the ado's run() call,
+    or going back to `except TypeError` around it.
+
+    The ado half of the same finding, and break-check found both ways
+    of losing it surviving the signature test above - which binds
+    `run(ado_version=...)` happily, because that call IS valid. It is
+    just not the call that consults the floor.
+
+    TWO PROPERTIES. The floor must be PASSED, and the decision about
+    whether the engine can take it must be ASKED rather than CAUGHT:
+    a blanket `except TypeError` cannot tell a missing parameter from
+    a TypeError raised deep inside the report, and it is what hid
+    this for six releases by degrading in silence. When the answer is
+    no, the report has to say the floor could not be checked.
+    """
+    import ast
+
+    src = _block_source()
+    fn = next(n for n in ast.parse(src).body
+              if isinstance(n, ast.FunctionDef)
+              and n.name == "_equipop_doctor_py")
+    body = ast.dump(fn)
+
+    assert "min_engine" in body, (
+        "the doctor glue no longer mentions min_engine at all")
+    # a run() call that passes the floor
+    passes = [
+        c for c in ast.walk(fn)
+        if isinstance(c, ast.Call) and getattr(c.func, "id", None) == "run"
+        and any(k.arg == "min_engine" for k in c.keywords)]
+    assert passes, (
+        "the ado never calls run() with min_engine=, so the floor it "
+        "went to the trouble of declaring is not consulted - which is "
+        "the state John's 10 October doctor output came from")
+
+    # and the choice is made by asking, not by catching
+    assert "signature" in body, (
+        "the ado does not inspect run()'s signature - if it decides "
+        "by catching TypeError instead, a TypeError from anywhere "
+        "inside the report silently degrades the whole thing")
+    handlers = [h for h in ast.walk(fn) if isinstance(h, ast.ExceptHandler)
+                and getattr(h.type, "id", None) == "TypeError"]
+    assert not handlers, (
+        "a bare `except TypeError` is back around the doctor call. It "
+        "cannot distinguish a missing parameter from a failure inside "
+        "the report, and it degrades without saying so.")
+
+    # the degraded path must announce itself
+    assert "could not check it" in src, (
+        "an engine too old to be told the floor is reported with no "
+        "note saying the floor went unchecked - a silent degrade is "
+        "exactly what hid this")
+
+
+def test_the_doctor_is_told_which_engine_the_commands_need():
+    """BROKEN WITH: the ado dropping min_engine, or run() ignoring it.
+
+    The other half of the same finding, asserted on BEHAVIOUR rather
+    than on signatures: with the floor supplied and met, the report
+    says so calmly; without it, the release-number comparison speaks
+    instead. John got the second where the first was correct.
+    """
+    from equipop import doctor
+
+    with_floor = "\n".join(doctor.report(ado_version="99.0.0",
+                                          min_engine="1.0.0"))
+    assert "needs engine : 1.0.0 or newer - satisfied" in with_floor, (
+        "the floor is supplied and met and the report does not say so")
+    assert "OLDER THAN THE COMMANDS" not in with_floor, (
+        "the floor is met and the report still warns about the "
+        "release numbers - which is the message John got")
+
+    without = "\n".join(doctor.report(ado_version="99.0.0"))
+    assert "OLDER THAN THE COMMANDS" in without, (
+        "with no floor to judge against, the release-number "
+        "comparison is all there is and has to still appear")
+
+    unmet = "\n".join(doctor.report(ado_version="99.0.0",
+                                     min_engine="99.0.0"))
+    assert "THE ENGINE IS TOO OLD FOR THESE COMMANDS" in unmet
+
+    import inspect
+
+    assert "min_engine" in inspect.signature(doctor.run).parameters, (
+        "doctor.run does not accept min_engine, so the .ado cannot "
+        "pass the floor and every report falls back to comparing "
+        "release numbers")
+    buf = io.StringIO()
+    doctor.run(stream=buf, ado_version="99.0.0", min_engine="1.0.0")
+    assert "needs engine : 1.0.0 or newer - satisfied" in buf.getvalue(), (
+        "run() accepts min_engine and does not forward it to report")
+
+
 def test_every_engine_symbol_the_ado_imports_exists(block):
     """BACKLOG 332's safety net, and the reason the floor is safe to
     decouple.

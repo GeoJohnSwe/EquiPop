@@ -240,6 +240,20 @@ def _wrap(text, width=72, indent=""):
 #: instead of overriding it. Use this when the box means the same
 #: thing everywhere and only its availability differs.
 STATA_EXTRA = {
+    # JOHN, 10 OCTOBER 2026. The shared text now describes the loop -
+    # run, read the note, set the size, run again - and the one thing
+    # it cannot carry is the Stata spelling, because the same
+    # paragraph is read in QGIS and Pro where there is no command to
+    # type. This is the door-specific FACT that belongs here.
+    "unit(#)":
+        "IN STATA you can also ask without running the analysis at "
+        "all: -equipop unit xvar yvar, k(100)- prints the whole "
+        "table in a second or so and changes nothing, so it is safe "
+        "to try before committing to a long run. It takes the same "
+        "[fweight=] or pop() as a run, and -help equipop- documents "
+        "its own options and r() results. A run that does not set "
+        "unit() prints the short version of the same advice when it "
+        "finishes.",
     "overshoot(string)":
         "NOT AVAILABLE IN STATA: overshoot(sampled) returns an error "
         "pointing you to overshoot(proportional), or to QGIS and "
@@ -261,7 +275,11 @@ def option_text(opt):
         raise KeyError(
             f"Stata option {opt!r} maps to help key {key!r}, which is "
             f"not in equipop/doors/help.py")
-    return HELP[key] + ((" " + extra) if extra else "")
+    # A PARAGRAPH BREAK, not a space. A door-specific fact is a
+    # different thought from the shared explanation, and running them
+    # together made unit(#)'s second paragraph a wall. The options
+    # loop in build() turns each break into its own {phang2}.
+    return HELP[key] + (("\n\n" + extra) if extra else "")
 
 
 def build():
@@ -463,9 +481,24 @@ def build():
     add("{title:Options}")
     add("")
     for opt in OPTION_HELP:
+        # A BLANK LINE IN THE SHARED TEXT IS A PARAGRAPH BREAK, and
+        # each paragraph needs its own SMCL block or the second one
+        # renders flush-left, outside the option's indent. Added when
+        # unit(#) grew a second paragraph (John, 10 October 2026); it
+        # applies to every option that ever gains one.
+        paras = [p.strip() for p in option_text(opt).split("\n\n")
+                 if p.strip()]
         add("{phang}")
-        add("{opt %s} %s" % (opt, _smcl_escape(option_text(opt))))
+        add("{opt %s} %s" % (opt, _smcl_escape(paras[0])))
         add("{p_end}")
+        for extra in paras[1:]:
+            add("")
+            # {phang2} indents a continuation under the option name,
+            # which is what a reader expects of a second paragraph
+            # about the same box.
+            add("{phang2}")
+            add(_smcl_escape(extra))
+            add("{p_end}")
         add("")
     add("{marker results}{...}")
     add("{title:Stored results}")

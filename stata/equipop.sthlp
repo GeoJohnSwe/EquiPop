@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.54.3}{...}
+{* *! version 1.54.4}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.54.3)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.54.4)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -167,7 +167,15 @@ plain python.org Python for Stata.
 {p_end}
 
 {phang}
-{opt unit(#)} The grid cell size in metres. Bigger cells mean fewer origins and much faster runs; smaller cells mean finer geography. This is the strongest speed control you have. If you are not sure what to put here, ask the data: the unit-size report shows, for each candidate size, how many cells it makes and how many of your people would end up in a cell that already holds k - the point at which k stops making any difference.
+{opt unit(#)} The grid cell size in metres. Bigger cells mean fewer origins and much faster runs; smaller cells mean finer geography. This is the strongest speed control you have.
+{p_end}
+
+{phang2}
+NOT SURE WHAT TO PUT HERE? Ask the data, in two runs. Leave the size unset and run as usual: at the end, EquiPop reports whether another size would suit this data better, naming one. Then set it and run again. The report gives, for each candidate size, how many cells it makes - the cost - and what share of your people would end up in a cell that already holds k on its own. Those people have no measured radius: their whole neighbourhood is that one cell, so k stops making any difference to them. Nothing is ever changed for you; the size stays whatever you set or inherited.
+{p_end}
+
+{phang2}
+IN STATA you can also ask without running the analysis at all: -equipop unit xvar yvar, k(100)- prints the whole table in a second or so and changes nothing, so it is safe to try before committing to a long run. It takes the same [fweight=] or pop() as a run, and -help equipop- documents its own options and r() results. A run that does not set unit() prints the short version of the same advice when it finishes.
 {p_end}
 
 {phang}
@@ -219,7 +227,11 @@ plain python.org Python for Stata.
 {p_end}
 
 {phang}
-{opt overshoot(string)} What happens to the ring of cells that CROSSES k. EquiPop grows a neighbourhood outward until it holds k people, and the ring that takes it past k almost never lands on k exactly. 'Whole ring' takes all of it - what EquiPop did before 1.30 - so ask a 3x3 of cells holding ten each for k=11 and you receive 50. That is worst at SMALL k and AT BOUNDARIES, which is exactly where segregation is measured: on a planted sharp edge the share R_k in the boundary cell reads 0.20 whole against 0.02 proportional. 'Proportional share' takes the same fraction of every cell in that ring, so N_k is exactly k; it produces FRACTIONAL PEOPLE, which are estimates rather than persons, and value statistics refuse it because a quarter of a cell has no median, percentile or Gini. 'Sampled' takes whole cells one at a time, in an order drawn from the seed, until k is reached - this is the original EquiPop method from the 2014 C# tool, kept so old results can be reproduced and compared. Sampled is NOT proportional with the fractions removed: it is that answer rounded up to a whole cell, and different seeds do not average the difference away. Set 'whole ring' to reproduce numbers from before 1.30 exactly. NOT AVAILABLE IN STATA: overshoot(sampled) returns an error pointing you to overshoot(proportional), or to QGIS and ArcGIS Pro, which do implement it - sampled needs a seeded draw over whole cells, and the Stata door does not carry one.
+{opt overshoot(string)} What happens to the ring of cells that CROSSES k. EquiPop grows a neighbourhood outward until it holds k people, and the ring that takes it past k almost never lands on k exactly. 'Whole ring' takes all of it - what EquiPop did before 1.30 - so ask a 3x3 of cells holding ten each for k=11 and you receive 50. That is worst at SMALL k and AT BOUNDARIES, which is exactly where segregation is measured: on a planted sharp edge the share R_k in the boundary cell reads 0.20 whole against 0.02 proportional. 'Proportional share' takes the same fraction of every cell in that ring, so N_k is exactly k; it produces FRACTIONAL PEOPLE, which are estimates rather than persons, and value statistics refuse it because a quarter of a cell has no median, percentile or Gini. 'Sampled' takes whole cells one at a time, in an order drawn from the seed, until k is reached - this is the original EquiPop method from the 2014 C# tool, kept so old results can be reproduced and compared. Sampled is NOT proportional with the fractions removed: it is that answer rounded up to a whole cell, and different seeds do not average the difference away. Set 'whole ring' to reproduce numbers from before 1.30 exactly.
+{p_end}
+
+{phang2}
+NOT AVAILABLE IN STATA: overshoot(sampled) returns an error pointing you to overshoot(proportional), or to QGIS and ArcGIS Pro, which do implement it - sampled needs a seeded draw over whole cells, and the Stata door does not carry one.
 {p_end}
 
 {phang}
