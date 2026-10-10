@@ -327,14 +327,42 @@ def test_the_subcommand_test_cannot_swallow_a_real_run():
 
     A guard that ate a legitimate command line would be far worse than
     the message it replaces.
+
+    SCOPED TO THE `if` CONDITION, not to a window of characters before
+    the message. This read `body[index - 700 : index]`, and adding the
+    `equipop help` branch in 1.54.3 pushed the exclusion out of that
+    window - so the test failed with "-if- and -in- are not excluded"
+    about an .ado in which they are. **The same proximity-slice
+    fragility as the `_equipop_setup_py` slice fixed one release
+    earlier** (BACKLOG 385's note), where a function inserted between
+    two markers silently changed what the test was about. There it
+    failed loudly; here too; neither time by design.
+
+    The property is that the CONDITION guarding the
+    unknown-subcommand branch excludes them - so the condition is what
+    gets read, located by structure rather than by distance.
     """
     body = _program_body()
-    hit = body[body.index("unknown subcommand") - 700:
-               body.index("unknown subcommand")]
-    assert 'inlist(`"`eqp_sub\'"\', "if", "in")' in hit, (
+    # ANCHORED ON THE CODE, not on the message text. `index("unknown
+    # subcommand")` found the COMMENT that explains the 1.54.3 `help`
+    # branch, because that comment quotes the message - the third
+    # time this session a test anchor has matched prose written about
+    # the thing it was looking for (1.53.3's scan matching its own
+    # docstring, and the `Unit(real 100)` comment in 1.54.0). A
+    # comment quoting a string is a fact about the past; only the
+    # statement Stata executes is evidence about the present.
+    msg = body.index('display as error `"unknown subcommand:')
+    # the `if ... {` that opens the block holding that message
+    start = body.rindex("\n    if ", 0, msg)
+    cond = body[start:body.index("{", start)]
+    assert "regexm" in cond, (
+        f"the unknown-subcommand branch is no longer opened by a "
+        f"regexm condition - found {cond.strip()[:80]!r}, and this "
+        f"test needs to be pointed at whatever replaced it")
+    assert 'inlist(`"`eqp_sub\'"\', "if", "in")' in cond, (
         "-if- and -in- are not excluded, so `equipop if x==1, ...` "
         "would be refused as an unknown subcommand")
-    assert "^[a-zA-Z][a-zA-Z0-9_]*$" in hit, (
+    assert "^[a-zA-Z][a-zA-Z0-9_]*$" in cond, (
         "the test is not anchored to a bare word, so a comma or an "
         "[fweight=...] could match")
 

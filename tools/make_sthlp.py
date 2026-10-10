@@ -309,6 +309,20 @@ def build():
     add("{p 8 17 2}")
     add("{cmd:equipop setup} [{cmd:, repair}]")
     add("")
+    # John's field report, 10 October 2026: he typed `equipop help`
+    # and was told it was an unknown subcommand. Stata's convention is
+    # `help equipop`, and both work now - so both are documented, or
+    # the test that derives this list from the dispatch fails.
+    add("{pstd}")
+    add(_wrap(
+        "Open this help file. Stata's own convention is "
+        "`help equipop`, and that still works; `equipop help` is "
+        "accepted because it is what somebody types when a "
+        "subcommand has just been refused."))
+    add("")
+    add("{p 8 17 2}")
+    add("{cmd:equipop help}")
+    add("")
     # BACKLOG 385. The third subcommand, and its text is HELP's
     # "unitadvice" rather than written here - the condition John set
     # when he ruled help ahead of projection was one source, four

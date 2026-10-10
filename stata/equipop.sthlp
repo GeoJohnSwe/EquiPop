@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.54.2}{...}
+{* *! version 1.54.3}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.54.2)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.54.3)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -34,6 +34,14 @@ Install or update the calculating engine, into the Python this Stata is using. A
 
 {p 8 17 2}
 {cmd:equipop setup} [{cmd:, repair}]
+
+{pstd}
+Open this help file. Stata's own convention is `help equipop`, and that
+still works; `equipop help` is accepted because it is what somebody
+types when a subcommand has just been refused.
+
+{p 8 17 2}
+{cmd:equipop help}
 
 {pstd}
 What cell size does this data want? A read-only report, and a cheap one

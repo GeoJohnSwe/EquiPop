@@ -1,6 +1,12 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.54.2, 10 October 2026.**
+**Last updated: 1.54.3, 10 October 2026.**
+*Reviewed at 1.54.3: NO CLAIM IN THIS FILE CHANGES. The release
+adds `equipop help` as a subcommand, two lines to the doctor's
+clean verdict, and three tests that derive a documented list
+from the code rather than keeping it by hand. Usability and
+test hygiene; nothing touching the exposome positioning, the
+origin-rule measurement or the MAUP argument.*
 *Reviewed at 1.54.2: NO CLAIM IN THIS FILE CHANGES, and the
 corrected sentence from the 1.54.1 note below still stands as
 written. The second review's findings were a malformed Stata help

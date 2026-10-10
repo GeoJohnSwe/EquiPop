@@ -1,6 +1,14 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.54.2, 10 October 2026.**
+**Last updated: 1.54.3, 10 October 2026.**
+*Reviewed at 1.54.3: ONE LINE WORTH ADDING TO THE FIRST
+SESSION. `equipop help` now works, as well as Stata's own
+`help equipop` - John typed the first and was told it was an
+unknown subcommand. Students reach for the same word, so the
+install-check slide can say: type `equipop doctor`, then
+`equipop help`. The doctor's clean verdict also now names what
+machine 1 is and what to type next, which saves the slide a
+sentence.*
 *Reviewed at 1.54.2: NOTHING IN THIS FILE CHANGES. The second
 review's findings were a malformed help file, two test-isolation
 defects, a fractional k accepted by the Python advisory, an

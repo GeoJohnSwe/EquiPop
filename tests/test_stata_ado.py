@@ -555,6 +555,36 @@ def test_every_help_paragraph_survives_into_the_file_as_PROSE():
         f"character by character")
 
 
+def test_every_subcommand_appears_in_the_HELP_as_well():
+    """BROKEN WITH: dispatching a subcommand and not documenting it.
+
+    JOHN'S FIELD REPORT, 10 OCTOBER 2026, generalised. He typed
+    `equipop help` and the command refused it; the fix added the
+    branch and named it in the unknown-subcommand list. Break-check
+    then showed the HELP FILE was a third place the same omission can
+    live: deleting `equipop help` from the generated syntax section
+    changed nothing, because the test that derives the list from the
+    dispatch only checks the ado.
+
+    DERIVED FROM THE DISPATCH, so a fourth subcommand is covered the
+    day it is written - in the ado's own list by the companion test in
+    test_unitsize_doors.py, and in `help equipop` by this one.
+    """
+    ado = _ado_text()
+    dispatched = set(re.findall(
+        r'if\s+`"`eqp_sub\'"\'\s*==\s*"(\w+)"', ado))
+    assert {"doctor", "setup", "unit", "help"} <= dispatched, (
+        f"the dispatch handles {sorted(dispatched)} - if one was "
+        f"renamed, this test and the help both need to know")
+
+    h = _read("equipop.sthlp")
+    for sub in sorted(dispatched):
+        assert "{cmd:equipop %s}" % sub in h, (
+            f"`equipop {sub}` is dispatched by the ado and does not "
+            f"appear in the help's syntax section, so a user reading "
+            f"`help equipop` cannot discover it")
+
+
 def test_the_unit_subcommands_own_options_are_explained():
     """REVIEW FINDING 1's second half.
 

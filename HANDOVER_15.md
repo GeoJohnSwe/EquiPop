@@ -27,6 +27,71 @@ review then found AGAIN, still pointing at it.*
 
 ---
 
+## 0n. 1.54.3 - A WORTHLESS TEST, FOUND BY ONE LINE OF JOHN'S CONSOLE
+
+He sent two things in one message: the doctor's clean verdict, and
+
+```
+. equipop help
+unknown subcommand: help
+  equipop doctor  - report on the Python this Stata is using
+  equipop setup   - install or update the calculating engine
+```
+
+**`equipop help` was never a subcommand**, because Stata's convention
+is `help equipop`. That is true, and it is also not what anybody types
+the moment a subcommand has just been refused. One line of dispatch
+fixes the worst-timed error message in the program.
+
+**THE PART TO LEARN FROM IS THE LIST ABOVE IT.** Two subcommands out
+of three. I added `equipop unit` to that block in 1.54.0 and wrote
+this assertion:
+
+```python
+assert "equipop unit" in text
+```
+
+over the whole `.ado` - which matches the DISPATCH BRANCH. The help
+line could have been deleted and the test would still have passed.
+**John's paste is a list missing an entry, and my test for that list
+could not have told me.** (His output is from a pre-1.54 install, so
+the line was not actually missing - but nothing in the suite was
+checking.)
+
+The list is now **derived from the dispatch** and scoped to the
+unknown-subcommand block, so a fourth subcommand is covered the day it
+is written.
+
+**AND BREAK-CHECK FOUND A THIRD PLACE THE SAME OMISSION CAN LIVE.**
+Deleting `equipop help` from the generated help section changed
+nothing, because the derived test reads only the `.ado`. A companion
+test now requires every dispatched subcommand to appear in
+`help equipop` too. Three places - the dispatch, the
+unknown-subcommand list, the help file - and one derivation covering
+all three.
+
+**The capture matters as much as the branch.** A partial install (the
+`.ado` files present, `equipop.sthlp` missing) makes Stata answer
+"help for equipop not found", which reads as though the command itself
+is absent. Captured, the message names the real cause and gives the
+same reinstall lines the unknown-subcommand branch prints.
+
+**THE DOCTOR'S VERDICT GAINED TWO LINES**, and the pair he sent is the
+argument for them: a user told `machine 1 can run in this Python.` has
+nowhere obvious to go next, and `machine 1` is this project's
+vocabulary rather than a Stata user's. It now says what machine 1 is
+and names `help equipop` and `equipop unit` - printed ONLY when there
+is nothing to fix, so it never competes with a real diagnosis, which a
+test asserts in both directions.
+
+**WHAT THIS RELEASE IS REALLY ABOUT.** Three reviews found defects in
+the code. This one came from a user typing a word, and it exposed a
+test that was shaped like a guard and guarded nothing. A `foo in text`
+assertion over a whole file is the weakest form in this codebase and
+it keeps reappearing - the 1.48.2 ensurepip test, the "changes
+nothing" source grep in 1.54.0, this. **If a test's subject is a
+specific block of output, the test has to be scoped to that block.**
+
 ## 0m. 1.54.2 - A TWO-WORD MISTAKE, AND WHY NOTHING CAUGHT IT
 
 A second, deeper review. The blocker is the smallest defect in this

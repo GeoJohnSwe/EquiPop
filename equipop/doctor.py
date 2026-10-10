@@ -522,6 +522,18 @@ def report(ado_version: str = "",
                        "will fail")
         if broken_optional:
             out.append("  until it is fixed - see the lines above it.")
+        # JOHN'S FIELD REPORT, 10 OCTOBER 2026. He sent the verdict
+        # and `equipop help` -> `unknown subcommand: help` in the same
+        # message, and the pair is the point: a user who has just been
+        # told the install works has nowhere obvious to go next.
+        # `machine 1` is also this project's word, not a Stata user's.
+        # Two lines, printed only when there is nothing to fix, so
+        # they never compete with a real diagnosis.
+        out.append("  (machine 1 is counts and shares - N_k, Dist_k "
+                   "and group totals over the")
+        out.append("   k nearest PEOPLE.  Next: `help equipop` for "
+                   "the options, or `equipop unit`")
+        out.append("   to ask what cell size your data wants.)")
     else:
         out.append("  machine 1 CANNOT run here - see REQUIRED above.")
         out.append("  Install into THIS Python, the one whose path is "

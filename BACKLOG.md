@@ -3607,6 +3607,45 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- ~~400~~ | DONE v1.54.3, JOHN'S FIELD REPORT, 10 OCTOBER 2026 | THE
+  ONE WORD A CONFUSED USER TYPES, REFUSED BY THE THING THEY WERE
+  ASKING ABOUT.
+  He sent two things in one message: the doctor's clean verdict, and
+  ```
+  . equipop help
+  unknown subcommand: help
+    equipop doctor  - report on the Python this Stata is using
+    equipop setup   - install or update the calculating engine
+  ```
+  `equipop help` was never a subcommand, because Stata's convention is
+  `help equipop` - which is true, and is also not what anybody types
+  the moment a subcommand has just been refused. **The worst-timed
+  error message in the program.** One line of dispatch.
+  THE CAPTURE MATTERS AS MUCH AS THE BRANCH. A partial install - the
+  .ado files present and equipop.sthlp missing - makes Stata answer
+  "help for equipop not found", which reads as though the command
+  itself is absent. Captured, the message names the real cause and
+  gives the same reinstall lines the unknown-subcommand branch prints.
+  **AND MY TEST FOR THAT LIST WAS WORTHLESS.** It asserted
+  `"equipop unit" in text` over the whole .ado - which matches the
+  DISPATCH BRANCH, so the help line could have been deleted and the
+  test would still pass. John's paste is a list that names two
+  subcommands out of three. The list is now DERIVED FROM THE DISPATCH
+  and checked inside the unknown-subcommand block, so a fourth
+  subcommand is covered the day it is written.
+  Break-check then found a THIRD place the same omission can live:
+  deleting `equipop help` from the generated syntax section changed
+  nothing, because that test only reads the .ado. A companion test
+  now requires every dispatched subcommand to appear in
+  `help equipop` too. **Three places, one derivation.**
+  THE DOCTOR'S VERDICT GOT TWO LINES while I was there, and the pair
+  he sent is the reason: a user told `machine 1 can run in this
+  Python.` has nowhere obvious to go next, and `machine 1` is this
+  project's vocabulary rather than a Stata user's. It now says what
+  machine 1 is and names `help equipop` and `equipop unit` - printed
+  ONLY when there is nothing to fix, so it never competes with a real
+  diagnosis, which a test asserts.
+
 - ~~395~~ | DONE v1.54.2, SECOND EXTERNAL REVIEW, FINDING 1 | `help
   equipop` WAS 746 LINES OF ONE CHARACTER EACH, AND I HAD LOOKED AT
   THE FILE.

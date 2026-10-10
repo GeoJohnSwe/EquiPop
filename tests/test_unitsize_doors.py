@@ -203,7 +203,25 @@ def test_the_stata_subcommand_is_dispatched_and_not_merely_written():
         "r() result would be empty at the prompt")
     # And the unknown-subcommand help has to name it, or a user who
     # mistypes is told about two subcommands out of three.
-    assert "equipop unit" in text
+    #
+    # DERIVED FROM THE DISPATCH, not a hand list, and scoped to the
+    # LIST rather than the file. This assertion used to be
+    # `"equipop unit" in text`, which matches the dispatch branch
+    # itself - so the help line could have been deleted and the test
+    # would still have passed. John then pasted exactly that output:
+    # `unknown subcommand: help`, with a list naming doctor and setup
+    # and nothing else.
+    dispatched = set(re.findall(
+        r'if\s+`"`eqp_sub\'"\'\s*==\s*"(\w+)"', text))
+    assert {"doctor", "setup", "unit", "help"} <= dispatched, (
+        f"the dispatch handles {sorted(dispatched)}")
+    block = text.split("unknown subcommand", 1)[1].split("exit 198", 1)[0]
+    for sub in sorted(dispatched):
+        assert re.search(r"equipop %s\s" % sub, block), (
+            f"`equipop {sub}` is a real subcommand and the "
+            f"unknown-subcommand list does not name it - which is "
+            f"the message a user reads at the exact moment they have "
+            f"typed one wrong")
 
 
 def test_stata_can_tell_a_typed_unit_from_an_inherited_one():
@@ -328,6 +346,42 @@ def test_both_stata_entry_points_read_the_origin_rule_through_one_reader():
             f"typo in originrule() is not refused there")
         assert "s(rule)" in body, (
             f"{label} calls the reader and ignores what it returns")
+
+
+def test_equipop_help_works_and_survives_a_partial_install():
+    """BROKEN WITH: removing the `help` branch, or calling
+    `help equipop` without capturing it.
+
+    JOHN'S FIELD REPORT, 10 OCTOBER 2026: `equipop help` ->
+    `unknown subcommand: help`, with a list that did not include it.
+    The one word a confused user reaches for, refused by the thing
+    they were asking for help about. Stata's convention is
+    `help equipop`, which is why it was never written; it is also not
+    what anybody types the moment a subcommand has just been refused.
+
+    THE CAPTURE MATTERS AS MUCH AS THE BRANCH. A partial install -
+    the .ado files present, equipop.sthlp missing - makes Stata say
+    "help for equipop not found", which reads as though the command
+    itself is absent. Captured, the message names the real cause and
+    the same reinstall line the unknown-subcommand branch prints.
+    """
+    text = _text(DOORS["stata"])
+    assert re.search(r'if\s+`"`eqp_sub\'"\'\s*==\s*"help"\s*\{', text), (
+        "`equipop help` is not dispatched")
+    branch = text.split('== "help"', 1)[1][:1200]
+    assert "capture help equipop" in branch, (
+        "help is called without capture, so a missing .sthlp gives "
+        "Stata's own error instead of the cause")
+    assert "if _rc" in branch, "the capture's return code is ignored"
+    assert "partial" in branch, (
+        "the failure does not say what a missing help file means")
+    assert "ssc install equipop, replace" in branch, (
+        "the remedy is not offered where the user is reading")
+    # and it must come BEFORE the other subcommands, so a user who
+    # types `equipop help` while something else is broken still gets
+    # the help rather than a diagnosis
+    assert text.index('== "help"') < text.index('== "doctor"'), (
+        "help is dispatched after doctor")
 
 
 def test_the_stata_door_actually_attempts_a_cache_read():

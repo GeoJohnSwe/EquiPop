@@ -1,4 +1,4 @@
-*! equipop v1.54.2  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.54.3  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -28,6 +28,36 @@ program define equipop, rclass
     * two copies of one maths library in a process (Stata plus
     * Anaconda on Windows, 1.35).
     gettoken eqp_sub eqp_rest : 0, parse(" ,")
+    * ---- -equipop help- (JOHN'S FIELD REPORT, 10 OCTOBER 2026) --
+    * He typed `equipop help' and got `unknown subcommand: help' with
+    * a list that did not include it - the one word a confused user
+    * reaches for, refused by the thing they were asking for help
+    * about. Stata's own convention is `help equipop', which is why
+    * this was never written; it is also not what somebody types when
+    * the command has just told them they got a subcommand wrong.
+    * One line, and the error it replaces was the worst-timed message
+    * in the program.
+    if `"`eqp_sub'"' == "help" {
+        * CAPTURED, because a partial install is the case this would
+        * otherwise fail confusingly in: the .ado files present and
+        * equipop.sthlp missing gives Stata's own "help for equipop
+        * not found", which reads as though the command is not
+        * installed at all. The remedy is the same net install line
+        * the unknown-subcommand branch prints, so say so.
+        capture help equipop
+        if _rc {
+            display as error "the help file is not installed - " ///
+                "equipop.sthlp is missing"
+            display as text "  The commands are here and their help " ///
+                "is not, which means a partial"
+            display as text "  install. Reinstall both:"
+            display as text "     ssc install equipop, replace"
+            display as text "  or, for the development version:"
+            display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace"'
+            exit 601
+        }
+        exit
+    }
     if `"`eqp_sub'"' == "doctor" {
         _equipop_doctor
         exit
@@ -70,6 +100,8 @@ program define equipop, rclass
             "calculating engine"
         display as text "  equipop unit    - what cell size does " ///
             "this data want?"
+        display as text "  equipop help    - open this command's " ///
+            "help file"
         display as text ""
         display as text "  If you typed one of those and Stata does " ///
             "not know it, the"
@@ -542,7 +574,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.54.2"
+    local eqp_ado_version "1.54.3"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -592,7 +624,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.54.2"
+    local eqp_ado_version "1.54.3"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test

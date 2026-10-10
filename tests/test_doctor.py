@@ -301,6 +301,37 @@ def test_a_broken_library_names_every_missing_dependency(monkeypatch):
     assert text.count("-m pip install") == 1
 
 
+def test_a_clean_verdict_says_what_to_do_next():
+    """BROKEN WITH: removing the next-step lines from the verdict.
+
+    JOHN'S FIELD REPORT, 10 OCTOBER 2026. He sent two things in one
+    message: the verdict `machine 1 can run in this Python.` and
+    `equipop help` answered with `unknown subcommand: help`. The pair
+    is the finding - a user who has just been told the install works
+    has nowhere obvious to go next, and the word `machine 1` is this
+    project's vocabulary rather than a Stata user's.
+
+    PRINTED ONLY WHEN THERE IS NOTHING TO FIX, so it never competes
+    with a real diagnosis. The failing verdict keeps its own advice,
+    which is the pip command, and must NOT carry this.
+    """
+    text = "\n".join(doctor.report())
+    assert "VERDICT" in text
+    if "machine 1 can run in this Python." in text:
+        assert "counts and shares" in text, (
+            "the verdict names `machine 1` and never says what it is")
+        assert "help equipop" in text and "equipop unit" in text, (
+            "a clean verdict is a dead end - it should name the next "
+            "thing to type")
+    else:
+        # the failing branch: advice about fixing it, not about what
+        # to do next
+        assert "pip install" in text
+        assert "counts and shares" not in text.split("VERDICT")[1], (
+            "the next-step note is printed under a FAILING verdict, "
+            "where it competes with the diagnosis")
+
+
 def test_an_incomplete_fake_installed_set_is_RECORDED(monkeypatch):
     """BROKEN WITH: letting `_absent` fall through to the real
     environment without recording it.
