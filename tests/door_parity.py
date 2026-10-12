@@ -63,15 +63,18 @@ CORE_M2 = {"layer", "xfield", "yfield", "pop", "values", "measures",
            # set of numbers, so there is nothing to choose.
            "refmode", "catfield", "reftable", "keepoutside",
            "selfpot",
-           # v1.30, BACKLOG 99. Machine 2 defaults to a
-           # DIFFERENT mode from machine 1 - `whole`, because a
-           # fraction of a cell has no median - but it must
-           # still OFFER the box, or the two doors cannot be
-           # held to the same answer key. Pro had never had a
-           # seed box here at all.
+           # v1.30, BACKLOG 99. The box both doors must offer, or
+           # they cannot be held to the same answer key. (It
+           # defaulted to `whole` here until 1.31, when weighted
+           # statistics let machine 2 take a fraction of a cell.)
+           # Pro had never had a seed box here at all.
            "overshoot", "seed",
            # v1.47, BACKLOG 290 - an ENGINE rule, so both doors.
-           "originrule"}
+           "originrule",
+           # v1.55.0, BACKLOG 405. The grouping decides which columns
+           # exist at all, and the minimum decides which are empty -
+           # analytical by this file's own rule, so both doors.
+           "decompose", "mingroup"}
 
 
 # v1.29.3, BACKLOG 86: parity of BEHAVIOUR, not just of names.

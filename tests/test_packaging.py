@@ -16,6 +16,7 @@ it will silently not travel.
 """
 import os
 import re
+import sys
 
 import pytest
 
@@ -329,6 +330,66 @@ def test_the_release_zip_leaves_build_outputs_out_of_the_tree():
 
     assert names == ["README.md", "equipop/cells.py"], \
         f"the builder swept in build outputs: {names}"
+
+
+def test_the_release_zip_builder_refuses_generated_sidecars():
+    """BACKLOG 404, v1.54.6. The 350 test above asks what the builder
+    SWEEPS IN by walking directories. The Pro help sidecars are not
+    swept in by a directory rule, because they live in arcgis/ beside
+    files that must ship - so neither check above can see them, and
+    the 1.54.0 bundle carried them until it was caught by hand.
+
+    They are build outputs: make_help_xml.py writes them, MANIFEST.in
+    ships them in the sdist, and the working tree must not hold them
+    (BACKLOG 45, asserted by
+    test_the_sidecars_are_not_committed_to_the_repository). The build
+    ORDER is therefore the trap - generate, build the Pro step from
+    them, delete - and that is the one thing this file's own docstring
+    says never to leave to memory.
+
+    REFUSE, NOT SKIP: a skip builds a clean zip and leaves the files
+    in the tree, so `pytest` fails next instead. The fault would move,
+    not go.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_mkzip", os.path.join(ROOT, "tools", "make_release_zip.py"))
+    mk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mk)
+
+    good = ["arcgis/EquiPop.pyt", "equipop/cells.py", "MANIFEST.in"]
+    mk.check_build_outputs(good)                      # must not raise
+
+    with pytest.raises(SystemExit) as e:
+        mk.check_build_outputs(
+            good + ["arcgis/EquiPop.CountsShares.pyt.xml"])
+    msg = str(e.value)
+    assert "REFUSING" in msg
+    assert "rm arcgis/*.pyt.xml" in msg, (
+        "the refusal must say what to do - a refusal without a remedy "
+        "is where 402 came from")
+
+    # ...AND THE REAL BUILDER MUST CONSULT IT. A checker nothing calls
+    # is this project's signature defect; `build` is where the order
+    # is actually got wrong, so the test drives `build` itself.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        for rel in ("equipop/cells.py",
+                    "arcgis/EquiPop.CountsShares.pyt.xml"):
+            p = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as fh:
+                fh.write("x")
+        out = os.path.join(tmp, "_out")
+        with pytest.raises(SystemExit) as e:
+            mk.build(tmp, "9.9.9", out)
+        assert "REFUSING" in str(e.value)
+        assert not os.path.exists(
+            os.path.join(out, "EquiPop-9.9.9-complete.zip")), \
+            "it refused and wrote the zip anyway"
+
+
+def test_every_runner_imports_only_modules_the_package_ships():
     """BACKLOG 241. run_fetch.py was delivered importing
     equipop.doors.fetching, which existed in the working tree and in
     NO WHEEL - so John got ModuleNotFoundError on his first command.
@@ -386,6 +447,164 @@ def test_the_pro_help_sidecars_are_shipped_beside_the_toolbox():
                for l in lines), (
         "MANIFEST.in does not carry arcgis/*.pyt.xml - Pro will show "
         "an empty comment beside every parameter box")
+
+
+def test_the_bundle_script_generates_the_sidecars_before_it_builds():
+    """BACKLOG 404, v1.54.6. THE OTHER HALF, AND THE ROOT CAUSE.
+
+    Up to 1.54.5 the 19-slot release bundle was built by a script
+    living OUTSIDE the repository, rewritten from the last one each
+    release. Three defects came out of that in one hour, and this is
+    the one that produced the other two: the Pro help sidecars were
+    present at build time only BY ACCIDENT of the order I happened to
+    work in. Put where the Pro slot needs them, the first 1.54.6
+    sdist shipped with ZERO of them while every check stayed green.
+
+    `tools/make_release_zip.py` had the rule all along - *"a manual
+    step in the right order is not a fix, because the order will be
+    got wrong again"* - and the bundle's order was the one step still
+    kept in a memory. `tools/make_bundle.sh` now carries it, and this
+    reads the order out of it.
+
+    POSITION IS THE PROPERTY HERE, so position is what is asserted -
+    1.54.5's lesson, where "the note exists" was true of the version
+    John complained about. The script also guards itself at runtime
+    (it fails if the sdist comes out with no sidecars), which is the
+    behavioural half; this is the half that fails in CI rather than
+    at 11pm on a release night.
+    """
+    path = os.path.join(ROOT, "tools", "make_bundle.sh")
+    assert os.path.exists(path), (
+        "tools/make_bundle.sh is gone - the bundle order is back in "
+        "somebody's memory, which is where BACKLOG 404 came from")
+    src = open(path, encoding="utf-8").read()
+
+    def one(pattern, what):
+        hits = [m.start() for m in re.finditer(pattern, src, re.M)]
+        assert len(hits) == 1, (
+            f"{what}: expected exactly one line matching {pattern!r}, "
+            f"found {len(hits)} - an ambiguous anchor makes this test "
+            "prove nothing")
+        return hits[0]
+
+    gen = one(r"^python arcgis/make_help_xml\.py", "the generate step")
+    bld = one(r"^python -m build ", "the wheel/sdist step")
+    assert gen < bld, (
+        "make_bundle.sh builds the wheel and sdist BEFORE generating "
+        "the Pro help sidecars, so MANIFEST.in's `include "
+        "arcgis/*.pyt.xml` has nothing to include and the sdist ships "
+        "without them - exactly the 1.54.6 regression")
+
+    # ...and it must leave the tree as it found it, or the next
+    # `pytest` fails on stray build outputs instead.
+    assert re.search(r"rm -f .*arcgis/\*\.pyt\.xml", src), (
+        "make_bundle.sh does not delete the sidecars it generates - "
+        "the tree is left dirty and the fault moves to the suite")
+    assert "trap cleanup EXIT" in src, (
+        "the cleanup is not on a trap, so a failure midway leaves "
+        "build outputs in the tree")
+
+    # The sdist self-check is what catches an order nobody re-read.
+    sd = one(r"tar tzf .*equipop-\$V\.tar\.gz", "the sdist self-check")
+    assert sd > bld, "the sdist is checked before it is built"
+    assert "carries no Pro help sidecars" in src, (
+        "make_bundle.sh does not verify that the sdist it just built "
+        "actually carries the sidecars")
+
+
+def test_the_sdist_really_carries_the_pro_sidecars(tmp_path):
+    """BACKLOG 404, v1.54.6. THE TEST ABOVE ASSERTS A LINE OF
+    MANIFEST.in. A line is a PERMISSION, not a guarantee: the five
+    files must EXIST at the moment `python -m build` runs, and whether
+    they do is a question of build ORDER - which nothing in the tree
+    answered, because the bundle has always been built by a script
+    living outside it.
+
+    MEASURED, and it is not hypothetical. 1.54.3, 1.54.4 and 1.54.5
+    shipped sdists carrying all five - by accident of the order I
+    happened to work in. The first 1.54.6 build, with the generation
+    step put where the bundle's Pro slot needs it, shipped an sdist
+    with **ZERO**, and every existing check stayed green: MANIFEST.in
+    was unchanged, the bundle's five loose copies were present, and
+    the suite passed. Only comparing the two tarballs by hand showed
+    it.
+
+    The test above states the lesson it then missed by one level -
+    *"a check on an artefact nobody ships is a check on nothing"*. So
+    this one builds the artefact and looks inside it.
+
+    WHAT THIS DOES **NOT** PROVE, said here rather than left to be
+    assumed: it generates the sidecars itself, so it proves that
+    MANIFEST.in and the packaging config DELIVER them when they
+    exist. It cannot prove they exist when the release is built -
+    that is the build ORDER, and the order is asserted on
+    `tools/make_bundle.sh` by
+    test_the_bundle_script_generates_the_sidecars_before_it_builds.
+    Two halves, and today's regression was in the second one.
+
+    Skipped where `build` is not installed, which is most of John's
+    hosts: the suite must pass there, and this is a release-time
+    property.
+    """
+    import importlib.util
+    import shutil
+    import subprocess
+    import tarfile
+    if importlib.util.find_spec("build") is None:
+        pytest.skip("the `build` package is not installed here")
+
+    arc = os.path.join(ROOT, "arcgis")
+    gen = os.path.join(arc, "make_help_xml.py")
+    made = []
+    try:
+        g = subprocess.run([sys.executable, gen], cwd=ROOT,
+                           capture_output=True, text=True, timeout=300)
+        made = [f for f in os.listdir(arc) if f.endswith(".pyt.xml")]
+        # v1.55.1, BACKLOG 407. THIS USED TO ASK ONLY THAT SOMETHING
+        # WAS WRITTEN, and compare the sdist with however much that
+        # was. Under an older installed equipop the generator wrote
+        # ONE sidecar, then refused for missing help - and this test
+        # passed, one of one. A generator that failed is not a
+        # generator that ran; and five tools need five sidecars.
+        assert g.returncode == 0, (
+            f"make_help_xml.py failed:\n{g.stdout[-800:]}{g.stderr[-800:]}")
+        pyt_src = open(os.path.join(arc, "EquiPop.pyt"),
+                       encoding="utf-8").read()
+        n_tools = len([t for t in re.search(
+            r"self\.tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
+            if t.strip()])
+        assert len(made) == n_tools, (
+            f"the generator wrote {sorted(made)} for {n_tools} tools")
+        out = tmp_path / "sd"
+        p = subprocess.run(
+            [sys.executable, "-m", "build", "--sdist", "--no-isolation",
+             "--outdir", str(out)],
+            cwd=ROOT, capture_output=True, text=True, timeout=900)
+        assert p.returncode == 0, f"sdist build failed:\n{p.stdout[-2000:]}"
+        tars = list(out.glob("*.tar.gz"))
+        assert len(tars) == 1, f"expected one sdist, got {tars}"
+        inside = [n for n in tarfile.open(tars[0]).getnames()
+                  if n.endswith(".pyt.xml")]
+        assert len(inside) == len(made), (
+            f"the sdist carries {len(inside)} of {len(made)} Pro help "
+            "sidecars. MANIFEST.in permits them; the build ORDER "
+            "decides whether they are there, and a Pro user with no "
+            "sidecar gets an empty comment beside every parameter box "
+            "(BACKLOG 34)")
+    finally:
+        for f in made:
+            try:
+                os.remove(os.path.join(arc, f))
+            except OSError:
+                pass
+        # `build` leaves this behind, and the release zip must not
+        # sweep it in (BACKLOG 350).
+        shutil.rmtree(os.path.join(ROOT, "equipop.egg-info"),
+                      ignore_errors=True)
+        left = [f for f in os.listdir(arc) if f.endswith(".pyt.xml")]
+        assert not left, (
+            f"this test left {left} in the tree, which breaks the test "
+            "below it - that is the fault moving, not going")
 
 
 def test_the_sidecars_are_not_committed_to_the_repository():

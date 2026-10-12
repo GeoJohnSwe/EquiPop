@@ -384,7 +384,8 @@ def run_knn(
 from .cells import CellData
 from .wstats import weighted_stats
 from .stats import (BINARY_STATS, VALUE_STATS, PREFIX,
-                    check_gini_input,
+                    check_gini_input, check_mld_input,
+                    check_theil_input, BINARY_REFUSED,
                     value_stat, stat_prefix, is_percentile)
 
 
@@ -501,6 +502,14 @@ def run_knn_stats(
     # 1's - has nothing left to warn about.
     for v in bin_vars:
         for s in stats[v]:
+            if s in BINARY_REFUSED:
+                # BACKLOG 405: not unknown - DELIBERATELY absent, and
+                # the reason is the useful part of the message.
+                raise ValueError(
+                    f"'{s}' is not offered for the 0/1 variable {v}: "
+                    f"{BINARY_REFUSED[s]}. To measure inequality "
+                    "BETWEEN groups, give a value field (income) and "
+                    f"use {v} as its decomposition group instead.")
             if s not in BINARY_STATS:
                 raise ValueError(f"Unknown binary statistic '{s}' for {v}. "
                                  f"Available: {list(BINARY_STATS)}")
@@ -527,11 +536,33 @@ def run_knn_stats(
     # API reach statistics through this function, and because the
     # per-neighbourhood inner loop is no place to raise.
     for _v, _asked in (stats or {}).items():
-        if "gini" in _asked and _v in cd.value_arrays:
-            _flat = [a for a in cd.value_arrays[_v] if a is not None
-                     and len(a)]
-            if _flat:
-                check_gini_input(np.concatenate(_flat), f"'{_v}'")
+        if _v not in cd.value_arrays:
+            continue
+        if not {"gini", "mld", "theil"} & set(_asked):
+            continue
+        _flat = [a for a in cd.value_arrays[_v] if a is not None
+                 and len(a)]
+        if not _flat:
+            continue
+        _all = np.concatenate(_flat)
+        if "gini" in _asked:
+            check_gini_input(_all, f"'{_v}'")
+        # BACKLOG 405, the same rule for the same reason: screened
+        # once per variable, here, where every door arrives.
+        if "mld" in _asked:
+            check_mld_input(_all, f"'{_v}'")
+        if "theil" in _asked:
+            check_theil_input(_all, f"'{_v}'")
+            # Warn, never act: a value field that is really 0/1 gets
+            # Theil = -ln(share), which is the share in disguise.
+            _fin = _all[np.isfinite(_all)]
+            if _fin.size and np.isin(_fin, (0.0, 1.0)).all():
+                print(f"[stats] note: '{_v}' holds only 0 and 1. Theil "
+                      "of a 0/1 variable is exactly -ln(share) - it "
+                      "adds nothing to the share itself. Declared as a "
+                      "binary treatment it gets R_ directly; as a "
+                      "decomposition group it measures inequality "
+                      "between groups.")
     # BACKLOG 118. One pass, per cell: the expanded per-person array
     # becomes (distinct value, how many people hold it). Lossless, and
     # it is what lets a crossing ring contribute a SHARE of a cell -

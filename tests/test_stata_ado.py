@@ -1081,3 +1081,23 @@ def test_two_names_that_truncate_alike_are_disambiguated():
     use, _ = _run_naming(res, "T_")
     assert len(set(use.values())) == 2
     assert all(len(v) <= 32 for v in use.values())
+
+
+def test_the_stata_help_generator_reads_the_checkout(tmp_path):
+    """BACKLOG 407. tools/make_sthlp.py has always put the checkout
+    first - which is what arcgis/make_help_xml.py lacked. Pinned, so
+    the two generators of the same text cannot drift apart again.
+
+    BROKEN WITH: `sys.path.insert(0, ROOT)` removed from make_sthlp."""
+    import subprocess
+    poison = tmp_path / "site" / "equipop"
+    poison.mkdir(parents=True)
+    (poison / "__init__.py").write_text(
+        "raise SystemExit('POISONED: installed equipop imported')\n")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = dict(os.environ, PYTHONPATH=str(tmp_path / "site"))
+    r = subprocess.run([sys.executable,
+                        os.path.join(root, "tools", "make_sthlp.py"),
+                        "--check"], cwd=str(tmp_path), env=env,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr

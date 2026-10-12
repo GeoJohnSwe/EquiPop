@@ -87,7 +87,10 @@ AGGREGATION = ["additive (costs add up)", "max", "min", "mean"]
 # not here: both doors take them as free text in their own box, and
 # Pro additionally lists "percentiles" as a toggle for that box.
 MEASURES = ["mean", "median", "gini", "sd", "variance", "se",
-            "min", "max", "count", "sum", "range"]
+            "min", "max", "count", "sum", "range",
+            # v1.55.0, BACKLOG 405 - appended, so every existing
+            # position (and the default ticks) is unchanged
+            "mld", "theil"]
 
 # One name for the user, one for the engine, mapped in one place.
 MEASURE_KEY = {"variance": "var"}
@@ -139,15 +142,12 @@ SELF_POTENTIAL_DEFAULT = 2          # the equal-area radius
 # use. A user who reads "proportional share" in a message must be
 # able to find it in the box without translating.
 #
-# TWO DEFAULTS, and the difference is not an oversight.
-# Machine 1 defaults to `proportional` - John's ruling, 1.30, and the
-# whole point of the item. Machine 2 defaults to `whole`, because a
-# quarter of a cell has no median, no percentile and no Gini: the
-# core REFUSES proportional there until weighted statistics land
-# (BACKLOG 118). Machine 2 still OFFERS all three, so the choice is
-# visible and starts working by itself when 118 lands, and so that
-# picking it gets the core's refusal - which names 118 - rather than
-# an absence that explains nothing.
+# ONE DEFAULT, `proportional`, for both machines - John's ruling,
+# 1.30, and the whole point of the item. From 1.30 to 1.31 machine 2
+# defaulted to `whole` and its core REFUSED proportional, because a
+# quarter of a cell had no median; weighted statistics (BACKLOG 118)
+# ended that in 1.31. The help said otherwise until 1.55.1 - BACKLOG
+# 407, found by the external review of 1.55.0.
 # ===================================================================
 
 OVERSHOOT = [

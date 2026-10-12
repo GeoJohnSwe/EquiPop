@@ -143,7 +143,9 @@ _COORD_CHOICES = [_COORD_AUTO, _COORD_GEOM, _COORD_ATTR]
 # "percentiles" as a toggle for its own percentile box.
 _AGG_CHOICES = ["additive (costs add up)", "max", "min", "mean"]
 _MEASURES = ["mean", "median", "gini", "sd", "variance", "se", "min",
-             "max", "count", "sum", "range", "percentiles"]
+             "max", "count", "sum", "range",
+             "mld", "theil",                          # BACKLOG 405
+             "percentiles"]
 _MEASURE_KEY = {"variance": "var"}
 
 
@@ -704,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.54.4"
+TOOLBOX_VERSION = "1.55.1"
 
 
 def _announce_version(messages):
@@ -1084,7 +1086,7 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
 
 def _predict_result_fields(engine, k_text, r_text, tau_text,
                            treat_names, value_fields, stats_wanted,
-                           decaying, efforting):
+                           decaying, efforting, decomposing=False):
     """The columns a run WILL produce (validated against dispatch in
     the simulator suite) - so shapefile targets can be refused
     BEFORE the computation, not after (field-test finding A4).
@@ -1099,7 +1101,8 @@ def _predict_result_fields(engine, k_text, r_text, tau_text,
     try:
         return predict_result_fields(engine, k_text, r_text, tau_text,
                                      treat_names, value_fields,
-                                     stats_wanted, decaying, efforting)
+                                     stats_wanted, decaying, efforting,
+                                     decomposing=decomposing)
     except Exception:                                # pragma: no cover
         # BACKLOG 373, v1.53.2. THIS RUNS INSIDE updateMessages, so an
         # exception here breaks the DIALOG, not the run - and it did:
@@ -1688,7 +1691,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
               groups_count="persons", half_life_field=None,
               half_life_from_dist=None, decay_bins: int = 10,
               seed=None, overshoot=None, originrule=None,
-              table_crs=None):
+              table_crs=None, decompose_field=None, min_group=None):
     """The single glue path both machines share (stub-validated)."""
     _announce_version(messages)        # BACKLOG 314, first line of
                                        # every run: which code is this?
@@ -1699,7 +1702,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         + ([weight_field] if weight_field else []) \
         + ([cat_field] if cat_field else []) \
         + ([treat_cat_field] if treat_cat_field else []) \
-        + ([half_life_field] if half_life_field else [])
+        + ([half_life_field] if half_life_field else []) \
+        + ([decompose_field] if decompose_field else [])    # 405
     # the same column can now be named by more than one box (the two
     # type fields are usually the same), and arcpy refuses a field
     # list with a repeat
@@ -2023,7 +2027,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             list(value_fields),
             wanted_pred or ["mean", "median", "gini"],
             decaying=bool(half_life), efforting=bool(
-                barrier is not None or extra_dem)))
+                barrier is not None or extra_dem),
+            decomposing=bool(decompose_field and engine == "stats")))
         if txt:
             raise arcpy.ExecuteError(txt)
 
@@ -2196,6 +2201,12 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         kw["stats"] = {f: wanted for f in vals}
         messages.addMessage("Measures: " + " ".join(wanted) +
                             " (only these are calculated).")
+        # BACKLOG 405. The group arrives as read - text or numbers -
+        # and the engine checks the measures, the groups and the
+        # minimum, so the wording is the same in every door.
+        if decompose_field:
+            kw["decompose_by"] = {decompose_field: data[decompose_field]}
+            kw["min_group"] = min_group
         # BACKLOG 118, v1.31: the note that stood here - the two
         # machines using different modes - retired when machine 2
         # gained the ability to take a fraction of a cell. They
@@ -4682,11 +4693,15 @@ class ValueStatistics:
             "Tick the measures you want - only those are calculated. "
             "COUNT FIELD: if each point stands for several (people, "
             "jobs, dwellings), k counts those and every statistic "
-            "weights by them (rows are expanded exactly). Output "
+            "weights by them, fractions included. Output "
             "columns like Mean_<f>_k, Med_<f>_k, P90_<f>_k, plus "
             "Nv_<f>_k = how many neighbours had a usable value (the "
-            "honesty column). Input: point layer (geometry) or plain "
-            "table (X/Y guessed, overridable).")
+            "honesty column). MLD and Theil can be split BETWEEN and "
+            "WITHIN the groups of a field: MLDb_ / MLDw_ / MLDsh_ "
+            "(the between-group share), with Ng_ and NgMin_ saying "
+            "how many groups were present and the smallest. Input: "
+            "point layer (geometry) or plain table (X/Y guessed, "
+            "overridable).")
 
     def getParameterInfo(self):
         ps = [_p("layer", "Input points (layer) or table",
@@ -4717,6 +4732,12 @@ class ValueStatistics:
                   multiValue=True, required=False),
                _p("pcts", "Percentiles (plain numbers, e.g. 10 25 75 "
                   "90)", "GPString", required=False),
+               # v1.55.0, BACKLOG 405
+               _p("decompose", "Split MLD / Theil BETWEEN and WITHIN "
+                  "the groups of this field (born abroad, parental "
+                  "education) - optional", "Field", required=False),
+               _p("mingroup", "Smallest group, in people, for the "
+                  "split to be reported", "GPDouble", required=False),
                _p("k", "k values", "GPString"),
                _p("r", "Radii in metres", "GPString", required=False),
                _p("existing", "If result fields already exist",
@@ -4769,6 +4790,7 @@ class ValueStatistics:
         pm2["measures"].filter.list = _MEASURES
         pm2["measures"].value = "mean;median;gini"
         pm2["pcts"].value = "10 25 75 90"
+        pm2["mingroup"].value = 30.0             # John's ruling, 405
         for nm, modes in (("refmode", REF_MODES),
                           ("keepoutside", OUTSIDE_MODES)):
             pm2[nm].filter.type = "ValueList"
@@ -4791,6 +4813,8 @@ class ValueStatistics:
                         "values": "Treatment values - what you measure",
                         "measures": "Treatment values - what you measure",
                         "pcts": "Treatment values - what you measure",
+                        "decompose": "Treatment values - what you measure",
+                        "mingroup": "Treatment values - what you measure",
                         "existing": "Output", "outmode": "Output",
                         "outfc": "Output", "outtable": "Output",
                         "shortnames": "Output",
@@ -4821,13 +4845,11 @@ class ValueStatistics:
         pm2["selfpot"].filter.type = "ValueList"
         pm2["selfpot"].filter.list = SELFPOT_MODES
         pm2["selfpot"].value = SELFPOT_MODES[2]
-        # BACKLOG 99. Machine 2 defaults to WHOLE where machine
-        # 1 defaults to proportional, because a fraction of a
-        # cell has no median, percentile or Gini and the core
-        # refuses it here until BACKLOG 118. All three are
-        # still offered: the refusal names the reason, an
-        # absent option would explain nothing, and the choice
-        # starts working by itself when 118 lands.
+        # BACKLOG 99 / 118. Proportional, as in machine 1: since
+        # 1.31 value statistics are weighted, so a fraction of a
+        # cell counts as that fraction of its people. (Until 1.31
+        # this box defaulted to `whole` and the core refused
+        # proportional here.)
         pm2["overshoot"].filter.type = "ValueList"
         pm2["overshoot"].filter.list = OVERSHOOT_MODES
         pm2["overshoot"].value = OVERSHOOT_MODES[1]
@@ -4846,9 +4868,11 @@ class ValueStatistics:
         _clear_stale_fields(parameters, 0, [i for i, p in
                                             enumerate(parameters)
                                             if p.name in
-                                            ("pop", "values")])
+                                            ("pop", "values",
+                                             "decompose")])
         chosen = _txt(pm, "measures").lower()
         pm["pcts"].enabled = "percentiles" in chosen
+        pm["mingroup"].enabled = bool(_txt(pm, "decompose"))   # 405
         pm["outfc"].enabled = (_txt(pm, "outmode")
                                == "New feature class")
         return
@@ -4882,7 +4906,8 @@ class ValueStatistics:
             txt = _refuse_shp_overflow(target, _predict_result_fields(
                 "stats", _txt(pm, "k"), _txt(pm, "r"), "", [],
                 [f for f in _txt(pm, "values").split(";") if f],
-                wanted or ["mean", "median", "gini"], False, False))
+                wanted or ["mean", "median", "gini"], False, False,
+                decomposing=bool(_txt(pm, "decompose"))))
             if txt:
                 pm["outmode"].setErrorMessage(txt + " Or tick "
                                               "'Allow shortened "
@@ -4908,6 +4933,10 @@ class ValueStatistics:
                               _txt(pm, "measures").split(";")
                               if m.strip("' ")],
                   pct_text=_txt(pm, "pcts"),
+                  # BACKLOG 405. An empty minimum is the default, not
+                  # zero: zero means "no minimum", a real choice.
+                  decompose_field=_txt(pm, "decompose") or None,
+                  min_group=_num(pm, "mingroup", None),
                   k_text=_txt(pm, "k"), r_text=_txt(pm, "r"),
                   existing=_txt(pm, "existing") or "Overwrite",
                   out_mode=_txt(pm, "outmode") or "Append to input",

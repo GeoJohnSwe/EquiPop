@@ -1,4 +1,4 @@
-*! equipop v1.54.4  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.55.1  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -574,7 +574,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.54.4"
+    local eqp_ado_version "1.55.1"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -624,7 +624,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.54.4"
+    local eqp_ado_version "1.55.1"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -1515,14 +1515,46 @@ def _equipop_doctor_py(ado_version="", min_engine=""):
     if takes_floor:
         run(ado_version=ado_version, min_engine=min_engine)
     else:
-        run(ado_version=ado_version)
+        # BEFORE the report, not after - John, 10 October 2026, second
+        # round: "where did I go wrong during installation?" He had
+        # not. The report's own release-number remark says the
+        # combination "does break", and the note correcting it was
+        # printed after the VERDICT, pages below. **A correction read
+        # after the alarm is read too late.**
+        #
+        # AND IT STATES THE CONCLUSION, by calling the engine's own
+        # floor function rather than restating the comparison here.
+        # One source: the words are the same ones a current engine
+        # prints, which is the whole point of 332.
+        said = []
+        try:
+            import equipop as _eqp
+            from equipop.doctor import _lines_floor
+            said = _lines_floor(min_engine, _eqp.__version__)
+        except Exception:
+            said = []
+        # TWO COHERENT BRANCHES. The first version printed "this
+        # engine is too old to say" and then, unconditionally, "so it
+        # is checked here instead" - which contradicts the line above
+        # it (external review of 1.54.5, residual 1). An engine old
+        # enough to lack `_lines_floor` cannot be compared against at
+        # all, and saying so is different from saying the answer.
+        print("EQUIPOP - what these commands need")
+        if said:
+            for _line in said:
+                print(_line)
+            print("  This engine cannot be told the requirement, so "
+                  "it is checked here instead.")
+        else:
+            print(f"  needs engine : {min_engine} or newer - and this "
+                  f"engine is too old")
+            print("  to compare itself against it, so the requirement "
+                  "is UNCHECKED either way.")
+        print("  ANY VERSION REMARK BELOW COMPARES TWO RELEASE "
+              "NUMBERS, which move for")
+        print("  different reasons - read this line, not that one. "
+              "`equipop setup` updates")
+        print("  the engine and the remark goes away.")
         print("")
-        print(f"  (this engine is too old to be told which engine the "
-              f"commands need:")
-        print(f"   they need {min_engine} or newer, and the lines above "
-              f"could not check it.")
-        print("   Any version remark above compares two RELEASE "
-              "numbers, which move for")
-        print("   different reasons - `equipop setup` brings the engine "
-              "up to date.)")
+        run(ado_version=ado_version)
 end

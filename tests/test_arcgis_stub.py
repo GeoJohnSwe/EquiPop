@@ -3373,3 +3373,152 @@ def test_a_table_run_never_borrows_the_last_layers_projection(tmp_path):
         "the table run's manifest borrowed the previous run's "
         f"coordinate system: {man['working_crs']!r}")
     assert "unknown" in str(man["working_crs"]).lower()
+
+
+# ------------------------------------------- BACKLOG 405, v1.55.0
+def _pro_town(n=400, seed=4):
+    rng = np.random.default_rng(seed)
+    x, y = rng.uniform(0, 3000, n), rng.uniform(0, 3000, n)
+    cob = np.where(rng.random(n) < 0.3, "abroad", "Sweden")
+    inc = rng.lognormal(10, .5, n) * np.where(cob == "abroad", .7, 1)
+    return pd.DataFrame({"OBJECTID": np.arange(1, n + 1),
+                         "SHAPE@X": x, "SHAPE@Y": y,
+                         "Income": inc, "cob": cob})
+
+
+def test_pyt_machine_2_splits_mld_and_theil_through_the_engine():
+    """Pro reads only the fields it is told to read. The grouping
+    field must be among them, its values must reach dispatch, and the
+    answer must be the engine's.
+
+    BROKEN WITH: decompose_field left out of `extra` (the run dies on
+    a missing key); the `if decompose_field:` block removed (the
+    split columns never appear)."""
+    from equipop.stata_bridge import dispatch
+    t = _pro_town()
+    state = _install_fake_arcpy(t)
+    pyt = _load_pyt()
+    pyt._run_tool("stats", "people", _Messages(),
+                  value_fields=["Income"], stats_list=["mld", "theil"],
+                  k_text="100 300", decompose_field="cob",
+                  min_group=25.0, overshoot="proportional",
+                  originrule="include")
+    res = state["table"]
+    direct = dispatch("stats", t["SHAPE@X"].to_numpy(),
+                      t["SHAPE@Y"].to_numpy(), unit_size=100.0,
+                      k_values=[100, 300],
+                      values={"Income": t.Income.to_numpy()},
+                      stats={"Income": ["mld", "theil"]},
+                      decompose_by={"cob": t.cob.to_numpy(object)},
+                      min_group=25, overshoot_mode="proportional",
+                      self_rule="include")
+    for c in ("MLDsh_Income_300", "Theilw_Income_100", "Ng_Income_300",
+              "NgMin_Income_100"):
+        np.testing.assert_allclose(np.asarray(res[c], float),
+                                   np.asarray(direct[c], float),
+                                   equal_nan=True)
+
+
+def test_pyt_predicts_the_split_columns_before_running():
+    """Pro refuses a shapefile target BEFORE the run when the names
+    will not fit, so its prediction must include the split.
+
+    BROKEN WITH: the wrapper not forwarding `decomposing`."""
+    from equipop.stata_bridge import dispatch
+    _install_fake_arcpy(_pro_town(10))
+    pyt = _load_pyt()
+    rng = np.random.default_rng(1)
+    x, y = rng.uniform(0, 2000, 200), rng.uniform(0, 2000, 200)
+    res = dispatch("stats", x, y, values={"inc": rng.lognormal(5, .5, 200)},
+                   stats={"inc": ["mld", "theil"]}, k_values=[50],
+                   r_values=[300.0],
+                   decompose_by={"g": rng.integers(0, 2, 200)})
+    pred = pyt._predict_result_fields("stats", "50", "300", "", [],
+                                      ["inc"], ["mld", "theil"],
+                                      False, False, decomposing=True)
+    assert set(res.keys()) == set(pred)
+
+
+def test_pyt_dialog_offers_the_split_with_a_default_of_thirty():
+    """John's ruling: thirty people per group, user-settable. The
+    minimum is greyed out until there is something to split.
+
+    BROKEN WITH: no default set on mingroup; the enable rule removed
+    from updateParameters."""
+    _install_fake_arcpy(_pro_town(10))
+    pyt = _load_pyt()
+    tool = pyt.ValueStatistics()
+    ps = tool.getParameterInfo()
+    pm = {p.name: p for p in ps}
+    assert pm["mingroup"].value == 30.0
+    assert {"mld", "theil"} <= set(pm["measures"].filter.list)
+    pm["layer"].value = "people"
+    tool.updateParameters(ps)
+    assert pm["mingroup"].enabled is False
+    pm["decompose"].value = "cob"
+    tool.updateParameters(ps)
+    assert pm["mingroup"].enabled is True
+
+
+def test_the_help_generator_reads_the_checkout_not_an_installed_equipop(
+        tmp_path):
+    """External review of 1.55.0, finding 3, reproduced: with an older
+    equipop INSTALLED, the generator - run as a script, so its first
+    path entry is arcgis/ - imported that one, found no help for the
+    two new boxes, and two tests failed. Worse, a bundle built on such
+    a machine would ship OLD help silently whenever the old package
+    had every key. This machine never saw it: its install is editable.
+
+    So the test plants a POISONED equipop - one that refuses to be
+    imported - ahead of everything on PYTHONPATH, and the generator
+    must still write one sidecar per registered tool.
+
+    BROKEN WITH: the checkout insertion in make_help_xml.py removed."""
+    import subprocess
+    poison = tmp_path / "site" / "equipop"
+    poison.mkdir(parents=True)
+    (poison / "__init__.py").write_text(
+        "raise SystemExit('POISONED: an installed equipop was imported "
+        "instead of the checkout')\n")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = tmp_path / "xml"
+    env = dict(os.environ, PYTHONPATH=str(tmp_path / "site"))
+    p = subprocess.run([sys.executable,
+                        os.path.join(root, "arcgis", "make_help_xml.py"),
+                        "--out", str(out)],
+                       cwd=root, env=env, capture_output=True, text=True,
+                       timeout=300)
+    assert p.returncode == 0, p.stdout[-600:] + p.stderr[-600:]
+    pyt_src = open(os.path.join(root, "arcgis", "EquiPop.pyt"),
+                   encoding="utf-8").read()
+    n_tools = len([t for t in re.search(
+        r"self\.tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
+        if t.strip()])
+    assert len(list(out.glob("*.pyt.xml"))) == n_tools
+
+
+def test_the_loose_generator_never_puts_the_users_folder_on_the_path(
+        tmp_path, monkeypatch):
+    """The other side of the 407 fix. make_help_xml.py ships loose
+    beside EquiPop.pyt, in a folder like C:\\Data\\EQP whose PARENT is
+    the user's data. Putting that on sys.path could shadow any module
+    with a file of the same name. Only a real checkout - pyproject.toml
+    and equipop/__init__.py above the script - may be inserted.
+
+    BROKEN WITH: the guard removed, so the parent is always inserted."""
+    import runpy
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    loose = tmp_path / "Data" / "EQP"
+    loose.mkdir(parents=True)
+    import shutil
+    shutil.copy(os.path.join(root, "arcgis", "make_help_xml.py"), loose)
+    before = list(sys.path)
+    try:
+        runpy.run_path(str(loose / "make_help_xml.py"),
+                       run_name="not_main")
+        added = [p for p in sys.path if p not in before]
+    finally:
+        sys.path[:] = before
+    parent = os.path.normcase(os.path.abspath(str(tmp_path / "Data")))
+    assert parent not in [os.path.normcase(os.path.abspath(p))
+                          for p in added], added

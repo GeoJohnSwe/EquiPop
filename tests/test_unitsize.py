@@ -730,6 +730,13 @@ def test_a_cached_answer_has_to_be_consistent_with_itself():
     y = rng.uniform(0, 40000, 400)
     a = unitsize.advise_unit(x, y, None, k_values=[2],
                              candidates=[100.0, 1000.0, 5000.0])
+    # 100 m: 400 cells, 0 saturated - isolates the "no saturated
+    # cells means nobody is in one" endpoint.
+    # 5,000 m: 64 cells, all 64 saturated - isolates the other
+    # endpoint, "every cell saturated means everybody is".
+    assert a["rows"][2]["saturated_cells"][2] == a["rows"][2]["cells"], (
+        "the coarsest row no longer has every cell saturated, so the "
+        "share_people == 1 endpoint is unreachable from here")
     assert a["recommended"][2] == 100.0, (
         "the fixture no longer has a qualifying size, so the "
         "follows-from-the-shares check is unreachable from here")
@@ -817,6 +824,39 @@ def test_a_cached_answer_has_to_be_consistent_with_itself():
                 "99", 0.0),
         "no rows at all":
             lambda adv: adv.__setitem__("rows", []),
+        # EXTERNAL REVIEW OF 1.54.5, residual 2: these passed. The
+        # review named `people` and `share_cells`; measuring it also
+        # turned up `points`, and a `people` of 0 - which advise_unit
+        # refuses outright, and which is the DENOMINATOR of every
+        # people-share in the table.
+        "a population total of zero":
+            lambda adv: adv.__setitem__("people", 0.0),
+        "a negative population total":
+            lambda adv: adv.__setitem__("people", -5.0),
+        "a non-finite population total":
+            lambda adv: adv.__setitem__("people", float("inf")),
+        "no locatable points":
+            lambda adv: adv.__setitem__("points", 0),
+        "a negative point count":
+            lambda adv: adv.__setitem__("points", -1),
+        # share_cells IS sat/cells, so it can be checked exactly
+        # rather than merely bounded - an inconsistent value inside
+        # 0-1 passed the range check
+        "a cell share that is not sat/cells":
+            lambda adv: adv["rows"][0]["share_cells"].__setitem__(
+                "2", 0.77),
+        # share_people's ENDPOINTS are exact even though its middle
+        # cannot be recomputed. BOTH values here are chosen to leave
+        # the recommendation intact, so only the endpoint check can
+        # object - break-check caught my first attempt (0.4) being
+        # refused by the follows-from check instead, because 0.4
+        # exceeds the tolerance and disqualified the row.
+        "no saturated cells but a people share inside the tolerance":
+            lambda adv: adv["rows"][0]["share_people"].__setitem__(
+                "2", 0.001),
+        "every cell saturated but not everybody in one":
+            lambda adv: adv["rows"][2]["share_people"].__setitem__(
+                "2", 0.9),
     }
     for why, fn in cases.items():
         assert edited(fn) is None, (
@@ -1018,3 +1058,60 @@ def test_row_misaligned_weights_are_refused():
     with pytest.raises(ValueError, match="row-aligned"):
         unitsize.advise_unit(np.arange(5.0), np.arange(5.0),
                              np.ones(4), k_values=[2])
+
+
+def test_the_cache_cannot_check_the_population_total_and_says_so():
+    """BROKEN WITH: claiming in the docstring that an edited payload
+    cannot pass, or using `people` in a decision after unpacking.
+
+    EXTERNAL REVIEW OF 1.54.5, residual 2, and the honest half of the
+    answer. The payload carries no per-cell populations, so the TOTAL
+    `people` cannot be recomputed: an edited 999999 is undetectable.
+    The 1.54.1 note claimed more protection than existed and was
+    rightly called out for it; this records the limit instead of
+    repeating the overclaim.
+
+    WHY IT IS TOLERABLE, measured rather than asserted: after
+    unpacking, `people` is read in exactly ONE place - the header line
+    of format_advice - and reaches no decision, because every share
+    was computed before the advice was stored. An edited total
+    corrupts one printed figure and no recommendation. If that ever
+    stops being true, this test fails.
+    """
+    import inspect
+    import json
+    import re
+
+    rng = np.random.default_rng(9)
+    x = rng.uniform(0, 40000, 400)
+    y = rng.uniform(0, 40000, 400)
+    a = unitsize.advise_unit(x, y, None, k_values=[2],
+                             candidates=[100.0, 1000.0])
+    key = unitsize.request_key(
+        fingerprint=a["fingerprint"], k_values=a["k_values"],
+        tolerance=a["tolerance"],
+        candidates=[r["unit"] for r in a["rows"]],
+        self_rule=a["self_rule"])
+    got = json.loads(unitsize.pack_advice(a))
+    got["a"]["people"] = 999999.0
+    back = unitsize.unpack_advice(json.dumps(got), key)
+    assert back is not None, (
+        "an edited population total is now refused - good, and this "
+        "test records that it could not be, so update it to say how")
+    assert back["recommended"] == a["recommended"], (
+        "the edited total changed the recommendation, which is the "
+        "thing the docstring says it cannot do")
+
+    # the limit is written down where a reader will meet it
+    src = inspect.getsource(unitsize._advice_is_coherent)
+    assert "WHAT CANNOT BE CHECKED" in src, (
+        "the function no longer states its own limit, which is how "
+        "1.54.1's overclaim happened")
+
+    # and `people` is still used in one place only, after unpacking
+    uses = [n for n, line in enumerate(
+        inspect.getsource(unitsize).splitlines(), 1)
+        if re.search(r"""advice\[.people.\]|a\[.people.\]""", line)]
+    assert len(uses) <= 3, (
+        f"`people` is now read at lines {uses} - if it has reached a "
+        f"decision, an unverifiable field is deciding something")

@@ -63,11 +63,12 @@ SPEC = {
     # here, a future default change leaves it untouched, and changing
     # the key becomes a deliberate act with a reason recorded.
     #
-    # WHY `whole` AND NOT THE NEW DEFAULT. This spec asks for mean,
-    # median and Gini, and `proportional` REFUSES those - a fraction
-    # of a cell has no distribution behind it (BACKLOG 118). Pinning
-    # `whole` keeps the shipped key meaning exactly what it meant, so
-    # no door has to be re-certified for a reason unrelated to it.
+    # WHY `whole` AND NOT THE NEW DEFAULT. When this key was made,
+    # `proportional` REFUSED mean, median and Gini - a fraction of a
+    # cell had no distribution behind it - and BACKLOG 118 lifted
+    # that in 1.31. Pinning `whole` still keeps the shipped key
+    # meaning exactly what it meant, so no door has to be
+    # re-certified for a reason unrelated to it.
     # THE GAP THIS LEAVES, recorded rather than hidden: the doors are
     # now conformance-checked only under `whole`, while most users
     # will get `proportional`. A SECOND key under proportional -
@@ -78,9 +79,9 @@ SPEC = {
 # ===================================================================
 # BACKLOG 162 - THE SECOND KEY, under the mode users actually get.
 #
-# The key above is pinned to `whole`, and it has to be: it asks for a
-# mean, a median and a Gini, and `proportional` refuses those until
-# weighted statistics land (BACKLOG 118). But from 1.30 the DEFAULT
+# The key above is pinned to `whole`. When both were made it had to
+# be: `proportional` refused a mean, a median and a Gini until
+# weighted statistics landed in 1.31 (BACKLOG 118). From 1.30 the DEFAULT
 # is proportional, so the shipped key certified the doors under a
 # mode most runs will never use. A conformance key that does not
 # cover the default is a certificate for someone else's run.
@@ -154,9 +155,11 @@ def generate(key: str = "whole") -> pd.DataFrame:
                       r_values=spec["r_values"], **common)
 
     sources = [counts]
-    # A key with no value statistics runs machine 1 only. That is not
-    # a gap in the key: under `proportional` machine 2 REFUSES, so a
-    # stats column here would be a promise no door can keep.
+    # A key with no value statistics runs machine 1 only. The reason
+    # written here was that machine 2 REFUSED proportional, so a
+    # stats column would be a promise no door could keep - true when
+    # it was written, false since 1.31. So machine 2 IS now
+    # uncertified under the default mode: BACKLOG 408, open.
     if spec["values"]:
         sources.append(dispatch(
             "stats", x, y, weight=p[spec["weight"]].values,

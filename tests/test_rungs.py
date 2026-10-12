@@ -129,31 +129,36 @@ def test_a_box_that_is_honoured_off_its_rung_says_that_instead():
 
 
 # ------------------------------------------------- 103, the menu
-def _literal_list(path, name):
+def _module_list(path, name):
     """Read a module-level list out of a source file WITHOUT importing
-    it. Neither door may be imported to get at these - see
-    test_menu_wording_is_pinned_not_shared for why."""
+    it - neither door may be imported to get at these, see
+    test_menu_wording_is_pinned_not_shared for why.
+
+    v1.55.0, BACKLOG 405. THIS USED TO BE TWO REGEX READERS, and they
+    misread legal Python. They split the list on "a comma followed by
+    a quote", so a comment after a comma glued two entries together -
+    Pro's measures came back as [..., 'theilpercentiles'] - and they
+    found the end of the list at the first `]`, so a comment holding
+    `[0, 1, 2]` cut the list short. Both are what a regex does with a
+    grammar. Python's own parser handles comments, brackets inside
+    comments and strings wrapped across lines (adjacent literals are
+    joined at parse time) because that is its job.
+    """
+    import ast
     src = open(os.path.join(ROOT, path), encoding="utf-8").read()
-    body = re.search(rf"^{name}\s*=\s*\[(.*?)\]", src,
-                     re.S | re.M).group(1)
-    return [x.strip().strip('"\'') for x in
-            re.findall(r'"([^"]*)"|\'([^\']*)\'', body)
-            for x in x if x] or [
-        x.strip().strip('"\'') for x in body.split(",") if x.strip()]
+    for node in ast.parse(src).body:
+        targets = (node.targets if isinstance(node, ast.Assign)
+                   else [node.target] if isinstance(node, ast.AnnAssign)
+                   else [])
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            return list(ast.literal_eval(node.value))
+    raise AssertionError(f"{path} has no module-level list {name}")
 
 
-def _joined(path, name):
-    """Same, but re-joining strings that were wrapped across lines."""
-    src = open(os.path.join(ROOT, path), encoding="utf-8").read()
-    body = re.search(rf"^{name}\s*=\s*\[(.*?)\]", src,
-                     re.S | re.M).group(1)
-    out, cur = [], ""
-    for piece in re.split(r",\s*(?=[\"\'])", body):
-        parts = re.findall(r'"([^"]*)"', piece) or \
-            re.findall(r"'([^']*)'", piece)
-        if parts:
-            out.append("".join(parts))
-    return out
+#: Both names kept - they are the vocabulary of the tests below. One
+#: reader now serves both, and the strings it returns are Python's.
+_literal_list = _module_list
+_joined = _module_list
 
 
 def test_menu_wording_is_pinned_not_shared():

@@ -166,6 +166,45 @@ def _weighted_gini(v, w, cum) -> float:
     return float(2.0 * np.dot(v, rank_sum) / (n * s) - (n + 1.0) / n)
 
 
+def _weighted_ge(s: str, v, w, n: float) -> float:
+    """MLD (GE(0)) or Theil's T (GE(1)) over SORTED weighted pairs.
+
+    v1.55.0, BACKLOG 405. The weights are people, fractions included,
+    so a crossing ring that contributes 0.4 of a cell contributes 0.4
+    of its terms - the same arithmetic the mean has always used. For
+    whole weights this equals the expanded formula in equipop/stats.py
+    exactly; that is pinned by test.
+
+    The domain is screened once per variable, upstream, by
+    check_mld_input / check_theil_input - this is the inner loop and
+    not the place to raise. NaN here means "not computable for this
+    neighbourhood", never zero.
+
+    One distinct value means no inequality, and returns 0.0 EXACTLY:
+    the mean of 55 copies of one income can differ from that income
+    in the last bit, and ln of a ratio one ulp from 1 is noise, not a
+    measurement - BACKLOG 118 pinned the same thing for the SD.
+    """
+    mean = float(np.dot(v, w) / n)
+    if not mean > 0:
+        return float("nan")
+    lo = float(v[0])                      # sorted: the smallest value
+    if s == "mld" and lo <= 0:
+        return float("nan")
+    if s == "theil" and lo < 0:
+        return float("nan")
+    if lo == float(v[-1]):
+        return 0.0
+    if s == "mld":
+        out = float(np.dot(w, np.log(mean / v)) / n)
+    else:
+        r = v / mean
+        pos = r > 0                       # a zero contributes nothing
+        out = float(np.dot(w[pos], r[pos] * np.log(r[pos])) / n)
+    # both indices are >= 0 by Jensen; a negative is rounding noise
+    return max(out, 0.0)
+
+
 def weighted_stats(names, values, weights) -> dict:
     """Several statistics over ONE neighbourhood, sorting once.
 
@@ -218,6 +257,8 @@ def _stat_prepared(s: str, v, w, cum) -> float:
         return _quantile_prepared(v, w, cum, 0.5)
     if s == "gini":
         return _weighted_gini(v, w, cum)
+    if s in ("mld", "theil"):
+        return _weighted_ge(s, v, w, n)
     if s in ("sd", "se", "var"):
         # ddof=1 on the EXPANDED sample: divide by N-1, not by
         # (number of distinct values) - 1. Getting this wrong would

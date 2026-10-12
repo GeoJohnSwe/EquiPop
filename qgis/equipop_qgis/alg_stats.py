@@ -25,7 +25,11 @@ from .base import EquipopAlgorithm
 # them since 1.16; only this list was short. Order and wording follow
 # Pro's _MEASURES so the two doors read alike.
 MEASURES = ["mean", "median", "gini", "sd", "variance", "se",
-            "min", "max", "count", "sum", "range"]
+            "min", "max", "count", "sum", "range",
+            # v1.55.0, BACKLOG 405: the two decomposable indices.
+            # APPENDED, so the default ticks [0, 1, 2] still mean
+            # mean, median and Gini.
+            "mld", "theil"]
 # Pro calls it "variance"; equipop/stats.py calls it "var". One name
 # for the user, one for the engine, mapped in exactly one place.
 MEASURE_KEY = {"variance": "var"}
@@ -111,6 +115,18 @@ class ValueStatistics(EquipopAlgorithm):
             "pcts", "2b \u25b8 ...percentiles, space separated "
             "(e.g. 10 25 75 90)",
             optional=True))
+        # v1.55.0, BACKLOG 405. Any field type: a group is as often
+        # text (country of birth) as a code.
+        self.add(QgsProcessingParameterField(
+            "decompose", "2c \u25b8 ...split MLD / Theil BETWEEN and "
+            "WITHIN the groups of this field (born abroad, parental "
+            "education) - optional",
+            parentLayerParameterName="layer", optional=True))
+        self.add(QgsProcessingParameterNumber(
+            "mingroup", "2d \u25b8 ...smallest group, in people, for "
+            "the split to be reported",
+            defaultValue=30.0, minValue=0.0,
+            type=QgsProcessingParameterNumber.Double))
         self.add(QgsProcessingParameterString(
             "k", "3 \u25b8 k - neighbourhood sizes in people, space "
             "separated",
@@ -200,9 +216,12 @@ class ValueStatistics(EquipopAlgorithm):
         pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
 
+        decompose = (self.parameterAsStrings(parameters, "decompose",
+                                             context) or [None])[0]
         names = predict_result_fields(
             "stats", k_text, r_text, "", [], vals, wanted,
-            decaying=False, efforting=False)
+            decaying=False, efforting=False,
+            decomposing=bool(decompose))
         self.check_target(parameters, names, feedback)
 
         with stage(ch, "reading input"):
@@ -231,6 +250,21 @@ class ValueStatistics(EquipopAlgorithm):
                                              context) or [2])[0]],
                   values={v: pts.data[v] for v in vals},
                   stats={v: wanted for v in vals})
+        # BACKLOG 405. Passed only when a grouping field is given; the
+        # engine checks the measures, the groups and the minimum, so
+        # the wording lives in one place for every door.
+        if decompose:
+            kw["decompose_by"] = {decompose: pts.data[decompose]}
+            # NOT SUPPLIED means the default, never zero - zero is a
+            # real choice here ("no minimum"). QGIS fills an absent
+            # parameter from its definition, but a stub or a script
+            # may not, and BACKLOG 116 is what happens when a missing
+            # number quietly becomes 0. None lets the engine apply
+            # the one default it keeps.
+            mg = parameters.get("mingroup")
+            kw["min_group"] = (None if mg in (None, "") else
+                               self.parameterAsDouble(parameters,
+                                                      "mingroup", context))
         # BACKLOG 372, v1.53.2. These two lines were bare int() and
         # float() on text a person typed - the exact defect BACKLOG
         # 320 was opened for, named in equipop/doors/numbers.py's own
@@ -288,12 +322,15 @@ class ValueStatistics(EquipopAlgorithm):
 
         if refmode == 2 and catfield:
             from equipop.categorical import categories_to_binary
-            wanted = [str(v).strip() for v in
-                      (self.parameterAsMatrix(parameters, "reftable",
-                                              context) or [])
-                      if str(v).strip()]
+            # BACKLOG 405 (found in passing): this was called `wanted`
+            # - the name of the MEASURES list above - so under this
+            # rung the "Measures:" line printed the reference types.
+            ref_types = [str(v).strip() for v in
+                         (self.parameterAsMatrix(parameters, "reftable",
+                                                 context) or [])
+                         if str(v).strip()]
             mask, _ = categories_to_binary(
-                pts.data[catfield], {}, pop_values=wanted or None)
+                pts.data[catfield], {}, pop_values=ref_types or None)
             base = (np.nan_to_num(np.asarray(pts.data[pop], float))
                     if pop else np.ones(len(mask)))
             outside = int((~mask).sum())

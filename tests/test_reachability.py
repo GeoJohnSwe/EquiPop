@@ -227,6 +227,60 @@ def test_5_every_backlog_number_cited_is_real():
                 "entry")
 
 
+def test_6_every_test_in_the_suite_can_be_reached_as_itself():
+    """BACKLOG 404, v1.54.6. THE SAME QUESTION, ASKED OF THE SUITE.
+
+    Every other check in this file asks whether a capability can be
+    reached from a door. This one asks whether a TEST can be reached
+    at all - and it was written because one could not.
+
+    `test_packaging.py` held a function whose body ran TWO tests: the
+    BACKLOG 350 build-output check, and then, after its assertion, a
+    second docstring and the whole of the BACKLOG 241 runner-imports
+    check. A `def` line had been lost in an edit. The consequences are
+    exactly the reachability pattern this project keeps finding:
+
+      * the 241 check had NO NAME, so it could not be selected with
+        -k, and its name never appeared in any test report - nobody
+        could see whether it had run;
+      * it ran only when the 350 assertion PASSED. Break 350 and the
+        241 check silently stops being executed, which is the "guard
+        made unreachable by the path that would trip it" shape found
+        three times in session 12 already.
+
+    Both tests passed throughout, and the suite count said 1,644 - so
+    neither the green suite nor the number could show it. A stray
+    string statement after the docstring is the signature, and that is
+    what this reads.
+
+    NOT a style check: a docstring in the middle of a function body is
+    harmless on its own. It is checked because here it is the only
+    visible trace of a lost `def`.
+    """
+    import ast
+    tests_dir = os.path.join(ROOT, "tests")
+    merged = []
+    for fn in sorted(os.listdir(tests_dir)):
+        if not (fn.startswith("test_") and fn.endswith(".py")):
+            continue
+        src = open(os.path.join(tests_dir, fn), encoding="utf-8").read()
+        for node in ast.walk(ast.parse(src)):
+            if not isinstance(node, (ast.FunctionDef,
+                                     ast.AsyncFunctionDef)):
+                continue
+            for stmt in node.body[1:]:          # [0] is the docstring
+                if (isinstance(stmt, ast.Expr)
+                        and isinstance(stmt.value, ast.Constant)
+                        and isinstance(stmt.value.value, str)):
+                    merged.append(f"{fn}:{stmt.lineno} inside "
+                                  f"{node.name}() (line {node.lineno})")
+    assert not merged, (
+        "a docstring sits in the middle of a function body, which is "
+        "how a lost `def` line looks - the test below it has no name, "
+        "cannot be selected, and only runs while the assertions above "
+        "it pass:\n  " + "\n  ".join(merged))
+
+
 # --- the report, so the matrix is readable without reading the code --
 
 def test_the_matrix_prints_a_readable_report(capsys):

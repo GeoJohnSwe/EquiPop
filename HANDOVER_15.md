@@ -10,8 +10,11 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.54.0 rather than superseded: same session. Read
-section 0k first, then 0j, 0i, 0h, 0g, 0f, 0e, 0d, 0c, 0b. **The session ended by being
+*Amended through 1.55.1 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0s first, then 0r back to 0b
+in order - the header used to say "0k first", and stayed saying it
+through six later sections, which is the staleness this file exists
+to prevent. **1.54.0's stretch of the session ended by being
 read from outside, three times in three days** - a pull request with
 four findings, a full code review with nine, and then a review I was
 asked to run on the project's own raster and demographic code, which
@@ -26,6 +29,316 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0s. 1.55.1 - A FAVOURABLE REVIEW, FOUR REAL FINDINGS, AND A POISONED INSTALL
+
+The external review of 1.55.0 called it "mathematically sound" and
+asked for a patch before broad publication. John wondered whether
+some findings were obsolete - the zero and Theil items - but those
+were under the reviewer's *what is strong*. **All four findings
+reproduced, and two were worse than reported.**
+
+- **Group codes** could become the wrong groups: `pd.NA` read as a
+  group of its own, and two float codes printing alike shared one
+  sub-field, turning a real MLD of 0.1308 into "between 0, within 0".
+  The deeper fault was naming a sub-field by a DISPLAY label; it is a
+  number now. The same class by another road - int64 codes above
+  2**53 rounding together - was found while fixing it.
+- **The overshoot help** still said machine 2 refuses proportional,
+  eight releases after it stopped - in both GIS dialogs, Pro's
+  sidecars and Stata's help. A claim no test reads outlives the thing
+  it describes; this one now has a test that reads it AND runs what
+  it describes.
+- **Tests depended on the installed equipop.** The Pro help generator
+  imported whatever was installed; `make_sthlp.py`, generating the
+  same text, never had. This machine could not see it: its install is
+  editable and points at the checkout, so "installed" and "checkout"
+  were the same thing here.
+- **Per-field measures were unioned**, and a zero in a field that
+  asked only for Theil got the whole run refused in the name of a
+  scaffolding field.
+
+**THE METHOD WORTH KEEPING: a poisoned install.** An `equipop` whose
+`__init__` raises, put ahead of everything on PYTHONPATH, turns every
+quiet use of an installed package into a loud failure - which is the
+only way to see this class from a machine with an editable install.
+Over the whole suite it found what the reviewer's run could not: four
+lazy-import tests that had always measured the installed package,
+because conftest runs the suite from a temporary folder (BACKLOG 101)
+and `python -c` imports from the working directory. On the reviewer's
+machine they passed while checking 1.54.1. **A test that passes
+against the wrong code is worse than one that fails**, because it is
+believed. It also showed my 1.54.6 sdist test passing when the
+generator died after one sidecar of five.
+
+**The reviewer's benchmark, measured rather than estimated**: the
+split costs nearly a value field per group. Two groups double a run;
+twenty groups over three fields took 595 s and 1.4 GB against 44 s and
+0.2 GB. The help says so now. BACKLOG 409 holds the fix, checked
+before it was written down: MLD and Theil need four additive sums per
+group and no sorting at all, 7e-10 against the sorted path.
+
+**Break-check caught a test of mine for the second release running** -
+a large-integer test whose two codes never collided as floats. The
+pattern is now unmistakable: the docstring's BROKEN WITH line is
+written when the test is, and is a hypothesis until a break proves it.
+
+## 0r. 1.55.0 - JOHN'S IDEA, MEASURED BEFORE IT WAS BUILT
+
+**Machine 2 now offers MLD and Theil, and with a grouping field it
+splits them, in every bespoke neighbourhood, into the inequality
+between groups and within them** - `MLDb_`, `MLDw_`, `MLDsh_` (the
+between-group share), Theil's equivalents, and `Ng_` / `NgMin_`
+saying how many groups were present and how big the smallest was.
+QGIS and Pro both; Stata unchanged by ruling 205, because ineqdeco
+already does this natively.
+
+The idea came from a conversation of John's about inequality of
+opportunity that was lost from the app; he pasted back what he had
+copied and asked whether the methods belonged in the stats machine.
+**Before anything was built, every claim the design rested on was
+checked against the code**: that MLD and Theil split exactly (1e-17,
+fractional weights), that the engine already computes a subgroup's
+statistics from a value missing outside the group (it does, and says
+so), and what each index does to a 0/1 variable (each is a transform
+of the share - Theil = -ln p, Gini = 1 - p, MLD infinite - which
+answered half of John's question and kept those columns out of the
+binary family).
+
+**His three rulings, and one was a question first.** He asked whether
+replacing an income of zero with a small number would rescue MLD,
+suspecting not. Measured, not argued: the replacement becomes the
+answer (0.0013 for three people, 0.45 to 2.73 for four depending only
+on epsilon), and the answer depends on the currency unit - 2.73 in
+SEK, 1.01 in thousand SEK, 0.34 in million SEK. So MLD refuses a zero
+and names Theil. A minimum group size, default 30, settable; below it
+all three split columns are EMPTY, not zero, because the between part
+is what small groups inflate. Ex ante only for now.
+
+**Built without changing the neighbourhood.** Each value field is
+split into one sub-field per group, named `inc[cob=abroad]` - a name
+no GIS field can have - the engine runs exactly as before, and
+`equipop/decompose.py` assembles the pieces. k still counts
+everybody, pinned by test. **The certificate is an identity between
+two routes that share no code below the engine**: between + within,
+assembled per group, against the index computed directly over
+everyone - 1e-14 in all three overshoot modes, with fractional
+weights, k and radius, and where one of three groups is absent.
+
+**The columns are level-independent on purpose.** A door predicts its
+columns before it reads the layer, and the groups are not known then.
+So per-group means are not written yet - their names would depend on
+the data - and the prediction and the engine name the split with one
+function.
+
+**Four things found on the way, all small and all instances of
+patterns this file already names:**
+
+- QGIS machine 2 called the reference types `wanted`, the name of
+  its measures list, so under rung 3 the log printed the types as the
+  measures - since 1.29.2. **A name reused is a rule in two places.**
+- Pro's description still said rows are "expanded exactly", which
+  343 ended in 1.51. **A claim with no test behind it outlives the
+  thing it describes.**
+- `test_rungs` read the doors' menu lists with regexes, which glued
+  `"theil",  # comment` and `"percentiles"` into `theilpercentiles`,
+  and would have ended QGIS's list inside a comment holding `[0, 1,
+  2]`. **A regex is not a parser**; one AST reader now, break-checked
+  to still see a real drift.
+- The reachability matrix's witness is `symbol in source`, so
+  break-check's rename of `decompose_by` to `decompose_byx` passed it.
+  The behavioural door test caught it. Recorded as 406 rather than
+  fixed here: it changes how every row is proven. **A substring is
+  not a dependency** - 1.54.5's lesson, at the scale of the whole
+  matrix.
+
+**And one of mine, found by break-check:** the hand-arithmetic test
+claimed it was broken by "dividing by distinct values instead of
+people", and with every weight 1 those are the same number, so it
+was not. It now carries a weighted case worked by hand. 40 breaks,
+40 caught. **A BROKEN WITH line is a claim, and claims get tested.**
+
+**What is next is John's to unblock**: the scale profile theta(k)
+beside `seg_profile`, where the types are DEFINED by neighbourhood
+character at each k. It needs his ruling on how that character is
+binned into types, because more bins push theta up.
+
+## 0q. 1.54.6 - THE REVIEW CAME BACK POSITIVE AND THE ERRORS WERE ALL IN MY PROSE
+
+The third external review of 1.54.5 returned **"a credible release
+candidate... suitable for SSC"**. The code findings from the two
+earlier reviews were confirmed fixed by measurement in his own
+environment - Python 3.12.14, Rasterio 1.5.2 - not by reading my
+notes about them.
+
+**And it still found five things. Four of the five were claims.**
+
+**THREE WRONG STATEMENTS IN MY OWN 1.54.5 RELEASE NOTE:**
+
+- It said `equipop setup` would install 1.54.5. It requests `equipop>=`
+  **the floor**, 1.48.0 - which is exactly what 332 decided and what
+  the `.ado` has done ever since (`floor = min_engine or ado_version`).
+  Setup works before the PyPI upload and *cannot install the
+  unpublished release specifically*. The local wheel is the only
+  pre-publication method. I wrote that fix in 1.54.5 and then
+  described it wrongly in the same note.
+- Its GitHub `net install` line fetches **whatever is on main**. Given
+  to a tester before the tree is pushed, it installs the previous
+  release's `.ado` while the note claims otherwise - a silent version
+  skew, with the loud doctor warning downstream that I had just spent
+  1.54.4 and 1.54.5 making legible. Push first, or install the
+  supplied files locally.
+- The test count had lost its environment qualifier. He measured 1,616
+  passed / 28 skipped against the same 1,644 collected. Nothing is
+  wrong; the skips are his optional dependencies. But **a test count
+  is an environment measurement, not a property of a release** - first
+  recorded at 1.54.1, re-learned here because I dropped the qualifier
+  while editing the sentence that carried it.
+
+These three were in text that no test reads. **The release note is the
+only artefact in this project with no suite behind it, and it is the
+first thing a new user obeys.** 0p's lesson was that a correct
+document the reader cannot find does not help him; this one is one
+turn worse - a document he *can* find, follows, and is misled by.
+
+**THE TWO RESIDUALS, both fixed, both found by reproducing them:**
+
+- **The floorless note contradicted itself.** 401's fallback could
+  print *"this engine is too old to say"* and then *"so it is checked
+  here instead"* - the second sentence answering the question the
+  first had just declared unanswerable. Stubbing `_lines_floor` out
+  reproduced it in one run. There are two real states and they now
+  read as two: borrow the engine's own `_lines_floor` and print the
+  satisfied line, or say the requirement is UNCHECKED either way and
+  claim nothing more. **The test runs both branches** - a presence
+  test passes on the contradictory version, which is 0p's ordering
+  lesson in a new shape.
+- **Cache validation accepted edited numbers.** Measured on a
+  hand-edited `char _dta`: `people = -5` ACCEPTED, `people = 0`
+  ACCEPTED, `points = -1` ACCEPTED, an inconsistent `share_cells`
+  ACCEPTED. `_advice_is_coherent` now checks finiteness and sign and
+  re-derives every share from the counts stored beside it.
+  **One case genuinely cannot be caught, and the docstring now says
+  so**: `people = 999999` is accepted because the payload holds no
+  per-cell populations to total against. Before accepting that, I
+  measured what it costs - after unpacking, `people` is read in
+  exactly one place (the `format_advice` header) and reaches no
+  decision. 1.54.1 would have called the function "validated". The
+  limit is written where the next reader of it will see it.
+
+**AND THEN VERIFYING THE BUNDLE FOUND TWO MORE, both the oldest shape
+in this project: the thing exists and the path cannot reach it.** One
+leak check on the archives did it, run on a premise that was wrong -
+the sdist carries the five Pro help sidecars, and MANIFEST.in had
+already ruled on that in writing: *"do not commit them, do ship
+them."* Reading the recorded reason before fixing anything is what
+stopped a correct decision being undone.
+
+- **The durable release tool had no guard for them, and its own
+  docstring states the rule it was missing.**
+  `tools/make_release_zip.py` says: *"a manual step in the right order
+  is not a fix, because the order will be got wrong again. So the
+  check lives here, runs every time, and REFUSES rather than warns."*
+  The sidecars are exactly that step - the bundle's Pro slot needs
+  them present, the working tree must not hold them, so the order is
+  generate, build, delete. My scratchpad build script checks for them.
+  The in-tree tool, **the one that survives the session**, did not,
+  and no existing check could see them: the BACKLOG 350 check skips
+  whole directories, and these sit in `arcgis/` beside files that must
+  ship. 1.54.0 shipped them and it was caught by hand. The tool
+  refuses now, with the remedy in the message, and the test drives
+  `build()` rather than the checker alone.
+- **A test in this suite could not be reached as itself.** One
+  function in `test_packaging.py` ran two tests: the 350 check, and
+  then, after its assertion, a second docstring and the whole BACKLOG
+  241 runner-imports check. A `def` line had been lost in an edit. So
+  that check had no name, could not be selected with `-k`, never
+  appeared in a report, and **ran only while the assertions above it
+  passed** - break 350 and a guard silently stops executing. Fourth
+  instance of that shape this session and the first inside the suite
+  rather than the package.
+  **Measured, because it is why this was invisible: re-merged, the
+  file reports 34 passed instead of 35. Green either way, only the
+  count moving** - which is this release's test-count lesson arriving
+  from the other direction. `test_reachability.py` now walks every
+  `test_*.py` by AST and fails on a string statement in the middle of
+  a function body, that being what a lost `def` looks like.
+
+- **And then my own fix for the first one silently emptied the source
+  archive**, which turned out to be the root cause of all three. I had
+  the build script generate the sidecars instead of trusting my memory,
+  and put the step where the Pro slot needs them — *after* `python -m
+  build`. Measured on the two tarballs: 1.54.5's sdist carries five,
+  the first 1.54.6 sdist carries **zero**, with every check green.
+  **`include arcgis/*.pyt.xml` is a permission, not a guarantee** — the
+  files have to exist when the build runs. So 1.54.3, 1.54.4 and 1.54.5
+  shipped them by accident of the order I happened to work in, and the
+  test that asserts the MANIFEST *line* states the lesson it misses by
+  exactly one level in its own docstring: *"a check on an artefact
+  nobody ships is a check on nothing."*
+
+**THE ROOT CAUSE, and it explains all three: the 19-slot bundle has
+been built by a script living outside the repository at every release,
+rewritten from the last one each time.** `tools/make_bundle.sh` is in
+the tree now, carrying the order and the reason for each step, guarding
+itself at runtime — it refuses if the sdist comes out with no sidecars,
+if the working-tree zip has any, if the tree is left dirty, or if
+pyproject's version is not the one asked for — and cleaning up on a
+trap. Two tests, split deliberately: one BUILDS the sdist and looks
+inside, proving the config delivers when the files exist and saying in
+its docstring that it cannot prove they exist; the other asserts the
+ORDER in the script, position being the property.
+
+**One more time for the uniqueness rule:** my first break anchor for
+the merged test matched **zero** times, because inserting a new test
+had moved the text. The standing `count == 1` assertion said so, rather
+than reporting a cheerful SURVIVED on a break that was never applied.
+**18 break-checks across this release, all caught, no survivors.**
+
+## 0p. 1.54.5 - THE FIX WORKED AND THE READER STILL BLAMED HIMSELF
+
+John installed 1.54.4's commands against a 1.54.3 engine and asked
+**"where did I go wrong during installation?"**
+
+He had not. His output carried 401's new note, so that fix was working
+- and the note was printed **after the VERDICT**, pages below the loud
+release-number remark it exists to correct. He read *"THE ENGINE IS
+OLDER THAN THE COMMANDS, and that combination does break"*, concluded
+he had mis-installed something, and asked.
+
+**A CORRECTION PRINTED AFTER THE ALARM IS READ TOO LATE.** The note
+comes first now.
+
+**And it states the verdict rather than the caveat**, which is the
+more interesting half. The first version said only that the
+requirement *could not be checked* - true, and it leaves an
+unresolved alarm below it with no answer. But the `.ado` knows the
+floor and can read `equipop.__version__`, so it can simply do the
+comparison: it calls the engine's own `_lines_floor` and prints `needs
+engine : 1.48.0 or newer - satisfied`, then says which of the two
+statements to believe. One source for the wording, so it cannot drift
+from what a current engine prints - 332's point, finally reached from
+the door that could not reach it.
+
+**TWO TEST LESSONS, both from break-check:**
+
+- **The test asserts the ORDER, not the presence.** "The note exists"
+  was true of the version he complained about. Where position is the
+  property, position is what the test has to read - the same lesson
+  as 1.54.2's finding 4, where an AST check proved a scheme guard was
+  present and said nothing about it running first.
+- **A substring is not a dependency.** `"_lines_floor" in src` also
+  matches `_lines_floor = lambda a, b: []`, and break-check got
+  exactly that stub past the first version of the one-source
+  assertion. It reads the `ImportFrom` by AST now.
+
+**AND ONE THING THAT WAS MINE AND NOT THE CODE'S.** He asked how he
+had gone wrong because my 1.54.4 release note told him what to do
+with the wheel *for PyPI* - `twine upload` - and never said how to get
+it onto his own machine before it is uploaded. INSTALL.md has carried
+that command since 1.47 (section 2, the `shell ... pip install ...
+.whl` line); the release note never pointed there. **A document being
+correct is not the same as a reader being able to find it.**
 
 ## 0o. 1.54.4 - SIX RELEASES OF A FLOOR CHECK THAT NEVER RAN
 

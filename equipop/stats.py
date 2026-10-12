@@ -74,6 +74,98 @@ def check_gini_input(values, where: str = "this variable") -> None:
             "single shift compresses low-mean neighbourhoods hardest.)")
 
 
+def check_mld_input(values, where: str = "this variable") -> None:
+    """Refuse a mean log deviation over data holding zero or less.
+
+    v1.55.0, BACKLOG 405, John's ruling. MLD is the mean of
+    ln(mean / value), so ONE zero makes it infinite and a negative has
+    no logarithm at all.
+
+    WHY NOT REPLACE THE ZEROS WITH A SMALL NUMBER. John asked, and it
+    was measured rather than argued. Three people on 167, 176 and 189
+    have an MLD of 0.0013; add one person whose zero is replaced by
+    10, 1, 0.1, 0.01 or 0.001 and the MLD is 0.45, 1.01, 1.58, 2.16 or
+    2.73. The replacement IS the answer - every tenfold step adds
+    exactly ln(10)/n. Worse, the same rule ("zero becomes 1") gives
+    2.73 in SEK, 1.01 in thousand SEK and 0.34 in million SEK: an
+    inequality index whose value depends on the CURRENCY UNIT, which
+    MLD by itself never does. And the distortion grows with the share
+    of zeros, which is highest exactly where an inequality study looks
+    - the same shape as the Gini shift ruled against in BACKLOG 154.
+
+    Theil's T is defined at zero (the limit of y ln y is 0), so it is
+    the measure to use on a variable that has zeros, and the message
+    says so.
+    """
+    a = np.asarray(values, dtype=float)
+    a = a[np.isfinite(a)]
+    if not a.size:
+        return
+    bad = int((a <= 0).sum())
+    if bad:
+        raise ValueError(
+            f"MLD (mean log deviation) is not defined when a value is "
+            f"zero or less, and {where} has {bad} such value(s). It "
+            "takes the logarithm of every value, so a single zero "
+            "makes it infinite. Use Theil instead - it accepts zeros. "
+            "(Replacing the zeros with a small number does not rescue "
+            "MLD: the number chosen becomes the answer, and the result "
+            "then depends on the currency unit.)")
+
+
+def check_theil_input(values, where: str = "this variable") -> None:
+    """Refuse Theil's T over data holding negative values.
+
+    v1.55.0, BACKLOG 405. Theil's T is (1/n) sum (y/mean) ln(y/mean):
+    a ZERO contributes nothing (y ln y tends to 0), which is why it is
+    the measure offered when MLD refuses a zero, but a negative value
+    has no logarithm. Refused rather than shifted, for the reason
+    BACKLOG 154 gives for the Gini: neither index is
+    translation-invariant, so one shift moves low-mean neighbourhoods
+    most.
+    """
+    a = np.asarray(values, dtype=float)
+    a = a[np.isfinite(a)]
+    if not a.size:
+        return
+    bad = int((a < 0).sum())
+    if bad:
+        raise ValueError(
+            f"Theil is not defined for negative values, and {where} "
+            f"has {bad}. Remove Theil, or use a non-negative variable. "
+            "(Shifting the values to make them non-negative changes "
+            "the answer: Theil is not translation-invariant.)")
+
+
+def _mld(x) -> float:
+    """MLD of an expanded sample - the reference the weighted path in
+    equipop/wstats.py is held to."""
+    x = np.asarray(x, dtype=float)
+    if len(x) == 0:
+        return float("nan")
+    m = float(np.mean(x))
+    if not m > 0 or float(np.min(x)) <= 0:
+        return float("nan")
+    if float(np.min(x)) == float(np.max(x)):
+        return 0.0                       # one value: no inequality
+    return max(float(np.mean(np.log(m / x))), 0.0)
+
+
+def _theil(x) -> float:
+    """Theil's T of an expanded sample. A zero contributes nothing."""
+    x = np.asarray(x, dtype=float)
+    if len(x) == 0:
+        return float("nan")
+    m = float(np.mean(x))
+    if not m > 0 or float(np.min(x)) < 0:
+        return float("nan")
+    if float(np.min(x)) == float(np.max(x)):
+        return 0.0
+    r = x / m
+    pos = r > 0
+    return max(float(np.sum(r[pos] * np.log(r[pos])) / len(x)), 0.0)
+
+
 def gini_sorted(x: np.ndarray) -> float:
     """
     Gini coefficient of a 1-D array (will be sorted internally).
@@ -128,6 +220,25 @@ VALUE_STATS = {
     "sum":    lambda x: float(np.sum(x)) if len(x) else 0.0,
     "range":  lambda x: (float(np.max(x) - np.min(x)) if len(x)
                          else float("nan")),
+    # ------------------------------------------------- v1.55 additions
+    # BACKLOG 405. The two decomposable inequality indices: they split
+    # EXACTLY into between-group plus within-group parts, which the
+    # Gini does not (it leaves an overlap term). See equipop/decompose.
+    "mld":    _mld,       # GE(0), mean log deviation - values > 0
+    "theil":  _theil,     # GE(1), Theil's T - values >= 0
+}
+
+#: The binary family deliberately has NO mld and NO theil. For a 0/1
+#: variable with share p, Theil is exactly -ln p and MLD is infinite
+#: (every 0 is the logarithm of zero) - a transform of the share R
+#: that machine 1 already reports, dressed as an inequality index.
+#: Measured and recorded in BACKLOG 405. A 0/1 field belongs in a
+#: decomposition as the GROUP, not as the outcome.
+BINARY_REFUSED = {
+    "mld": ("for a 0/1 variable MLD is infinite - every 0 is the "
+            "logarithm of zero"),
+    "theil": ("for a 0/1 variable with share p, Theil is exactly "
+              "-ln(p): the share R in disguise, which adds nothing"),
 }
 
 
@@ -181,4 +292,5 @@ PREFIX = {
     "se": "SE", "entropy": "Ent", "gini": "Gini",
     "var": "Var", "min": "Min", "max": "Max", "count": "Cnt",
     "sum": "Sum", "range": "Rng",
+    "mld": "MLD", "theil": "Theil",                  # BACKLOG 405
 }

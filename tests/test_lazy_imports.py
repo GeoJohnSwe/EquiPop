@@ -39,9 +39,20 @@ STATA_PATH_ALLOWS = {"numpy", "pandas", "scipy"}
 
 
 def _in_fresh_python(code):
-    """Run code in a clean interpreter and return its parsed stdout."""
+    """Run code in a clean interpreter and return its parsed stdout.
+
+    v1.55.1, BACKLOG 407. cwd=ROOT, as the two helpers below have
+    always had. Without it the child inherits the SUITE's working
+    directory - which conftest moves into a temporary folder (BACKLOG
+    101) - so `python -c "import equipop"` found no checkout there and
+    imported whatever equipop was INSTALLED. On the external
+    reviewer's machine these four tests passed while measuring
+    1.54.1's lazy imports, not the code under review; here they
+    passed because the install is editable. Found by running the
+    suite with a poisoned equipop ahead of everything on the path.
+    """
     r = subprocess.run([sys.executable, "-c", code],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, cwd=str(ROOT))
     assert r.returncode == 0, r.stdout + r.stderr
     return json.loads(r.stdout.strip().splitlines()[-1])
 
@@ -326,3 +337,21 @@ def test_the_helpful_message_still_arrives_when_it_is_USED():
                          capture_output=True, text=True, cwd=str(ROOT)).stdout
     assert "SAID:" in out, out
     assert "rasterio" in out and "pip install" in out
+
+
+def test_a_fresh_interpreter_imports_the_checkout_not_an_install(
+        tmp_path, monkeypatch):
+    """BACKLOG 407. The helper every test above runs through must
+    measure THIS checkout. A poisoned equipop - one that refuses to be
+    imported - is put ahead of everything on PYTHONPATH; the helper
+    must not reach it.
+
+    BROKEN WITH: cwd=str(ROOT) removed from _in_fresh_python."""
+    poison = tmp_path / "site" / "equipop"
+    poison.mkdir(parents=True)
+    (poison / "__init__.py").write_text(
+        "raise SystemExit('POISONED: installed equipop imported')\n")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "site"))
+    where = _in_fresh_python(
+        "import json, equipop; print(json.dumps(equipop.__file__))")
+    assert Path(where).resolve().is_relative_to(ROOT)

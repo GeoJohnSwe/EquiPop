@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.54.4}{...}
+{* *! version 1.55.1}{...}
 {vieweralsosee "[R] regress" "help regress"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
@@ -11,7 +11,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.54.4)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.55.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -227,7 +227,7 @@ IN STATA you can also ask without running the analysis at all: -equipop unit xva
 {p_end}
 
 {phang}
-{opt overshoot(string)} What happens to the ring of cells that CROSSES k. EquiPop grows a neighbourhood outward until it holds k people, and the ring that takes it past k almost never lands on k exactly. 'Whole ring' takes all of it - what EquiPop did before 1.30 - so ask a 3x3 of cells holding ten each for k=11 and you receive 50. That is worst at SMALL k and AT BOUNDARIES, which is exactly where segregation is measured: on a planted sharp edge the share R_k in the boundary cell reads 0.20 whole against 0.02 proportional. 'Proportional share' takes the same fraction of every cell in that ring, so N_k is exactly k; it produces FRACTIONAL PEOPLE, which are estimates rather than persons, and value statistics refuse it because a quarter of a cell has no median, percentile or Gini. 'Sampled' takes whole cells one at a time, in an order drawn from the seed, until k is reached - this is the original EquiPop method from the 2014 C# tool, kept so old results can be reproduced and compared. Sampled is NOT proportional with the fractions removed: it is that answer rounded up to a whole cell, and different seeds do not average the difference away. Set 'whole ring' to reproduce numbers from before 1.30 exactly.
+{opt overshoot(string)} What happens to the ring of cells that CROSSES k. EquiPop grows a neighbourhood outward until it holds k people, and the ring that takes it past k almost never lands on k exactly. 'Whole ring' takes all of it - what EquiPop did before 1.30 - so ask a 3x3 of cells holding ten each for k=11 and you receive 50. That is worst at SMALL k and AT BOUNDARIES, which is exactly where segregation is measured: on a planted sharp edge the share R_k in the boundary cell reads 0.20 whole against 0.02 proportional. 'Proportional share' takes the same fraction of every cell in that ring, so N_k is exactly k; it produces FRACTIONAL PEOPLE, which are estimates rather than persons. Value statistics weight by them, so a quarter of a boundary cell counts as a quarter of its people in a mean, a median, a Gini or an MLD. 'Sampled' takes whole cells one at a time, in an order drawn from the seed, until k is reached - this is the original EquiPop method from the 2014 C# tool, kept so old results can be reproduced and compared. Sampled is NOT proportional with the fractions removed: it is that answer rounded up to a whole cell, and different seeds do not average the difference away. Set 'whole ring' to reproduce numbers from before 1.30 exactly.
 {p_end}
 
 {phang2}

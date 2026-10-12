@@ -843,6 +843,21 @@ def _advice_is_coherent(a: dict) -> bool:
     Review finding 5. Every check here is something `advise_unit`
     guarantees on the way out, so a payload failing one of them did
     not come from it intact.
+
+    WHAT CANNOT BE CHECKED, stated because the 1.54.1 note's vaguer
+    claim was rightly called out and this one should not repeat it.
+    The payload does not carry the per-cell populations, so the TOTAL
+    `people` cannot be recomputed: an edited 999999 is undetectable
+    here. What is checkable about it is checked - finite and above
+    zero, because `advise_unit` refuses a non-positive total and it is
+    the denominator of every people-share.
+    MEASURED CONSEQUENCE: after unpacking, `people` is read in exactly
+    one place, the header line of `format_advice`. It reaches no
+    decision - the shares were computed before the advice was stored -
+    so an edited total corrupts one printed figure and no
+    recommendation. `share_cells`, by contrast, IS recomputable from
+    `saturated_cells` and `cells`, and so is checked exactly rather
+    than merely bounded.
     """
     try:
         if a["self_rule"] not in ORIGIN_RULES:
@@ -862,6 +877,18 @@ def _advice_is_coherent(a: dict) -> bool:
             return False
         tol = float(a["tolerance"])
         if not (0.0 < tol < 1.0):
+            return False
+        # THE POPULATION AND THE POINT COUNT (external review of
+        # 1.54.5, residual 2). Neither is in the request key, and
+        # neither was checked - so a cached `people` of 0, -5 or
+        # 999999 was accepted and returned. `people` is the
+        # DENOMINATOR of every people-share in the table, and
+        # advise_unit refuses a non-positive total outright, so a
+        # cached one is a state it could never have produced.
+        people = float(a["people"])
+        if not np.isfinite(people) or people <= 0.0:
+            return False
+        if int(a["points"]) < 1:
             return False
         if set(a["recommended"]) != set(ks):
             return False
@@ -898,6 +925,21 @@ def _advice_is_coherent(a: dict) -> bool:
                 for share in (float(sc), float(sp)):
                     if not np.isfinite(share) or not 0.0 <= share <= 1.0:
                         return False
+                # share_cells IS sat/cells - it is not an independent
+                # number, so it can be checked exactly rather than
+                # merely bounded (external review of 1.54.5, residual
+                # 2: an inconsistent one passed the range check).
+                if abs(float(sc) - int(sat) / int(r["cells"])) > 1e-9:
+                    return False
+                # share_people cannot be recomputed without the
+                # per-cell populations, but its ENDPOINTS are exact:
+                # no saturated cell means nobody is in one, and every
+                # cell saturated means everybody is.
+                if int(sat) == 0 and float(sp) != 0.0:
+                    return False
+                if int(sat) == int(r["cells"]) and \
+                        abs(float(sp) - 1.0) > 1e-9:
+                    return False
         if applies:
             # and the recommendation has to follow from the shares it
             # was supposedly derived from: the coarsest size within

@@ -1,6 +1,25 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.54.4, 10 October 2026.**
+**Last updated: 1.55.1, 12 October 2026.**
+*Reviewed at 1.55.1: NOTHING IN THIS FILE CHANGES. Fixes from the
+external review of 1.55.0 - group codes, a stale help sentence, test
+isolation, per-field measures. The overshoot help students read in
+the dialogs is now TRUE about machine 2, which is worth knowing if a
+class reads it aloud.*
+*Reviewed at 1.55.0: NOTHING IN THIS FILE CHANGES. Machine 2 gains MLD
+and Theil and their split between and within groups (BACKLOG 405).
+A seminar on inequality inside neighbourhoods could use it - income
+split by country of birth is a one-box exercise now - but nothing the
+course already relies on moves, and none of it needs teaching in its
+own right.*
+*Reviewed at 1.54.6: NOTHING IN THIS FILE CHANGES. Two low-priority
+residuals from the third external review - a self-contradictory
+diagnostic line on a very old engine, and two cache fields that
+were not cross-checked. Neither touches the course material.*
+*Reviewed at 1.54.5: NOTHING IN THIS FILE CHANGES. The release
+reorders one diagnostic message so a correction is read before the
+alarm it corrects, which is a usability fix in the doctor and
+touches no course material.*
 *Reviewed at 1.54.4: ONE SENTENCE CHANGES IN THE CELL-SIZE
 SLIDE. John read `help equipop` and said the unit() entry did
 not say HOW to ask the data - it reported that an advisory

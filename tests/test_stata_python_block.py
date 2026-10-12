@@ -417,11 +417,141 @@ def test_the_ado_asks_whether_the_engine_takes_the_floor():
         "cannot distinguish a missing parameter from a failure inside "
         "the report, and it degrades without saying so.")
 
-    # the degraded path must announce itself
-    assert "could not check it" in src, (
+    # the degraded path must announce itself, BEFORE the report
+    assert "what these commands need" in src, (
         "an engine too old to be told the floor is reported with no "
         "note saying the floor went unchecked - a silent degrade is "
         "exactly what hid this")
+
+    # ORDER: the note comes before run(), not after. JOHN, 10 OCTOBER
+    # 2026, second round: "where did I go wrong during installation?"
+    # He had not - but the report's own release-number remark says the
+    # combination "does break", and the first version of this note was
+    # printed after the VERDICT, pages below it. A correction read
+    # after the alarm is read too late.
+    stmts = [n for n in ast.walk(fn)
+             if isinstance(n, (ast.Expr, ast.Assign))]
+    note_lines = [n.lineno for n in stmts
+                  if "what these commands need" in ast.dump(n)]
+    run_plain = [c.lineno for c in ast.walk(fn)
+                 if isinstance(c, ast.Call)
+                 and getattr(c.func, "id", None) == "run"
+                 and not any(k.arg == "min_engine" for k in c.keywords)]
+    assert note_lines and run_plain, (
+        "cannot locate both the note and the floorless run() call")
+    assert min(note_lines) < min(run_plain), (
+        "the 'what these commands need' note is printed AFTER the "
+        "report, so a reader meets the misleading release-number "
+        "remark first and the correction pages later")
+
+
+def test_the_two_floorless_branches_do_not_contradict_each_other(block):
+    """BROKEN WITH: printing "checked here instead" unconditionally.
+
+    EXTERNAL REVIEW OF 1.54.5, residual 1. On an engine old enough to
+    lack `_lines_floor`, the note said
+
+        needs engine : 1.48.0 or newer - this engine is too old to say
+        This engine cannot be told the requirement, so it is checked
+        here instead.
+
+    which contradicts itself in consecutive lines: it was NOT checked
+    here. Two branches now, and this runs BOTH - the one where the
+    engine can be compared against, and the one where it cannot.
+    """
+    import contextlib
+    import importlib
+
+    from equipop import doctor
+
+    def say(with_floor_fn):
+        real_run, real_lf = doctor.run, doctor._lines_floor
+        if not with_floor_fn:
+            del doctor._lines_floor
+        # an engine whose run() predates min_engine
+        doctor.run = (lambda stream=None, ado_version="":
+                      real_run(stream=stream, ado_version=ado_version))
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                block["_equipop_doctor_py"]("1.54.6", "1.48.0")
+        finally:
+            doctor.run = real_run
+            doctor._lines_floor = real_lf
+        return buf.getvalue()
+
+    # (a) the engine CAN be compared against: state the verdict and
+    # say where it came from
+    able = say(True)
+    head = able[:able.index("EquiPop doctor")]
+    assert "needs engine : 1.48.0 or newer - satisfied" in head
+    assert "checked here instead" in head
+
+    # (b) the engine CANNOT: do not claim it was checked
+    unable = say(False)
+    head = unable[:unable.index("EquiPop doctor")]
+    assert "too old" in head, "the unable branch says nothing about why"
+    assert "UNCHECKED" in head, (
+        "the unable branch does not say the requirement went "
+        "unchecked")
+    assert "checked here instead" not in head, (
+        "the unable branch still claims the requirement was checked "
+        "here, one line after saying it could not be - which is the "
+        "contradiction the 1.54.5 review found")
+    assert "satisfied" not in head, (
+        "a verdict is stated by a branch that cannot reach one")
+
+    # both branches must still point the reader at the right line
+    for text in (able, unable):
+        assert "read this line, not that one" in text
+
+
+def test_the_floorless_path_states_the_floor_VERDICT_not_just_a_caveat():
+    """BROKEN WITH: the note saying the floor could not be checked and
+    stopping there.
+
+    JOHN, 10 OCTOBER 2026, second round. The first version of this
+    note said only that the requirement could not be checked - true,
+    and it leaves the reader with an unresolved alarm above it and no
+    answer. The ado KNOWS the floor and can read the engine's own
+    version, so it can state the verdict: `needs engine : 1.48.0 or
+    newer - satisfied`.
+
+    AND IT CALLS THE ENGINE'S OWN FUNCTION to say it, rather than
+    restating the comparison - one source, the same words a current
+    engine prints, which is the whole point of BACKLOG 332.
+    """
+    import ast
+
+    src = _block_source()
+    # THE IMPORT, by AST. `"_lines_floor" in src` also matches
+    # `_lines_floor = lambda a, b: []`, which is how break-check got a
+    # local stub past the first version of this assertion - a
+    # substring is not a dependency.
+    imported = [
+        n for n in ast.walk(ast.parse(src))
+        if isinstance(n, ast.ImportFrom)
+        and n.module == "equipop.doctor"
+        and any(a.name == "_lines_floor" for a in n.names)]
+    assert imported, (
+        "the floorless path no longer IMPORTS the engine's own floor "
+        "function, so its wording can drift from what a current "
+        "engine prints")
+    assert "__version__" in src, (
+        "nothing reads the engine's version, so the note cannot "
+        "state a verdict - only that it could not check")
+    assert "read this line, not that one" in src, (
+        "the note does not tell the reader which of the two "
+        "statements to believe")
+
+    # and the engine function it leans on still answers the way the
+    # note assumes
+    from equipop import doctor
+
+    assert doctor._lines_floor("1.48.0", "1.54.3") == [
+        "  needs engine : 1.48.0 or newer - satisfied"], (
+        "_lines_floor no longer returns a single satisfied line, so "
+        "the note's shape has to change with it")
 
 
 def test_the_doctor_is_told_which_engine_the_commands_need():

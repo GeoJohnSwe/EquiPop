@@ -376,6 +376,22 @@ MATRIX = {
         "pro": door("arcgis/EquiPop.pyt", "_unit_advice"),
         "stata": door("stata/equipop.ado", "_equipop_unit"),
     },
+    # BACKLOG 405, v1.55.0. MLD and Theil within each neighbourhood,
+    # split into the part between groups and the part within them.
+    # The witnesses name the ARGUMENT that carries the grouping, so a
+    # door that offers the box and never passes it cannot pass.
+    "between/within decomposition (MLD, Theil)": {
+        "python": door("equipop/stata_bridge.py", "decompose_by"),
+        "qgis": door("qgis/equipop_qgis/alg_stats.py", "decompose_by"),
+        "pro": door("arcgis/EquiPop.pyt", "decompose_by"),
+        "stata": ruled_out(
+            "RULED OUT with machine 2 itself (BACKLOG 205): EquiPop "
+            "hands Stata the neighbourhood and Stata does the "
+            "statistics, and Stata decomposes MLD and Theil by group "
+            "natively - ineqdeco's bygroup() does exactly this over "
+            "any set of observations. The ruling reopens only for a "
+            "measure Stata cannot express, and this is not one.", 205),
+    },
     "diagnostics (the doctor)": {
         "python": PYTHON,
         # BACKLOG 333: this was `pro: same_as("qgis")`, and a
@@ -441,6 +457,11 @@ INTERNAL = {
     # shipping undeclared, after inventory, vectorjoin, doors.numbers
     # and labels.
     "unitsize",
+    # BACKLOG 405. Listed like every module, and carrying its own
+    # MATRIX row: "how much of the inequality around this place lies
+    # between groups?" is a question a person asks. The sixth module
+    # this check has stopped from shipping undeclared.
+    "decompose",
 }
 
 #: WHAT THIS SET MEANS, because the name says less than it does.

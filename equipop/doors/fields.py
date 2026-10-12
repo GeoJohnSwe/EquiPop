@@ -41,7 +41,7 @@ def _fmt_num(v) -> str:
 
 def predict_result_fields(engine, k_text, r_text, tau_text,
                           treat_names, value_fields, stats_wanted,
-                          decaying, efforting):
+                          decaying, efforting, decomposing=False):
     """The columns a run WILL produce - validated against the real
     dispatch in the simulator suite, so this stays a prediction and
     does not drift into a guess."""
@@ -95,6 +95,12 @@ def predict_result_fields(engine, k_text, r_text, tau_text,
                 names.append(f"Nv_{f}_{s}")
                 for st in stats_wanted:
                     names.append(f"{stat_prefix(st)}_{f}_{s}")
+        if decomposing:
+            # BACKLOG 405. Level-independent BY DESIGN, so they can be
+            # predicted before the layer is read; and taken from the
+            # same function the engine names them with.
+            from equipop.decompose import column_names
+            names += column_names(value_fields, sufs, stats_wanted)
     return [safe_field_name(n) for n in names]
 
 

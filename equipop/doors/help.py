@@ -652,9 +652,10 @@ HELP = {
                  "proportional. 'Proportional share' takes the same "
                  "fraction of every cell in that ring, so N_k is "
                  "exactly k; it produces FRACTIONAL PEOPLE, which are "
-                 "estimates rather than persons, and value "
-                 "statistics refuse it because a quarter of a cell "
-                 "has no median, percentile or Gini. 'Sampled' takes "
+                 "estimates rather than persons. Value statistics "
+                 "weight by them, so a quarter of a boundary cell "
+                 "counts as a quarter of its people in a mean, a "
+                 "median, a Gini or an MLD. 'Sampled' takes "
                  "whole cells one at a time, in an order drawn from "
                  "the seed, until k is reached - this is the original "
                  "EquiPop method from the 2014 C# tool, kept so old "
@@ -682,10 +683,43 @@ HELP = {
                 "calculated. Leaving every box unticked means the "
                 "classic trio - mean, median and Gini. "
                 "Nv_<field>_k always reports how many neighbours "
-                "actually had a value.",
+                "actually had a value. MLD (mean log deviation) and "
+                "Theil are inequality indices that split exactly into "
+                "a part between groups and a part within them - give "
+                "a grouping field to get that split. MLD takes the "
+                "logarithm of every value, so it refuses a field "
+                "holding zeros; Theil accepts zeros. On a 0/1 field "
+                "neither adds anything to the share itself.",
     "pcts": "Percentiles as plain numbers, e.g. 10 25 75 90. Used "
             "only when 'percentiles' is ticked; results arrive as "
             "P10_<field>_k and so on.",
+    # v1.55.0, BACKLOG 405
+    "decompose": "Optional. A field holding each row's GROUP - born "
+                 "abroad or not, parental education: a circumstance "
+                 "with a few categories (up to 20), as text or codes. "
+                 "MLD and Theil are then split, in every "
+                 "neighbourhood, into the inequality BETWEEN the "
+                 "groups and WITHIN them - MLDb_ and MLDw_ (Theilb_, "
+                 "Theilw_) - and MLDsh_, the between-group share of "
+                 "the total. Ng_ says how many groups were present and "
+                 "NgMin_ how many people the smallest held. k still "
+                 "counts everybody, and rows with no group stay in "
+                 "every other statistic. Whether a between-group share "
+                 "measures OPPORTUNITY depends on whether the grouping "
+                 "is a circumstance beyond a person's control - that "
+                 "is your judgement, not the tool's. COST: each group "
+                 "costs nearly as much as another value field - two "
+                 "groups roughly double the run, twenty make it ten "
+                 "to fifteen times slower and several times hungrier "
+                 "for memory - so keep groups few.",
+    "mingroup": "The smallest group, in people, for the split to be "
+                "reported. Between-group inequality is biased UPWARD "
+                "when a group is small - a handful of people have a "
+                "noisy mean, and noise between means reads as "
+                "inequality - so where any group present holds fewer "
+                "people than this, or only one group is present, the "
+                "split columns are left EMPTY rather than guessed. "
+                "Default 30; zero means no minimum.",
 }
 
 # THE TOOL NAMES, in one place. BACKLOG 237: the two doors had drifted
@@ -835,7 +869,9 @@ USAGE = {
         "reference population's count field whenever a point stands "
         "for more than one - people, jobs, dwellings, services. Gini "
         "refuses negative values, and percentiles need numbers in "
-        "their box. As with machine 1, cell size controls the "
+        "their box. Tick MLD or Theil and give a grouping field to "
+        "split inequality between and within groups. As with "
+        "machine 1, cell size controls the "
         "runtime and {container} avoids the shapefile name limit.",
 }
 

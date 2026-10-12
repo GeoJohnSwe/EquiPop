@@ -133,6 +133,7 @@ def build_cells(
     label_col: str | None = None,
     missing_codes=None,
     weights: str | None = None,
+    quiet_missing=(),
 ) -> CellData:
     """
     Aggregate an individual-level DataFrame into CellData.
@@ -271,9 +272,16 @@ def build_cells(
                       "results, but contribute nothing of their own.")
             df[v] = col.where(~hit)
 
+    # v1.55.0, BACKLOG 405: `quiet_missing` names fields whose missing
+    # values exist BY CONSTRUCTION - a decomposition's per-group
+    # sub-fields are missing for everyone outside the group - and
+    # whose caller explains them in one line of its own. The note is
+    # true for them, and it is noise: thirty lines for ten groups and
+    # three fields.
+    _quiet = set(quiet_missing or ())
     for v in value_vars:
         miss = df[v].isna().sum()
-        if miss:
+        if miss and v not in _quiet:
             print(f"[cells] note: '{v}' has {miss} missing values - these "
                   f"individuals count towards k but not towards {v} statistics.")
 

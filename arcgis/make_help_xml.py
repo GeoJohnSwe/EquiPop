@@ -31,6 +31,25 @@ from xml.sax.saxutils import escape
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
                                 "tests"))
 
+# v1.55.1, BACKLOG 407 (external review of 1.55.0, finding 3). A
+# script's sys.path[0] is ITS OWN folder, arcgis/, not the folder it
+# was started from - so `from equipop.doors.help import` took whatever
+# equipop was INSTALLED. The reviewer had 1.54.1 installed, and two
+# tests failed with "no text for parameters: ['decompose',
+# 'mingroup']"; worse, a bundle built on such a machine would ship
+# the OLD help with nothing failing whenever the old package happened
+# to have every key. This environment never saw it, because its
+# install is editable and points at the checkout.
+# tools/make_sthlp.py has always put the checkout first; the two
+# generators of the SAME text resolved it differently, which is a
+# rule in two places. Now both do - but only when this file really
+# sits in a checkout. Shipped loose beside EquiPop.pyt, its parent
+# folder is the user's data folder, and must not go on the path.
+_CHECKOUT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.isfile(os.path.join(_CHECKOUT, "pyproject.toml")) and \
+        os.path.isfile(os.path.join(_CHECKOUT, "equipop", "__init__.py")):
+    sys.path.insert(0, _CHECKOUT)
+
 from equipop.doors.help import (HELP, help_for, missing_help,
                                 summary_for, usage_for)
 

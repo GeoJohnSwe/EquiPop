@@ -90,6 +90,14 @@ because machine 3 stores tiles that way and says so in its manifest.
 10. **299** — Pro's join box still takes the centroid only, where QGIS
    offers three fidelities. Two doors disagreeing about what one box
    DOES, which door_parity cannot see because both have the box.
+11. **406** — reachability witnesses are substrings, so a renamed
+   argument still satisfies them (405's break-check proved it). An
+   AST read of every row; its own release.
+12. **408** — the proportional answer key has no machine 2 columns,
+   for a reason that ended in 1.31. Regenerate and re-certify.
+13. **409** — the split costs one engine variable per group (20
+   groups over 3 fields: 595 s and 1.4 GB against 44 s and 0.2 GB).
+   Four additive sums per group remove it; verified to 7e-10.
 
 ### Waiting on John, not on code
 - **224, 232** — need the exact inputs, versions, choices and output
@@ -103,6 +111,15 @@ because machine 3 stores tiles that way and says so in its manifest.
 - **257** — PAUSED by John, session 12. Four providers work; a fifth
   is capability, not a gap.
 - **321** — expected counts under a supplied rate schedule.
+- **407's product suggestions** — a coverage column for rows with no
+  group; per-group means as a long companion table; a manual chapter
+  with one worked neighbourhood. Each is a small build once ruled.
+- **405, step 4** — the scale profile theta(k): the between-type share
+  over the WHOLE population, with types defined BY neighbourhood
+  character at each k, beside `seg_profile`. Needs John's ruling on
+  how that character is binned into types, because more bins push
+  theta up (the bias sandwich). Machine 2's split, shipped in 1.55.0,
+  is the plumbing it reads.
 - **Marina's `CHANGELOG.md`**, whether to adopt it; and the
   `set varabbrev off` run, which is the one outstanding SSC check.
 
@@ -3606,6 +3623,438 @@ because machine 3 stores tiles that way and says so in its manifest.
   the suite would pass. That is the guard written after inventory.py
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
+
+- 409 | open v1.55.1, THE REVIEWER'S BENCHMARK SUGGESTION, MEASURED |
+  THE SPLIT COSTS ONE ENGINE VARIABLE PER GROUP, AND AT 20 GROUPS
+  THAT IS NINE TIMES A PLAIN RUN.
+  Measured, 50,000 points, k=400, MLD and Theil, this container:
+      1 field,  no split     21.0 s   peak  167 MB
+      1 field,  2 groups     44.7 s         206 MB
+      1 field,  5 groups     68.5 s         271 MB
+      1 field,  10 groups   107.4 s         379 MB
+      1 field,  20 groups   195.9 s         581 MB
+      3 fields, no split     43.5 s         199 MB
+      3 fields, 2 groups    108.2 s         326 MB
+      3 fields, 20 groups   595.2 s        1435 MB
+  Close to linear: about 9 s and 20 MB per group per field on top of
+  the plain run. The binary case John designed it for costs about
+  twice a plain run, which is fine. Twenty groups over three fields
+  is 14 times the time and 7 times the memory, which on a large layer
+  is the difference between a coffee and an afternoon.
+  WHY: 405 splits each value field into one SUB-FIELD per group, and
+  the engine does its full per-variable work for each - sorting
+  included - though each holds a twentieth of the values.
+  THE FIX, VERIFIED BEFORE RECORDING: neither index needs sorting.
+      MLD   = ln(mu) - mean(ln y)
+      Theil = mean(y ln y) / mu - ln(mu)
+  So each group needs four ADDITIVE sums - sum w, sum w y, sum w ln y,
+  sum w y ln y - which a cell can carry and a crossing ring can
+  multiply by its share, exactly as the counts already are. Checked
+  against the sorted path over 3,000 random neighbourhoods with
+  fractional weights: 7e-10 relative for MLD, 1.5e-10 for Theil,
+  including near-equal incomes where the subtraction cancels most.
+  That removes the sub-fields entirely and makes a group cost four
+  additions per cell.
+  NOT IN 1.55.1: it changes what a cell carries, which is an engine
+  change, and it deserves its own release - certified by 405's
+  identity test, which is written so as not to care HOW the split is
+  computed. Until then the help says what the split costs.
+
+- 408 | open v1.55.1, FOUND WHILE FIXING 407 | MACHINE 2 IS NOT
+  CONFORMANCE-CHECKED UNDER THE DEFAULT OVERSHOOT MODE, FOR A REASON
+  THAT ENDED IN 1.31.
+  BACKLOG 162 made a second answer key under `proportional`, the
+  default, and gave it counts, shares and distances only, because
+  "under proportional machine 2 REFUSES, so a stats column here would
+  be a promise no door can keep". True when written; false since 1.31
+  (118). So the doors' machine 2 is checked against an answer key only
+  under `whole`, a mode most runs never use. The behavioural door
+  tests compare each door with dispatch under proportional, which is
+  why nothing is wrong today - but the cross-door ANSWER KEY, the
+  thing a reviewer can check against without trusting our code, does
+  not cover it. Fix: regenerate the proportional key with machine 2's
+  mean, median and Gini, and re-certify both doors against it. A
+  shipped data change, so its own release.
+
+- ~~407~~ | DONE v1.55.1, EXTERNAL REVIEW OF 1.55.0, 12 OCTOBER 2026 |
+  FOUR FINDINGS, ALL REPRODUCED, NONE OBSOLETE - AND THE POISONED
+  INSTALL THAT FOUND ONE MORE.
+  The verdict: "mathematically sound... unusually well synchronized",
+  with a 1.55.1 patch recommended before broad publication. John
+  wondered whether some findings were obsolete; none were. The zero
+  and Theil items sit under the reviewer's "what is strong" - checked
+  and confirmed correct - not under the findings.
+  (1) GROUP CODES COULD SILENTLY BECOME THE WRONG GROUPS. Reproduced
+      both halves. pd.NA was not recognised as missing, so A, A, <NA>,
+      B, B was three groups - missingness became an analytical group,
+      changing Ng_, NgMin_, the minimum rule and the split. And float
+      codes were formatted to ten digits and the LABEL named the
+      sub-field, so 1.0 and 1.00000000001 shared a sub-field, one
+      overwrote the other, and a total MLD of 0.1308 came out as
+      between 0, within 0. Fixed: missing is whatever pd.isna says,
+      plus Stata's missing and blank text; sub-fields are named by a
+      stable NUMBER; labels in messages are written at full precision.
+      AND THE SAME CLASS BY ANOTHER ROAD, found while fixing: two
+      distinct int64 codes above 2**53 became one float. Whole-number
+      codes now stay integers.
+  (2) THE OVERSHOOT HELP STILL SAID VALUE STATISTICS REFUSE
+      PROPORTIONAL. That ended in 1.31. Reproduced - and wider than
+      reported: the sentence was in both GIS dialogs, in Pro's
+      sidecars, AND in Stata's `help equipop`. Four code comments said
+      the same in the present tense; corrected to history. One of
+      them, in reference.py, was load-bearing and opened 408.
+  (3) TESTS DEPENDED ON WHICHEVER EQUIPOP WAS INSTALLED. Reproduced
+      exactly by putting 1.54.6 ahead of the checkout: the same two
+      failures, the generator saying "no text for parameters:
+      ['decompose', 'mingroup']". The cause: a script's sys.path[0] is
+      its own folder, so make_help_xml.py imported the installed
+      package - while tools/make_sthlp.py, generating the SAME text,
+      has always put the checkout first. A rule in two places. Fixed,
+      guarded so the copy shipped loose beside the toolbox never puts
+      the user's data folder on the path.
+      **THEN A POISONED INSTALL** - an equipop that refuses to be
+      imported, placed ahead of everything - over the WHOLE suite,
+      which turns every quiet use of an installed package into a loud
+      failure. It found one more the reviewer's run could not show:
+      the four lazy-import tests ran `python -c` from the suite's
+      working directory, which conftest moves into a temporary folder
+      (101), so they imported the INSTALLED equipop. On the reviewer's
+      machine they passed while measuring 1.54.1's imports, not the
+      code under review; here they pass because the install is
+      editable. Fixed as their two neighbours already were (cwd=ROOT),
+      and all three paths are pinned by tests that plant the same
+      poison.
+      AND ONE OF MINE: 1.54.6's sdist test passed under the old
+      package. The generator wrote ONE sidecar and failed; the test
+      asked only that something was written, then compared the sdist
+      with that one. It now checks the exit code and one sidecar per
+      registered tool. **A generator that failed is not a generator
+      that ran.**
+  (4) PER-FIELD MEASURES WERE UNIONED. Reproduced - and worse than
+      reported: asking MLD of income and Theil of rent wrote both
+      splits for both, AND when rent held a zero the run was REFUSED,
+      naming the scaffolding field 'rent[g=0]', for an MLD nobody had
+      asked of rent. Each field is now split by exactly the indices
+      asked of it, and held only to their domains.
+  BREAK-CHECK, 10 BREAKS, 10 CAUGHT - after one more correction of
+  mine: the large-integer test used 2**53+1 and 2**53+3, which round
+  to two DIFFERENT floats, so the break it named could not show.
+  2**53 and 2**53+1 are the same float; it uses those now. The second
+  release running in which break-check has caught a test of mine that
+  could not fail the way its docstring said.
+  THE REVIEWER'S PRODUCT SUGGESTIONS, recorded for John's ruling:
+  - a coverage column (NgN_ or a share) so the rows left out of the
+    split for having no group travel with the result, not only in the
+    run's messages;
+  - per-group means as a long-format companion table, which avoids
+    unpredictable field names;
+  - a manual chapter with one worked neighbourhood;
+  - live QGIS and Pro smoke runs before publication (128/80/87);
+  - the 20-group benchmark: done, see 409.
+
+- 406 | open v1.55.0, FOUND BY 405'S BREAK-CHECK | A REACHABILITY
+  WITNESS IS A SUBSTRING, SO IT CANNOT TELL A PASS-THROUGH FROM A
+  RENAME.
+  test_1 checks a door by `symbol in _read(path)`. 405's break-check
+  renamed QGIS's outgoing `kw["decompose_by"]` to `kw["decompose_byx"]`
+  - the grouping then lands in dispatch's **extra and is silently
+  dropped - and the matrix still passed, because "decompose_by" is a
+  substring of "decompose_byx". The behavioural door test caught it,
+  which is why 405 is safe; the matrix row on its own would not have.
+  **A SUBSTRING IS NOT A DEPENDENCY** (1.54.5's lesson) applies to the
+  whole matrix, not to one test. Every row is exposed the same way,
+  and a comment mentioning a symbol satisfies its witness too.
+  NOT FIXED IN 405, deliberately: it changes how every row in the
+  matrix is proven, and should be its own release. The likely shape
+  is an AST read - a Name, Attribute or string Constant equal to the
+  symbol, outside comments - with the behavioural door tests kept as
+  the real guard for anything that passes data.
+
+- ~~405~~ | DONE v1.55.0, JOHN'S DESIGN AND RULINGS, 12 OCTOBER 2026 |
+  MLD AND THEIL IN MACHINE 2, AND THEIR SPLIT BETWEEN AND WITHIN
+  GROUPS, IN EVERY GIS DOOR.
+  THE IDEA, from a conversation of John's about inequality of
+  opportunity: the k-profile method transposed to Roemer's
+  decomposition. Machine 2 now offers the two indices that split
+  EXACTLY into a part between groups and a part within them, and, given
+  a grouping field, writes that split for every bespoke neighbourhood.
+  JOHN'S THREE RULINGS:
+  (1) MLD REFUSES A ZERO. He asked first whether replacing zeros with a
+      small number would do, suspecting not; it was measured, not
+      argued. Three people on 167, 176, 189 have MLD 0.0013; a fourth
+      whose zero becomes 10, 1, 0.1, 0.01 or 0.001 gives 0.45, 1.01,
+      1.58, 2.16, 2.73 - the replacement IS the answer, each tenfold
+      step adding ln(10)/n. And "zero becomes 1" gives 2.73 in SEK,
+      1.01 in thousand SEK, 0.34 in million SEK: an index that depends
+      on the currency unit, which MLD never does by itself. On a k=200
+      neighbourhood with 5% zeros, eps 1 against 0.1 moves MLD from
+      0.355 to 0.470 against 0.129 for the positives alone, and the
+      shift grows with the share of zeros - the 154 shape again. So
+      MLD refuses and names Theil, which is defined at zero.
+  (2) A MINIMUM GROUP SIZE, default 30, settable in both doors. Below
+      it - or with only one group present - all three split columns
+      are EMPTY, not zero. Between-group inequality is biased upward
+      in small groups, so the between part is emptied with the share,
+      not left on the map.
+  (3) EX ANTE ONLY for now. The ex-post reading is later.
+  WHAT IT IS, and what it is not called: MLDb_ / MLDw_ / MLDsh_ (and
+  Theil's) are a between-group decomposition. Whether the share
+  measures OPPORTUNITY depends on whether the grouping is a
+  circumstance beyond a person's control - the reader's cut, not the
+  tool's - so the help says so and the names stay neutral.
+  BINARY VARIABLES - the other half of John's question - measured: for
+  a 0/1 variable with share p, Theil is exactly -ln p, the Gini exactly
+  1 - p, and MLD infinite. All three are the share in disguise. So the
+  binary family refuses MLD and Theil with that reason, a 0/1 VALUE
+  field asked for Theil gets a note (warn, never act), and the help
+  says where a 0/1 field belongs: as the GROUP.
+  HOW, WITHOUT TOUCHING THE ENGINE'S NEIGHBOURHOOD. The engine has
+  always computed a subgroup's statistics from a value present only for
+  its members - "counts towards k but not towards the statistic", its
+  own words since 1.31. Each value field is split into one sub-field
+  per group (named `inc[cob=abroad]`, which no GIS field can be), the
+  engine runs unchanged, and equipop/decompose.py assembles count,
+  mean and index per group into the split. k still counts everybody,
+  pinned by test.
+  THE IDENTITY THAT CERTIFIES IT, through two routes sharing no code
+  below run_knn_stats: between + within, assembled per group, against
+  the index computed directly over everyone - 1e-14 or better in all
+  three overshoot modes, with fractional weights, for k and for a
+  radius, and in neighbourhoods missing one of three groups.
+  THE COLUMNS ARE LEVEL-INDEPENDENT ON PURPOSE. A door predicts its
+  columns BEFORE reading the layer (Pro refuses an overlong shapefile
+  target in the dialog), and a group's values are not known then. So
+  per-group means are NOT written in this release - their names would
+  depend on the data - and Ng_ / NgMin_ say how many groups were
+  present and how big the smallest was. The prediction and the engine
+  name the columns with one function.
+  STATA: unchanged, by John's ruling 205. Stata decomposes MLD and
+  Theil by group natively (ineqdeco, bygroup()), so the ruling's
+  reopening condition is not met. The generic runner passes statistic
+  names through, so `equipop_run, engine(stats) stats(mld theil)`
+  works with nothing added.
+  FOUND IN PASSING, both fixed:
+  - QGIS machine 2 assigned the reference TYPES to `wanted`, the name
+    of the measures list, so under rung 3 its "Measures:" line printed
+    the types. Since 1.29.2.
+  - Pro's machine 2 description still said rows are "expanded
+    exactly", which 343 ended in 1.51.
+  AND TWO TEST LESSONS:
+  - test_rungs read the doors' menu lists with REGEXES, which split on
+    "a comma followed by a quote" - so a comment after a comma glued
+    two entries into 'theilpercentiles' - and ended the list at the
+    first `]`, which a comment holding `[0, 1, 2]` supplied. Replaced
+    with one AST reader. Break-check confirmed it still sees a real
+    drift.
+  - Break-check found my hand-arithmetic test's BROKEN WITH claim
+    UNTRUE: with every weight 1, "divide by distinct values" and
+    "divide by people" are the same number. It now carries a weighted
+    case worked by hand ([1, 3] at [1, 3] is [1, 3, 3, 3]). 40 breaks,
+    40 caught.
+  NOT DONE, needs John: the scale profile theta(k) beside seg_profile
+  - see the priority list.
+
+- ~~404~~ | DONE v1.54.6, FOUND WHILE VERIFYING 403'S OWN BUNDLE, 10
+  OCTOBER 2026 | TWO THINGS THAT EXISTED AND COULD NOT BE REACHED -
+  ONE IN THE RELEASE TOOL, ONE IN THE SUITE ITSELF.
+  Both came out of ONE leak check on the 1.54.6 archives, run on a
+  premise that turned out to be wrong: the sdist carries the five
+  `EquiPop.<Tool>.pyt.xml` sidecars, and I went looking for the
+  defect. MANIFEST.in had already answered - **"do not commit them,
+  do ship them"** - so the sdist is right and 1.54.3, 1.54.4 and
+  1.54.5 were right too. Checking the recorded reason before fixing
+  anything is what stopped a correct decision being undone.
+  (a) THE DURABLE RELEASE TOOL HAD NO GUARD FOR THEM, AND ITS OWN
+      DOCSTRING STATES THE RULE IT WAS MISSING.
+      `tools/make_release_zip.py` was written for BACKLOG 156 and says:
+      *"The clean-up HAD been run - before the test suite, which then
+      recreated the files. That is the lesson: a manual step in the
+      right order is not a fix, because the order will be got wrong
+      again. So the check lives here, runs every time, and REFUSES
+      rather than warns."*
+      The sidecars are precisely that kind of step - the bundle's Pro
+      slot needs them PRESENT, the working tree must not hold them
+      (45), so the order is generate, build, delete. My scratchpad
+      build script checks the zip for them; **the in-tree tool, the
+      one that survives the session, did not.** The 350 check sees
+      only whole directories (`build/`, `dist/`), and these sit in
+      `arcgis/` beside files that must ship, so no existing check
+      could see them. 1.54.0 shipped them and it was caught BY HAND.
+      Fixed: `check_build_outputs`, called from `build`, REFUSING with
+      the remedy in the message (`rm arcgis/*.pyt.xml`) - a refusal
+      without a remedy is where 402 came from. Not a skip: a skip
+      builds a clean zip and leaves the files in the tree, so the next
+      `pytest` fails instead - the fault moves, it does not go.
+      The test drives `build()` and not just the checker, because a
+      checker nothing calls is this project's signature defect.
+      It also asserts the zip was NOT written after the refusal.
+  (b) AND THE SAME QUESTION, ASKED OF THE SUITE: A TEST THAT COULD
+      NOT BE REACHED AS ITSELF.
+      Writing (a)'s test meant reading `test_packaging.py`, where one
+      function's body ran TWO tests - the 350 build-output check, and
+      then, after its assertion, a second docstring and the whole of
+      the BACKLOG 241 runner-imports check. **A `def` line had been
+      lost in an edit.** So the 241 check had no name, could not be
+      selected with -k, never appeared in any report - and ran ONLY
+      WHILE THE 350 ASSERTIONS PASSED. Break 350 and a guard stops
+      executing silently: the "guard made unreachable by the path that
+      would trip it" shape, now the fourth instance this session, and
+      the first one inside the suite rather than the package.
+      MEASURED, because it is the whole reason this was invisible:
+      with the two re-merged the file reports **34 passed instead of
+      35 - green either way, only the count moving.** Neither a green
+      suite nor a test count can show it, which is correction (c) of
+      403 from the other side.
+      Fixed: split back into `test_every_runner_imports_only_modules_
+      the_package_ships`, and a new `test_6` in test_reachability.py -
+      the right home, since that file's whole subject is whether a
+      thing can be reached - walks every `test_*.py` by AST and fails
+      on a string statement in the middle of a function body, which is
+      what a lost `def` looks like. Break-checked by re-merging the
+      two exactly as they were.
+      AND THE UNIQUENESS RULE EARNED ITS KEEP AGAIN: my first break
+      anchor matched 0 times, because I had inserted (a)'s test
+      between the two and the text had moved. The `count == 1`
+      assertion said so instead of reporting a cheerful SURVIVED.
+  (c) THEN MY OWN FIX FOR (a) SILENTLY EMPTIED THE SDIST, AND THAT
+      IS THE ROOT CAUSE OF ALL THREE.
+      Having the build script generate the sidecars rather than
+      trusting my memory, I put the step where the Pro slot needs
+      them - at step 3, AFTER `python -m build`. Measured on the two
+      tarballs: 1.54.5's sdist carries 5, the first 1.54.6 sdist
+      carries **0**. And every check stayed green - MANIFEST.in
+      unchanged, the five loose copies present in the bundle, suite
+      passing. Only `tar tzf | grep -c` on both showed it.
+      **`include arcgis/*.pyt.xml` IS A PERMISSION, NOT A
+      GUARANTEE**: the files must EXIST when the build runs. So
+      1.54.3, 1.54.4 and 1.54.5 shipped them BY ACCIDENT of the order
+      I happened to work in, and
+      test_the_pro_help_sidecars_are_shipped_beside_the_toolbox -
+      which asserts the MANIFEST LINE - states the lesson it misses
+      by exactly one level in its own docstring: *"a check on an
+      artefact nobody ships is a check on nothing."*
+      WHAT THE REAL CAUSE WAS: the 19-slot bundle has been built by a
+      script OUTSIDE the repository at every release, rewritten from
+      the last one each time. That is the whole of (a), (b) and (c).
+      So `tools/make_bundle.sh` is now in the tree, carrying the
+      order and the reason for each step, guarding itself at runtime
+      (it refuses if the sdist comes out with no sidecars, if the
+      working-tree zip has any, if the tree is left dirty, or if
+      pyproject's version is not the one asked for), and cleaning up
+      on a trap so a mid-way failure leaves nothing behind. It picks
+      the newest HANDOVER by number rather than naming one.
+      TWO TESTS, two halves, and the split is the point:
+      - `test_the_sdist_really_carries_the_pro_sidecars` BUILDS the
+        sdist (2.5 s, skipped where `build` is absent) and looks
+        inside it. It proves MANIFEST plus config DELIVER when the
+        files exist - and its docstring says plainly that it CANNOT
+        prove they exist, because it generates them itself.
+      - `test_the_bundle_script_generates_the_sidecars_before_it_
+        builds` asserts the ORDER in make_bundle.sh, position being
+        the property - 1.54.5's lesson again. Every anchor is
+        asserted unique inside the test itself, so a moved line
+        cannot make it prove nothing.
+      18 break-checks across the release, all caught, no survivors.
+
+- ~~403~~ | DONE v1.54.6, THIRD EXTERNAL REVIEW OF 1.54.5, 10 OCTOBER
+  2026 | A POSITIVE VERDICT THAT STILL FOUND TWO THINGS - AND BOTH WERE
+  CLAIMS, NOT CODE.
+  The verdict: "a credible release candidate... suitable for SSC". The
+  code findings from reviews one and two were confirmed fixed by
+  measurement in his environment, not by reading my notes. What he
+  found instead were THREE WRONG STATEMENTS IN MY OWN RELEASE NOTE and
+  TWO RESIDUALS. All five are recorded here because four of them are
+  the same mistake in different clothes: **A CLAIM IS A DELIVERABLE AND
+  HAS TO BE TESTED LIKE ONE.**
+  (a) THE NOTE SAID `equipop setup` WOULD INSTALL 1.54.5. It requests
+      `equipop>=` THE FLOOR, which is 1.48.0 - exactly what 332
+      decided and what the ado has done since (`floor = min_engine or
+      ado_version`). So setup works before the PyPI upload and cannot
+      install the unpublished release specifically. The local wheel
+      (INSTALL.md section 2) is the only pre-publication method, which
+      is what 402 fixed in the note and what this corrects the other
+      half of. I had written the fix and then described it wrongly in
+      the same note.
+  (b) THE NOTE'S GITHUB `net install` LINE FETCHES WHATEVER IS ON
+      MAIN. Handing it to a tester before the tree is pushed installs
+      the PREVIOUS release's .ado while the note claims it installs
+      this one - a silent version skew with a loud doctor warning
+      downstream, which is precisely the 401/402 alarm I had just
+      spent two releases making legible. The note now says: push
+      first, or install the supplied files locally.
+  (c) THE TEST COUNT HAD LOST ITS ENVIRONMENT QUALIFIER. He measured
+      1,616 passed / 28 skipped on Python 3.12.14 with Rasterio
+      1.5.2, against the same 1,644 collected. Nothing is wrong - the
+      skips are his environment - but a bare "1,644 pass" is a claim
+      about his machine that I cannot make. **A TEST COUNT IS AN
+      ENVIRONMENT MEASUREMENT, NOT A PROPERTY OF A RELEASE** (first
+      recorded at 1.54.1, re-learned here because I dropped the
+      qualifier while editing).
+  (d) RESIDUAL, FIXED: THE FLOORLESS NOTE CONTRADICTED ITSELF. 401's
+      fallback branch could print "this engine is too old to say"
+      and then "so it is checked here instead" - the second sentence
+      answering a question the first had just declared unanswerable.
+      Reproduced by stubbing `_lines_floor` out. There are two real
+      states and they now read as two: when the ado CAN borrow the
+      engine's own `_lines_floor` it prints the satisfied line and
+      says which statement to believe; when it cannot, it says the
+      requirement is UNCHECKED either way and claims nothing further.
+      The test runs BOTH branches - a presence test would have passed
+      on the contradictory version.
+  (e) RESIDUAL, FIXED AS FAR AS IT CAN BE: CACHE VALIDATION ACCEPTED
+      EDITED NUMBERS. Measured, on a hand-edited `char _dta`:
+      `people = -5` ACCEPTED, `people = 0` ACCEPTED, `points = -1`
+      ACCEPTED, an inconsistent `share_cells` ACCEPTED.
+      `_advice_is_coherent` now checks finiteness and sign, and
+      re-derives each share from the counts stored beside it
+      (`share_cells == saturated/cells`, and the two endpoints where
+      `share_people` is pinned to 0 or 1).
+      **WHAT IT STILL CANNOT CATCH, SAID OUT LOUD IN THE DOCSTRING
+      RATHER THAN PAPERED OVER:** `people = 999999` is accepted,
+      because the payload holds no per-cell populations to total. I
+      measured what that costs before accepting it: after unpacking,
+      `people` is read in exactly ONE place (the `format_advice`
+      header) and reaches no decision. 1.54.1 would have called this
+      "validated"; the limit is now written where the next reader of
+      the function will see it.
+  WHAT THIS REVIEW COSTS ME TO LEARN: the three note errors were all
+  in text no test reads. The release note is the one artefact in this
+  project with no suite behind it, and it is the first thing a new
+  user obeys.
+
+- ~~402~~ | DONE v1.54.5, JOHN AGAIN, 10 OCTOBER 2026 | "WHERE DID I GO
+  WRONG DURING INSTALLATION?" - HE HAD NOT, AND THE REPORT'S ORDER WAS
+  WHY HE THOUGHT SO.
+  401 added a note for the case where the engine is too old to be told
+  the floor. It worked - his output carries it - and it was printed
+  AFTER the VERDICT, pages below the loud release-number remark it
+  exists to correct. He read "THE ENGINE IS OLDER THAN THE COMMANDS,
+  and that combination does break", concluded he had mis-installed
+  something, and asked.
+  **A CORRECTION PRINTED AFTER THE ALARM IS READ TOO LATE.** The note
+  now comes first, before the report.
+  AND IT STATES THE VERDICT RATHER THAN THE CAVEAT. The first version
+  said only that the requirement could not be checked - true, and it
+  leaves an unresolved alarm below with no answer. The .ado knows the
+  floor and can read `equipop.__version__`, so it calls the ENGINE'S
+  OWN `_lines_floor` and prints `needs engine : 1.48.0 or newer -
+  satisfied`, then says which of the two statements to believe. One
+  source for the wording, so it cannot drift from what a current
+  engine prints - which is 332's whole point, reached from the door
+  that could not reach it before.
+  TWO TEST LESSONS, both from break-check:
+  - the test asserts the ORDER, not the presence. "the note exists"
+    was true of the version John complained about.
+  - `"_lines_floor" in src` also matches `_lines_floor = lambda a, b:
+    []`, which is how a local stub got past the first version of the
+    one-source assertion. **A substring is not a dependency**; the
+    test now reads the ImportFrom by AST.
+  NOT A CODE DEFECT, BUT MINE: the 1.54.4 release note's file table
+  says what to do with the wheel FOR PYPI - `twine upload` - and never
+  says how to get it onto his own machine before it is uploaded.
+  INSTALL.md has had that command since 1.47 (section 2, the `shell
+  ... pip install ... .whl` line) and the release note never points
+  there. Fixed in the note.
 
 - ~~401~~ | DONE v1.54.4, JOHN'S DOCTOR OUTPUT, 10 OCTOBER 2026 | 332'S
   FLOOR CHECK HAD NEVER ONCE BEEN CONSULTED FROM STATA.

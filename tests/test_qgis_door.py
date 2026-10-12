@@ -1477,3 +1477,85 @@ def test_the_qgis_barrier_refuses_a_class_field_that_is_not_there():
             Q._ShapeSource(shapes, [("fric", True), ("fclass", False)],
                            kind="line"),
             "fric", 100.0, "sum", _Ch(), class_field="fclas")
+
+
+# ------------------------------------------- BACKLOG 405, v1.55.0
+def _town(n=400, seed=4):
+    rng = np.random.default_rng(seed)
+    t = pd.DataFrame({"x": rng.uniform(0, 3000, n),
+                      "y": rng.uniform(0, 3000, n)})
+    t["cob"] = np.where(rng.random(n) < 0.3, "abroad", "Sweden")
+    t["Income"] = (rng.lognormal(10, .5, n)
+                   * np.where(t.cob == "abroad", .7, 1))
+    return t
+
+
+def test_qgis_machine_2_splits_mld_and_theil_through_the_engine():
+    """The door's answer must be the engine's answer: the same
+    columns, and the same between-group share in every row as
+    dispatch gives directly.
+
+    BROKEN WITH: the `if decompose:` block removed from
+    processAlgorithm - the box is offered and never passed, so the
+    split columns simply never appear."""
+    from equipop.stata_bridge import dispatch
+    from equipop_qgis.alg_stats import MEASURES
+    t = _town()
+    out, _ = _run(ValueStatistics, qgis_stub.source_from(t),
+                  values=["Income"],
+                  measures=[MEASURES.index("mld"),
+                            MEASURES.index("theil")],
+                  k="100 300", decompose="cob", mingroup=25)
+    direct = dispatch("stats", t.x.to_numpy(), t.y.to_numpy(),
+                      unit_size=100.0, k_values=[100, 300],
+                      values={"Income": t.Income.to_numpy()},
+                      stats={"Income": ["mld", "theil"]},
+                      decompose_by={"cob": t.cob.to_numpy(object)},
+                      min_group=25, overshoot_mode="proportional",
+                      self_rule="include")
+    for c in ("MLDsh_Income_300", "Theilb_Income_100", "Ng_Income_100",
+              "NgMin_Income_300"):
+        np.testing.assert_allclose(out[c].to_numpy(float),
+                                   np.asarray(direct[c], float),
+                                   equal_nan=True)
+
+
+def test_qgis_an_unsupplied_minimum_means_thirty_not_zero():
+    """Zero is a real choice here - "no minimum" - so a minimum that
+    was never supplied must become the default, not zero. QGIS fills
+    an absent parameter from its definition; a script or a stub may
+    not, and BACKLOG 116 is what a silently-zero number does.
+
+    BROKEN WITH: parameterAsDouble read unconditionally - the stub
+    then answers 0.0, every small group is reported, and this fails."""
+    from equipop_qgis.alg_stats import MEASURES
+    t = _town()
+    common = dict(values=["Income"], measures=[MEASURES.index("mld")],
+                  k="60", decompose="cob")
+    unsupplied, _ = _run(ValueStatistics, qgis_stub.source_from(t),
+                         **common)
+    thirty, _ = _run(ValueStatistics, qgis_stub.source_from(t),
+                     mingroup=30, **common)
+    zero, _ = _run(ValueStatistics, qgis_stub.source_from(t),
+                   mingroup=0, **common)
+    a = unsupplied["MLDsh_Income_60"].to_numpy(float)
+    np.testing.assert_array_equal(np.isnan(a), np.isnan(
+        thirty["MLDsh_Income_60"].to_numpy(float)))
+    assert np.isnan(a).sum() > np.isnan(
+        zero["MLDsh_Income_60"].to_numpy(float)).sum()
+
+
+def test_qgis_the_measures_line_names_measures_under_rung_3():
+    """Found while wiring 405: under the third reference rung the
+    list of reference TYPES was assigned to `wanted`, the name of the
+    measures list, so the log line "Measures: ..." printed the types.
+
+    BROKEN WITH: the reference list named `wanted` again."""
+    from equipop_qgis.alg_stats import MEASURES
+    t = _town()
+    _, fb = _run(ValueStatistics, qgis_stub.source_from(t),
+                 values=["Income"], measures=[MEASURES.index("mean")],
+                 k="50", refmode=[2], catfield="cob",
+                 reftable=["Sweden"], keepoutside=[0])
+    line = [m for m in fb.info if "Measures:" in m]
+    assert line and "mean" in line[0] and "Sweden" not in line[0], line

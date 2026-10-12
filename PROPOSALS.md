@@ -1,6 +1,31 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.54.4, 10 October 2026.**
+**Last updated: 1.55.1, 12 October 2026.**
+*Reviewed at 1.55.1: NO CLAIM CHANGES, ONE QUALIFICATION. The 1.55.0
+claim stands, now externally reviewed. Qualification: the split's
+cost grows with the number of groups (BACKLOG 409) - fine for the
+binary circumstances a proposal would lead with, slow at twenty
+groups on a national register. Do not promise twenty-category
+decompositions at national scale until 409 lands.*
+*Reviewed at 1.55.0: ONE NEW CLAIM MAY BE MADE, AND ONE MAY NOT.
+MAY: EquiPop splits income inequality inside every bespoke
+neighbourhood into the part between groups and the part within them
+(MLD and Theil, exact, at any k or radius, in QGIS and Pro) - BACKLOG
+405, certified by an identity between two independent routes through
+the code. MAY NOT, YET: the scale profile theta(k) - how much of
+inequality is attributable to neighbourhood as a circumstance, and at
+what scale. That is the research contribution John's notes describe,
+it is NOT built, and it waits on his ruling about how neighbourhood
+character is binned into types. Two further cautions for any text
+that names inequality of OPPORTUNITY: the split is opportunity only
+if the grouping is a circumstance, which is the analyst's cut; and on
+gridded census or WorldPop composition it is an ecological object,
+not individual IOp - realistically this is a Nordic-register project
+(and CBS), where geocoded parental circumstances meet adult outcomes.*
+*Reviewed at 1.54.6: NO CLAIM CHANGES. Two low-priority residuals
+closed, both local-diagnostic and local-cache robustness.*
+*Reviewed at 1.54.5: NO CLAIM CHANGES. One diagnostic message
+reordered so the reader meets the answer before the alarm.*
 *Reviewed at 1.54.4: NO CLAIM CHANGES. Help wording, and a
 diagnostic that had been comparing the wrong two numbers since
 1.49.3 - the commands declare which engine they need and the

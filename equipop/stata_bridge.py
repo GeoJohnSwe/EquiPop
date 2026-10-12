@@ -760,6 +760,10 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              k_values=None, r_values=None, tau_values=None,
              # stats engine:
              values: dict | None = None, stats: dict | None = None,
+             # BACKLOG 405: {group field name: values} and the
+             # smallest group a decomposition will report on
+             decompose_by: dict | None = None,
+             min_group: float | None = None,
              # slope / friction:
              dem: str | None = None, model: str = "tobler",
              roundtrip: bool = False, friction_file: str | None = None,
@@ -1045,21 +1049,44 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                       "or zero): they count as ZERO and are nobody's "
                       "neighbour, but they still get their own "
                       "results - what is around THEM.")
-        dv = pop
-        cd = build_cells(dv, "_x", "_y", value_vars=list(values),
+        req = stats or {v: ["mean", "median", "gini"] for v in values}
+        # BACKLOG 405, v1.55.0. A decomposition splits each value field
+        # into one sub-field per group BEFORE the cells are built; the
+        # engine then runs exactly as it always has - k still counts
+        # everybody - and the pieces are put back together after it.
+        plan = None
+        value_names = list(values)
+        engine_stats = req
+        if decompose_by:
+            from .decompose import make_plan
+            plan = make_plan(df, list(values), req, decompose_by,
+                             min_group, members)
+            value_names = list(values) + plan.sub_names
+            engine_stats = {**req, **plan.sub_stats}
+        elif min_group is not None:
+            from .decompose import resolve_min_group
+            resolve_min_group(min_group)   # a bad value is still bad
+        # sliced HERE, not before: the split adds its sub-fields to df,
+        # and `pop` above was taken before they existed. `members` is
+        # `valid` whenever no count field is given.
+        dv = df[members]
+        cd = build_cells(dv, "_x", "_y", value_vars=value_names,
                          unit_size=unit_size,
-                         weights=None if weight is None else "_w")
-        cd = _add_empty_origin_cells(cd, E, N, list(values))
+                         weights=None if weight is None else "_w",
+                         quiet_missing=(plan.sub_names if plan else ()))
+        cd = _add_empty_origin_cells(cd, E, N, value_names)
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            self_potential=self_potential,
                            self_rule=self_rule,
                            overshoot_mode=overshoot_mode, seed=seed,
-                           stats=stats or {v: ["mean", "median", "gini"]
-                                           for v in values})
+                           stats=engine_stats)
+        if plan is not None:
+            st = plan.assemble(st)
         from .stats import stat_prefix
-        req = stats or {v: ["mean", "median", "gini"] for v in values}
         allowed = {"N", "Nv", "Dist"} | {
             stat_prefix(s) for ss in req.values() for s in ss}
+        if plan is not None:
+            allowed |= plan.prefixes
         cols = [c for c in st.columns
                 if c.split("_")[0] in allowed]
         return _map_back(st, list(zip(E, N)), cols, valid, n_rows)
