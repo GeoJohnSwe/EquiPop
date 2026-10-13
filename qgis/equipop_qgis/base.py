@@ -707,8 +707,15 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
             return None
 
     def write(self, parameters, context, source, result, order,
-              feedback):
-        """Original columns, then the results, row for row."""
+              feedback, descriptions=None):
+        """Original columns, then the results, row for row.
+
+        `descriptions` (v1.56.0, BACKLOG 410): {result key: sentence},
+        given to each result field as its ALIAS. Whether the alias
+        survives depends on the output format and the QGIS version - a
+        temporary layer keeps it, a shapefile cannot - so the run
+        messages carry the same sentences regardless.
+        """
         out_fields = QgsFields()
         for f in source.fields():
             out_fields.append(f)
@@ -745,8 +752,11 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         # up a key that does not exist - caught before it shipped, and
         # exactly the shape of a rename that half-lands.
         for name in order:
-            out_fields.append(QgsField(mapped.get(name, name),
-                                       QMetaType.Type.Double))
+            fld = QgsField(mapped.get(name, name), QMetaType.Type.Double)
+            text = (descriptions or {}).get(name)
+            if text:
+                fld.setAlias(text)                       # BACKLOG 410
+            out_fields.append(fld)
 
         sink, dest = self.parameterAsSink(
             parameters, self.OUT, context, out_fields,

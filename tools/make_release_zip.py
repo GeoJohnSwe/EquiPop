@@ -18,12 +18,27 @@
 # the check lives here, runs every time, and REFUSES rather than
 # warns.
 #
+# v1.57.1, external review of 1.57.0 (BACKLOG 411). THE SAME DEFECT
+# CAME BACK THROUGH A DOOR THAT DID NOT USE THIS FILE. 1.56.0 and
+# 1.57.0 shipped `EquiPop-<v>/C:\Data/EquiPop_runs/people_EquiPop_run.csv`
+# in equipop_working_tree.zip, because tools/make_bundle.sh (1.54.6)
+# zipped the tree with `zip -qr` and never called this builder. The
+# protection existed; the path that mattered went round it. So the
+# bundle now builds its working tree HERE (`--name`, `--skip-build-
+# outputs`), and every zip it ships is re-opened and EXTRACTED by
+# verify() before the bundle is accepted (`--verify`).
+#
 # Usage:  python tools/make_release_zip.py <version> [outdir]
+#                [--name FILE.zip] [--skip-build-outputs]
+#         python tools/make_release_zip.py --verify ZIP [ZIP ...]
+#                [--tree-version V]
 # =====================================================================
 
+import argparse
 import os
 import re
 import sys
+import tempfile
 import zipfile
 
 # Anything matching these cannot be extracted reliably, or should
@@ -35,6 +50,36 @@ BAD_NAME = re.compile(
       | (^|/)\.\.(/|$)    # a traversal component
       | [:*?"<>|]         # characters Windows refuses in a name
     """, re.VERBOSE)
+
+# v1.57.1 (411). Names Windows refuses that the pattern above cannot
+# see: a reserved device name as any path component, with or without
+# an extension (CON, aux.txt, LPT1.log), and a component ending in a
+# dot or a space, which Windows silently strips - two members then
+# land on one file.
+_RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)",
+                       re.IGNORECASE)
+
+
+def windows_problem(name):
+    """Why Windows cannot extract `name`, or None."""
+    if BAD_NAME.search(name):
+        return "drive letter, backslash, absolute, '..' or a refused character"
+    for part in name.split("/"):
+        if _RESERVED.match(part):
+            return f"'{part}' is a reserved device name on Windows"
+        if part and part[-1] in ". ":
+            return f"'{part}' ends in a dot or a space"
+    return None
+
+
+# v1.57.1 (411). RUN RECORDS ARE OUTPUTS OF A RUN, never source. The
+# Pro door writes <layer>_EquiPop_run.csv beside its input, and a
+# RunLog writes <out>.meta.json and .meta.txt beside its output; run
+# from inside the tree with a Windows path, the first lands in a
+# folder literally named `C:\Data` (156 and 411 both). They also carry
+# the local paths and settings of whoever ran it. REFUSED, not
+# skipped, for the reason this file gives at the top.
+RUN_RECORD = re.compile(r"(_EquiPop_run\.csv|\.meta\.json|\.meta\.txt)$")
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules",
              "equipop.egg-info", ".mypy_cache", ".ruff_cache",
@@ -80,7 +125,10 @@ BUILD_OUTPUT_SUFFIX = (".pyt.xml",)
 def members(root):
     """Every file that should ship, as (absolute path, archive name)."""
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        # any *.egg-info, not only equipop's: make_bundle.sh removed
+        # ./*.egg-info, and a renamed project would otherwise ship one
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS
+                       and not d.endswith(".egg-info")]
         for fn in filenames:
             if fn.endswith(SKIP_SUFFIX):
                 continue
@@ -91,7 +139,7 @@ def members(root):
 
 def check(names):
     """Refuse the whole build if any name cannot be extracted."""
-    bad = [n for n in names if BAD_NAME.search(n)]
+    bad = [n for n in names if windows_problem(n)]
     if bad:
         raise SystemExit(
             "\n  REFUSING to build the release ZIP: "
@@ -126,23 +174,130 @@ def check_build_outputs(names):
               "  Pro bundle needs them, so nothing is lost.\n")
 
 
-def build(root, version, outdir):
+def check_run_records(names):
+    """Refuse the whole build if a run's own record is in the tree."""
+    bad = [n for n in names if RUN_RECORD.search(n)]
+    if bad:
+        raise SystemExit(
+            "\n  REFUSING to build the release ZIP: "
+            f"{len(bad)} run record(s) are sitting in the tree.\n\n"
+            + "".join(f"      {n}\n" for n in bad[:10])
+            + ("      ...\n" if len(bad) > 10 else "")
+            + "\n  A run record is written BY a run, beside its input or\n"
+              "  output - it is never source, and it carries the local\n"
+              "  paths and settings of whoever ran it. Usually a script\n"
+              "  or test was run from inside the tree. Delete them and\n"
+              "  build again; do not skip them (BACKLOG 156, 411).\n")
+
+
+def build(root, version, outdir, out_name=None, skip_build_outputs=False):
+    """Build, then VERIFY, the tree zip. `skip_build_outputs` is for
+    the bundle, which generates the Pro sidecars on purpose and deletes
+    them afterwards: there they are expected and left out. Alone, they
+    mean somebody forgot to delete them, so they are refused."""
     top = f"EquiPop-{version}"
-    out = os.path.join(outdir, f"{top}-complete.zip")
+    out = os.path.join(outdir, out_name or f"{top}-complete.zip")
     found = list(members(root))
-    check([rel for _, rel in found])
-    check_build_outputs([rel for _, rel in found])
+    if skip_build_outputs:
+        found = [(f, r) for f, r in found
+                 if not r.endswith(BUILD_OUTPUT_SUFFIX)]
+    names = [rel for _, rel in found]
+    check(names)
+    check_build_outputs(names)
+    check_run_records(names)
     os.makedirs(outdir, exist_ok=True)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for full, rel in sorted(found, key=lambda t: t[1]):
             z.write(full, f"{top}/{rel}")
+    verify(out, tree_version=version)
     return out, len(found)
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SystemExit("usage: make_release_zip.py <version> [outdir]")
+def verify(path, tree_version=None):
+    """Re-open a FINISHED zip and prove it can be used. Refuses if:
+    a stored CRC does not match; a member name could not be extracted
+    on Windows; a run record or a Pro sidecar is inside a working tree;
+    extraction into a fresh folder does not produce every file.
+    With `tree_version`, it must also be EquiPop-<v>/ with that
+    version in its pyproject.toml and equipop/__init__.py.
+
+    Extraction here is on whatever system runs the build - Linux, for
+    the bundle - and Linux will happily write a file called `C:\Data`.
+    So Windows is checked by NAME, against the rules Windows applies,
+    and extraction proves the archive is whole."""
+    problems = []
+    with zipfile.ZipFile(path) as z:
+        broken = z.testzip()
+        if broken:
+            problems.append(f"CRC mismatch in {broken}")
+        names = z.namelist()
+        files = [n for n in names if not n.endswith("/")]
+        for n in names:
+            why = windows_problem(n.rstrip("/"))
+            if why:
+                problems.append(f"{n}: {why}")
+        if tree_version is not None:
+            top = f"EquiPop-{tree_version}/"
+            problems += [f"{n}: outside {top}" for n in names
+                         if not n.startswith(top)]
+            problems += [f"{n}: a run record" for n in files
+                         if RUN_RECORD.search(n)]
+            problems += [f"{n}: a Pro sidecar (a build output)"
+                         for n in files if n.endswith(BUILD_OUTPUT_SUFFIX)]
+        if not problems:
+            with tempfile.TemporaryDirectory() as tmp:
+                z.extractall(tmp)
+                got = sum(len(fs) for _d, _s, fs in os.walk(tmp))
+                if got != len(files):
+                    problems.append(f"extracted {got} files of {len(files)}")
+                if tree_version is not None:
+                    root = os.path.join(tmp, f"EquiPop-{tree_version}")
+                    for rel, pat in (
+                            ("pyproject.toml",
+                             f'version = "{tree_version}"'),
+                            ("equipop/__init__.py",
+                             f'"{tree_version}"')):
+                        p = os.path.join(root, *rel.split("/"))
+                        if not os.path.exists(p):
+                            problems.append(f"{rel} is missing")
+                        elif pat not in open(p, encoding="utf-8").read():
+                            problems.append(f"{rel} does not say "
+                                            f"{tree_version}")
+    if problems:
+        raise SystemExit(
+            f"\n  REFUSING {os.path.basename(path)}: {len(problems)} "
+            "problem(s).\n\n"
+            + "".join(f"      {p}\n" for p in problems[:15])
+            + ("      ...\n" if len(problems) > 15 else ""))
+    return len(files)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="make_release_zip.py")
+    ap.add_argument("version", nargs="?")
+    ap.add_argument("outdir", nargs="?")
+    ap.add_argument("--name", help="the zip's file name")
+    ap.add_argument("--skip-build-outputs", action="store_true",
+                    help="leave the Pro sidecars out (the bundle's case)")
+    ap.add_argument("--verify", nargs="+", metavar="ZIP",
+                    help="verify finished zips instead of building one")
+    ap.add_argument("--tree-version",
+                    help="with --verify: the zip is a working tree")
+    a = ap.parse_args(argv)
+    if a.verify:
+        for path in a.verify:
+            n = verify(path, tree_version=a.tree_version)
+            print(f"  verified {os.path.basename(path)}  ({n:,} files, "
+                  "every name checked, extracted whole)")
+        return
+    if not a.version:
+        ap.error("give a version, or --verify")
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path, n = build(here, sys.argv[1],
-                    sys.argv[2] if len(sys.argv) > 2 else here)
-    print(f"  wrote {path}  ({n:,} files, every name checked)")
+    path, n = build(here, a.version, a.outdir or here, out_name=a.name,
+                    skip_build_outputs=a.skip_build_outputs)
+    print(f"  wrote {path}  ({n:,} files, every name checked, "
+          "extracted whole)")
+
+
+if __name__ == "__main__":
+    main()

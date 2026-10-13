@@ -1559,3 +1559,31 @@ def test_qgis_the_measures_line_names_measures_under_rung_3():
                  reftable=["Sweden"], keepoutside=[0])
     line = [m for m in fb.info if "Measures:" in m]
     assert line and "mean" in line[0] and "Sweden" not in line[0], line
+
+
+# ------------------------------------------- BACKLOG 410, v1.56.0
+def test_qgis_result_fields_carry_their_description_as_alias():
+    """The same sentence on each output field. Whether it survives
+    depends on the output format; the messages carry it regardless.
+
+    BROKEN WITH: `descriptions=` not passed to write()."""
+    from equipop.describe import describe
+    from equipop_qgis.alg_stats import MEASURES
+    t = _town()
+    p = {"layer": qgis_stub.source_from(t), "unit": 100.0,
+         "outfc": "memory:out", "values": ["Income"],
+         "measures": [MEASURES.index("mld")], "k": "100",
+         "decompose": "cob"}
+    alg = ValueStatistics()
+    alg.initAlgorithm()
+    fb = QgsProcessingFeedback()
+    alg.processAlgorithm(p, None, fb)
+    flds = {f.name(): f for f in p["_sinks"]["outfc"]._fields._f}
+    assert flds["MLDsh_Income_100"].alias() == describe(
+        "MLDsh_Income_100", fields=["Income"], split_by="cob",
+        min_group=30)
+    assert flds["N_100"].alias()
+    assert flds["Income"].alias() == ""        # the input's own field
+    assert any("[columns]" in m for m in fb.info)
+    assert any(m.startswith("[decompose] Income, k=100: split reported")
+               for m in fb.info)

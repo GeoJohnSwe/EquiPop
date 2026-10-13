@@ -1,6 +1,20 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.55.1, 12 October 2026.**
+**Last updated: 1.57.1, 13 October 2026.**
+*Reviewed at 1.57.1: NOTHING IN THIS FILE CHANGES. A packaging release:
+the working-tree zip extracts on Windows again, which matters to any
+student who downloads the whole tree rather than installing.*
+*Reviewed at 1.57.0: NOTHING IN THIS FILE CHANGES, AND ONE THING A
+SEMINAR CAN USE. MANUAL_TOPICS.md section 10 works one neighbourhood
+of four people through every column of the between/within split by
+hand - small enough to do on a whiteboard, and every number in it is
+checked against the code by test. The split is also cheap now, so a
+class can run it at several k in one sitting.*
+*Reviewed at 1.56.0: NOTHING IN THIS FILE CHANGES, AND ONE THING GETS
+EASIER. Every run now prints what each result column holds, and in a
+geodatabase the descriptions sit in Pro's table header - so the
+"what is R_LowInc_400?" question a class asks every time is answered
+on screen.*
 *Reviewed at 1.55.1: NOTHING IN THIS FILE CHANGES. Fixes from the
 external review of 1.55.0 - group codes, a stale help sentence, test
 isolation, per-field measures. The overshoot help students read in

@@ -93,11 +93,10 @@ because machine 3 stores tiles that way and says so in its manifest.
 11. **406** — reachability witnesses are substrings, so a renamed
    argument still satisfies them (405's break-check proved it). An
    AST read of every row; its own release.
-12. **408** — the proportional answer key has no machine 2 columns,
-   for a reason that ended in 1.31. Regenerate and re-certify.
-13. **409** — the split costs one engine variable per group (20
-   groups over 3 fields: 595 s and 1.4 GB against 44 s and 0.2 GB).
-   Four additive sums per group remove it; verified to 7e-10.
+12. **412** — a fractional k from Python (k=30.5) writes `Ng_inc_30.5`,
+   which the describer cannot read: no legend line, no alias, no
+   [decompose] summary. The doors refuse fractional k, so only
+   scripts meet it. Decide whether the engine accepts it at all.
 
 ### Waiting on John, not on code
 - **224, 232** — need the exact inputs, versions, choices and output
@@ -111,9 +110,10 @@ because machine 3 stores tiles that way and says so in its manifest.
 - **257** — PAUSED by John, session 12. Four providers work; a fifth
   is capability, not a gap.
 - **321** — expected counts under a supplied rate schedule.
-- **407's product suggestions** — a coverage column for rows with no
-  group; per-group means as a long companion table; a manual chapter
-  with one worked neighbourhood. Each is a small build once ruled.
+- **407's last product suggestion** — per-group means as a long
+  companion table (one row per place, k and group). The coverage
+  column and the manual chapter shipped in 1.57.0 (407a). Needs
+  John's ruling on the table's format and where a door writes it.
 - **405, step 4** — the scale profile theta(k): the between-type share
   over the WHOLE population, with types defined BY neighbourhood
   character at each k, beside `seg_profile`. Needs John's ruling on
@@ -3624,7 +3624,138 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
-- 409 | open v1.55.1, THE REVIEWER'S BENCHMARK SUGGESTION, MEASURED |
+- ~~411~~ | DONE v1.57.1, 13 OCTOBER 2026 (external review of 1.57.0,
+  the same morning) | THE BUNDLE WENT ROUND ITS OWN PROTECTION, AND
+  COULD DELETE THE REPOSITORY.
+  The verdict: analytical code approved, individual artefacts
+  provisionally approved, the ALL zip "do not publish unchanged". Four
+  findings plus one optional point; all reproduced before anything was
+  fixed. Three held as stated, one held with its example corrected,
+  one was a different thing than reported, and the optional one was a
+  real defect.
+  (P0) `C:\Data/EquiPop_runs/people_EquiPop_run.csv` IN THE WORKING
+      TREE ZIP. Reproduced - AND WIDER: it shipped in 1.56.0 too, not
+      only 1.57.0 (1.55.1 and earlier are clean). THE CAUSE WAS ME: my
+      scratch script doors410.py drove the simulated Pro door from the
+      tree root with the input C:\Data\town.gdb\people, and Pro
+      writes its run record beside the geodatabase - on Linux, a
+      folder literally named `C:\Data`, in the working directory. The
+      suite itself runs from a temporary folder and did not do it;
+      confirmed by rerunning the Pro tests and finding nothing.
+      THE ROOT CAUSE IS THE PROJECT'S SIGNATURE ONE: 156 (1.29.6) is
+      this exact defect, and its fix lives in tools/make_release_zip.py
+      - but make_bundle.sh (1.54.6) zipped the tree with `zip -qr` and
+      never called it. A rule in one place and a path that went round
+      it. FIXED: the bundle's tree zip is built BY make_release_zip.py,
+      which now also refuses run records (*_EquiPop_run.csv,
+      *.meta.json, *.meta.txt) and Windows reserved names (CON,
+      aux.txt, LPT1...) and trailing dots or spaces; and every zip the
+      bundle ships is re-opened, CRC-checked, name-checked and
+      EXTRACTED (verify()) before the bundle is accepted. Fed the
+      shipped 1.57.0 tree zip, verify() refuses it; fed 1.55.1's, it
+      passes. The new builder ships exactly the old file set minus the
+      stray record.
+  (P1) `rm -rf "$OUT"` ON WHATEVER PATH WAS GIVEN. Reproduced on
+      disposable copies of the tree: `tests` deleted all 77 test
+      files, `../EquiPop` deleted the repository. The reviewer's own
+      example, `.`, is refused by rm itself - the finding stands, the
+      example does not. FIXED: the script deletes nothing it is given.
+      It builds in a fresh temporary folder; tools/bundle_out.py
+      decides FIRST whether the output may receive a bundle (refused:
+      the top of a file system, the home folder, the repository, an
+      ancestor of it, anything inside it, an existing non-empty folder
+      no bundle made), and installing removes only files a previous
+      bundle there listed in its marker (.equipop_bundle, which also
+      records each file's SHA-256). A release note beside a bundle now
+      survives a rebuild. A failed build keeps its logs.
+  (P2) "THE TEST COUNT IS STALE" - NOT SO, AND THE POINT STANDS
+      ANYWAY. The note said 1,744 collected; the reviewer collected
+      1,763 and attributed the 19 to tests added in 1.57. Reproduced
+      the other way: with geopandas installed this tree collects
+      EXACTLY 1,763 - test_vectorjoin and test_friction skip whole
+      without it. And the nine test_conformance_proportional tests
+      the review counted as new all existed in 1.56.0. So the count
+      was true and still not evidence: it did not say which machine
+      or packages. FIXED: tools/release_record.py runs the suite FROM
+      THE SHIPPED TREE ZIP, extracted, under each interpreter given,
+      and writes the note's record: totals, versions, absent optional
+      packages, and every file's SHA-256.
+  (P2) NO TEST OF THE ACTUAL BUNDLE PATH. Confirmed: the old test
+      read the script. Now: the production call itself on a tree full
+      of representative junk, extracted; verify() refusing a zip
+      shaped like 1.57.0's; the script required to call the builder
+      and to zip no tree itself; the guard's every decision; install's
+      rules; and the script RUN for real in a throwaway repository
+      against six dangerous outputs - none of which can reach a real
+      folder, so a broken guard can only harm tmp_path.
+  (OPTIONAL) "A SCALE-AWARE MARGIN FOR NgN_" - A REAL DEFECT. NgN_ and
+      Nv_ add the same people in different orders, so they differ by
+      rounding in proportion to the total: 7.8e-7 at 420 million.
+      With every row in a group, 1.57.0 said "In 1,268 places the
+      split leaves out people with a value but no 'g'" - and 87 places
+      at only 300 points weighing a million each. The margin is now
+      1e-9 plus 1e-12 of the total; half a person is still reported at
+      200 million. The COLUMNS were always right; the message was not.
+  BREAK-CHECK: 11 of 11 new, and 1.57.0's 29 rerun: 40 of 40. One gap
+  found by reading before the run: verify()'s test could not see its
+  name check, because the run-record rule caught the same zip. It
+  now feeds a reserved name that no other rule touches.
+  FOUND ON THE WAY: 412 (a fractional k from Python is undescribed).
+
+- ~~409~~ | DONE v1.57.0, 12 OCTOBER 2026 | THE SPLIT NOW COSTS FOUR
+  SUMS PER GROUP, NOT A SORTED STATISTIC PER GROUP.
+  BUILT AS RECORDED BELOW, with one change found on the way:
+  - build_cells(sum_vars=, sum_by=, sum_levels=) carries per-cell
+    ADDITIVE SUMS (CellData.sum_matrix), split by group codes inside
+    ONE bincount - so the per-person data is four columns per field
+    however many groups there are. Recording one column per group
+    would have cost a national register fields x groups x 4 columns.
+  - run_knn_stats adds them up over each neighbourhood with one vector
+    addition per ring, and a crossing ring contributes the same share
+    of them as of its people. The engine knows nothing about groups.
+  - decompose.Plan builds W, S, L, Q per field and assembles between
+    and within from them (split_from_sums). The sub-fields are gone,
+    and with them build_cells' `quiet_missing`, which only silenced
+    their missing values.
+  - THE CHANGE: the values are RESCALED by e^(mean log) before they are
+    summed, instead of centring the logs. Both indices ignore the
+    unit, and every mean then sits near 1, where its log loses
+    nothing. Measured against a reference free of cancellation, on
+    incomes near e^25 with a 0.1% spread (MLD 4.3e-7): plain sums off
+    by 0.8-3.3e-8 of the index over eight seeds, centred logs 3.5e-9,
+    rescaled 2.7e-10 - about 1e-16 absolute, the precision of the
+    incomes themselves. The direct MLD there is off by 4.9e-10.
+  MEASURED, same script and container as below:
+      1 field,  no split     19.7 s   peak  166 MB   (was 21.0 / 167)
+      1 field,  2 groups     25.8 s         177 MB   (was 44.7 / 206)
+      1 field,  5 groups     27.1 s         185 MB   (was 68.5 / 271)
+      1 field,  10 groups    27.8 s         214 MB   (was 107.4 / 379)
+      1 field,  20 groups    28.3 s         266 MB   (was 195.9 / 581)
+      3 fields, no split     40.2 s         199 MB   (was 43.5 / 199)
+      3 fields, 2 groups     52.8 s         226 MB   (was 108.2 / 326)
+      3 fields, 20 groups    58.6 s         390 MB   (was 595.2 / 1435)
+  What remains is per-record bookkeeping, nearly flat in groups.
+  CERTIFIED by 405's identity test, unchanged and still at rtol 1e-11
+  in all three overshoot modes (measured 1.4e-14); both shipped answer
+  keys regenerate byte-identically, so no other number moved.
+  FOUND ON THE WAY - A 1.55/1.56 DEFECT. Where everybody in a
+  neighbourhood has the same income, the share is 0/0. With
+  fractional weights 1.56.0 reported a share anyway in 282 of 600
+  constructed cases - mostly 1.0, "all of it between groups" - or a
+  between part of -2e-16, from rounding alone. Between and within are
+  now 0 there and the share EMPTY (NO_INEQUALITY = 1e-12); 0 of 600.
+  ALSO: a summary line where nothing was empty read "empty in 0 - only
+  one group present: 0"; it now ends at the count.
+  BREAK-CHECK (with 407a, the chapter and 408): 29 of 29, after three
+  corrections of mine. (1) The precision test passed with the
+  rescaling removed: pytest.approx adds an ABSOLUTE 1e-12 unless told
+  otherwise, which on an index of 4e-7 is a relative 2.5e-6, and the
+  break was 2.3e-8 off. abs=0 now. The other suite uses compare
+  values near 1 or larger, where the default does not dominate. (2)
+  and (3) are under 407a and the chapter. And dispatch's prefix
+  filter turned out to keep scaffolding out on its own, so assemble's
+  drop is pinned by a direct test of assemble on hand-computed sums.
+  The entry as opened:
   THE SPLIT COSTS ONE ENGINE VARIABLE PER GROUP, AND AT 20 GROUPS
   THAT IS NINE TIMES A PLAIN RUN.
   Measured, 50,000 points, k=400, MLD and Theil, this container:
@@ -3660,7 +3791,24 @@ because machine 3 stores tiles that way and says so in its manifest.
   identity test, which is written so as not to care HOW the split is
   computed. Until then the help says what the split costs.
 
-- 408 | open v1.55.1, FOUND WHILE FIXING 407 | MACHINE 2 IS NOT
+- ~~408~~ | DONE v1.57.0, 12 OCTOBER 2026 | MACHINE 2 IS IN THE
+  PROPORTIONAL ANSWER KEY, AND BOTH DOORS ARE RE-CERTIFIED AGAINST IT.
+  SPEC_PROPORTIONAL now asks the first key's questions - mean, median,
+  Gini of count_group at k=400 - and the key was regenerated. Machine
+  1's columns are bit-identical to the old key; the new columns
+  differ from the `whole` key in 2,286 rows (mean), 127 (median) and
+  2,287 (Gini) of 2,360, so the second key certifies something the
+  first cannot. Nv_ is compared within the tolerance, like T_: under
+  proportional it can be a fraction.
+  A TEST HAD BEEN ENFORCING THE GAP: test_the_second_key_carries_no_
+  column_no_door_can_produce asserted the key held no Mean_, Med_,
+  Gini_ or Nv_ - true to its reason in 1.30, a guard against the fix
+  from 1.31. Inverted: the two keys must now carry the same columns.
+  RE-CERTIFIED: QGIS and Pro run machine 2 under the spec's mode and
+  match the key on all 2,360 rows. Break-check: either door's machine
+  2 hardwired to `whole` - the pre-1.31 workaround - fails its
+  proportional conformance test; the `whole` key cannot see that.
+  The entry as opened:
   CONFORMANCE-CHECKED UNDER THE DEFAULT OVERSHOOT MODE, FOR A REASON
   THAT ENDED IN 1.31.
   BACKLOG 162 made a second answer key under `proportional`, the
@@ -3675,6 +3823,118 @@ because machine 3 stores tiles that way and says so in its manifest.
   not cover it. Fix: regenerate the proportional key with machine 2's
   mean, median and Gini, and re-certify both doors against it. A
   shipped data change, so its own release.
+
+- ~~407a~~ | DONE v1.57.0, 12 OCTOBER 2026 | TWO OF 407'S PRODUCT
+  SUGGESTIONS: A COVERAGE COLUMN, AND A MANUAL CHAPTER.
+  (1) NgN_ per field and k: the people the split covers - a value AND
+  a group - with the same share of a crossing ring as everyone else.
+  Beside Nv_ it shows, row by row, where people with no group were
+  left out; the summary line adds "In N places the split leaves out
+  people with a value but no 'cob' (NgN_ below Nv_)." Predicted,
+  described and in the legend, through the one naming function and
+  the one describer. Appended to GROUP_COLUMNS, so Ng_ and NgMin_ keep
+  their places.
+  (2) MANUAL_TOPICS.md section 10, "Inequality between and within
+  groups": one worked neighbourhood (A = [1, 3], B = [4, 4]) with
+  every column and its arithmetic; why MLD and Theil give different
+  shares there (45% and 56% - Theil weights the within part by income
+  share); empty-never-zero and its reasons; and why the empty area
+  shrinks with k, shown on a synthetic town of 5,000 (3,437 places
+  empty at k=100, 2,592 at 400, none at 1,600). The 1.56 release note
+  quoted a test town I could no longer reproduce, so the chapter uses
+  one that tests/test_manual_split.py BUILDS - and that file reads
+  every number out of the chapter and checks it against a run, so the
+  text and the code cannot drift apart.
+  Break-check found two of my BROKEN WITH claims untrue: `<=` with the
+  rounding margin kept is the same test as `<`, and a share written
+  "2%" for 1.875% is a correct rounding, not a break. Both corrected,
+  with the real breaks named.
+  LEFT: per-group means as a long companion table - John's ruling.
+
+- ~~410~~ | DONE v1.56.0, 12 OCTOBER 2026 (opened the same day from
+  John's first live Pro smoke test) | THE SPLIT RUNS IN PRO - AND
+  NOTHING ON SCREEN SAID WHAT ITS COLUMNS MEAN, OR WHY THEY ARE EMPTY.
+  **DONE - see the closing note at the end of this entry. The text
+  below is the entry as opened, kept, including a claim in it that
+  turned out half wrong.**
+  John ran 1.55.1 in ArcGIS Pro on EquiTown (6,005 points, field
+  income_obs, k=100) and it worked. His screenshot shows MLDb_, MLDw_,
+  MLDsh_, Theilb_, Theilw_, Theilsh_ - and <Null> in every visible
+  row. His words: "the w, sh, etc, are not explained what I can see
+  ... especially when we include groups, can be important."
+  TWO GAPS, and the second is the sharper one:
+  (1) NO RESULT COLUMN CARRIES A DESCRIPTION. Not the split's, and not
+      N_, R_, Mean_ or Dist_ either - checked: neither GIS door sets a
+      field alias, and the run messages name no columns. The help
+      explains b / w / sh, but in the dialog, which is closed by the
+      time anyone reads the table.
+  (2) AN EMPTY COLUMN DOES NOT SAY WHY. All-Null at k=100 is most
+      likely the minimum-group rule working: 30 people of 100 means
+      the smaller group must be 30% of the neighbourhood, which in a
+      segregated town most places are not. But the screen cannot tell
+      "the rule" from "a fault", and a careful user's first conclusion
+      would be the second. The minimum is in PEOPLE, deliberately -
+      sampling noise depends on how many, not what share - so the same
+      30 bites far harder at k=100 (30%) than at k=1600 (2%), and the
+      empty area should shrink as k grows. A user needs to be told
+      that, once.
+  PROPOSED, for when John says go:
+  - ONE DESCRIBER: a function that reads any EquiPop result name -
+    prefix, field, suffix - and says what it is ("MLD between-group
+    share of income_obs among the 100 nearest"). One source, used by
+    everything below, so the words cannot drift between doors.
+  - FIELD ALIASES in Pro (a file geodatabase keeps them; Pro's table
+    shows aliases in the header by default, which is exactly where
+    John looked), and in QGIS where the format keeps them.
+  - A LEGEND IN THE RUN MESSAGES for the columns just written, and a
+    closing line per k for the split: "MLDsh_income_obs_100 reported
+    in 1,204 of 6,005 places; empty in 4,801 - a group held fewer
+    than 30 people (4,650) or only one group was present (151)."
+  - the same descriptions in the run manifest, so they travel with
+    the result.
+  More pressing once per-group output arrives (407's suggestions),
+  which multiplies the columns.
+  CLOSING NOTE, v1.56.0. **"No result column carries a description"
+  was half wrong.** The run record HAD a describer - a list of
+  regular expressions in meta.py - and measured on a real run it said
+  "(no definition registered)" for 5 of 7 machine 1 columns (every T_
+  and R_ group column, machine 1's main output) and 12 of 19 machine
+  2 columns, and described Dist_k as "0 = satisfied within the origin
+  cell" in metres - untrue since self-potential (1.29.5) and in map
+  units since 160. A description nothing checked had rotted. A second
+  describer beside it would have been a rule in two places, so there
+  is ONE now: equipop/describe.py. Built:
+  - THE DESCRIBER reads a name as prefix_field_suffix, exact when given
+    the run's field names (a field may hold underscores and digits; a
+    radius writes its decimal point as an underscore) and the shortest
+    valid split otherwise. A name EquiPop does not write gets NO
+    sentence - a wrong alias is worse than none. Held to the column
+    PREDICTOR by test, so a family a door can produce and this cannot
+    describe fails the suite.
+  - THE RUN RECORD uses it, so Pro's manifest does too: 0 undescribed
+    columns where there were 17.
+  - A LEGEND in the run messages, printed by dispatch so QGIS and Pro
+    say the same words: one line per KIND of column on its first
+    instance, the emptiness rule said once.
+  - THE LINE JOHN'S SCREENSHOT NEEDED, per field and k: "split
+    reported in 1,335 of 6,005 places; empty in 4,670 - only one group
+    present: 2,670; a group below 30 people: 2,000." Counted in ROWS.
+    On a segregated test town the same field at k=1600 is empty in
+    106 places - which is the absolute minimum doing what it should,
+    and now visible rather than inferred.
+  - FIELD ALIASES in Pro, after the write is VERIFIED, on geodatabase
+    targets only, keyed on the engine's name so a renamed field keeps
+    its meaning (348's rule). A GeoPackage or shapefile target is told
+    where the descriptions are instead. An alias that fails warns and
+    never fails the run. QGIS sets the same sentence on each output
+    field with QgsField.setAlias; whether it survives depends on the
+    output format and QGIS version, which is John's live check to make.
+  - A legend that cannot be written SAYS so - not `except: pass`, the
+    shape that once made a feature unreachable from every door.
+  BREAK-CHECK, 16 OF 16 - after it caught one more test of mine: the
+  record test called set_output(columns), whose first argument is the
+  DESTINATION, so the record held no columns and "none undefined" was
+  trivially true. Third release running.
 
 - ~~407~~ | DONE v1.55.1, EXTERNAL REVIEW OF 1.55.0, 12 OCTOBER 2026 |
   FOUR FINDINGS, ALL REPRODUCED, NONE OBSOLETE - AND THE POISONED

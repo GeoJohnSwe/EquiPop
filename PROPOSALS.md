@@ -1,6 +1,22 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.55.1, 12 October 2026.**
+**Last updated: 1.57.1, 13 October 2026.**
+*Reviewed at 1.57.1: NO CLAIM CHANGES. An external review approved the
+1.57 analytical code; the fixes are to the release process. A proposal
+may now say that every published test count states the environment
+that produced it, run from the released archive itself.*
+*Reviewed at 1.57.0: THE 1.55.1 QUALIFICATION IS LIFTED, WITH ONE
+LIMIT. The split's cost no longer grows like a value field per group
+(BACKLOG 409): measured at 50,000 points and k=400, twenty groups add
+about 45% to a run, where they used to multiply it by nine. A proposal
+may describe multi-category decompositions. It should not quote a
+national-register runtime: none has been measured. And the machine 2
+answer key now covers the default overshoot mode (408), so "both GIS
+doors are conformance-checked against a shipped answer key" holds for
+the mode users actually get.*
+*Reviewed at 1.56.0: NO CLAIM CHANGES. Result columns now describe
+themselves in the run messages, the run record and Pro's field
+aliases - a usability fact, not a capability a proposal turns on.*
 *Reviewed at 1.55.1: NO CLAIM CHANGES, ONE QUALIFICATION. The 1.55.0
 claim stands, now externally reviewed. Qualification: the split's
 cost grows with the number of groups (BACKLOG 409) - fine for the

@@ -462,6 +462,10 @@ INTERNAL = {
     # between groups?" is a question a person asks. The sixth module
     # this check has stopped from shipping undeclared.
     "decompose",
+    # BACKLOG 410. Machinery: one sentence per result column, used by
+    # the run record, both GIS doors' field aliases and the legend in
+    # the run messages. The seventh new module this check has caught.
+    "describe",
 }
 
 #: WHAT THIS SET MEANS, because the name says less than it does.

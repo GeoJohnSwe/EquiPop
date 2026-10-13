@@ -97,10 +97,139 @@ Requested per variable: `stats={"treated": ["ratio","sd","se",
 Three exactness tiers: binary statistics are exact from counts alone;
 continuous mean/SD/SE exact from moments; continuous median/Gini need
 individual-level in-data (rows with duplicate coordinates). Binary Gini
-reduces to 1 - p; entropy is in nats. Add statistics with one line in
-`stats.VALUE_STATS`.
+reduces to 1 - p; entropy is in nats. `mld` (mean log deviation) and
+`theil` are inequality indices for incomes: MLD refuses a zero, Theil
+accepts one, and both split between and within groups - section 10.
+Add statistics with one line in `stats.VALUE_STATS`.
 
-## 10. Segregation measures
+## 10. Inequality between and within groups
+**The question.** Among the k people nearest each place, how unequal
+are incomes - and how much of that inequality lies BETWEEN groups
+(born in Sweden or abroad, parental education) rather than WITHIN
+them? Machine 2 answers with the two indices that split exactly into
+those two parts: the mean log deviation (MLD) and the Theil index. The
+Gini does not split this way - it leaves an overlap term - so it has no
+split. The split never changes the neighbourhood: k still counts
+everybody.
+
+**Asking for it.** Tick MLD, Theil or both among the measures, and name
+the grouping field: in QGIS *2c ▸ ...split MLD / Theil BETWEEN and
+WITHIN the groups of this field*, in Pro *Split MLD / Theil BETWEEN
+and WITHIN the groups of this field*. In Python, through the entry
+both doors use:
+
+```python
+import numpy as np
+from equipop.stata_bridge import dispatch
+
+res = dispatch("stats", np.full(4, 50.0), np.full(4, 50.0), unit_size=100,
+               k_values=[4],
+               values={"income": np.array([1.0, 3.0, 4.0, 4.0])},
+               stats={"income": ["mld", "theil"]},
+               decompose_by={"grp": np.array(["A", "A", "B", "B"])},
+               min_group=0)
+```
+
+The grouping field may hold text or codes, up to 20 groups; a blank,
+NaN or Stata missing means "no group". The Stata door does not offer
+the split: `ineqdeco` does it natively.
+
+### One neighbourhood, worked by hand
+Four people share one cell, so at k = 4 each has the same
+neighbourhood: all four. Group A earns 1 and 3, group B earns 4 and 4.
+The mean is 3; A's is 2 and B's is 4. (`min_group=0` because each group
+holds two people: with the default minimum of 30 the split would be
+empty - see below.)
+
+| Column | Value | What it is |
+|---|---|---|
+| `Nv_income_4` | 4 | people with an income |
+| `MLD_income_4` | 0.1308 | MLD over everyone: the mean of ln(3 / y) = (ln 3 + ln 1 + 2 ln ¾) / 4 |
+| `MLDb_income_4` | 0.0589 | BETWEEN: the MLD if everyone earned their group's mean = ½ ln(3/2) + ½ ln(3/4) |
+| `MLDw_income_4` | 0.0719 | WITHIN: each group's own MLD, weighted by its share of the PEOPLE = ½ × 0.1438 + ½ × 0 |
+| `MLDsh_income_4` | 0.4502 | the between-group SHARE, b / (b + w) |
+| `Theil_income_4` | 0.1002 | Theil over everyone: the mean of (y / 3) ln(y / 3) |
+| `Theilb_income_4` | 0.0566 | BETWEEN = ½ (2/3) ln(2/3) + ½ (4/3) ln(4/3) |
+| `Theilw_income_4` | 0.0436 | WITHIN: each group's own Theil, weighted by its share of the INCOME = (4/12) × 0.1308 + (8/12) × 0 |
+| `Theilsh_income_4` | 0.5650 | the between-group share |
+| `Ng_income_4` | 2 | groups present |
+| `NgMin_income_4` | 2 | people in the smallest group present |
+| `NgN_income_4` | 4 | people the split covers: a value AND a group |
+
+Three things to read off it:
+
+- **b + w is the index, exactly**: 0.0589 + 0.0719 = 0.1308, and
+  0.0566 + 0.0436 = 0.1002. That is what makes these two indices the
+  right ones, and EquiPop's tests hold it to 1e-11 in every overshoot
+  mode, with fractional people.
+- **The two indices give different shares** - 45% and 56% here -
+  because they weight the within part differently. Group A, the
+  unequal one, holds half the people but a third of the income, so it
+  counts for less under Theil. Neither is wrong; say which you used.
+  MLD is the more sensitive to the bottom of the distribution, and it
+  refuses a zero income: the log of zero has no value, and replacing
+  the zero with a small number makes that number the answer. Theil
+  accepts zeros.
+- **When some people have no group**, they stay in `MLD_` and `Nv_`
+  and are left out of the split. `NgN_` is then below `Nv_`, and
+  b + w is the index of the people the split covers.
+
+### Empty, never zero
+The between, within and share columns are EMPTY - not zero - where
+
+- only one group is present: there is no between to measure, and a
+  zero would read as a finding;
+- a group present holds fewer people than the minimum - 30 unless you
+  set it (*2d ▸ ...smallest group* in QGIS, *Smallest group* in Pro,
+  `min_group=` in Python; 0 means no minimum). Between-group inequality
+  is biased UPWARD when a group is small: a handful of people have a
+  noisy mean, and noise between means reads as inequality between
+  groups;
+- nobody in the neighbourhood has a value.
+
+The share alone is also empty where everybody has the same income:
+between and within are then 0, there is nothing to split, and 0/0 is
+not a share. `Ng_`, `NgMin_` and `NgN_` are always written, so a
+reader can see which reason applies. And the run says how many places
+there were, per field and k:
+
+```
+[decompose] income, k=100: split reported in 1,563 of 5,000 places; empty in 3,437 - only one group present: 88; a group below 30 people: 3,349. In 4,810 places the split leaves out people with a value but no 'cob' (NgN_ below Nv_).
+```
+
+### Why the empty area shrinks as k grows
+The minimum counts PEOPLE, not a share, on purpose: the noise in a
+group's mean depends on how many people it holds, not on what fraction
+of the neighbourhood they are. So the same 30 asks a group to be 30% of
+a neighbourhood of 100 and 1.9% of one of 1,600. Larger neighbourhoods
+also reach across the places where groups cluster, so "only one group
+present" falls too.
+
+The line above is from a synthetic town of 5,000 people, one in five
+born abroad and concentrated towards its eastern edge, with 3% whose
+country is not recorded (`tests/test_manual_split.py` builds it):
+
+| k | a group must be at least | places empty, of 5,000 | only one group present | a group below 30 |
+|---|---|---|---|---|
+| 100 | 30% | 3,437 | 88 | 3,349 |
+| 400 | 7.5% | 2,592 | 0 | 2,592 |
+| 1,600 | 1.9% | 0 | 0 | 0 |
+
+So at a small k, the default minimum maps the split only where both
+groups are well represented. If that is not where you need to look,
+raise k rather than lower the minimum: a lower minimum reports the
+small-group places WITH the upward bias it exists to keep out.
+
+**What it is not called.** Not "inequality of opportunity". Whether a
+between-group share measures opportunity depends on whether the
+grouping is a circumstance beyond a person's control - a judgement
+for the analysis, not the tool. What EquiPop computes is the ex-ante
+kind: groups compared by their means.
+
+**Cost.** Small: measured on 50,000 points at k=400, one field split
+into twenty groups took 28 s against 20 s unsplit.
+
+## 11. Segregation measures
 `seg_profile(knn_out, k_values, ...)` returns one row per scale plus an
 aspatial 'local' baseline: D, segregation Gini, entropy H, Atkinson(b),
 Isolation, Interaction, Correlation V, and SI (the 2015 paper's
@@ -108,7 +237,7 @@ population-weighted k-share isolation). Units at scale k are the
 bespoke neighbourhoods. Concentration/delta indices await a bespoke
 area-term decision.
 
-## 11. Area-based output
+## 12. Area-based output
 `aggregate_output(df, by=..., how="wmean")` summarises overlapping
 bespoke results per fixed geography - by belonging ID column, by
 uploaded polygons (`id_field=`, `points_epsg=` for CRS-aware joins), or
@@ -116,14 +245,14 @@ by a coarser supergrid size in metres. This is individualised context
 reported per area, not areal recomputation - state that in your methods
 section.
 
-## 12. Maps
+## 13. Maps
 `map_output(df, "R_VM_1600", cell="square"|"hex"|"point",
 classing="jenks"|"quantiles"|"equal"|"sd", n_classes=6,
 save="map.png")` - classed legend, scale bar, north arrow; export to
 png/svg/pdf. For real cartography, `save_output(..., "out.gpkg")` and
 style in QGIS.
 
-## 13. Metadata and reproducibility
+## 14. Metadata and reproducibility
 Wrap runs in `RunLog(settings={...})`: `add_input()` records md5 hashes
 and CRS decisions, `event()` captures warnings, `finalize(df,
 "out.csv")` writes `out.meta.json` (six sections + full column
@@ -131,7 +260,7 @@ definitions) and a readable `.meta.txt`. Written progressively - a
 crashed run still leaves its record. Put your seed and every deliberate
 choice in settings; the meta file is your methods section's receipt.
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 `ModuleNotFoundError` in Jupyter: `%pip install <pkg>`, restart kernel.
 Nordic CSVs: separator is sniffed, but check the row count. Coordinates
 that "look wrong": compare ranges against the claimed CRS. Slow runs:

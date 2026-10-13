@@ -520,6 +520,30 @@ def run_knn_stats(
                                  f"Available: {list(VALUE_STATS)} "
                                  "plus percentiles like p10/p97.5")
 
+    # BACKLOG 409, v1.57.0: ADDITIVE SUMS (CellData.sum_matrix), added
+    # up over each neighbourhood exactly as the people are - whole
+    # cells as the walk passes them, a crossing ring at the same share
+    # its people get - and written as `{name}_{k}`. One vector add per
+    # ring, however many sums there are: this is what lets a
+    # between/within split cost four sums per group instead of a
+    # sorted statistic per group.
+    S_mat = None
+    if cd.sum_names:
+        S_mat = np.asarray(cd.sum_matrix, dtype=float)
+        if S_mat.ndim != 2 or S_mat.shape != (len(cd), len(cd.sum_names)):
+            raise ValueError(
+                f"[stats] the additive sums hold {S_mat.shape} for "
+                f"{len(cd)} cells and {len(cd.sum_names)} names - every "
+                "per-cell array has to grow together.")
+    _sum_keys: dict = {}
+
+    def sum_keys(suffix):
+        got = _sum_keys.get(suffix)
+        if got is None:
+            got = _sum_keys[suffix] = [f"{nm}_{suffix}"
+                                       for nm in cd.sum_names]
+        return got
+
     sp = selfpot.check(self_potential)
     # BACKLOG 290: the origin as its own neighbour. This engine walks
     # a neighbour LIST, so the rule is applied by removing the origin
@@ -664,6 +688,7 @@ def run_knn_stats(
         # value is OBSERVED, not everybody present.
         bin_ok = {v: 0.0 for v in bin_vars}
         val_chunks = {v: [] for v in val_vars}
+        acc = None if S_mat is None else np.zeros(S_mat.shape[1])  # 409
         dist_m = 0.0
         pending = list(k_values)
         pending_r = list(r_values)
@@ -676,6 +701,9 @@ def run_knn_stats(
             n_use = sum_n if partial is None else partial["n"]
             t_use = bin_t if partial is None else partial["t"]
             rec[f"N_{suffix}"] = n_use
+            if acc is not None:                               # 409
+                s_use = acc if partial is None else partial["s"]
+                rec.update(zip(sum_keys(suffix), s_use.tolist()))
             if with_dist:
                 d_k = dist_m if partial is None else partial["d"]
 # BACKLOG 304. `>= k` IS A FLOATING-POINT TRAP HERE.
@@ -790,6 +818,10 @@ def run_knn_stats(
                             cd.valid_for(v)[ci] * w
                             for ci, w in zip(ring, wt)))
                             for v in bin_vars},
+                        # BACKLOG 409: and the same share again for
+                        # the additive sums.
+                        "s": (None if acc is None else
+                              acc + np.asarray(wt, float) @ S_mat[ring]),
                         # BACKLOG 118: the same per-cell share the
                         # binary sums get, applied to the value
                         # weights. `whole` gives w = 1 and nothing
@@ -809,6 +841,8 @@ def run_knn_stats(
                     pair = val_pairs[v][ci]
                     if len(pair[0]):
                         val_chunks[v].append(pair)
+            if acc is not None:                               # 409
+                acc += S_mat[ring].sum(axis=0)
             dist_m = float(d)
             while pending and sum_n >= pending[0]:
                 record(pending.pop(0))

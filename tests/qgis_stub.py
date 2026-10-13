@@ -196,9 +196,18 @@ class QMetaType:
 class QgsField:
     def __init__(self, name, type_=QVariant.Double, *a, **kw):
         self._name, self._type = str(name), type_
+        self._alias = ""
 
     def name(self):
         return self._name
+
+    # v1.56.0, BACKLOG 410. Real PyQGIS has had QgsField.setAlias and
+    # alias() throughout QGIS 3; the door now calls them.
+    def setAlias(self, text):
+        self._alias = str(text)
+
+    def alias(self):
+        return self._alias
 
     def type(self):
         return self._type

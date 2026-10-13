@@ -665,9 +665,12 @@ class CountsAndShares(EquipopAlgorithm):
 
         order = [n for n in names if n in res] + \
                 [n for n in res if n not in names]
+        # BACKLOG 410: each result field's description, as its alias
+        from equipop.describe import describe_all
         with stage(ch, "writing output"):
             dest = self.write(parameters, context, source, res, order,
-                              feedback)
+                              feedback,
+                              descriptions=describe_all(list(res), kw))
         self.write_provenance(runlog, dest, res, ch, source=source)
         self._unit_advice(ch, pts, kw, float(unit))
         return {self.OUT: dest}

@@ -734,6 +734,9 @@ def _add_empty_origin_cells(cd, E, N, value_vars):
     for v, arr in list(cd.binary_valid.items()):
         cd.binary_valid[v] = np.append(np.asarray(arr, float),
                                        np.zeros(len(want), float))
+    if cd.sum_matrix is not None:                             # 409
+        cd.sum_matrix = np.vstack([
+            cd.sum_matrix, np.zeros((len(want), cd.sum_matrix.shape[1]))])
     if cd.labels is not None:
         cd.labels = list(cd.labels) + [None] * len(want)
     print(f"[cells] {len(want)} origin cell(s) hold no population - "
@@ -753,6 +756,23 @@ def _map_back(res, keys, cols, valid, n_rows):
         col[vidx] = res.loc[keys, c].to_numpy(dtype=float)
         out[c] = col
     return out
+
+
+def _say_columns(out, kw: dict) -> None:
+    """Print the column legend (BACKLOG 410). Never allowed to fail a
+    run whose numbers are already computed: a legend that cannot be
+    written is a missing explanation, not a missing result."""
+    try:
+        from .describe import legend
+        lines = legend(list(out), kw)
+    except Exception as exc:                         # pragma: no cover
+        # NOT `pass`: a silent except is how a feature in this project
+        # once became unreachable from every door at once.
+        print(f"[columns] the column legend could not be written "
+              f"({type(exc).__name__}: {exc}); the results are complete.")
+        return
+    for line in lines:
+        print(line)
 
 
 def dispatch(engine: str, x, y, unit_size: float = 100.0,
@@ -969,15 +989,17 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                          "for every row whose own cell already holds "
                          f"{k0} - see BACKLOG 95."
                          if selfpot.check(self_potential) <= 0 else ""))
-        return knn_to_rows(x, y, k_values, treat=treat, weight=weight,
-                           overshoot_mode=overshoot_mode, seed=seed,
-                           unit_size=unit_size, r_values=r_values,
-                           decay=dec, decay_eps=decay_eps,
-                           decay_half_life=hl, decay_bins=decay_bins,
-                           self_potential=self_potential,
-                           self_rule=self_rule,
-                           treat_are_counts=extra.get(
-                               "treat_are_counts", False))
+        out = knn_to_rows(x, y, k_values, treat=treat, weight=weight,
+                          overshoot_mode=overshoot_mode, seed=seed,
+                          unit_size=unit_size, r_values=r_values,
+                          decay=dec, decay_eps=decay_eps,
+                          decay_half_life=hl, decay_bins=decay_bins,
+                          self_potential=self_potential,
+                          self_rule=self_rule,
+                          treat_are_counts=extra.get(
+                              "treat_are_counts", False))
+        _say_columns(out, {"treat": treat})          # BACKLOG 410
+        return out
 
     if engine == "stats":
         from .analysis import run_knn_stats
@@ -1050,36 +1072,35 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                       "neighbour, but they still get their own "
                       "results - what is around THEM.")
         req = stats or {v: ["mean", "median", "gini"] for v in values}
-        # BACKLOG 405, v1.55.0. A decomposition splits each value field
-        # into one sub-field per group BEFORE the cells are built; the
-        # engine then runs exactly as it always has - k still counts
-        # everybody - and the pieces are put back together after it.
+        # BACKLOG 405, v1.55.0; 409, v1.57.0. A decomposition prepares
+        # a few per-person quantities BEFORE the cells are built; the
+        # engine adds them up per group over each neighbourhood - k
+        # still counts everybody - and the split is assembled after it.
         plan = None
         value_names = list(values)
-        engine_stats = req
         if decompose_by:
             from .decompose import make_plan
             plan = make_plan(df, list(values), req, decompose_by,
                              min_group, members)
-            value_names = list(values) + plan.sub_names
-            engine_stats = {**req, **plan.sub_stats}
         elif min_group is not None:
             from .decompose import resolve_min_group
             resolve_min_group(min_group)   # a bad value is still bad
-        # sliced HERE, not before: the split adds its sub-fields to df,
+        # sliced HERE, not before: the split adds its columns to df,
         # and `pop` above was taken before they existed. `members` is
         # `valid` whenever no count field is given.
         dv = df[members]
         cd = build_cells(dv, "_x", "_y", value_vars=value_names,
                          unit_size=unit_size,
                          weights=None if weight is None else "_w",
-                         quiet_missing=(plan.sub_names if plan else ()))
+                         sum_vars=plan.sum_vars if plan else None,
+                         sum_by=plan.code_column if plan else None,
+                         sum_levels=len(plan.labels) if plan else 0)
         cd = _add_empty_origin_cells(cd, E, N, value_names)
         st = run_knn_stats(cd, k_values=k_values, r_values=r_values,
                            self_potential=self_potential,
                            self_rule=self_rule,
                            overshoot_mode=overshoot_mode, seed=seed,
-                           stats=engine_stats)
+                           stats=req)
         if plan is not None:
             st = plan.assemble(st)
         from .stats import stat_prefix
@@ -1089,7 +1110,17 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             allowed |= plan.prefixes
         cols = [c for c in st.columns
                 if c.split("_")[0] in allowed]
-        return _map_back(st, list(zip(E, N)), cols, valid, n_rows)
+        out = _map_back(st, list(zip(E, N)), cols, valid, n_rows)
+        # BACKLOG 410, v1.56.0: say what the columns hold, and for a
+        # split, where it was reported and why it is empty elsewhere.
+        # Printed HERE so every door that relays the engine's voice -
+        # QGIS and Pro both - says it in the same words.
+        _say_columns(out, {"values": values, "decompose_by": decompose_by,
+                           "min_group": min_group})
+        if plan is not None:
+            for line in plan.report(out):
+                print(line)
+        return out
 
     if engine in ("friction", "slope"):
         from .io import read_table, resolve_xy_columns

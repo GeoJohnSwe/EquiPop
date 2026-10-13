@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.55.1 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0s first, then 0r back to 0b
+*Amended through 1.57.1 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0v first, then 0u back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,141 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0v. 1.57.1 - THE ANALYSIS WAS APPROVED AND THE RELEASE WAS NOT
+
+An external review of 1.57.0 arrived the next morning. It approved the
+analytical code and said the ALL zip must not be published unchanged.
+It was right about the zip, and the cause was mine twice over.
+
+**A run record of mine was in two releases.** `equipop_working_tree.zip`
+held `C:\Data/EquiPop_runs/people_EquiPop_run.csv`, which Windows will
+not extract. It shipped in 1.56.0 as well as 1.57.0. My scratch script
+for 410 drove the simulated Pro door from the tree root, and Pro writes
+its run record beside the geodatabase. **And the guard against exactly
+this has existed since 1.29.6** (156), in `make_release_zip.py`. The
+bundle script I wrote in 1.54.6 never called it. That is the project's
+signature defect - a rule in one place, a path that goes round it -
+and I built the path. The tree zip is now built by that tool, every
+shipped zip is extracted before a bundle is accepted, and the script
+is tested in a throwaway repository.
+
+**The bundle script could delete the repository.** `rm -rf "$OUT"` on
+any path: `tests` emptied the test folder, `../EquiPop` removed the
+whole tree. It now deletes nothing it is given.
+
+**Two findings were not quite as reported, and that mattered.**
+- The review's `.` example is refused by rm itself. The danger was
+  real; that example was not it.
+- The "stale" test count was right for my machine. geopandas adds
+  exactly the reviewer's 19 tests. But a count that cannot say which
+  machine it came from is not evidence. The record is now generated
+  from the shipped zip.
+
+The optional point - a scale-aware margin for `NgN_` - turned out to be
+a real false message at WorldPop scale. Reproducing it, rather than
+filing it as precautionary, is what showed that.
+
+**The lesson for whoever builds the next release:** run scratch scripts
+from the scratchpad, never from the tree. The builder now refuses what
+they leave behind, but the tree should not need refusing.
+
+## 0u. 1.57.0 - FOUR ITEMS IN THE ORDER JOHN APPROVED, AND THE ONE THAT WAS EXPENSIVE
+
+John approved four items in my order: the faster split (409), a
+coverage column (407a), a manual chapter, and machine 2 in the
+proportional answer key (408). All four shipped together.
+
+**409 made the split nearly free.** One field split into twenty
+groups went from 196 s to 28 s, and three fields into twenty from
+595 s and 1.4 GB to 59 s and 0.4 GB. Each group is now four additive
+sums, which the engine adds up like people, with no sorted statistic
+per group. The engine knows nothing about groups: `build_cells` splits
+the sums by a code column inside one `bincount`, so the per-person
+data does not grow with the number of groups. 405's identity test
+certified it unchanged, at rtol 1e-11. **One design change came from
+measuring rather than assuming.** Centring the logs, my first build,
+still lost digits on large incomes with a small spread. Rescaling the
+incomes themselves, since both indices ignore the unit, brought the
+error down to the precision of the inputs.
+
+**It found a 1.55/1.56 defect.** Where everyone in a neighbourhood
+has the same income, the share is 0/0. With fractional weights, 1.56
+reported one anyway in 282 of 600 constructed cases, mostly 1.0
+("all between groups"), from rounding noise alone. Between and within
+are now 0 there, and the share is empty.
+
+**The chapter's numbers are read out of the chapter by a test.** The
+1.56 note quoted a test town (6,005 points) I could not rebuild, so the
+chapter uses one that `tests/test_manual_split.py` builds. That test
+runs the chapter's own code block and checks every printed number at
+the digits printed, so neither the text nor the code can drift alone.
+
+**408 found a test enforcing the gap.** One test asserted that the
+proportional key held NO machine 2 columns. Its reason expired in
+1.31, so from 1.31 to 1.56 it guarded against the fix. It is
+inverted now. Both doors match the extended key on all 2,360 rows.
+A door that hardwires machine 2 to `whole`, the pre-1.31 workaround,
+now fails, which the `whole` key could never show.
+
+**Break-check: 29 of 29, after three corrections of mine, the fourth
+release running.**
+- `pytest.approx` adds an absolute 1e-12 unless told otherwise, so a
+  precision test on an index of 4e-7 could not fail.
+- Two BROKEN WITH claims were untrue. A `<=` with the rounding margin
+  kept is the same test as `<`. And "2%" is a correct rounding of
+  1.875%.
+
+The procedure from 0t held: the breaks were written with the tests,
+and they are what found all three.
+
+**Open from here:**
+- per-group means (John's format ruling);
+- θ(k) (his binning ruling);
+- 406;
+- the live checks: QGIS aliases, and Pro and QGIS runs of the split
+  at real scale. With the split now cheap, a k=1600 run on EquiTown is
+  the natural next smoke test.
+
+## 0t. 1.56.0 - WHAT THE COLUMNS MEAN, WHERE PEOPLE LOOK
+
+John's first live Pro run of the split: a table header of MLDb_ /
+MLDw_ / MLDsh_, `<Null>` in every visible row, and *"the w, sh, etc,
+are not explained what I can see"*. He then asked for it to be built.
+
+**The first thing found was that I had described the problem wrong.**
+I wrote in 410 that no result column carried a description. The run
+record did - a list of regular expressions in meta.py - and measured
+on a real run it described 9 of 26 columns. Every T_ and R_ group
+column, machine 1's main output, was "(no definition registered)",
+and Dist_k was "0 inside the origin cell, in metres", which two
+earlier releases had made untrue. **A description nothing checks rots
+like anything else nothing checks.** So the fix was not a second
+describer but making the one there was complete, correct and tested
+against the predictor - and then using it everywhere a column is
+read: the record, the run messages, Pro's field aliases, QGIS's.
+
+**The line that answers the screenshot** is the summary: per field
+and k, how many places got a split and why the rest are empty, in
+rows. On a segregated test town at k=100 that is 4,670 of 6,005 empty
+(2,670 with one group, 2,000 with a minority under 30) and at k=1600
+it is 106. The absolute minimum in PEOPLE bites hard at small k - by
+design, because sampling noise depends on how many people a group has,
+not its share - and a user now sees that rather than having to infer
+it.
+
+**Pro's aliases are set after the write is verified, on geodatabases
+only, and can never fail a run.** QGIS sets them too, but whether a
+QGIS alias survives depends on the output format and version: that is
+for John's next live run, not a claim.
+
+**Break-check caught a vacuous test of mine for the third release
+running** - this time a record test that passed the column list as the
+DESTINATION argument, so the record held no columns and "none
+undefined" was trivially true. Three releases, three of my tests that
+could not fail the way they said. The lesson is now a procedure:
+**every new test is broken before it is believed**, and the
+break-check script is written with the tests, not after.
 
 ## 0s. 1.55.1 - A FAVOURABLE REVIEW, FOUR REAL FINDINGS, AND A POISONED INSTALL
 

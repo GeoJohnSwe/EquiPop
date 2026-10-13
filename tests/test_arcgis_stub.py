@@ -389,6 +389,21 @@ def _install_fake_arcpy(table: pd.DataFrame):
     mgmt.XYTableToPoint = XYTableToPoint
     mgmt.AddField = AddField
 
+    def AlterField(in_table, field, new_field_name=None,
+                   new_field_alias=None, *a, **kw):
+        """v1.56.0, BACKLOG 410. Real arcpy's signature. STRICTER than
+        the real thing where that costs nothing: a field that is not
+        there is refused, as real arcpy refuses it, and a target can be
+        made to refuse every alias (state["alias_refused"]) so the
+        door's handling of that can be tested."""
+        if state.get("alias_refused"):
+            raise RuntimeError(f"ERROR 000499: cannot alter {field}")
+        if field not in _tab().columns:
+            raise RuntimeError(f"ERROR 000728: Field {field} does not "
+                               f"exist within table")
+        state.setdefault("aliases", {})[field] = new_field_alias
+    mgmt.AlterField = AlterField
+
     def TableToNumPyArray(table, fields, skip_nulls=False,
                           null_value=np.nan):
         if state.get("fc_array_raises"):
@@ -3522,3 +3537,83 @@ def test_the_loose_generator_never_puts_the_users_folder_on_the_path(
     parent = os.path.normcase(os.path.abspath(str(tmp_path / "Data")))
     assert parent not in [os.path.normcase(os.path.abspath(p))
                           for p in added], added
+
+
+# ------------------------------------------- BACKLOG 410, v1.56.0
+def _pro_split_run(target, **state_extra):
+    t = _pro_town()
+    t = t.rename(columns={"Income": "income_obs"})
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": target}
+    state.update(state_extra)
+    pyt = _load_pyt()
+    msg = _Messages()
+    pyt._run_tool("stats", "people", msg, value_fields=["income_obs"],
+                  stats_list=["mld"], k_text="100",
+                  decompose_field="cob", min_group=30.0,
+                  existing=state_extra.get("_existing", "Overwrite"))
+    return state, msg
+
+
+def test_pyt_a_geodatabase_field_carries_its_description_as_alias():
+    """John looked at the table HEADER for what MLDsh_ meant. Pro shows
+    a field's alias there, so the description goes there.
+
+    BROKEN WITH: the _set_aliases call removed from _run_tool."""
+    from equipop.describe import describe
+    state, msg = _pro_split_run(r"C:\Data\town.gdb\people")
+    al = state.get("aliases", {})
+    want = describe("MLDsh_income_obs_100", fields=["income_obs"],
+                    split_by="cob", min_group=30)
+    assert al.get("MLDsh_income_obs_100") == want
+    assert "fewer than 30 people" in al["MLDsh_income_obs_100"]
+    assert al.get("N_100") and al.get("Ng_income_obs_100")
+    assert any("carry a description as their alias" in m for m in msg.log)
+
+
+def test_pyt_a_target_that_cannot_keep_aliases_is_told_where_they_are():
+    """A GeoPackage is not dependable for aliases and a shapefile has
+    none: no alias is attempted, and the user is told where the
+    descriptions are instead.
+
+    BROKEN WITH: the geodatabase check removed - aliases are then
+    written to the GeoPackage."""
+    state, msg = _pro_split_run(r"C:\Data\town.gpkg\people")
+    assert not state.get("aliases")
+    assert any("need a geodatabase target" in m for m in msg.log)
+
+
+def test_pyt_an_alias_that_fails_never_fails_the_run():
+    """The results are written and verified before any alias is set.
+    A target that refuses an alias costs the description, not the run.
+
+    BROKEN WITH: the try around AlterField removed."""
+    state, msg = _pro_split_run(r"C:\Data\town.gdb\people",
+                                alias_refused=True)
+    assert "MLDsh_income_obs_100" in state["table"].columns
+    assert any("aliases could not be set" in m.lower() for m in msg.log)
+
+
+def test_pyt_a_renamed_field_keeps_its_meaning():
+    """"Keep both" renames a result that clashes with an existing
+    field. The alias is looked up under the ENGINE'S name, so the
+    renamed field still says what it holds - the run record's rule
+    since BACKLOG 348.
+
+    BROKEN WITH: the alias looked up under the FIELD's name - the
+    renamed MLD_income_obs_100 then gets none."""
+    t = _pro_town().rename(columns={"Income": "income_obs"})
+    t["MLD_income_obs_100"] = 0.0                  # already there
+    state = _install_fake_arcpy(t)
+    state["catalog_paths"] = {"people": r"C:\Data\town.gdb\people"}
+    pyt = _load_pyt()
+    pyt._run_tool("stats", "people", _Messages(),
+                  value_fields=["income_obs"], stats_list=["mld"],
+                  k_text="100", decompose_field="cob",
+                  existing="Keep both (rename the new ones)")
+    al = state.get("aliases", {})
+    renamed = [f for f in al if f.startswith("MLD_income_obs_100")
+               and f != "MLD_income_obs_100"]
+    assert renamed, sorted(al)
+    assert al[renamed[0]].startswith("Mean log deviation (MLD) of "
+                                     "income_obs")

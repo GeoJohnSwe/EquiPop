@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """test_decompose.py - MLD, Theil, and their between/within split.
 
-v1.55.0, BACKLOG 405.
+v1.55.0, BACKLOG 405; the split rebuilt on additive sums in v1.57.0,
+BACKLOG 409.
 
 Every expected number here is either a LITERAL worked out by hand, or
 an identity between two INDEPENDENT routes through the code - never
 the same function asked twice. The central one: between + within,
-assembled from each group's count, mean and index, must equal the
-index the engine computes directly over everybody. Those share no
-code below run_knn_stats.
+assembled from each group's four additive sums, must equal the index
+the engine computes directly over everybody from the sorted values.
+Those share no code below run_knn_stats.
 
 Each test's docstring names what it was BROKEN WITH, and each was.
 """
@@ -229,15 +230,16 @@ def town():
 @pytest.mark.parametrize("mode", ["proportional", "whole", "sampled"])
 def test_between_plus_within_is_the_index_itself(town, mode):
     """THE identity, through two independent routes: MLD and Theil
-    computed directly over everybody, against between + within
-    assembled from each group's count, mean and index. Fractional
-    weights, a radius as well as two k, every overshoot mode, and
-    neighbourhoods where one of three groups is absent.
+    computed directly over everybody from the sorted values, against
+    between + within assembled from each group's additive sums.
+    Fractional weights, a radius as well as two k, every overshoot
+    mode, and neighbourhoods where one of three groups is absent.
 
-    BROKEN WITH: group shares from the number of distinct values
-    instead of the weighted count Nv_; the s_g factor dropped from the
-    within part; the (mu_g / mu) factor dropped from Theil's between
-    part; an absent group's missing mean treated as 0."""
+    BROKEN WITH: the s_g factor dropped from MLD's within part;
+    Theil's between part weighted by people (s_g) instead of income
+    (v_g); the crossing ring's share not applied to the sums (every
+    ring cell whole - only `proportional` can see that); an absent
+    group counted as present (`W >= 0`)."""
     x, y, g, inc, w = town
     res, _ = _quiet(dispatch, "stats", x, y, unit_size=100, weight=w,
                     k_values=[100, 500], r_values=[400],
@@ -350,14 +352,16 @@ def test_groups_can_be_text_codes_or_carry_stata_missing():
 
 def test_k_still_counts_everybody():
     """The split must not change the neighbourhood: same N_k, same
-    Dist_k, same Nv_ with and without it.
+    Dist_k, same Nv_ with and without it - including the people who
+    have an income and no group.
 
-    BROKEN WITH: the cells built from the sub-fields' members only."""
+    BROKEN WITH: the cells built from the rows that HAVE a group."""
     rng = np.random.default_rng(3)
     n = 300
     x, y = rng.uniform(0, 2000, n), rng.uniform(0, 2000, n)
     v = {"inc": rng.lognormal(5, .5, n)}
     g = rng.integers(0, 2, n).astype(float)
+    g[::7] = np.nan
     a, _ = _quiet(dispatch, "stats", x, y, unit_size=100, k_values=[40],
                   values=v, stats={"inc": ["mld"]})
     b, _ = _quiet(dispatch, "stats", x, y, unit_size=100, k_values=[40],
@@ -368,19 +372,53 @@ def test_k_still_counts_everybody():
 
 
 def test_the_scaffolding_never_reaches_the_output_or_the_log():
-    """The per-group sub-fields are machinery. Their columns must not
-    leak, and their missing values - there by construction - must not
-    produce one note each.
+    """The per-group sums are machinery. Their columns must not leak,
+    and nothing the run says may name them.
 
-    BROKEN WITH: quiet_missing not passed to build_cells (a note per
-    sub-field appears); the drop in assemble() removed."""
+    Two guards keep them out, and either alone suffices: assemble()
+    drops them, and dispatch keeps only columns with a known prefix.
+    The first is pinned on its own by the next test.
+
+    BROKEN WITH: dispatch's prefix filter removed TOGETHER with the
+    drop in assemble()."""
     g = np.array([0, 0, 1, 1])
     res, said = _stats({"inc": np.array([1.0, 3, 4, 4])},
-                       {"inc": ["mld"]}, decompose_by={"grp": g},
+                       {"inc": ["mld", "theil"]}, decompose_by={"grp": g},
                        min_group=0)
-    assert not [c for c in res if "[" in c]
-    notes = [ln for ln in said.splitlines() if "missing values" in ln]
-    assert not [ln for ln in notes if "[grp=" in ln], notes
+    assert not [c for c in res if "[" in c or "#" in c]
+    assert "[grp]" not in said and "#0" not in said
+
+
+def test_the_split_is_assembled_from_hand_computed_sums():
+    """Plan.assemble alone, fed the sums of the hand example by hand -
+    A = [1, 3], B = [4, 4], everyone weighing 1, no rescaling:
+        W = 2, 2   S = 4, 8   L = ln 3, 2 ln 4   Q = 3 ln 3, 8 ln 4
+    No engine, no cells: this is the arithmetic of the module
+    docstring, and nothing else. It must also take its sums away.
+
+    BROKEN WITH: the drop in assemble() removed."""
+    import pandas as pd
+    from equipop.decompose import Plan
+    plan = Plan("grp", ["0", "1"], ["inc"], {"inc": ["mld", "theil"]}, 0.0)
+    sums = {"W": (2, 2), "S": (4, 8),
+            "L": (math.log(3), 2 * math.log(4)),
+            "Q": (3 * math.log(3), 8 * math.log(4))}
+    st = pd.DataFrame({f"{plan.sum_name('inc', q, i)}_4": [float(v[i])]
+                       for q, v in sums.items() for i in (0, 1)})
+    st["N_4"] = [4.0]
+    out = plan.assemble(st)
+    assert out["MLDb_inc_4"][0] == pytest.approx(0.0588915178, abs=1e-10)
+    assert out["MLDw_inc_4"][0] == pytest.approx(0.0719205181, abs=1e-10)
+    assert out["MLDsh_inc_4"][0] == pytest.approx(0.4501995356, abs=1e-9)
+    # Theil of [1, 3, 4, 4], mean 3: (1/3 ln 1/3 + ln 1 + 2 x 4/3 ln 4/3)/4
+    theil = (math.log(1 / 3) / 3 + 2 * 4 / 3 * math.log(4 / 3)) / 4
+    assert out["Theilb_inc_4"][0] + out["Theilw_inc_4"][0] == \
+        pytest.approx(theil, abs=1e-12)
+    assert list(out["Ng_inc_4"]) == [2] and list(out["NgMin_inc_4"]) == [2]
+    assert list(out["NgN_inc_4"]) == [4]
+    assert sorted(out) == sorted(
+        ["N_4", "Ng_inc_4", "NgMin_inc_4", "NgN_inc_4"]
+        + [f"{P}{p}_inc_4" for P in ("MLD", "Theil") for p in ("b", "w", "sh")])
 
 
 def test_the_prediction_is_the_result():
@@ -502,8 +540,10 @@ def test_two_codes_that_print_alike_stay_two_groups():
     name, one overwrote the other, and a total MLD of 0.1308 was
     reported as between 0 and within 0.
 
-    BROKEN WITH: sub-fields named by the group's LABEL with the old
-    ten-digit format (`f"{f}[{group_name}={lab}]"` and `.10g`)."""
+    The sub-fields are gone (409); the codes still decide the groups.
+
+    BROKEN WITH: _codes keying a float by its ten-digit format, as the
+    1.55.0 names did - the two codes then read as ONE group."""
     g = np.array([1.0, 1.0, 1.0 + 1e-11, 1.0 + 1e-11])
     res, _ = _stats({"inc": np.array([1.0, 3, 4, 4])}, {"inc": ["mld"]},
                     decompose_by={"g": g}, min_group=0)
@@ -582,3 +622,225 @@ def test_the_overshoot_help_no_longer_claims_a_refusal():
     for c in ("Med_v_7", "Gini_v_7", "MLD_v_7"):
         assert np.isfinite(np.asarray(res[c], float)).all(), c
     assert np.allclose(np.asarray(res["N_7"], float), 7)
+
+
+# ------------------------------------------------ v1.57.0, BACKLOG 409
+# The split rebuilt on four additive sums per group. Measured on 50,000
+# points at k=400: one field in 20 groups 196 s -> 28 s, three fields
+# in 20 groups 595 s and 1.4 GB -> 59 s and 0.4 GB.
+
+def test_a_group_is_not_a_value_field():
+    """What made the split expensive: each group was a value field of
+    its own, sorted for every neighbourhood. The engine's own line
+    says which fields it sorts; the groups must not be among them.
+
+    BROKEN WITH: the per-group quantities passed as value_vars as
+    well - every number still right, at the old cost."""
+    g = np.array([0, 1, 2, 3, 0, 1, 2, 3])
+    _, said = _stats({"inc": np.linspace(1, 8, 8)}, {"inc": ["mld"]},
+                     decompose_by={"grp": g}, min_group=0)
+    line = [ln for ln in said.splitlines()
+            if ln.startswith("[stats] binary vars")]
+    assert line == ["[stats] binary vars: [] | value vars: ['inc']"]
+
+
+def test_one_income_everywhere_has_nothing_to_split():
+    """Where everybody in a neighbourhood has the same income there is
+    no inequality: between and within are 0, and the share is EMPTY -
+    0/0 is not a share. Measured on 1.56.0 with fractional weights:
+    282 of 600 such neighbourhoods reported a share (mostly 1.0, "all
+    of it between groups") or a between part of -2e-16, from rounding
+    alone.
+
+    BROKEN WITH: the NO_INEQUALITY floor removed."""
+    rng = np.random.default_rng(9)
+    for _ in range(40):
+        n = int(rng.integers(20, 90))
+        v = float(rng.choice([0.1, 1 / 3, 31000.7, 7e-5]))
+        na = int(rng.integers(5, n - 5))
+        w = rng.uniform(0.1, 3, n)
+        res, _ = _quiet(dispatch, "stats", np.full(n, 50.0),
+                        np.full(n, 50.0), unit_size=100,
+                        k_values=[float(w.sum()) * 0.97], weight=w,
+                        values={"inc": np.full(n, v)},
+                        stats={"inc": ["mld", "theil"]},
+                        decompose_by={"g": np.r_[np.zeros(na),
+                                                 np.ones(n - na)]},
+                        min_group=0)
+        for P in ("MLD", "Theil"):
+            got = {p: [res[c][0] for c in res
+                       if c.startswith(f"{P}{p}_")][0]
+                   for p in ("b", "w", "sh")}
+            assert got["b"] == 0.0 and got["w"] == 0.0, (P, v, got)
+            assert np.isnan(got["sh"]), (P, v, n, na, got)
+
+
+def test_large_incomes_with_a_small_spread_keep_their_digits():
+    """Both indices ignore the unit of income, so each field is divided
+    by e^(its mean log) before it is summed, which puts every mean
+    near 1 where its log loses nothing. Incomes near e^25 with a 0.1%
+    spread, against a reference that never subtracts two large logs.
+
+    BROKEN WITH: the rescaling removed (centre 0)."""
+    rng = np.random.default_rng(12)
+    n = 400
+    inc = rng.lognormal(25, 0.001, n)
+    w = rng.uniform(0.3, 2, n)
+    g = rng.integers(0, 3, n)
+    k = float(w.sum())
+    res, _ = _quiet(dispatch, "stats", np.full(n, 50.0), np.full(n, 50.0),
+                    unit_size=100, k_values=[k], weight=w,
+                    values={"inc": inc}, stats={"inc": ["mld", "theil"]},
+                    decompose_by={"g": g}, min_group=0)
+    r = inc / (np.sum(w * inc) / w.sum())                 # y / mu
+    ref = {"MLD": np.sum(w * -np.log1p(r - 1)) / w.sum(),
+           "Theil": np.sum(w * r * np.log1p(r - 1)) / w.sum()}
+    for P in ("MLD", "Theil"):
+        b = [res[c][0] for c in res if c.startswith(f"{P}b_")][0]
+        wi = [res[c][0] for c in res if c.startswith(f"{P}w_")][0]
+        assert ref[P] < 1e-6                     # the hard case, really
+        # abs=0: pytest.approx otherwise adds an absolute 1e-12, which
+        # on an index of 4e-7 is a RELATIVE 2.5e-6 - and the break
+        # this test names (2.3e-8 off) passed. Break-check said so.
+        assert (b + wi) == pytest.approx(ref[P], rel=1e-9, abs=0), P
+
+
+def test_the_cells_carry_each_groups_sums():
+    """By hand: cell A holds codes 0, 1, 0 with q = 1, 2, 4 weighing
+    1, 0.5, 2; cell B holds a row in no group (code -1, q = 8) and a
+    row with no q. Group 0 in A: 1x1 + 4x2 = 9; group 1: 2x0.5 = 1.
+
+    BROKEN WITH: the bincount slot as code x cells + cell - groups and
+    cells transposed."""
+    import pandas as pd
+    from equipop.cells import build_cells, split_sum_name
+    df = pd.DataFrame({"x": [50.0, 50, 50, 150, 150], "y": [50.0] * 5,
+                       "q": [1.0, 2, 4, 8, np.nan], "c": [0, 1, 0, -1, 1],
+                       "w": [1.0, 0.5, 2, 1, 3]})
+    cd, _ = _quiet(build_cells, df, "x", "y", unit_size=100, weights="w",
+                   sum_vars=["q"], sum_by="c", sum_levels=2)
+    assert cd.sum_names == [split_sum_name("q", 0), split_sum_name("q", 1)]
+    np.testing.assert_array_equal(cd.sum_matrix, [[9.0, 1.0], [0.0, 0.0]])
+    for bad in ([0, 1, 0, -1, 2], [0, 1, 0.5, -1, 1]):
+        with pytest.raises(ValueError, match="whole codes from -1 to 1"):
+            _quiet(build_cells, df.assign(c=bad), "x", "y", unit_size=100,
+                   sum_vars=["q"], sum_by="c", sum_levels=2)
+
+
+def test_an_origin_with_nobody_in_its_cell_still_gets_its_split():
+    """John's rule since 1.22.2: a row outside the reference
+    population is nobody's neighbour, and still gets its own results.
+    Its cell holds no one, so one is added for it - and every per-cell
+    array has to grow with it (343's lesson), the sums included.
+
+    BROKEN WITH: the sum matrix not grown in _add_empty_origin_cells."""
+    rng = np.random.default_rng(5)
+    n = 200
+    x = np.r_[rng.uniform(0, 1000, n), 5050.0]
+    y = np.r_[rng.uniform(0, 1000, n), 5050.0]
+    w = np.r_[np.ones(n), 0.0]
+    res, said = _quiet(dispatch, "stats", x, y, unit_size=100, weight=w,
+                       k_values=[60], values={"inc": rng.lognormal(
+                           5, .5, n + 1)}, stats={"inc": ["mld"]},
+                       decompose_by={"g": rng.integers(0, 2, n + 1)},
+                       min_group=0)
+    assert "hold no population" in said
+    assert res["Ng_inc_60"][n] == 2
+    assert np.isfinite(res["MLDsh_inc_60"][n])
+
+
+# ----------------------------------------------- v1.57.0, BACKLOG 407a
+def test_the_split_says_who_it_covers():
+    """The external reviewer's coverage column: the people left out of
+    the split for having no group must travel WITH the result, not
+    only in the run's messages. NgN_ is the people the split covers;
+    beside Nv_ it shows the gap, row by row.
+
+    Five incomes, one with no group, everyone weighing 1.5 - so 7.5
+    people in one cell - and k = 5: the cell is two-thirds inside the
+    neighbourhood, and the split's people take the same share as
+    everybody else's. Nv = 7.5 x 2/3 = 5; NgN = 6 x 2/3 = 4.
+
+    BROKEN WITH: NgN_ written as the largest group (W.max) instead of
+    the sum over groups."""
+    v = {"inc": np.array([1.0, 3, 5, 4, 4])}
+    g = np.array(["A", "A", "", "B", "B"], dtype=object)
+    res, said = _stats(v, {"inc": ["mld"]}, decompose_by={"cob": g},
+                       min_group=0, weight=np.full(5, 1.5))
+    k = [c for c in res if c.startswith("NgN_inc_")][0][len("NgN_inc_"):]
+    assert res[f"Nv_inc_{k}"][0] == pytest.approx(5.0, abs=1e-12)
+    assert res[f"NgN_inc_{k}"][0] == pytest.approx(4.0, abs=1e-12)
+    # five rows in one cell: five places, all of them short
+    assert ("[decompose] inc, k=5: split reported in 5 of 5 places. In 5 "
+            "places the split leaves out people with a value but no "
+            "'cob' (NgN_ below Nv_).") in said
+    # and ONE short place is one place: four people with groups in one
+    # cell, one without in another a kilometre off. At k=4 only the
+    # lone row's neighbourhood reaches across to include him.
+    res, said = _quiet(dispatch, "stats", np.r_[np.full(4, 50.0), 1050.0],
+                       np.full(5, 50.0), unit_size=100, k_values=[4],
+                       values=v, stats={"inc": ["mld"]},
+                       decompose_by={"cob": g[[0, 1, 3, 4, 2]]},
+                       min_group=0)
+    assert list(res["NgN_inc_4"]) == [4, 4, 4, 4, 3]
+    assert "In 1 place the split leaves out" in said
+
+
+def test_full_coverage_says_nothing_more():
+    """Where everybody with a value has a group, NgN_ equals Nv_ and
+    the summary line gains nothing.
+
+    BROKEN WITH: the shortfall test without its rounding margin and
+    with `<=` (ngn <= nv), so every fully covered place reads as
+    short. (`<=` alone, margin kept, is the same test - the first
+    break-check of this named that, and it could not fail.)"""
+    res, said = _stats({"inc": np.array([1.0, 3, 4, 4])}, {"inc": ["mld"]},
+                       decompose_by={"g": np.array([0, 0, 1, 1])},
+                       min_group=0)
+    assert res["NgN_inc_4"][0] == res["Nv_inc_4"][0] == 4
+    line = [ln for ln in said.splitlines() if ln.startswith("[decompose] inc")]
+    assert line and "leaves out" not in line[0], line
+
+
+# ------------------------------- v1.57.1, external review of 1.57.0
+def test_the_coverage_margin_scales_with_the_population():
+    """The reviewer's precautionary point, and it was not only
+    precautionary. NgN_ and Nv_ add the same people in different
+    orders, so at WorldPop scale they differ by rounding: 300 points
+    weighing about a million each, EVERY row in a group, and 1.57.0
+    said "In 87 places the split leaves out people with a value but no
+    'g'". The margin is now 1e-9 plus 1e-12 of the total.
+
+    BROKEN WITH: the absolute margin alone (`margin = 1e-9`)."""
+    rng = np.random.default_rng(100)
+    n = 300
+    w = rng.uniform(0.3, 2.5, n) * 1e6
+    x, y = rng.uniform(0, 10000, n), rng.uniform(0, 10000, n)
+    res, said = _quiet(dispatch, "stats", x, y, unit_size=100, weight=w,
+                       k_values=[int(w.sum() * 0.5)],
+                       values={"inc": rng.lognormal(10, .5, n)},
+                       stats={"inc": ["theil"]},
+                       decompose_by={"g": rng.integers(0, 3, n)},
+                       min_group=0)
+    line = [ln for ln in said.splitlines() if ln.startswith("[decompose] inc,")]
+    assert line and "leaves out" not in line[0], line
+    # ...and the rounding the margin absorbs is really there
+    k = [c for c in res if c.startswith("NgN_")][0][len("NgN_"):]
+    gap = np.abs(np.asarray(res[f"NgN_{k}"], float)
+                 - np.asarray(res[f"Nv_{k}"], float))
+    assert gap.max() > 1e-9
+
+
+def test_a_real_shortfall_is_still_reported_at_scale():
+    """The margin must not swallow people. At 200 million, half a
+    person left out is still reported; rounding of 5e-7 is not.
+
+    BROKEN WITH: a relative margin of 1e-8 (2 people at this total)."""
+    from equipop.decompose import Plan
+    plan = Plan("g", ["0", "1"], ["inc"], {"inc": ["theil"]}, 0.0)
+    nv = np.full(3, 2e8)
+    res = {"Ng_inc_100": np.full(3, 2.0), "NgMin_inc_100": np.full(3, 5e7),
+           "Theilb_inc_100": np.full(3, 0.01), "Nv_inc_100": nv,
+           "NgN_inc_100": nv - np.array([0.0, 5e-7, 0.5])}
+    line = plan.report(res)[0]
+    assert "In 1 place the split leaves out" in line, line

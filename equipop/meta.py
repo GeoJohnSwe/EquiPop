@@ -139,28 +139,17 @@ _COLUMN_DOCS = [
     (r"^SumN$|^SumCountAll$", "population when the search ended"),
     (r"^SumCountGroup$", "treatment count when the search ended"),
     (r"^Ratio$", "final treatment/population ratio"),
-    (r"^MaxDistance$", "straight-line m to the last counted cell"),
-    (r"^N_(\d+)$", "factual population count when k={0} was reached"),
-    (r"^T_(\d+)$", "treatment count at k={0}"),
-    (r"^R_(\d+)$", "ratio T/N at k={0}"),
-    (r"^Dist_(\d+)$", "straight-line m to the cell where k={0} was reached "
-                      "(0 = satisfied within the origin cell)"),
-    (r"^Rounds_(\d+)$", "friction-adjusted round at which k={0} was reached"),
-    (r"^ND_(\d+)$", "decay-weighted population count at k={0}"),
-    (r"^TD_(\d+)$", "decay-weighted treatment count at k={0}"),
-    (r"^RD_(\d+)$", "decay-weighted ratio at k={0}"),
-    (r"^Nv_(.+)_(\d+)$", "valid (non-missing) values of {0} behind its "
-                         "statistics at k={1}"),
-    (r"^Mean_(.+)_(\d+)$", "mean of {0} among the k={1} nearest"),
-    (r"^Med_(.+)_(\d+)$", "median of {0} among the k={1} nearest"),
-    (r"^SD_(.+)_(\d+)$", "standard deviation (ddof=1) of {0} at k={1}"),
-    (r"^SE_(.+)_(\d+)$", "standard error of {0} at k={1}"),
-    (r"^Ent_(.+)_(\d+)$", "Shannon entropy (nats) of {0} at k={1}"),
-    (r"^Gini_(.+)_(\d+)$", "Gini coefficient of {0} at k={1}"),
+    (r"^MaxDistance$", "straight-line distance to the last counted cell"),
+    # v1.56.0, BACKLOG 410. Every column with a k, a radius or an
+    # effort limit is described by equipop.describe - the ONE source,
+    # shared with the field aliases and the run messages. The patterns
+    # that stood here described 2 of 7 machine-1 columns and 7 of 19
+    # machine-2 columns of a real run, and said Dist_k was 0 inside the
+    # origin cell, which self-potential ended in 1.29.5.
 ]
 
 
-def _describe_columns(cols, under=None):
+def _describe_columns(cols, under=None, context=None):
     """Definitions for `cols`, matched on the engine's own names.
 
     BACKLOG 348. `under` maps a column's name IN THE FILE to the
@@ -174,10 +163,16 @@ def _describe_columns(cols, under=None):
     and reported under the new one, the record both names what is
     there and says what it means.
     """
+    from .describe import context_from, describe
     under = under or {}
+    ctx = context_from(context or {})
     out = {}
     for c in cols:
         key = under.get(c, c)
+        said = describe(key, **ctx)
+        if said:
+            out[c] = said + (f" [renamed from {key}]" if key != c else "")
+            continue
         for pat, doc in _COLUMN_DOCS:
             m = re.match(pat, key)
             if m:
@@ -297,7 +292,8 @@ class RunLog:
             renamed = ((self.doc["run"].get("output") or {})
                        .get("renamed_fields") or {})
             under = {new: was for was, new in renamed.items()}
-        self.doc["columns"] = _describe_columns(cols, under)
+        self.doc["columns"] = _describe_columns(
+            cols, under, context=self.doc.get("settings") or {})
         # BACKLOG 159. KEEP THE PATH THE RECORD WAS OPENED AT. A door
         # that knew its destination before the run has been writing
         # there all along, and recomputing here would leave that file

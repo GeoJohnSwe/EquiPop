@@ -1324,3 +1324,267 @@ def test_the_version_bump_survives_a_round_trip(tmp_path):
     assert not moved, (
         "a bump round trip changed these files, so a declaration was "
         f"written over or missed: {moved}")
+
+
+# =====================================================================
+# v1.57.1 - external review of 1.57.0 (BACKLOG 411). Every test below
+# was broken on purpose before it was believed.
+# =====================================================================
+def _tool(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        f"_{name}", os.path.join(ROOT, "tools", f"{name}.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _tree(base, files):
+    for rel, text in files.items():
+        p = os.path.join(base, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+
+_GOOD = {"pyproject.toml": 'version = "9.9.9"\n',
+         "equipop/__init__.py": '__version__ = "9.9.9"\n',
+         "tests/test_x.py": "x", "README.md": "x"}
+
+
+def test_windows_reserved_names_and_trailing_dots_are_refused():
+    """156's pattern saw drive letters, backslashes and refused
+    characters. Windows also refuses a reserved device name as ANY
+    path component - CON, aux.txt, LPT1.log - and strips a trailing dot
+    or space, so two members can land on one file.
+
+    BROKEN WITH: the reserved-name loop removed from windows_problem."""
+    mk = _tool("make_release_zip")
+    for ok in ("docs/console.py", "a/COM10.txt", "equipop/cells.py"):
+        assert mk.windows_problem(ok) is None, ok
+    for bad in ("docs/CON", "data/aux.txt", "logs/lpt1.log",
+                "a/b./c.md", "a/b /c.md"):
+        assert mk.windows_problem(bad), bad
+        with pytest.raises(SystemExit, match="REFUSING"):
+            mk.check(["README.md", bad])
+
+
+def test_a_run_record_in_the_tree_is_refused(tmp_path):
+    """THE 1.56.0 AND 1.57.0 DEFECT. A scratch script of mine drove the
+    simulated Pro door from the tree root with the input
+    C:\\Data\\town.gdb\\people; Pro writes its run record beside the
+    geodatabase, which on Linux is a folder literally named `C:\\Data`.
+    It shipped in two working-tree zips. A run record is never source,
+    and carries the local paths of whoever ran it - so it is refused
+    wherever it sits, under any name a run writes.
+
+    BROKEN WITH: build() not calling check_run_records."""
+    mk = _tool("make_release_zip")
+    with pytest.raises(SystemExit, match="run record"):
+        mk.check_run_records(
+            ["C:\\Data/EquiPop_runs/people_EquiPop_run.csv"])
+    for rec in ("examples/people_EquiPop_run.csv", "out/result.meta.json",
+                "out/result.meta.txt"):
+        root = tmp_path / rec.replace("/", "_")
+        _tree(str(root), {**_GOOD, rec: "item,value\n"})
+        with pytest.raises(SystemExit, match="run record"):
+            mk.build(str(root), "9.9.9", str(root / "_out"),
+                     out_name="t.zip", skip_build_outputs=True)
+        assert not (root / "_out" / "t.zip").exists(), rec
+    mk.check_run_records(["equipop/meta.py", "docs/run_record.md"])
+
+
+def test_the_bundles_tree_zip_is_built_checked_and_extracted(tmp_path):
+    """The reviewer's end-to-end test: a tree holding representative
+    junk, through the SAME call make_bundle.sh makes for its working
+    tree (`--name equipop_working_tree.zip --skip-build-outputs`), then
+    every member name inspected and the archive extracted.
+
+    BROKEN WITH: --skip-build-outputs not honoured (the sidecar the
+    bundle generates on purpose is then refused)."""
+    mk = _tool("make_release_zip")
+    root = tmp_path / "tree"
+    _tree(str(root), {**_GOOD,
+                      "arcgis/EquiPop.pyt": "x",
+                      "arcgis/EquiPop.CountsShares.pyt.xml": "generated",
+                      "build/lib/equipop/cells.py": "stale",
+                      "dist/equipop-9.9.9.tar.gz": "x",
+                      "equipop/__pycache__/cells.cpython-311.pyc": "x",
+                      "renamed.egg-info/PKG-INFO": "x",
+                      ".pytest_cache/v": "x"})
+    out, n = mk.build(str(root), "9.9.9", str(tmp_path / "out"),
+                      out_name="equipop_working_tree.zip",
+                      skip_build_outputs=True)
+    import zipfile
+    names = sorted(zipfile.ZipFile(out).namelist())
+    assert names == sorted(f"EquiPop-9.9.9/{r}" for r in
+                           list(_GOOD) + ["arcgis/EquiPop.pyt"]), names
+    assert mk.verify(out, tree_version="9.9.9") == n == 5
+
+
+def test_verify_refuses_the_zip_1_57_0_shipped(tmp_path):
+    """verify() re-opens a FINISHED archive. Fed a zip shaped like the
+    one 1.57.0 shipped - the stray run record under `C:\\Data` - it
+    must refuse; fed a tree whose stamps disagree, the same.
+
+    BROKEN WITH: verify() skipping the per-name check (it extracts on
+    Linux, where `C:\\Data` is a legal folder name)."""
+    import zipfile
+    mk = _tool("make_release_zip")
+
+    def make(path, extra):
+        with zipfile.ZipFile(path, "w") as z:
+            for rel, text in {**_GOOD, **extra}.items():
+                z.writestr(f"EquiPop-9.9.9/{rel}", text)
+        return str(path)
+
+    good = make(tmp_path / "good.zip", {})
+    assert mk.verify(good, tree_version="9.9.9") == 4
+    shipped = make(tmp_path / "shipped.zip", {
+        "C:\\Data/EquiPop_runs/people_EquiPop_run.csv": "item,value\n"})
+    with pytest.raises(SystemExit, match="REFUSING shipped.zip"):
+        mk.verify(shipped, tree_version="9.9.9")
+    # and by NAME alone, where no other rule applies - the run-record
+    # rule would otherwise catch the case above on its own
+    with pytest.raises(SystemExit, match="reserved device name"):
+        mk.verify(make(tmp_path / "aux.zip", {"docs/aux.txt": "x"}))
+    with pytest.raises(SystemExit, match="does not say 9.9.9"):
+        mk.verify(make(tmp_path / "stale.zip",
+                       {"pyproject.toml": 'version = "9.9.8"\n'}),
+                  tree_version="9.9.9")
+
+
+def test_the_bundle_script_builds_its_tree_through_the_safe_builder():
+    """What 411 actually was: the protection existed, and the path
+    that mattered went round it. So the script must CALL the builder
+    for its working tree, verify every zip, and zip no tree itself.
+
+    BROKEN WITH: step 7 restored to `zip -qr ... equipop_working_tree`."""
+    src = open(os.path.join(ROOT, "tools", "make_bundle.sh"),
+               encoding="utf-8").read()
+    code = "\n".join(ln for ln in src.splitlines()
+                     if not ln.lstrip().startswith("#"))
+    assert re.search(r"make_release_zip\.py \"\$V\" \"\$WORK\" \\\n\s+"
+                     r"--name equipop_working_tree\.zip "
+                     r"--skip-build-outputs", code), \
+        "the working tree is not built by tools/make_release_zip.py"
+    assert not re.search(r"zip -q?r[^\n]*equipop_working_tree", code)
+    assert "--verify" in code and "--tree-version" in code
+
+
+def test_the_output_guard_decides_before_anything_is_deleted(tmp_path):
+    """make_bundle.sh began `rm -rf "$OUT"`. Reproduced on copies of the
+    tree: `tests` deleted every test, `../EquiPop` the repository. The
+    decision now lives in tools/bundle_out.py, which DECIDES and never
+    deletes - so every dangerous answer can be tested here safely,
+    the top of the file system included.
+
+    BROKEN WITH: the inside-the-repository check removed."""
+    bo = _tool("bundle_out")
+    repo = tmp_path / "repo"
+    _tree(str(repo), {"pyproject.toml": "x", "tests/keep.py": "x"})
+    home = tmp_path / "home"
+    home.mkdir()
+    foreign = tmp_path / "foreign"
+    _tree(str(foreign), {"precious.txt": "x"})
+    made = tmp_path / "made"
+    _tree(str(made), {bo.MARKER: "#\n", "MANUAL.md": "x"})
+    (tmp_path / "empty").mkdir()
+    (tmp_path / "afile").write_text("x")
+    top = os.path.abspath(os.sep)
+    for out, words in ((repo, "repository itself"),
+                       (repo / "tests", "inside the repository"),
+                       (repo / "new", "inside the repository"),
+                       (tmp_path, "repository is inside it"),
+                       (home, "home folder"),
+                       (top, "top of a file system"),
+                       (foreign, "not empty"),
+                       (tmp_path / "afile", "not a plain folder")):
+        why = bo.problem(str(repo), str(out), home=str(home))
+        assert why and words in why, (out, why)
+    for out in (tmp_path / "new", tmp_path / "empty", made):
+        assert bo.problem(str(repo), str(out), home=str(home)) is None, out
+    # relative paths mean what the caller meant
+    here = os.getcwd()
+    try:
+        os.chdir(repo)
+        assert "repository itself" in bo.problem(str(repo), ".",
+                                                 home=str(home))
+    finally:
+        os.chdir(here)
+
+
+def test_installing_removes_only_what_a_bundle_made(tmp_path):
+    """A rebuild into the same folder replaces the bundle and NOTHING
+    ELSE - the release note written beside it survives. A file no
+    bundle made is never overwritten, and a marker naming anything
+    but a plain file name is refused before a byte moves.
+
+    BROKEN WITH: install() clearing every file in the folder."""
+    bo = _tool("bundle_out")
+    repo, out, work = tmp_path / "repo", tmp_path / "out", tmp_path / "w"
+    repo.mkdir()
+    _tree(str(work), {"a.zip": "1", "MANUAL.md": "1"})
+    bo.install(str(repo), str(work), str(out))
+    (out / "RELEASE_9.9.9.md").write_text("mine")
+    _tree(str(work), {"a.zip": "2"})                 # MANUAL.md dropped
+    rec = bo.install(str(repo), str(work), str(out))
+    assert sorted(p.name for p in out.iterdir()) == \
+        [bo.MARKER, "RELEASE_9.9.9.md", "a.zip"]
+    assert (out / "a.zip").read_text() == "2" and len(rec[0][0]) == 64
+    (out / "user.txt").write_text("mine")
+    _tree(str(work), {"user.txt": "bundle"})
+    with pytest.raises(SystemExit, match="no earlier bundle made"):
+        bo.install(str(repo), str(work), str(out))
+    assert (out / "user.txt").read_text() == "mine"
+    (out / bo.MARKER).write_text("abc  ../repo\n")
+    with pytest.raises(SystemExit, match="not a plain file name"):
+        bo.install(str(repo), str(work), str(out))
+
+
+@pytest.mark.skipif(os.name == "nt" or not __import__("shutil").which("bash"),
+                    reason="needs bash on a POSIX system")
+def test_the_bundle_script_refuses_a_dangerous_output_end_to_end(tmp_path):
+    """The script itself, run for real - in a THROWAWAY repository
+    holding a copy of it, so a broken guard can only destroy tmp_path.
+    Each dangerous output must be refused before anything is built or
+    deleted.
+
+    BROKEN WITH: the `bundle_out.py check` line replaced by the 1.57.0
+    path arithmetic."""
+    import shutil
+    import subprocess
+    repo = tmp_path / "repo"
+    _tree(str(repo), {"pyproject.toml": 'version = "9.9.9"\n',
+                      "tests/keep.py": "x"})
+    (repo / "tools").mkdir()
+    for f in ("make_bundle.sh", "bundle_out.py"):
+        shutil.copy(os.path.join(ROOT, "tools", f), repo / "tools" / f)
+    foreign = tmp_path / "foreign"
+    _tree(str(foreign), {"precious.txt": "x"})
+    env = dict(os.environ, HOME=str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    for out, cwd in ((".", repo), ("tests", repo), ("../repo", repo),
+                     (str(tmp_path), tmp_path), (str(foreign), tmp_path),
+                     (str(tmp_path / "home"), tmp_path)):
+        r = subprocess.run(["bash", str(repo / "tools" / "make_bundle.sh"),
+                            "9.9.9", out], cwd=cwd, env=env,
+                           capture_output=True, text=True, timeout=60)
+        assert r.returncode != 0 and "REFUSING" in r.stderr, (out, r.stderr)
+        assert (repo / "tests" / "keep.py").exists(), out
+        assert (foreign / "precious.txt").exists(), out
+
+
+def test_the_release_record_counts_what_pytest_reports():
+    """BACKLOG 411. The 1.57.0 note's count was true for my machine and
+    the reviewer's 1,763 for theirs - geopandas collects two modules
+    mine skipped whole. tools/release_record.py now runs the suite from
+    the SHIPPED tree zip under each interpreter and states the packages
+    behind each count; this pins the one piece of arithmetic in it.
+
+    BROKEN WITH: skips left out of the collected total."""
+    rr = _tool("release_record")
+    assert rr.collected("1747 passed, 16 skipped in 260.72s") == (
+        {"passed": 1747, "skipped": 16}, 1763)
+    assert rr.collected("2 failed, 10 passed, 3 skipped, 1 error in 3s")[1] \
+        == 16

@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.55.1"
+TOOLBOX_VERSION = "1.57.1"
 
 
 def _announce_version(messages):
@@ -1601,6 +1601,61 @@ def _undo_partial(target, before, messages):
             "the target is as it was.")
     return left
 
+def _set_aliases(where, names, kw, messages):
+    """Give each result field its description as a FIELD ALIAS.
+
+    v1.56.0, BACKLOG 410. John's first live run of the between/within
+    split showed MLDb_ / MLDw_ / MLDsh_ in the table header and
+    nothing to say what they were. Pro shows a field's alias in the
+    header, so the description goes where he looked.
+
+    Only a GEODATABASE keeps an alias; a shapefile cannot, and a
+    GeoPackage is not dependable, so other targets are told once where
+    the descriptions are instead. Keyed on the ENGINE's name, so a
+    field renamed or shortened on the way in keeps its meaning (the
+    same rule as the run record, BACKLOG 348). And it may never fail a
+    run: the results are written and verified before this starts.
+    """
+    low = str(where or "").lower()
+    if ".gdb" not in low and ".sde" not in low:
+        messages.addMessage(
+            "Field aliases - a description on each new field - need a "
+            "geodatabase target; this one cannot keep them. What each "
+            "column holds is in the [columns] lines above and in the "
+            "run manifest.")
+        return
+    try:
+        from equipop.describe import describe_all
+        said = describe_all(list(names), kw)
+    except Exception as exc:                         # pragma: no cover
+        messages.addWarningMessage(
+            f"Field descriptions could not be prepared ({exc}); the "
+            "results are complete.")
+        return
+    done = 0
+    for key, field in names.items():
+        text = said.get(key)
+        if not text:
+            continue
+        if len(text) > 255:                      # a geodatabase's limit
+            text = text[:252] + "..."
+        try:
+            arcpy.management.AlterField(where, field,
+                                        new_field_alias=text)
+            done += 1
+        except Exception as exc:
+            messages.addWarningMessage(
+                f"Field aliases could not be set ({exc}) - the results "
+                "are complete and verified; only the descriptions in "
+                "the table header are missing. They are in the "
+                "[columns] lines above and in the run manifest.")
+            return
+    if done:
+        messages.addMessage(
+            f"{done} field(s) carry a description as their alias - "
+            "Pro shows it in the table header.")
+
+
 def _add_columns(layer, oid, sub, fresh, messages):
     """Add result columns to a layer, whichever way the target allows.
 
@@ -2399,6 +2454,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
         messages.addMessage(
             f"EquiPop: {len(res)} fields written and VERIFIED present "
             f"in {where} ({', '.join(names.values())}).")
+        # BACKLOG 410: a description on every field, where Pro's table
+        # shows it - the header - when the target can keep one.
+        _set_aliases(where, names, kw, messages)
     if new_points and out_table:
         # BACKLOG 329. Both boxes filled, so both are honoured.
         with _stage(messages, "writing output table", stages):
@@ -4698,8 +4756,9 @@ class ValueStatistics:
             "Nv_<f>_k = how many neighbours had a usable value (the "
             "honesty column). MLD and Theil can be split BETWEEN and "
             "WITHIN the groups of a field: MLDb_ / MLDw_ / MLDsh_ "
-            "(the between-group share), with Ng_ and NgMin_ saying "
-            "how many groups were present and the smallest. Input: "
+            "(the between-group share), with Ng_, NgMin_ and NgN_ "
+            "saying how many groups were present, the smallest, and "
+            "how many people the split covers. Input: "
             "point layer (geometry) or plain table (X/Y guessed, "
             "overridable).")
 

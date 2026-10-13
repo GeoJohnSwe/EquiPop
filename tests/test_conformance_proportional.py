@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""test_conformance_proportional.py - BACKLOG 162.
+"""test_conformance_proportional.py - BACKLOG 162; machine 2, 408.
 
-The shipped conformance key is pinned to `whole`, and has to be: it
-asks for a mean, a median and a Gini, and `proportional` refuses
-those until weighted statistics land (BACKLOG 118).
+The first conformance key is pinned to `whole`. When it was made it
+had to be: it asks for a mean, a median and a Gini, and `proportional`
+refused those until weighted statistics landed in 1.31 (BACKLOG 118).
 
 But from 1.30 the DEFAULT is proportional. So until this file
 existed, both doors were certified under a mode most runs will never
@@ -13,10 +13,12 @@ corruption that survived eight published releases because the
 reference and treatment logic is written twice and only one copy was
 ever exercised.
 
-This key asks only for what proportional can compute - counts, shares
-and distances - and holds both doors to it.
+This key asked only for counts, shares and distances, for the reason
+above - which stopped being true in 1.31. Since 1.57.0 (BACKLOG 408) it
+asks machine 2 the first key's questions too, and holds both doors'
+machine 2 to them under the mode users actually get.
 
-Each test was checked by breaking it on purpose:
+Each test was checked by breaking it on purpose (1.56 and before):
 
   * dropping `overshoot_mode` from the QGIS kw dict      -> 2 fails
   * `if False:` around _run_tool's overshoot line        -> 3 fails
@@ -86,23 +88,29 @@ def test_the_two_keys_really_are_different_answers():
         "proportional did not make N_k exactly k"
     assert whole["N_400"].max() > 400, \
         "the whole-ring key shows no overshoot at all - wrong key?"
-    # and the difference reaches the measure the item is ABOUT
-    assert not np.allclose(whole["R_count_group_400"],
-                           prop["R_count_group_400"])
+    # and the difference reaches the measure the item is ABOUT - and,
+    # since 408, machine 2's: a key equal to the first there would
+    # certify nothing new
+    for c in ("R_count_group_400", "Mean_count_group_400",
+              "Med_count_group_400", "Gini_count_group_400"):
+        assert not np.allclose(whole[c], prop[c]), c
 
 
-def test_the_second_key_carries_no_column_no_door_can_produce():
-    """`proportional` refuses medians, percentiles and Ginis. A key
-    that listed them would be a promise no door could keep, and the
-    door would be reported as broken for obeying the rule."""
+def test_the_second_key_covers_both_machines():
+    """BACKLOG 408. This test used to assert the OPPOSITE - that the
+    key carried no Mean_, Med_, Gini_ or Nv_, because proportional
+    refused them. It has computed them since 1.31, so from 1.31 to
+    1.56 the test enforced the gap.
+
+    BROKEN WITH: `values={}` restored in SPEC_PROPORTIONAL and the key
+    regenerated."""
     cols = set(R.load_reference("proportional").columns)
-    forbidden = [c for c in cols
-                 if c.split("_")[0] in ("Med", "Gini", "Mean", "Nv")]
-    assert not forbidden, (
-        f"the proportional key carries {forbidden}, which the mode "
-        "itself refuses to compute")
     assert {"N_400", "Dist_400", "T_count_group_400",
-            "R_count_group_400", "N_r800"} <= cols
+            "R_count_group_400", "N_r800"} <= cols        # machine 1
+    assert {"Mean_count_group_400", "Med_count_group_400",
+            "Gini_count_group_400", "Nv_count_group_400"} <= cols
+    assert cols == set(R.load_reference("whole").columns), \
+        "the two keys should ask the same questions in different modes"
 
 
 def test_what_counts_as_exact_follows_the_mode():
@@ -110,8 +118,9 @@ def test_what_counts_as_exact_follows_the_mode():
     exactly. Under `proportional` it is a FRACTION of people reached
     by multiplying, so bit-equality would assert something the
     mathematics does not claim. N_k stays exact either way."""
-    assert "T_" in R.EXACT_PREFIXES
+    assert "T_" in R.EXACT_PREFIXES and "Nv_" in R.EXACT_PREFIXES
     assert "T_" not in SPEC["exact_prefixes"]
+    assert "Nv_" not in SPEC["exact_prefixes"]      # a fraction, too
     assert "N_" in SPEC["exact_prefixes"]
     # and the rule is really applied, not merely declared
     drifted = R.generate("proportional")
@@ -122,17 +131,31 @@ def test_what_counts_as_exact_follows_the_mode():
 
 
 # ------------------------------------------------------- the doors
-@pytest.fixture(scope="module")
-def qgis_output():
-    alg = CountsAndShares()
+def _qgis(alg_cls, **params):
+    alg = alg_cls()
     alg.initAlgorithm()
     p = {"layer": qgis_stub.gridby_source(), "outfc": "memory:out",
-         "refmode": [1], "pop": SPEC["weight"],
-         "treatmode": [1], "treat": ["count_group"],
-         "k": "400", "r": "800", "unit": SPEC["unit_size"],
-         "overshoot": [IDX]}
+         "unit": SPEC["unit_size"], "overshoot": [IDX]}
+    p.update(params)
     alg.processAlgorithm(p, None, QgsProcessingFeedback())
     return p["_sinks"]["outfc"].to_frame()
+
+
+@pytest.fixture(scope="module")
+def qgis_output():
+    """Both machines, as a user would end up with them. BACKLOG 408:
+    machine 2 joined in 1.57.0, its measures looked up BY NAME from the
+    spec, so a reordered menu fails here as a menu edit."""
+    from equipop_qgis.alg_stats import ValueStatistics, MEASURES
+    counts = _qgis(CountsAndShares, refmode=[1], pop=SPEC["weight"],
+                   treatmode=[1], treat=["count_group"], k="400", r="800")
+    (field, asked), = SPEC["values"].items()
+    stats = _qgis(ValueStatistics, pop=SPEC["weight"], values=[field],
+                  measures=[MEASURES.index(m) for m in asked],
+                  k="400", r="")
+    dup = [c for c in stats.columns
+           if c in counts.columns and c not in ("x", "y")]
+    return counts.merge(stats.drop(columns=dup), on=["x", "y"])
 
 
 def test_2_the_qgis_door_matches_the_proportional_key(qgis_output):
@@ -161,6 +184,12 @@ def test_3_the_arcgis_door_matches_the_proportional_key():
                   treat_fields=["count_group"],
                   weight_field=SPEC["weight"], k_text="400",
                   r_text="800", unit=SPEC["unit_size"],
+                  overshoot=SPEC["overshoot"])
+    # BACKLOG 408: and machine 2, under the same mode
+    (field, asked), = SPEC["values"].items()
+    pyt._run_tool("stats", "lyr", _Quiet(), value_fields=[field],
+                  weight_field=SPEC["weight"], k_text="400",
+                  stats_list=list(asked), unit=SPEC["unit_size"],
                   overshoot=SPEC["overshoot"])
 
     out = state["table"].rename(columns={"SHAPE@X": "x",

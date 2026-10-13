@@ -69,10 +69,9 @@ SPEC = {
     # that in 1.31. Pinning `whole` still keeps the shipped key
     # meaning exactly what it meant, so no door has to be
     # re-certified for a reason unrelated to it.
-    # THE GAP THIS LEAVES, recorded rather than hidden: the doors are
-    # now conformance-checked only under `whole`, while most users
-    # will get `proportional`. A SECOND key under proportional -
-    # counts, shares and distances only - is needed. BACKLOG 162.
+    # The gap that left - the doors checked only under a mode most
+    # users never get - is closed by the SECOND key below (BACKLOG
+    # 162 for machine 1, 408 for machine 2).
     "overshoot": "whole",
 }
 
@@ -86,10 +85,16 @@ SPEC = {
 # mode most runs will never use. A conformance key that does not
 # cover the default is a certificate for someone else's run.
 #
-# So there are two, and the difference between them is deliberate:
-# this one asks only for counts, shares and distances - everything
-# proportional can compute - and is generated under proportional.
-# Between them the doors are held to both sides of the 1.30 change.
+# So there are two, and between them the doors are held to both sides
+# of the 1.30 change. This one is generated under proportional.
+#
+# v1.57.0, BACKLOG 408: AND IT NOW ASKS MACHINE 2 THE SAME QUESTIONS AS
+# THE FIRST KEY - mean, median, Gini. It asked only for counts, shares
+# and distances, because "under proportional machine 2 REFUSES, so a
+# stats column here would be a promise no door can keep". True when
+# written; false since 1.31 (118), where a crossing ring's 0.4 of a
+# cell became a weight of 0.4. So from 1.31 to 1.56 the doors'
+# machine 2 was held to an answer key only under `whole`.
 #
 # WHAT IS EXACT CHANGES WITH THE MODE, and that is not a relaxation.
 # Under `whole`, T_k is a number of PEOPLE and 270 against 271 is
@@ -98,12 +103,12 @@ SPEC = {
 # and holding an estimate to bit-equality would be asserting
 # something the mathematics does not claim. N_k stays exact because
 # proportional makes it exactly k by construction, which is the whole
-# point of the mode.
+# point of the mode. Nv_ - people with a value - can be a fraction for
+# the same reason as T_, so it too is compared within the tolerance.
 # ===================================================================
 SPEC_PROPORTIONAL = dict(
     SPEC,
     overshoot="proportional",
-    values={},                      # no distributions under a fraction
     exact_prefixes=("N_", "Rounds_"),
 )
 
@@ -155,11 +160,8 @@ def generate(key: str = "whole") -> pd.DataFrame:
                       r_values=spec["r_values"], **common)
 
     sources = [counts]
-    # A key with no value statistics runs machine 1 only. The reason
-    # written here was that machine 2 REFUSED proportional, so a
-    # stats column would be a promise no door could keep - true when
-    # it was written, false since 1.31. So machine 2 IS now
-    # uncertified under the default mode: BACKLOG 408, open.
+    # A key with no value statistics runs machine 1 only. Both shipped
+    # keys have them since 1.57.0 (BACKLOG 408).
     if spec["values"]:
         sources.append(dispatch(
             "stats", x, y, weight=p[spec["weight"]].values,
