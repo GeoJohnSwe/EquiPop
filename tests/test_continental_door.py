@@ -182,8 +182,59 @@ def test_the_refusal_names_the_choices_rather_than_the_columns():
                         labels={p.stem: f"c{i}" for i, p in
                                 enumerate(sorted(FIX.glob("*.tif")))})
     msg = str(e.value)
+    # v1.59.1: only the choices THIS folder can take. Its columns were
+    # relabelled c0..c2, so neither 'total' nor 'sexes' would work, and
+    # naming one column is the way forward - and the box is named.
+    assert "weight='c0'" in msg and "number of PEOPLE" in msg
+    assert "weight='total'" not in msg and "weight='sexes'" not in msg
+    assert "Which people define the neighbourhood" in msg
+
+
+def _sexes_folder(tmp_path, sexes):
+    import rasterio
+    from rasterio.transform import from_origin
+    px = 1.0 / 1200
+    for sex in sexes:
+        for age in ("00", "15"):
+            a = np.full((4, 4), 2.0, dtype="float32")
+            with rasterio.open(
+                    tmp_path / f"bdi_{sex}_{age}_2026_CN_1km_R2025A_UA_v1.tif",
+                    "w", driver="GTiff", height=4, width=4, count=1,
+                    dtype="float32", crs="EPSG:4326", nodata=-99999.0,
+                    transform=from_origin(30.0, -2.0 + 4 * px, px,
+                                          px)) as d:
+                d.write(a, 1)
+    return tmp_path
+
+
+def test_a_fetched_folder_is_offered_sexes_and_not_total(tmp_path):
+    """John in Pro, 16 October: a folder fetched by 5a holds f_ and m_
+    only (the t_ sums are left out by default), and the refusal offered
+    'total' - which would itself have been refused, for want of t_
+    files.
+
+    BROKEN WITH: the 'total' line offered whatever the folder holds."""
+    from equipop.rasterfolder import folder_to_cells
+    with pytest.raises(ValueError) as e:
+        folder_to_cells(_sexes_folder(tmp_path, "fm"), unit_size=1000.0,
+                        epsg=32735)
+    msg = str(e.value)
+    assert "weight='sexes'" in msg and "no t_ files" in msg
+    assert "weight='total'" not in msg
+    man = run_folder(tmp_path, k_values=[10], unit_size=1000.0,
+                     weight="sexes", epsg=32735)
+    assert man["results"]["N_10"].notna().any()
+
+
+def test_a_folder_with_totals_is_offered_both(tmp_path):
+    """BROKEN WITH: the 'sexes' line dropped whenever t_ is present."""
+    from equipop.rasterfolder import folder_to_cells
+    with pytest.raises(ValueError) as e:
+        folder_to_cells(_sexes_folder(tmp_path, "fmt"), unit_size=1000.0,
+                        epsg=32735)
+    msg = str(e.value)
     assert "weight='total'" in msg and "weight='sexes'" in msg
-    assert "number of PEOPLE" in msg
+    assert "no t_ files" not in msg
 
 
 @pytest.mark.parametrize("bad", [0, -5, None])

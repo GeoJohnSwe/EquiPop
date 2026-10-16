@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.59.0"
+TOOLBOX_VERSION = "1.59.1"
 
 
 def _announce_version(messages):
@@ -3669,8 +3669,15 @@ def _write_points(table, man, target, messages):
             if c not in ("EastWest", "NorthSouth", "CellId")]
     names = _short_names(cols) if "_short_names" in globals() else {
         c: c[:31] for c in cols}
+    # NOT EVERY COLUMN IS A NUMBER - iso3 is text in the point table.
+    # The QGIS writer has decided per column since 1.43; this one cast
+    # the lot to float, which nothing reached while Pro's k box was
+    # Required (v1.59.1: the point table is reachable from Pro now).
+    import pandas.api.types as pdt
+    text = {c for c in cols if not pdt.is_numeric_dtype(table[c])}
     dt = [("EastWest", "<f8"), ("NorthSouth", "<f8")]
-    dt += [(names[c], "<f8") for c in cols]
+    dt += [(names[c], (f"<U{max([len(str(v)) for v in table[c]] + [1])}"
+                       if c in text else "<f8")) for c in cols]
     # WRITE IN THE RASTERS' OWN PROJECTION, as the QGIS door does.
     # BACKLOG 235: the two doors had DRIFTED. The false-northing fix
     # (227) went into the QGIS writer and was never carried here, so
@@ -3690,7 +3697,8 @@ def _write_points(table, man, target, messages):
     arr["EastWest"] = np.asarray(gx, dtype=float)
     arr["NorthSouth"] = np.asarray(gy, dtype=float)
     for c in cols:
-        arr[names[c]] = table[c].to_numpy(dtype=float)
+        arr[names[c]] = (table[c].astype(str).to_numpy() if c in text
+                         else table[c].to_numpy(dtype=float))
 
     sr = arcpy.SpatialReference(int(epsg)) if epsg else None
     if arcpy.Exists(target):
@@ -4059,16 +4067,22 @@ class ContinentalRasters:
         ps = [_p("folder", "Folder of population rasters (.tif) - "
                  "subfolders are searched, so a country-per-folder "
                  "download can stay as it is", "DEFolder"),
-              _p("k", "Neighbourhood sizes, in PEOPLE (e.g. 1000)",
-                 "GPString"),
+              # v1.59.1, John's first Pro run of a fetched folder:
+              # REQUIRED here and optional in QGIS since 1.43 - a blank
+              # k is a real choice, "just give me the points", and Pro
+              # could not make it. The lattice join below needs that
+              # point table, so it was unreachable in Pro as well.
+              _p("k", "Neighbourhood sizes, in PEOPLE (blank = just "
+                 "give me the points)", "GPString", required=False),
               _p("unit", "Analysis cell size, in metres", "GPDouble",
                  required=False),
               _p("crs", "Projection to work in (blank = suggested "
                  "from the data)", "GPCoordinateSystem",
                  required=False, category="Advanced"),
-              _p("weight", "Which column holds the people (blank = "
-                 "the only one)", "GPString", required=False,
-                 category="Advanced"),
+              # worded as QGIS words it, and as the refusal names it
+              _p("weight", "Which people define the neighbourhood - "
+                 "'total', 'sexes', or one column name", "GPString",
+                 required=False, category="Advanced"),
               _p("sumcohorts", "Add all cohorts into one population",
                  "GPBoolean", required=False, category="Advanced"),
               _p("pattern", "Your own filename pattern (blank = the "
@@ -4148,7 +4162,23 @@ class ContinentalRasters:
             # The spine refuses in plain words. Do not add to them.
             raise arcpy.ExecuteError(str(exc))
 
-        if _txt(pm, "tiles"):
+        if "points_table" in man:
+            # NO k: the rasters as one point layer, every cohort a
+            # field - written where the rasters are, in THEIR OWN CRS,
+            # exactly as the QGIS door has written it since 1.43.
+            table = man["points_table"].rename(
+                columns={"lon": "EastWest", "lat": "NorthSouth"})
+            src = str(man.get("crs") or "EPSG:4326")
+            code = (int(src.split(":", 1)[1])
+                    if src.upper().startswith("EPSG:")
+                    and src.split(":", 1)[1].isdigit() else None)
+            if code is None:
+                ch.warning(
+                    f"The rasters are in {src!r}, which is not a plain "
+                    "EPSG code. The output carries no projection - set "
+                    "it by hand before using the coordinates.")
+            man.setdefault("projection", {})["epsg"] = code
+        elif _txt(pm, "tiles"):
             from equipop.bigrun import load_tiled
             table = load_tiled(_txt(pm, "tiles"))
         else:
@@ -4374,6 +4404,45 @@ def _catalogue_modules():
     return catalogue, fetchrows
 
 
+def _catalogue_target_problem(target):
+    """Why a catalogue cannot go to `target`, or None. Asked by the
+    dialog (updateMessages) as well as at Run, so the box says so
+    while it is still in front of you (John, 16 Oct: the refusal was
+    clear, but it came only after OK)."""
+    if not target or str(target).lower().endswith(".csv"):
+        return None
+    folder, name = os.path.split(str(target))
+    low = folder.lower().replace("/", "\\")
+    if ".gdb" in low or low in ("memory", "in_memory") \
+            or low.endswith(".sde"):
+        return None
+    return (f"Save the catalogue in a geodatabase or in memory "
+            f"(memory\\{os.path.splitext(name)[0] or 'catalogue'}), or "
+            "as a .csv - not in a folder. A table in a folder is a "
+            "dBASE table, which cuts column names to ten characters "
+            "and text to 254, and the fetch reads both.")
+
+
+def _check_catalogue_box(parameters):
+    for p in parameters:
+        if p.name == "CATALOGUE" and p.valueAsText:
+            why = _catalogue_target_problem(p.valueAsText)
+            if why:
+                p.setErrorMessage(why)
+
+
+def _check_folder_box(parameters):
+    """5c's folder must be a folder on disk: GeoTIFFs and shapefiles do
+    not go into a geodatabase (John, 16 Oct)."""
+    for p in parameters:
+        if p.name == "FOLDER" and p.valueAsText and \
+                ".gdb" in p.valueAsText.lower():
+            p.setErrorMessage(
+                "Choose a folder on disk, not a geodatabase: the fetched "
+                "files are GeoTIFFs and shapefiles, which a geodatabase "
+                "cannot hold as they are.")
+
+
 def _write_catalogue(rows, target, messages):
     """The catalogue as a standalone table, empty cells as NULL.
 
@@ -4390,14 +4459,9 @@ def _write_catalogue(rows, target, messages):
         messages.addMessage(f"[out] {len(rows)} row(s) -> {target}")
         return target
     folder, name = os.path.split(target)
-    low = folder.lower().replace("/", "\\")
-    if not (".gdb" in low or low in ("memory", "in_memory")
-            or low.endswith(".sde")):
-        raise arcpy.ExecuteError(
-            f"Save the catalogue in a geodatabase or in memory "
-            f"(memory\\{os.path.splitext(name)[0] or 'catalogue'}), or "
-            "as a .csv. A dBASE table cuts column names to ten "
-            "characters and text to 254, and the fetch reads both.")
+    why = _catalogue_target_problem(target)
+    if why:
+        raise arcpy.ExecuteError(why)
     if arcpy.Exists(target):
         arcpy.management.Delete(target)
     arcpy.management.CreateTable(folder, name)
@@ -4471,8 +4535,9 @@ class WorldPopCatalogue:
                    "request each; otherwise one per country and year)",
                    "GPBoolean", required=False)
         exact.value = False
-        out = _p("CATALOGUE", "WorldPop catalogue", "DETable",
-                 direction="Output")
+        out = _p("CATALOGUE", "WorldPop catalogue - a table in a "
+                 "geodatabase or in memory, or a .csv (not a folder)",
+                 "DETable", direction="Output")
         out.value = "memory\\worldpop_catalogue"
         return [theme,
                 _p("wp_places", "1b. Countries - names or three-letter "
@@ -4490,6 +4555,7 @@ class WorldPopCatalogue:
         return
 
     def updateMessages(self, parameters):
+        _check_catalogue_box(parameters)
         return
 
     def execute(self, parameters, messages):
@@ -4535,8 +4601,9 @@ class OsmCatalogue:
         latest = _p("osm_latest", "1d. With years: also list today's "
                     "extract", "GPBoolean", required=False)
         latest.value = True
-        out = _p("CATALOGUE", "OpenStreetMap catalogue", "DETable",
-                 direction="Output")
+        out = _p("CATALOGUE", "OpenStreetMap catalogue - a table in a "
+                 "geodatabase or in memory, or a .csv (not a folder)",
+                 "DETable", direction="Output")
         out.value = "memory\\osm_catalogue"
         return [_p("osm_places", "1a. Regions - names, two-letter codes "
                    "or Geofabrik ids, separated by commas (Sweden, KE, "
@@ -4554,6 +4621,7 @@ class OsmCatalogue:
         return
 
     def updateMessages(self, parameters):
+        _check_catalogue_box(parameters)
         return
 
     def execute(self, parameters, messages):
@@ -4601,7 +4669,9 @@ class FetchSelected:
                    "saved equipop_recipe.csv) - with the rows you want "
                    "selected", "GPTableView"),
                 lim, keep,
-                _p("FOLDER", "Folder to fetch into", "DEFolder")]
+                _p("FOLDER", "Folder to fetch into - a folder on disk, "
+                   "not a geodatabase (the files are GeoTIFFs and "
+                   "shapefiles)", "DEFolder")]
 
     def isLicensed(self):
         return True
@@ -4610,6 +4680,7 @@ class FetchSelected:
         return
 
     def updateMessages(self, parameters):
+        _check_folder_box(parameters)
         return
 
     def execute(self, parameters, messages):

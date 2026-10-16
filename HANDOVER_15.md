@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.59.0 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0y first, then 0x back to 0b
+*Amended through 1.59.1 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0z first, then 0y back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -30,6 +30,29 @@ review then found AGAIN, still pointing at it.*
 
 ---
 
+## 0z. 1.59.1 - JOHN'S FIRST PRO RUN, AND A DRIFT IT UNCOVERED
+
+Four findings from the first real Pro run of fetch-then-curate. Two were
+wording (the output boxes now say "geodatabase or memory, not a folder"
+and "a folder on disk, not a geodatabase", and the dialog says so before
+OK). Two were real:
+- **Pro's machine 3 required a k**, where QGIS has made it optional since
+  1.43 ("blank = just give me the points"). Fixing it exposed two faults
+  hidden behind it: Pro's `_write_points` cast every column to float (the
+  point table carries iso3 as text), and the lattice join Pro gained in
+  1.47.6 needs the point table, so it was unreachable from Pro all along.
+  door_parity checks box NAMES, not whether a box is required or how it
+  is worded - which is how this drifted. The new test compares both.
+- **The weight refusal offered 'total' to a folder with no t_ files.** 5a
+  leaves the t_ sums out by default, so the most common fetched folder met
+  a suggestion that would itself be refused. It now offers only what the
+  folder can take.
+
+**Open, and John's to decide:** should machine 3 take EVERYBODY when no
+weight is given and the folder's columns are an age-sex partition? It
+would remove the refusal for the common case, but it changes an analytical
+default that was refused deliberately, so it was not done unasked.
+
 ## 0y. 1.59.0 - FETCHING IN PRO, AND WHAT THE LIVE CHECK SETTLED
 
 **John's live check came back** (run in Anaconda, so with no GDAL and the
@@ -38,7 +61,9 @@ catalogue and files; a single shapefile LAYER read out of Sweden's real
 1.87 GB zip in 12 requests; Germany as 16 states; Norway's 404 falling
 back to .pbf; and Sweden's dated extracts on 1 January 2014-2026. **Still
 not seen live: a .pbf written to GeoPackage by QGIS's GDAL.** John has
-been asked to run 5b/5c on Liechtenstein 2020 in QGIS.
+been asked to run 5b/5c on Liechtenstein 2020 in QGIS. **He did, the
+same afternoon: it worked.** Every QGIS path is now confirmed live;
+what remains unseen is Pro on a real machine.
 
 **Pro got 5a-5c.** Two things are Pro's own and are worth knowing before
 touching them:

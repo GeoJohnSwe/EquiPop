@@ -759,18 +759,35 @@ def folder_to_cells(folders, weight: str | None = None,
         weight = "_people"
     elif weight is None:
         if len(value_cols) != 1:
+            # THE CHOICES THIS FOLDER CAN TAKE, not the choices some
+            # folder could. v1.59.1, John in Pro: a folder fetched by
+            # 5a holds f_ and m_ only - the t_ layers are sums, left
+            # out by default - and this message offered 'total', which
+            # would then have been refused for want of t_ files.
+            has_t = any(c.startswith("t_") for c in value_cols)
+            has_fm = (any(c.startswith("f_") for c in value_cols)
+                      and any(c.startswith("m_") for c in value_cols))
+            opts = []
+            if has_t:
+                opts.append("  weight='total'  - everybody, summed from "
+                            "the t_ columns (ages do not overlap, so "
+                            "nobody is counted twice)")
+            if has_fm:
+                opts.append("  weight='sexes'  - everybody, summed from "
+                            "the f_ and m_ columns"
+                            + (" instead" if has_t else
+                               " (this folder has no t_ files, so this "
+                               "is the way to say everybody)"))
+            opts.append(f"  weight='{value_cols[0]}'  - or name one "
+                        "column, to make that cohort the population")
             raise ValueError(
                 "Which people should define the neighbourhood? This "
                 f"folder holds {len(value_cols)} population columns and "
                 "k is a number of PEOPLE, so something has to say which "
-                "ones.\n"
-                "  weight='total'  - everybody, summed from the t_ "
-                "columns (ages do not overlap, so nobody is counted "
-                "twice)\n"
-                "  weight='sexes'  - everybody, summed from f_ and m_ "
-                "instead\n"
-                "  weight='t_15_2026'  - or name one column, to make "
-                "that cohort the population\n"
+                "ones. In QGIS or ArcGIS Pro, type the word into the box "
+                "'Which people define the neighbourhood' (under "
+                "Advanced); from Python, pass weight=.\n"
+                + "\n".join(opts) + "\n"
                 f"Columns found: {', '.join(value_cols[:8])}"
                 f"{' ...' if len(value_cols) > 8 else ''}")
         weight = value_cols[0]

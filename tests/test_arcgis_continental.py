@@ -322,3 +322,68 @@ def test_pro_defaults_to_each_class_once():
                                      pyt.JOIN_MODES, 1)] == "class"
     assert pyt.JOIN_AGG[pyt._mode(pm, "joincombine",
                                   pyt.JOIN_COMBINE, 0)] == "sum"
+
+
+# ===== v1.59.1 - John's first Pro run of a folder fetched by 5c ========
+def test_machine_3_gives_the_points_when_k_is_blank(folder, tmp_path):
+    """QGIS has offered "blank = just give me the points" since 1.43;
+    Pro demanded a k. John met it on his first Pro run of a fetched
+    folder (16 October). The points come back in the rasters' own CRS,
+    every cohort a field, and no weight is needed - nothing is counted.
+
+    BROKEN WITH: the points_table branch removed from execute (Pro
+    then reaches man["results"], which a points run does not have)."""
+    pyt, tool, state = _tool("ContinentalRasters")
+    out = str(tmp_path / "pts.shp")
+    msg = _Messages()
+    tool.execute(_params(tool, folder=folder, k="", unit=1000.0, out=out),
+                 msg)
+    w = state["written"][out]
+    t = w["table"]
+    assert w["xy"] == ("EastWest", "NorthSouth")
+    assert -180 < t["EastWest"].min() and t["EastWest"].max() < 180
+    assert {"f_00_2026", "m_90_2026"} <= set(t.columns)
+    assert not any(c.startswith("N_") for c in t.columns)
+    assert w["sr"] is not None and w["sr"].factoryCode == 4326
+
+
+def test_k_is_optional_and_worded_as_in_qgis():
+    """The two doors drifted here: Pro's k was Required and its weight
+    box asked "which column holds the people", a question with no
+    answer for a folder of sixty cohorts.
+
+    BROKEN WITH: Pro's k left Required."""
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "qgis"))
+    import qgis_stub as _q
+    _q.install()
+    from equipop_qgis import alg_continental as Q
+    pyt = _pyt()
+    pro = {p.name: p for p in pyt.ContinentalRasters().getParameterInfo()}
+    alg = Q.ContinentalRasters()
+    alg.initAlgorithm()
+    qg = {p.name(): p for p in alg.parameterDefinitions()}
+    assert pro["k"].parameterType == "Optional" and qg["k"].optional
+    assert "blank = just give me the points" in pro["k"].displayName
+    assert "blank = just give me the points" in qg["k"].description()
+    assert qg["weight"].description().endswith(pro["weight"].displayName)
+
+
+def test_the_join_is_reached_through_the_point_table(folder, tmp_path):
+    """The lattice join needs the point table, and the point table
+    needed a blank k, which Pro refused - so the join box Pro gained in
+    1.47.6 could not be reached from Pro's own dialog.
+
+    BROKEN WITH: k made Required again (the dialog refuses a blank)."""
+    pyt, tool, state = _tool("ContinentalRasters")
+    pm = {p.name: p for p in tool.getParameterInfo()}
+    assert pm["k"].parameterType == "Optional"
+    state["geom_layers"] = {"shops": [((30.010, -1.980),),
+                                      ((30.0102, -1.9802),)]}
+    out = str(tmp_path / "joined.shp")
+    msg = _Messages()
+    tool.execute(_params(tool, folder=folder, k="", unit=1000.0,
+                         joinlayer="shops", joinname="shops", out=out),
+                 msg)
+    t = state["written"][out]["table"]
+    assert "shops" in t.columns and t["shops"].sum() == 2, msg.log[-4:]

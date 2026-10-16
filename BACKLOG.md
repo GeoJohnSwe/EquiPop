@@ -94,9 +94,9 @@ because machine 3 stores tiles that way and says so in its manifest.
    argument still satisfies them (405's break-check proved it). An
    AST read of every row; its own release.
 12. **414** — FETCH, REDESIGNED AROUND A CATALOGUE. QGIS 1.58.0, Pro
-   1.59.0 (5a, 5b, 5c). Live-confirmed except one path: a .pbf written
-   to GeoPackage by QGIS's GDAL (asked of John). Then speed (parallel
-   downloads), GHSL rows.
+   1.59.0 (5a, 5b, 5c). EVERY PATH NOW LIVE-CONFIRMED IN QGIS (the last,
+   .pbf -> GeoPackage, by John on Liechtenstein, 16 Oct). Waiting on
+   John's first real Pro run. Then speed (parallel downloads), GHSL rows.
 13. **413** — a WHOLE-PLANET machine 3 run cannot work as built. Four
    causes, found from John's crashed Pro run; items (a) and (b) are
    the small patch, the rest are their own releases.
@@ -3660,6 +3660,19 @@ because machine 3 stores tiles that way and says so in its manifest.
   GHSL as rows (tiles); HDX (a search, not a tree - may stay in 5d);
   Geofabrik's -free.gpkg.zip; a memory estimate per raster row
   (practice 3 says size, count AND memory; only the first two are in).
+  1.59.1, 16 OCTOBER, EVENING - JOHN'S FIRST PRO RUN. 5a/5b/5c worked;
+  the output boxes needed to say "geodatabase or memory" and "a folder
+  on disk" (done, and checked in the dialog). Fetch-then-curate in Pro
+  hit two machine-3 faults: k was Required (QGIS: optional since 1.43),
+  and the weight refusal offered 'total' to a folder with no t_ files.
+  Both fixed; behind the first, Pro's point writer cast text to float and
+  the Pro lattice join was unreachable - both fixed and tested. OPEN FOR
+  JOHN: default machine 3's weight to everybody for an age-sex folder?
+  16 OCTOBER, AFTERNOON: John ran 5b/5c on Liechtenstein, buildings and
+  roads, 2020 - "worked well". THE LAST UNSEEN PATH, a dated .pbf
+  written to GeoPackage by QGIS's own GDAL (osgeo.gdal.VectorTranslate),
+  is confirmed. Still unseen: Pro on a real machine, and pyogrio as the
+  converter in Pro.
   1.59.0, 16 OCTOBER - PRO, AND THE LIVE CHECK. John's records
   (Anaconda, equipop 1.58.0): WorldPop catalogue + fetch OK; Sweden
   railways as one layer out of the real 1.87 GB zip, 12 requests, 5 MB

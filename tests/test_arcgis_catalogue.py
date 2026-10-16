@@ -262,3 +262,45 @@ def test_an_old_package_is_told_to_upgrade(pro, monkeypatch):
     with pytest.raises(pro.arcpy.ExecuteError, match="1.58.0 or later"):
         run(pro, "WorldPopCatalogue", wp_places="Sweden",
             CATALOGUE=f"{GDB}/wp")
+
+
+# ===== v1.59.1 - John's first Pro run, 16 October ======================
+@pytest.mark.parametrize("cls", ["WorldPopCatalogue", "OsmCatalogue"])
+def test_the_dialog_says_a_folder_will_not_do_before_ok(pro, cls):
+    """John: the refusal of a plain folder was clear, but it came only
+    after OK. The box now says what it takes, and the dialog marks a
+    folder target while it is still open.
+
+    BROKEN WITH: updateMessages left empty (returning at once)."""
+    tool = getattr(pro.pyt, cls)()
+    params = tool.getParameterInfo()
+    pm = {p.name: p for p in params}
+    assert "geodatabase" in pm["CATALOGUE"].displayName
+    for target, bad in (("C:/Data/plainfolder/cat", True),
+                        ("C:/Data/work.gdb/cat", False),
+                        ("memory/cat", False), ("C:/Data/cat.csv", False)):
+        pm["CATALOGUE"].value = target
+        pm["CATALOGUE"].clearMessage()
+        tool.updateMessages(params)
+        got = [t for k, t in pm["CATALOGUE"].messages if k == "ERROR"]
+        assert bool(got) == bad, (target, got)
+    pm["CATALOGUE"].value = "C:/Data/plainfolder/cat"
+    pm["CATALOGUE"].clearMessage()
+    tool.updateMessages(params)
+    assert "not in a folder" in pm["CATALOGUE"].messages[0][1]
+
+
+def test_the_fetch_folder_box_refuses_a_geodatabase(pro):
+    """BROKEN WITH: 5c's updateMessages left empty."""
+    tool = pro.pyt.FetchSelected()
+    params = tool.getParameterInfo()
+    pm = {p.name: p for p in params}
+    assert "not a geodatabase" in pm["FOLDER"].displayName
+    pm["FOLDER"].value = "C:/Data/work.gdb"
+    tool.updateMessages(params)
+    assert pm["FOLDER"].messages and "folder on disk" in \
+        pm["FOLDER"].messages[0][1]
+    pm["FOLDER"].value = "C:/Data/fetched"
+    pm["FOLDER"].clearMessage()
+    tool.updateMessages(params)
+    assert pm["FOLDER"].messages == []

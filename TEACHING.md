@@ -1,6 +1,9 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.59.0, 16 October 2026.**
+**Last updated: 1.59.1, 16 October 2026.**
+*Reviewed at 1.59.1: NOTHING IN THIS FILE CHANGES, ONE THING GETS
+EASIER. In Pro, raster curation now gives the plain point table with a
+blank k, as QGIS always has - which is the first thing a class looks at.*
 *Reviewed at 1.59.0: ONE THING CHANGES. A class on ArcGIS Pro can now
 fetch the same way as a class on QGIS - list, select, fetch - and the
 same recipe file works in both.*

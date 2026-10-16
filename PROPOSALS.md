@@ -1,11 +1,16 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.59.0, 16 October 2026.**
+**Last updated: 1.59.1, 16 October 2026.**
+*Reviewed at 1.59.1: ONE LIMIT LIFTS. Fetching in Pro has now run on a
+real machine (John, 16 October), so "tested in simulation" can go. The
+lattice join in Pro, by contrast, has only now become reachable - claim
+it for QGIS, and for Pro only once it has run there.*
 *Reviewed at 1.59.0: THE 1.58.0 LIMIT NARROWS. Fetching by selection
 may now be claimed for QGIS and ArcGIS Pro, and as run against the live
-WorldPop and Geofabrik services (16 October). One part is not yet
-confirmed live - past-year OpenStreetMap layers written from .pbf - so
-do not claim that part until it is.*
+WorldPop and Geofabrik services (16 October). Past-year OpenStreetMap
+layers written from .pbf were confirmed live in QGIS the same afternoon
+(John, Liechtenstein 2020). For Pro, say "built and tested in
+simulation" until a real Pro run is back.*
 *Reviewed at 1.58.1: NO CLAIM CHANGES. The fetch has now run against
 WorldPop for real, once, and stopped on a slow server; it now tries
 again. Still say QGIS, and still do not claim the live check until it
