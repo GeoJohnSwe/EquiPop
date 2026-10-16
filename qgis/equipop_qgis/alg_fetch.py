@@ -56,8 +56,13 @@ class SpatialDataFetch(EquipopAlgorithm):
     def name(self):
         return "spatialdatafetch"
 
+    # v1.58.0, BACKLOG 414: 5a, 5b and 5c replace this for WorldPop
+    # and OpenStreetMap - you select rows instead of typing settings.
+    # This stays, under its old id so saved models still find it, for
+    # GHSL, HDX and the providers in providers/.
     def displayName(self):
-        return "5. Fetch data (downloads only, analyses nothing)"
+        return ("5d. Fetch by settings table - GHSL, HDX and others "
+                "(downloads only)")
 
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterEnum(

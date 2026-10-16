@@ -1,6 +1,11 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.57.1, 13 October 2026.**
+**Last updated: 1.58.0, 15 October 2026.**
+*Reviewed at 1.58.0: ONE THING CHANGES FOR A COURSE. Getting data is
+now a selection, not a typing exercise: 5a/5b list what exists as a
+table, students select rows with an expression, 5c fetches them. A
+class can be handed ONE equipop_recipe.csv and every student fetches
+the same files, checksummed. Nothing else in this file changes.*
 *Reviewed at 1.57.1: NOTHING IN THIS FILE CHANGES. A packaging release:
 the working-tree zip extracts on Windows again, which matters to any
 student who downloads the whole tree rather than installing.*

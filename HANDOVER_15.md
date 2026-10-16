@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.57.1 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0v first, then 0u back to 0b
+*Amended through 1.58.0 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0w first, then 0v back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,52 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0w. 1.58.0 - FETCHING BY SELECTING, NOT BY TYPING
+
+John asked to "work intensively on the fetch function". The old tool
+asked for a Setting/Value table in each provider's own words, and
+every failed round in 268 and 284 was a right value in a wrong row.
+The fault was the design.
+
+**How it was decided.** Not from documentation (WorldPop's is four
+years stale). I wrote three probe scripts - standard library only,
+allow-listed hosts, request and byte budgets - and John ran them
+against the live services on 14 October and sent the captures back.
+They mapped each provider's hierarchy, measured file sizes, found the
+providers' own faults (Norway's shapefile in the index and 404 on the
+server; Germany with no shapefile at all; 'Georgia' twice), and showed
+two things that made the design possible: Geofabrik answers HTTP range
+requests, so one layer can be taken out of a 2 GB zip; and the GDAL
+in QGIS and pyogrio reads .pbf, so past years are reachable.
+
+**What was built.** `equipop/doors/catalogue.py` lists what exists as
+ONE TABLE (26 columns, the same for both providers); `fetchrows.py`
+fetches any rows of it through the existing `run_fetch`, so every old
+refusal still applies. QGIS tools 5a (WorldPop), 5b (OpenStreetMap)
+and 5c (fetch the selected rows). The old tool is 5d, for GHSL and
+HDX, under its old id. The eight practices agreed with John are in
+catalogue.py's docstring; the two judgements worth knowing:
+- **One series across years.** If one WorldPop series covers every
+  year asked, all rows come from it, even at a coarser or finer
+  resolution than asked; resolution can be changed afterwards, method
+  cannot. When none does, every row says so.
+- **With years, every OpenStreetMap row is .pbf**, today's included,
+  because Geofabrik's shapefiles and raw OSM tags are classified
+  differently.
+
+**What is NOT yet known.** Nothing here has touched the live services.
+The fixtures are John's captures, and the fake web speaks HEAD, Range
+and If-Range honestly, but these are untested for real: WorldPop's
+HEAD sizes, a member read out of Sweden's real zip, real dated .pbf
+files, and `osgeo.gdal.VectorTranslate` in QGIS (the call is checked
+against a recording stand-in; osgeo cannot be installed here).
+`tools/live_fetch_check.py` covers all four in about five minutes.
+**Ask John to run it before calling 414 done.**
+
+**Next, in order:** the live check; then Pro (5c needs pyogrio there
+for .pbf); then GHSL as catalogue rows (regular names, 10-degree
+tiles); then whether to offer Geofabrik's `-free.gpkg.zip`.
 
 ## 0v. 1.57.1 - THE ANALYSIS WAS APPROVED AND THE RELEASE WAS NOT
 

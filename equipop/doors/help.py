@@ -720,6 +720,84 @@ HELP = {
                 "people than this, or only one group is present, the "
                 "split columns are left EMPTY rather than guessed. "
                 "Default 30; zero means no minimum.",
+    # ---- machine 5, catalogue first (v1.58.0, BACKLOG 414) ----
+    "wp_theme": "WHAT TO LIST. Age and sex gives one file per sex and "
+                "age band - 0 (under one), 1-4, then five-year bands to "
+                "90+ - so a country and year is 40 files. Population "
+                "gives one file of all people per country and year.",
+    "wp_places": "THE COUNTRIES, by name or three-letter code, separated "
+                 "by commas: Sweden, KEN, Burundi. A part of a name "
+                 "works when it fits one country only ('United Kingdom'); "
+                 "a name that fits several, or none, is refused with the "
+                 "candidates or the nearest names.",
+    "wp_years": "THE YEARS: 2015, 2020 - or a span, 2010-2020. Empty "
+                "lists every year of the newest release. WHEN ONE "
+                "SERIES COVERS EVERY YEAR GIVEN, ALL ROWS COME FROM IT, "
+                "even at another resolution: WorldPop's 2000-2020 series "
+                "and its R2025A release differ in method and in their "
+                "top age band (80+ against 90+), and a change between "
+                "two years must not be a change between two products. "
+                "When none does, every row says so.",
+    "wp_resolution": "1 KM IS THE DEFAULT, AND THE SIZES ARE WHY: a "
+                     "Swedish age-sex file is about 2 MB at 1 km and "
+                     "47 MB at 100 m - three countries and two years "
+                     "are 0.15 GB against 5.5 GB. Take 100 m when the "
+                     "neighbourhoods are smaller than a kilometre.",
+    "wp_totals": "ALSO LIST THE LAYERS THAT ARE SUMS OF OTHERS: t_ "
+                 "(both sexes, the sum of f_ and m_) and T_F / T_M (all "
+                 "ages of one sex, 100 m only). Off by default: they "
+                 "add nothing that cannot be added up, and at 100 m "
+                 "they are a third of the download.",
+    "wp_exact": "MEASURE EVERY FILE'S SIZE, one request each. Off: one "
+                "file per country and year is measured and the rest are "
+                "estimated from it - the size_is column says which.",
+    "osm_places": "THE REGIONS: names, two-letter country codes or "
+                  "Geofabrik's ids - Sweden, KE, bayern. Any level "
+                  "works: a continent, a country, a state. WHERE "
+                  "GEOFABRIK PUBLISHES NO SHAPEFILE FOR A COUNTRY - "
+                  "Germany, France, the United States - its parts that "
+                  "have one are listed instead, each saying whose part "
+                  "it is.",
+    "osm_layers": "WHICH LAYERS. Each is one row per region: buildings, "
+                  "roads, railways, POIs (points and areas, two rows), "
+                  "places, landuse, water and more. Only the layers "
+                  "ticked are downloaded - Sweden's buildings are 329 "
+                  "MB of a 1.87 GB zip, and only those bytes come.",
+    "osm_years": "PAST YEARS, as Geofabrik's 1 January extracts: 2018, "
+                 "2022. Empty: today's extract only. WITH YEARS, EVERY "
+                 "ROW COMES FROM OSM's RAW .pbf - today's too - because "
+                 "the dated extracts exist only as .pbf, and its raw "
+                 "tags are classified differently from the shapefiles: "
+                 "two years must not be two classifications. A year "
+                 "Geofabrik does not hold is said, not guessed.",
+    "osm_latest": "WITH YEARS GIVEN, ALSO LIST TODAY'S EXTRACT, from "
+                  "the same kind of .pbf as the past years, so it "
+                  "compares like with like.",
+    "CATALOGUE": "THE CATALOGUE TABLE: one row per downloadable thing, "
+                 "with its size, date, licence and a note. Nothing has "
+                 "been downloaded. Leave it as a temporary layer, open "
+                 "its attribute table, select the rows you want and run "
+                 "5c on them.",
+    "rows": "THE ROWS TO FETCH: the table 5a or 5b made, with the rows "
+            "you want SELECTED and 'Selected features only' ticked - "
+            "or a saved equipop_recipe.csv to fetch a selection again. "
+            "A row pointing anywhere but WorldPop or Geofabrik is "
+            "refused.",
+    "max_mb": "A SAFETY LIMIT, in MB: a selection larger than this is "
+              "refused before anything is downloaded, so 'select all' "
+              "on a 100 m table cannot quietly start a 50 GB fetch. 0 "
+              "means no limit.",
+    "keep_pbf": "KEEP THE OpenStreetMap .pbf after its layers have been "
+                "written to GeoPackages. Ticked by default: it is the "
+                "publisher's file, checked against its .md5, and more "
+                "layers can be taken from it later. Unticked, it is "
+                "deleted and the manifest says so.",
+    "FOLDER": "THE FOLDER TO FETCH INTO. A file already there is "
+              "reused only if its checksum matches what was fetched "
+              "before; anything else stops the run - nothing is ever "
+              "overwritten. equipop_fetch.json (the manifest) and "
+              "equipop_recipe.csv (the rows) are written beside the "
+              "files.",
 }
 
 # THE TOOL NAMES, in one place. BACKLOG 237: the two doors had drifted
@@ -742,6 +820,31 @@ LABELS = {
 
 
 SUMMARY = {
+    "WorldPopCatalogue":
+        "Lists what WorldPop has for some countries and years - one "
+        "row per GeoTIFF, with its sex, age band, resolution, size, "
+        "licence and citation as WorldPop states them - and downloads "
+        "NOTHING. You then select rows in the table and fetch them with "
+        "5c. Rows from different series, methods or resolutions say so "
+        "in their note, because a difference between two years must "
+        "not be a difference between two products.",
+    "OsmCatalogue":
+        "Lists OpenStreetMap layers from Geofabrik for some regions - "
+        "one row per layer (buildings, roads, POIs...) - with its size "
+        "and the date of the extract, and downloads NOTHING. Today's "
+        "extract comes as single shapefile layers out of Geofabrik's "
+        "zip, so only the layer you take is downloaded; past years come "
+        "from 1 January .pbf extracts, written out to GeoPackage by "
+        "GDAL. OpenStreetMap is ODbL: attribution and SHARE-ALIKE on "
+        "derived databases.",
+    "FetchSelected":
+        "Downloads the catalogue rows you selected into a folder, and "
+        "stops. Every file is checked - against WorldPop's declared "
+        "length, the CRC-32 Geofabrik's zip records for each layer, or "
+        "the .md5 beside a .pbf - and recorded in equipop_fetch.json "
+        "as it arrives; the rows themselves are kept as "
+        "equipop_recipe.csv, which this tool can fetch again. Nothing "
+        "is ever overwritten.",
     "FolderInventory":
         "Looks at a folder of rasters and vector files and reports "
         "what is in it: layers, fields, coordinate systems, extents, "
@@ -817,6 +920,29 @@ SUMMARY = {
 }
 
 USAGE = {
+    "WorldPopCatalogue":
+        "Name the countries and years and run. The table appears as a "
+        "temporary layer; open its attribute table and select rows - "
+        "Select by Expression with \"sex\" = 'f' AND \"age_from\" >= 15 "
+        "takes the women from fifteen up. The size column shows what "
+        "the selection will cost before 5c downloads it. 1 km is the "
+        "default: the same request at 100 m is 20 to 70 times larger "
+        "(measured for Sweden, Kenya and Burundi).",
+    "OsmCatalogue":
+        "Name the regions, tick the layers, and run. Leave the years "
+        "empty for today's extract; give years to compare - every row "
+        "then comes from the same kind of .pbf. Select rows in the "
+        "table and run 5c. For a country Geofabrik splits (Germany, the "
+        "United States) the table lists its parts: select the ones "
+        "you need.",
+    "FetchSelected":
+        "Choose the catalogue table and tick 'Selected features only' "
+        "- with nothing ticked it takes every row, which the size limit "
+        "in box 2 is there to catch. Point it at a folder; machine 3 "
+        "and the inventory read that folder afterwards. To repeat a "
+        "fetch, load equipop_recipe.csv from the folder as a layer and "
+        "run this on it. A .pbf row needs GDAL's Python bindings, which "
+        "QGIS always has.",
     "FolderInventory":
         "Point it at a folder - a country-per-folder download can "
         "stay exactly as it is, subfolders are searched. The table "
@@ -829,6 +955,10 @@ USAGE = {
         "without them the files are still listed, by name only, and "
         "the run says so.",
     "SpatialDataFetch":
+        "FOR WORLDPOP AND OPENSTREETMAP, USE 5a, 5b AND 5c INSTEAD: "
+        "they list what exists as a table you select from, so nothing "
+        "has to be typed. This tool stays for GHSL, HDX and the "
+        "providers defined in providers/. "
         "Run it once with DOWNLOAD unticked: it lists what would be "
         "fetched, how many files and under which licence, and takes "
         "nothing. Leave the dataset box empty and it lists the "

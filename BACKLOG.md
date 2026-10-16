@@ -93,7 +93,13 @@ because machine 3 stores tiles that way and says so in its manifest.
 11. **406** — reachability witnesses are substrings, so a renamed
    argument still satisfies them (405's break-check proved it). An
    AST read of every row; its own release.
-12. **412** — a fractional k from Python (k=30.5) writes `Ng_inc_30.5`,
+12. **414** — FETCH, REDESIGNED AROUND A CATALOGUE. BUILT FOR QGIS IN
+   1.58.0 (5a, 5b, 5c). Open until John's live check
+   (tools/live_fetch_check.py) comes back; then Pro, then GHSL rows.
+13. **413** — a WHOLE-PLANET machine 3 run cannot work as built. Four
+   causes, found from John's crashed Pro run; items (a) and (b) are
+   the small patch, the rest are their own releases.
+14. **412** — a fractional k from Python (k=30.5) writes `Ng_inc_30.5`,
    which the describer cannot read: no legend line, no alias, no
    [decompose] summary. The doors refuse fractional k, so only
    scripts meet it. Decide whether the engine accepts it at all.
@@ -3623,6 +3629,160 @@ because machine 3 stores tiles that way and says so in its manifest.
   the suite would pass. That is the guard written after inventory.py
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
+
+- 414 | BUILT FOR QGIS, v1.58.0, 15 OCTOBER 2026; OPEN FOR THE LIVE CHECK
+  AND PRO | FETCH, REDESIGNED AROUND A CATALOGUE.
+  WHAT 1.58.0 BUILT (John: "please do - and first for Q with the
+  suggested data providers"): equipop/doors/catalogue.py (browse, one
+  26-column table for both providers, an injectable Net, a RangeFile
+  for remote zips) and equipop/doors/fetchrows.py (fetch any rows
+  through run_fetch: WorldPop files whole; a shapefile LAYER as range
+  reads of the zip, each member checked against the zip's CRC-32 and
+  refused with If-Range if the zip was replaced mid-fetch; a .pbf once
+  per region and date, checked against its .md5, its layers written to
+  GeoPackage by osgeo.gdal or pyogrio and recorded as DERIVED with the
+  rule). QGIS 5a, 5b, 5c; the settings tool relabelled 5d. 102 new
+  tests on John's captures, served by tests/fakeweb.py; break-check 79
+  of 79.
+  DECISIONS TAKEN IN THE BUILD, each said in the rows and the help:
+  one WorldPop series across years when one covers them all (2010 +
+  2020 -> 2000-2020 at 100 m, since it has no 1 km per country);
+  with OSM years, every row from .pbf, today's too; 1 km and no sum
+  layers by default; a 'latest' extract replaced since browsing is
+  fetched under ITS date and said; Georgia (country) and Georgia (US)
+  both named rather than the id winning; a three-letter code never
+  matched as a fragment of a name.
+  NOT YET VERIFIED LIVE: WorldPop HEAD sizes, a member out of Sweden's
+  real zip, real dated .pbf, and osgeo.gdal.VectorTranslate in QGIS
+  (checked against a recording stand-in only). tools/live_fetch_check.py
+  runs all four. STILL OPEN AFTER THAT: Pro (needs pyogrio for .pbf);
+  GHSL as rows (tiles); HDX (a search, not a tree - may stay in 5d);
+  Geofabrik's -free.gpkg.zip; a memory estimate per raster row
+  (practice 3 says size, count AND memory; only the first two are in).
+  THE ORIGINAL ENTRY FOLLOWS. John: the series of reruns needed to fetch anything
+  "ended as a discussion between us where the info and what to fill in
+  was unclear", and he wants best practices and an easier way to ask.
+  THE DIAGNOSIS: the dialog is a Setting/Value table in which the user
+  types each provider's OWN key words (project, category, iso3, epoch,
+  region). Every failed round recorded in 268 and 284 was a right
+  value in a wrong row, or a word the tool did not accept. The fault is
+  the design, not the user.
+  PROPOSED, NOT YET AGREED: catalogue first. (1) BROWSE writes a table,
+  one row per downloadable file, with the SAME columns for every
+  provider - theme, product, release, coverage, year, resolution,
+  projection, variable, format, size, licence, citation, link. (2) The
+  user selects rows in the attribute table, the GIS way. (3) FETCH
+  SELECTED downloads exactly those, with the manifest, and keeps the
+  selection as a re-runnable recipe. Nobody types a key.
+  THE COMMON HIERARCHY (draft): provider > theme > product > release >
+  coverage > year > resolution/projection > variable > file. How each
+  provider maps onto it is what the probe is for.
+  STEP 1: equipop_probe.py, kept OUTSIDE the tree until agreed,
+  stdlib only, allow-listed hosts, catalogue pages only, per-provider
+  request budgets and byte caps, one zip back. Tested offline against
+  the captured fixtures and forced failures. John runs it; the sandbox
+  reaches none of the four hosts. Once agreed it also becomes the live
+  DRIFT CHECK the 1.57.1 status review asked for.
+  ROUNDS ONE AND TWO, RUN BY JOHN 14 OCT (718 requests, 54 MB):
+  - WORLDPOP is theme (18) > product (~95) > country-year record > files.
+    A product CODE packs four choices - release, 100 m/1 km, constrained,
+    country/global (G2_CN_Age_R25A_100m). Age structures alone: 17
+    products over four generations. NEWEST: R2025A, 242 countries,
+    2015-2030, 100 m and 1 km, constrained, 62 files per record (20 age
+    bands x f/m/t + T_F, T_M). R2024B covers only 26 countries.
+    THE INDEX CALL (no iso3) returns a whole product's coverage - id,
+    iso3, year, title - in one request; a record by ?id= returns its
+    files. So browsing is cheap, and file lists are needed only for
+    rows a user picks. ITS OWN DATA HAS FAULTS: one product with no
+    alias (server 500), one alias with a leading space that works no
+    way, one with a trailing space that works only STRIPPED, and an old
+    series listing .aux.xml sidecars as files.
+  - SIZES (HEAD, one f_15 file, 2020): 100 m - BDI 10.7, KEN 68.7, SWE
+    46.6 MB; 1 km - 0.15, 1.6, 2.2 MB. KEN's 100 m age-sex zip is 4.0 GB
+    PER YEAR. For three countries x two years, female + male only:
+    5.55 GB at 100 m, 0.15 GB at 1 km. With EquiPop cells at ~1 km the
+    100 m files buy nothing. t_ and T_ layers are f + m: skip by default.
+  - GHSL: no API; regular names GHS_{product}_E{year}_{coverage}_
+    {release}_{crs}_{res}; global zips (POP 2020 3ss 12.6 GB, 30ss 482
+    MB) or 10-degree TILES (~1.5 MB, R#_C#; 349 in WGS84, 376 in
+    Mollweide) - tiles make country-sized GHSL possible. Listings take
+    up to 60 s: cache. GHS_AGE (R2025A) is NOT population age: by its
+    name (1975 to 2020 in 5-year steps) and its colour table it is the
+    AGE OF THE BUILT-UP SURFACE. Round two's note called it "a new age
+    product", and the message to John repeated it; corrected in round
+    three.
+  - HDX: a search engine, not a tree - SWE 98, BDI 306, KEN 565 datasets.
+  - GEOFABRIK: 554 regions in four levels. 29 big ones have NO
+    shapefile (Germany, France, UK, US, every continent) - but e.g. all
+    16 German states do, so a country can mean its subregions. Norway's
+    shapefile is in the INDEX and 404 on the SERVER: check before
+    promising. Sweden's shapefile zip is 1.87 GB.
+  JOHN'S THREE COMMON REQUESTS: (1) WorldPop, all age cohorts by sex,
+  several countries, one or two years; (2) Geofabrik buildings, one or
+  more countries, AND A YEAR; (3) Geofabrik roads and railways, or all
+  POIs. A real 732-row example catalogue for (1) was built from the
+  captured records; round three asks whether Geofabrik keeps dated
+  extracts (the year in (2)) and lists the layers inside a shapefile
+  zip by reading only its table of contents (HTTP Range).
+  ROUND THREE (John, 14 Oct, 22:37):
+  - A YEAR FROM GEOFABRIK MEANS .osm.pbf. The raw listing for German
+    states keeps a 1 JANUARY pbf for EVERY YEAR 2014-2026 (plus recent
+    days). Shapefiles are patchy - Bayern's dated shapefiles stop at
+    2021 (its 2020 one was 911 MB); small Berlin's run to 2026 - and
+    GeoPackages exist only from August 2026. Country files sit on
+    pages whose "raw directory index" is a hidden table, not a folder
+    listing; round three's pattern missed them, so Sweden's dated
+    files are still to be confirmed from europe/sweden.html.
+  - EquiPop CAN READ .osm.pbf ALREADY: pyogrio's GDAL (3.12) carries the
+    OSM driver. Verified on a hand-made file: buildings come out as
+    multipolygons with `building`, roads and railways as lines with
+    `highway` / `railway`, a school as a point with amenity in
+    `other_tags`. QGIS always has GDAL; the Pro clone needs pyogrio
+    (the `geo` extra), which is the open question for Pro.
+  - A SHAPEFILE ZIP HOLDS 20 LAYERS, and the server accepts RANGE
+    requests, so ONE LAYER CAN BE DOWNLOADED ALONE. Sweden (1,872 MB
+    zipped): buildings 329, roads 400, railways 5, pois + pois_a 20,
+    landuse 648, water 354 MB packed. Roads + railways is 405 MB, not
+    1.9 GB; buildings alone 329 MB. Burundi: 123 MB zipped, buildings
+    56, roads 47.
+  - Geofabrik now also offers -free.gpkg.zip (one GeoPackage, no 2 GB
+    shapefile limit) - which the captured index does not list.
+  - For CHANGE OVER TIME, take every year in the same format: the free
+    shapefile applies Geofabrik's own selection rules, and a pbf read
+    through GDAL does not, so mixing them would read as change.
+
+- 413 | OPEN, 14 OCTOBER 2026 (John's whole-planet Pro run crashed) |
+  MACHINE 3 CANNOT RUN THE WHOLE PLANET, FOR FOUR REASONS.
+  (a) THE PROJECTION. Blank means suggest_projection(), which for an
+      extent spanning many UTM zones returns the MAJORITY ZONE and
+      only warns. Measured with zone 44N: 1 km at Lagos is 3.69 km on
+      the map, and beyond 90 degrees the map FOLDS - Dakar lands nearer
+      the centre than Lagos - so for a world run, places on the far
+      side can overlap others. Should REFUSE, naming equal-area
+      choices, instead of proceeding.
+  (b) THE PRO BOX LOSES CHOICES. _epsg_of() passes factoryCode as an
+      EPSG code: Esri projections (Africa Albers 102022, Mollweide
+      54009) are then REFUSED by pyproj ("crs not found"), and a
+      custom projection (factoryCode 0) silently becomes "blank" and
+      so the majority UTM zone. The map's projection is never read.
+  (c) MEMORY. rasterfolder reads each raster WHOLE as float64: a
+      global 30-arc-second raster is ~809 M pixels, ~10 GB at peak,
+      inside Pro. Results are then held per origin; and a TILED run in
+      Pro still calls load_tiled() and writes the whole table at the
+      end. Needs windowed reading and a tiled output that stays on
+      disk.
+  (d) k=50,000 ON ISLANDS AND IN DESERTS widens the search towards
+      every cell on the planet - very slow, and a neighbourhood
+      spanning an ocean means little.
+  Smaller: 900 m cells on 30-arc-second pixels (926 m at the equator,
+  narrower poleward) hold one or two pixels in a latitude pattern -
+  _warn_aliasing's own worst case - so Dist_k can stripe.
+  THE LONG-TERM ANSWER: neighbourhoods measured ON THE SPHERE (3-D unit
+  vectors, chord distance is monotone in great-circle distance), so a
+  world run has no projection, no fold, no seam and no date line.
+  Until then: one run per continent, each in its own equal-area
+  projection with an EPSG code (EPSG:8857 Equal Earth, EPSG:6933
+  EASE-Grid 2.0 are both accepted today).
 
 - ~~411~~ | DONE v1.57.1, 13 OCTOBER 2026 (external review of 1.57.0,
   the same morning) | THE BUNDLE WENT ROUND ITS OWN PROTECTION, AND

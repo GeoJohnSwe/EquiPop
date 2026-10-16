@@ -2,6 +2,8 @@
 """provider.py - the EquiPop group in the QGIS Processing toolbox."""
 from qgis.core import QgsProcessingProvider
 
+from .alg_catalogue import (FetchSelected, OsmCatalogue,
+                            WorldPopCatalogue)
 from .alg_continental import ContinentalRasters
 from .alg_demography import SpatialDemography
 from .alg_fetch import SpatialDataFetch
@@ -16,7 +18,8 @@ class EquipopProvider(QgsProcessingProvider):
         for alg in (CountsAndShares(), ValueStatistics(),
                     ContinentalRasters(),
                     SpatialDemography(),
-                    SpatialDataFetch(),
+                    WorldPopCatalogue(), OsmCatalogue(),
+                    FetchSelected(), SpatialDataFetch(),
                     FolderInventory()):
             self.addAlgorithm(alg)
 

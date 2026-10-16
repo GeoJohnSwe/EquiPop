@@ -1,6 +1,12 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.57.1, 13 October 2026.**
+**Last updated: 1.58.0, 15 October 2026.**
+*Reviewed at 1.58.0: ONE CLAIM MAY BE ADDED, WITH ITS LIMIT. A proposal
+may say that WorldPop and OpenStreetMap data are fetched by selection
+from a catalogue, every file checked against the publisher's own
+checksum where one exists and recorded with a re-fetchable recipe. It
+should say QGIS, not Pro, and should not claim it has run against the
+live services until John's live check (BACKLOG 414) is back.*
 *Reviewed at 1.57.1: NO CLAIM CHANGES. An external review approved the
 1.57 analytical code; the fixes are to the release process. A proposal
 may now say that every published test count states the environment

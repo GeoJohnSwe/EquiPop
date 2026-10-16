@@ -29,6 +29,22 @@ workdir, unzip=True)` downloads with caching. Missing coordinates are
 dropped with a warning; missing values in a variable keep counting
 towards k but not towards that variable's statistics (`Nv_` columns).
 
+**Getting data: look, select, fetch (1.58.0).** In QGIS, tool 5a lists
+what WorldPop has for some countries and years, and 5b what Geofabrik
+has for some regions, as a table - one row per file or layer, with its
+size, date and licence. Nothing is downloaded. Open the table, select
+the rows you want (Select by Expression: `"sex" = 'f' AND "age_from" >=
+15`, or `"layer" = 'roads'`), and run 5c with *Selected features only*
+ticked: it downloads exactly those rows, records each in
+`equipop_fetch.json` with its checksum, and keeps the rows as
+`equipop_recipe.csv` to fetch again. From Python the same is
+`browse_worldpop(...)`, `browse_geofabrik(...)` and `fetch_rows(rows,
+folder)` in `equipop.doors.catalogue` and `equipop.doors.fetchrows`.
+Two rules worth knowing: rows for several years come from ONE series
+whenever one covers them all, and the row says so when none does; and
+OpenStreetMap for past years comes from raw `.pbf` extracts, so with
+years every row - today's too - is taken the same way.
+
 ## 3. Projections
 All analysis happens in METRIC coordinates - degrees are unequal-sized.
 `project_to_metric(df, lat_col, lon_col, target_epsg=None)` reprojects;

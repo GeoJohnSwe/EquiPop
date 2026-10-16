@@ -275,7 +275,8 @@ def inventory(folder, say=print, deep=True, write=True):
             if f".{ext.lower()}" in SIDECAR and f"{stem}.shp".lower() in here:
                 sidecars.setdefault(stem.lower(), []).append(ext.lower())
         for n in sorted(names):
-            if n in (INVENTORY, "equipop_fetch.json"):
+            # the fetch's own records, not data (the recipe: 1.58.0)
+            if n in (INVENTORY, "equipop_fetch.json", "equipop_recipe.csv"):
                 continue
             stem, _, ext = n.rpartition(".")
             if (f".{ext.lower()}" in SIDECAR

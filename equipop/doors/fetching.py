@@ -44,6 +44,9 @@ import os
 from datetime import datetime, timezone
 
 MANIFEST = "equipop_fetch.json"
+#: The rows a catalogue fetch took (fetchrows.py) - written beside
+#: the manifest, and like it, not a data file.
+RECIPE = "equipop_recipe.csv"
 
 
 class FetchError(Exception):
@@ -767,6 +770,13 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
             # re-reading the file.
             n, h = got[0], got[1]
             local_md5 = got[2] if len(got) > 2 else None
+            # BACKLOG 414, v1.58.0: a transport may say what IT checked.
+            # A shapefile layer taken out of a Geofabrik zip has no
+            # .md5 of its own, but the zip records a CRC-32 for it and
+            # the transport compares them - which is a publisher's
+            # checksum, and the manifest should say so rather than
+            # "absent".
+            transport_check = got[3] if len(got) > 3 else None
 
             # VERIFY WHAT THE PUBLISHER SAID, not merely what arrived.
             # publisher_md5 and md5_url were RECORDED and never CHECKED,
@@ -841,6 +851,8 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
                 checked = "verified against publisher md5"
             elif want:
                 checked = "publisher md5 known, transport gave no md5"
+            elif transport_check:
+                checked = transport_check
             files.append({**{k: v for k, v in e.items() if k != "url"},
                           "url": e["url"], "bytes": n, "sha256": h,
                           "publisher_md5": want or None,
@@ -905,9 +917,15 @@ def verify_folder(folder, say=print):
         raise FetchError(
             f"No {MANIFEST} in {folder} - these files were not fetched "
             "by EquiPop, so there is nothing to check them against.")
-    ok, changed, gone = 0, [], []
+    ok, changed, gone, removed = 0, [], [], []
     for f in man["files"]:
         p = os.path.join(folder, f["name"])
+        # BACKLOG 414: a .pbf deleted ON REQUEST after its layers were
+        # written is recorded as removed, not lost - its layers are
+        # checked below like any file, against their own checksums.
+        if f.get("removed") and not os.path.exists(p):
+            removed.append(f["name"])
+            continue
         if not os.path.exists(p):
             gone.append(f["name"])
         elif sha256_of(p) != f["sha256"]:
@@ -932,7 +950,8 @@ def verify_folder(folder, say=print):
     extra = []
     for root, _d, names in os.walk(folder):
         for n in names:
-            if n in (MANIFEST, MANIFEST + ".part") or n.endswith(".part"):
+            if n in (MANIFEST, MANIFEST + ".part", RECIPE) \
+                    or n.endswith(".part"):
                 continue
             rel = os.path.relpath(os.path.join(root, n), folder)
             key = rel.replace("\\", "/")
@@ -953,8 +972,12 @@ def verify_folder(folder, say=print):
     for n in sorted(extra):
         say(f"           {n}  (not fetched by EquiPop - machine 3 "
             "will still read it)")
+    if removed:
+        say(f"[verify] {len(removed)} source file(s) removed on request "
+            "after their layers were written: " + ", ".join(removed))
     return {"ok": ok, "changed": changed, "missing": gone,
-            "untracked": sorted(extra), "manifest": man}
+            "untracked": sorted(extra), "removed": removed,
+            "manifest": man}
 
 
 # ---------------------------------------------------- the HDX door

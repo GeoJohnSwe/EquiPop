@@ -61,11 +61,11 @@ route in section 2.
    Must print a path under `C:\OSGeo4W\`.
 3. Install:
    ```
-   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.57.1-py3-none-any.whl"
+   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.58.0-py3-none-any.whl"
    ```
 4. Verify (see below), then **restart QGIS**.
 5. Plugin: **Plugins → Manage and Install Plugins → Install from ZIP**,
-   choose `equipop_qgis-1.57.1.zip`, then restart QGIS again.
+   choose `equipop_qgis-1.58.0.zip`, then restart QGIS again.
 
 **pyproj is REQUIRED and QGIS does not ship it.** Install it in the
 same shell, before verifying:
@@ -80,6 +80,12 @@ python -m pip install --user --no-deps rasterio==1.4.4 affine
 **Not `rasterio` unpinned** — 1.5+ demands numpy≥2 and will drag a
 numpy into your user folder that shadows QGIS's own and breaks scipy.
 
+**Tools 5a, 5b and 5c (1.58.0) need nothing more.** OpenStreetMap layers
+for past years come as `.pbf` and are written to GeoPackage by GDAL's
+Python bindings, which QGIS always has. From plain Python the same step
+needs pyogrio (the `geo` extra); without it a `.pbf` row is refused
+before anything is downloaded.
+
 ## 2. Stata — verified working
 
 1. In Stata: `python query`. Note the **Python executable** path, and
@@ -89,7 +95,7 @@ numpy into your user folder that shadows QGIS's own and breaks scipy.
 is not loaded, so nothing is memory-mapped. Prefix with `shell`:
 
 ```
-shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.57.1-py3-none-any.whl
+shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.58.0-py3-none-any.whl
 shell C:\Users\...\python.exe -m pip install pyproj
 ```
 
@@ -120,7 +126,7 @@ py = os.path.join(sys.exec_prefix, "python.exe")
 env = dict(os.environ, PYTHONNOUSERSITE="1")
 subprocess.run([py, "-m", "pip", "install", "--no-deps",
                 "--force-reinstall",
-                r"C:\path\to\equipop-1.57.1-py3-none-any.whl"], env=env)
+                r"C:\path\to\equipop-1.58.0-py3-none-any.whl"], env=env)
 ```
 
 **Then pyproj, which Pro does not ship and `--no-deps` skipped.** Same

@@ -164,6 +164,18 @@ MATRIX = {
         "stata": ruled_out("Downloading is not a Stata activity."),
         "runner": door("run_fetch.py", "plan_fetch"),
     },
+    "machine 5 - look, select, fetch (WorldPop, OpenStreetMap)": {
+        # BACKLOG 414, v1.58.0: a catalogue table to select rows from,
+        # instead of a settings table to type into.
+        "python": PYTHON,
+        "qgis": door("qgis/equipop_qgis/alg_catalogue.py", "fetch_rows"),
+        "pro": not_yet(
+            "QGIS first, by John's choice (15 October 2026). Pro has no "
+            "attribute-table selection tool of the same shape, and a "
+            ".pbf layer needs pyogrio, which Pro's environment lacks.",
+            414, absent=("arcgis/EquiPop.pyt", "fetch_rows")),
+        "stata": ruled_out("Downloading is not a Stata activity."),
+    },
 
     # ------------------------------------------- distance ingredients
     "friction and barriers": {
@@ -466,6 +478,10 @@ INTERNAL = {
     # the run record, both GIS doors' field aliases and the legend in
     # the run messages. The seventh new module this check has caught.
     "describe",
+    # BACKLOG 414. Machinery behind machine 5's look-select-fetch row
+    # above: the catalogue (what is there, as a table) and the fetch
+    # of selected rows. The eighth and ninth modules this check caught.
+    "doors.catalogue", "doors.fetchrows",
 }
 
 #: WHAT THIS SET MEANS, because the name says less than it does.
