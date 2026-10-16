@@ -97,6 +97,9 @@ def _install_fake_arcpy(table: pd.DataFrame):
             spatialReference=_SR(type=state.get("crs_types", {})
                                  .get(key, "Projected"),
                                  name="SWEREF99 TM"))
+        # the selected object ids, ';'-joined, empty with no selection
+        d.FIDSet = ";".join(str(i + 1) for i in sorted(
+            state.get("selections", {}).get(str(_layer)) or []))
         if key in state.get("extents", {}):
             x0, y0, x1, y1 = state["extents"][key]
             d.extent = types.SimpleNamespace(XMin=x0, YMin=y0,
@@ -116,6 +119,10 @@ def _install_fake_arcpy(table: pd.DataFrame):
         return d
 
     def _df_for(key):
+        # v1.59.0: a standalone table made by CreateTable (machine 5's
+        # catalogue), looked up by the path it was made at
+        if str(key) in state.get("created", {}):
+            return state["created"][str(key)]
         key = _unalias(key)
         if key in state.get("aux_tables", {}):
             return state["aux_tables"][key]
@@ -449,6 +456,13 @@ def _install_fake_arcpy(table: pd.DataFrame):
                 self.rows = state["geom_layers"][key]
                 return
             df = _df_for(key)
+            # v1.59.0: A SELECTION ON A TABLE VIEW IS WHAT A CURSOR
+            # SEES - real arcpy hands a tool only the selected rows,
+            # and every row when none is selected. Machine 5's fetch is
+            # built on exactly that.
+            chosen = state.get("selections", {}).get(str(layer))
+            if chosen:
+                df = df.iloc[sorted(chosen)]
             if spatial_reference is not None:
                 df = df.copy()
                 zone = spatial_reference.factoryCode % 100
@@ -558,6 +572,75 @@ def _install_fake_arcpy(table: pd.DataFrame):
     arcpy.SpatialReference = SpatialReference
     arcpy.ExecuteError = ExecuteError
     arcpy.Parameter = Parameter
+
+    # ---- v1.59.0: standalone tables WRITTEN ROW BY ROW (machine 5).
+    # The catalogue has open-ended age bands, which must reach Pro as
+    # NULL; NumPyArrayToTable cannot write a NULL integer, so the door
+    # uses CreateTable + AddField + InsertCursor, and the simulator
+    # keeps what a real geodatabase would refuse: text longer than its
+    # field, and text put into a number.
+    def CreateTable(out_path, out_name, *a, **kw):
+        key = os.path.join(str(out_path), str(out_name))
+        state.setdefault("created", {})[key] = pd.DataFrame()
+        state.setdefault("field_types", {})[key] = {}
+        return key
+
+    _add_field_to_layer = AddField
+
+    def AddFieldAnywhere(layer, name, ftype, *a, **kw):
+        k = str(layer)
+        if k in state.get("created", {}):
+            state["created"][k][name] = pd.Series(dtype=object)
+            state["field_types"][k][name] = (ftype, kw.get("field_length"))
+            return
+        return _add_field_to_layer(layer, name, ftype, *a, **kw)
+
+    class InsertCursor:
+        def __init__(self, table, fields):
+            self.key, self.fields, self.rows = str(table), list(fields), []
+            types_ = state["field_types"][self.key]
+            missing = [f for f in self.fields if f not in types_]
+            if missing:
+                raise RuntimeError(f"Cannot find field {missing[0]!r}")
+
+        def insertRow(self, row):
+            for f, v in zip(self.fields, row):
+                ftype, length = state["field_types"][self.key][f]
+                if v is None:
+                    continue
+                if ftype == "TEXT" and length and len(str(v)) > length:
+                    raise RuntimeError(
+                        f"The value is too long for the field {f!r}")
+                if ftype in ("LONG", "DOUBLE") and isinstance(v, str):
+                    raise TypeError(f"value type is incompatible with "
+                                    f"the field type [{f}]")
+            self.rows.append(list(row))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            new = pd.DataFrame(self.rows, columns=self.fields,
+                               dtype=object)
+            old = state["created"][self.key]
+            state["created"][self.key] = (
+                new if not len(old) else
+                pd.concat([old, new], ignore_index=True))
+            return False
+
+    def DeleteAnything(target):
+        for key in ("tables", "written", "created"):
+            state.get(key, {}).pop(str(target), None)
+
+    def ExistsAnywhere(target):
+        return str(target) in state.get("created", {}) or Exists(target)
+
+    mgmt.CreateTable = CreateTable
+    mgmt.AddField = AddFieldAnywhere
+    mgmt.Delete = DeleteAnything
+    da.InsertCursor = InsertCursor
+    arcpy.Exists = ExistsAnywhere
+
     sys.modules["arcpy.management"] = mgmt
     sys.modules["arcpy"] = arcpy
     sys.modules["arcpy.da"] = da

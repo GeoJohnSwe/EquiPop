@@ -1,6 +1,7 @@
 #!/bin/bash
 # =====================================================================
-# make_bundle.sh - build the complete 19-slot release bundle.
+# make_bundle.sh - build the complete release bundle (19 slots until
+# 1.58; 1.59.0 added three Pro help sidecars for tools 5a-5c).
 #
 # BACKLOG 404, v1.54.6. THIS PROCEDURE LIVED OUTSIDE THE REPOSITORY
 # FOR EVERY RELEASE UP TO 1.54.5, in a scratch script rewritten from
@@ -122,10 +123,11 @@ find "$STAGE/qgis" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || 
 find "$STAGE/qgis" -name "*.pyc" -delete 2>/dev/null || true
 ( cd "$STAGE/qgis" && zip -qr "$WORK/equipop_qgis-$V.zip" equipop_qgis )
 
-# ---- 4. the Pro toolbox, the five sidecars, the generator -----------
+# ---- 4. the Pro toolbox, the eight sidecars, the generator ----------
 cp arcgis/EquiPop.pyt arcgis/make_help_xml.py "$WORK/"
 for t in CountsShares ValueStatistics ContinentalRasters \
-         SpatialDemography FolderInventory; do
+         SpatialDemography WorldPopCatalogue OsmCatalogue FetchSelected \
+         FolderInventory; do
     cp "arcgis/EquiPop.$t.pyt.xml" "$WORK/"
 done
 

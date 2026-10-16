@@ -32,17 +32,23 @@ default one is locked. The supported route is a clone:
 
 5. Check: `python -c "import equipop, pyproj; print(equipop.__version__)"`
 
-### Files to copy (v1.47.11)
+### Files to copy (v1.59.0)
 
-**SIX files must sit together in one folder** (e.g. `C:\Data\EQP`),
-and all six must come from THE SAME RELEASE:
+**NINE files must sit together in one folder** (e.g. `C:\Data\EQP`),
+and all nine must come from THE SAME RELEASE:
 
     EquiPop.pyt                          the toolbox
     EquiPop.CountsShares.pyt.xml         help for machine 1
     EquiPop.ValueStatistics.pyt.xml      help for machine 2
     EquiPop.ContinentalRasters.pyt.xml   help for machine 3
     EquiPop.SpatialDemography.pyt.xml    help for machine 4
+    EquiPop.WorldPopCatalogue.pyt.xml    help for tool 5a
+    EquiPop.OsmCatalogue.pyt.xml         help for tool 5b
+    EquiPop.FetchSelected.pyt.xml        help for tool 5c
     EquiPop.FolderInventory.pyt.xml      help for machine 6
+
+The three for tools 5a-5c are new in v1.59.0, when fetching reached
+Pro.
 
 The last THREE are new in v1.47.11. Machines 3 and 4 had no help file
 at all before it, which is why their '?' page said "There is no
@@ -111,10 +117,23 @@ is the place to run it.)
 
 Copy the `arcgis/EquiPop.pyt` file anywhere convenient (it can live
 in the project folder). In Pro's **Catalog** pane: right-click
-**Toolboxes -> Add Toolbox** -> pick the .pyt. FIVE tools appear
+**Toolboxes -> Add Toolbox** -> pick the .pyt. EIGHT tools appear
 under "EquiPop": *Counts and Shares*, *Value Statistics*, *Raster
-Data Curation*, *Spatial Demographic Analysis* and *What is in this
-folder?*. All five have in-dialog help and a '?' page.
+Data Curation*, *Spatial Demographic Analysis*, the three fetching
+tools *5a WorldPop*, *5b OpenStreetMap* and *5c Fetch the rows you
+selected*, and *What is in this folder?*. All eight have in-dialog
+help and a '?' page.
+
+**Fetching data (5a-5c, v1.59.0).** 5a or 5b lists what a provider has
+as a table in memory - one row per file or layer, with its size, date
+and licence - and downloads nothing. Open the table, select the rows
+you want (Select By Attributes, or by hand), and run 5c on it: Pro
+passes only the selected rows to a tool, and every row when none is
+selected, which the size limit in 5c's box 2 is there to catch.
+OpenStreetMap rows for PAST YEARS come as `.pbf` and need pyogrio in
+the Pro environment (`pip install pyogrio` in its Python Command
+Prompt); without it 5c refuses those rows before downloading anything.
+WorldPop and today's OpenStreetMap layers need nothing more.
 
 ## 3. First run (Counts and Shares)
 

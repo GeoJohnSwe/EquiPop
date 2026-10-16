@@ -168,8 +168,10 @@ def main():
             ("4. Verify the folder", verify)):
         step(title, fn)
     say("")
-    say(f"- {net.calls} requests in all; {net.retries} tried again after "
-        "the server dropped, cut or stalled them")
+    # getattr: this script may meet an older package (John, 16 Oct:
+    # the 1.58.1 script against the 1.58.0 package stopped right here)
+    say(f"- {net.calls} requests in all; {getattr(net, 'retries', '?')} "
+        "tried again after the server dropped, cut or stalled them")
 
 
 def _count(path):

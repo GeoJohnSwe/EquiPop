@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.58.1 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0x first, then 0w back to 0b
+*Amended through 1.59.0 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0y first, then 0x back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,33 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0y. 1.59.0 - FETCHING IN PRO, AND WHAT THE LIVE CHECK SETTLED
+
+**John's live check came back** (run in Anaconda, so with no GDAL and the
+.pbf step skipped). Confirmed against the real services: WorldPop's
+catalogue and files; a single shapefile LAYER read out of Sweden's real
+1.87 GB zip in 12 requests; Germany as 16 states; Norway's 404 falling
+back to .pbf; and Sweden's dated extracts on 1 January 2014-2026. **Still
+not seen live: a .pbf written to GeoPackage by QGIS's GDAL.** John has
+been asked to run 5b/5c on Liechtenstein 2020 in QGIS.
+
+**Pro got 5a-5c.** Two things are Pro's own and are worth knowing before
+touching them:
+- the catalogue is written with CreateTable + InsertCursor, NOT the
+  inventory's `_write_table`, because NumPyArrayToTable cannot write a
+  NULL integer and the open top age band has no upper age;
+- 5c relies on Pro passing only the selected rows of a table view. It
+  reads the view, never its catalog path, and says how many rows it got.
+
+**John asked whether tool 6 should become 5-something.** No: it reads
+any folder, fetched or not, and does a different job (what the files
+hold, which share a grid) from 5c (where they came from). Kept as 6, at
+his choice; 5c now ends by pointing to it.
+
+**He also read "Population" as the age-sex files plus totals.** It is
+one file of everyone. The dropdown now says so, and the real totals
+(t_, T_F, T_M) are a visible box rather than an Advanced one.
 
 ## 0x. 1.58.1 - THE FIRST LIVE RUN, AND A FLAW IN THE BREAK-CHECK
 

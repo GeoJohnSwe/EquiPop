@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.58.1"
+TOOLBOX_VERSION = "1.59.0"
 
 
 def _announce_version(messages):
@@ -4305,6 +4305,360 @@ class SpatialDemography:
                       messages)
 
 
+# ====================================================================
+# MACHINE 5 IN PRO: LOOK, SELECT, FETCH (BACKLOG 414, v1.59.0)
+#
+# The same three tools QGIS has had since 1.58.0, on the same engine
+# (equipop/doors/catalogue.py and fetchrows.py). What is Pro's own:
+#
+#   * the catalogue is a STANDALONE TABLE written with real NULLs. The
+#     inventory's writer (_write_table) puts 0 in an empty integer,
+#     which here would turn the open top band "90+" into "90 to 0".
+#   * 5c reads a TABLE VIEW, and Pro hands a tool only the SELECTED
+#     rows of a table view - every row when none is selected. That is
+#     QGIS's "Selected features only" without the tick-box, so 5c says
+#     which of the two it got.
+#
+# Labels and option lists are WRITTEN DOWN, as everywhere in this file:
+# the toolbox must open when equipop is absent. Tests pin each list
+# against the package and against the QGIS door.
+# ====================================================================
+
+#: catalogue.COLUMNS as Pro field types.
+CATALOGUE_COLUMNS = [
+    ("provider", "TEXT"), ("theme", "TEXT"), ("series", "TEXT"),
+    ("place", "TEXT"), ("place_code", "TEXT"), ("year", "LONG"),
+    ("date", "TEXT"), ("layer", "TEXT"), ("sex", "TEXT"),
+    ("age_from", "LONG"), ("age_to", "LONG"), ("resolution", "TEXT"),
+    ("format", "TEXT"), ("crs", "TEXT"), ("size_mb", "DOUBLE"),
+    ("size_is", "TEXT"), ("file", "TEXT"), ("url", "TEXT"),
+    ("inside", "TEXT"), ("md5_url", "TEXT"), ("licence", "TEXT"),
+    ("citation", "TEXT"), ("doi", "TEXT"), ("source_page", "TEXT"),
+    ("record_id", "TEXT"), ("note", "TEXT"),
+]
+
+WP_THEMES = ["age_sex", "population"]
+WP_THEME_LABELS = [
+    "Age and sex - one file per sex and age band (0, 1-4, 5-9 ... 90+): "
+    "40 per country and year",
+    "Total population only - ONE file per country and year, not split "
+    "by age or sex",
+]
+WP_RESOLUTIONS = ["1km", "100m"]
+WP_RESOLUTION_LABELS = [
+    "1 km - small: Sweden is about 2 MB a file",
+    "100 m - large: Sweden is about 47 MB a file",
+]
+#: Pro shows a multi-value list as a checklist, and quotes any entry
+#: holding a space - so the OSM layers are offered by their plain
+#: names; the help says what each holds.
+OSM_THEMES = ["buildings", "roads", "railways", "pois", "places",
+              "landuse", "water", "natural", "transport", "traffic",
+              "worship", "protected", "admin"]
+
+
+def _catalogue_modules():
+    """The 1.58 modules, or a refusal that says how to get them -
+    `_doors()` passes on any package since 1.18, which may be older
+    than the catalogue."""
+    _doors()
+    try:
+        from equipop.doors import catalogue, fetchrows
+    except ImportError as exc:
+        import equipop
+        raise arcpy.ExecuteError(
+            "These tools need EquiPop 1.58.0 or later, and the package "
+            f"in this ArcGIS Pro environment is {equipop.__version__} "
+            f"({exc}). In its Python Command Prompt run:  pip install "
+            "--upgrade equipop  - then close and reopen ArcGIS Pro.")
+    return catalogue, fetchrows
+
+
+def _write_catalogue(rows, target, messages):
+    """The catalogue as a standalone table, empty cells as NULL.
+
+    A .csv is written as it is - the same file a recipe is - and Pro
+    opens it as a table. A dBASE table is refused: it cuts column names
+    to ten characters (source_page) and text to 254 (citations, rules),
+    and 5c reads both.
+    """
+    if not target:
+        raise arcpy.ExecuteError("Choose where the catalogue table goes.")
+    if target.lower().endswith(".csv"):
+        from equipop.doors.catalogue import write_csv
+        write_csv(rows, target)
+        messages.addMessage(f"[out] {len(rows)} row(s) -> {target}")
+        return target
+    folder, name = os.path.split(target)
+    low = folder.lower().replace("/", "\\")
+    if not (".gdb" in low or low in ("memory", "in_memory")
+            or low.endswith(".sde")):
+        raise arcpy.ExecuteError(
+            f"Save the catalogue in a geodatabase or in memory "
+            f"(memory\\{os.path.splitext(name)[0] or 'catalogue'}), or "
+            "as a .csv. A dBASE table cuts column names to ten "
+            "characters and text to 254, and the fetch reads both.")
+    if arcpy.Exists(target):
+        arcpy.management.Delete(target)
+    arcpy.management.CreateTable(folder, name)
+    for nm, kind in CATALOGUE_COLUMNS:
+        if kind == "TEXT":
+            width = max([len(str(r.get(nm) or "")) for r in rows] + [1])
+            arcpy.management.AddField(target, nm, "TEXT",
+                                      field_length=max(50, width + 10))
+        else:
+            arcpy.management.AddField(target, nm, kind)
+    names = [nm for nm, _ in CATALOGUE_COLUMNS]
+    with arcpy.da.InsertCursor(target, names) as cur:
+        for r in rows:
+            cur.insertRow([r.get(nm) for nm in names])
+    messages.addMessage(f"[out] {len(rows)} row(s) -> {target}")
+    return target
+
+
+def _pick(pm, name, labels, keys):
+    """A dropdown's choice, as the package's key."""
+    text = _txt(pm, name)
+    if text in labels:
+        return keys[labels.index(text)]
+    if text in keys:
+        return text
+    return keys[0]
+
+
+def _multi(pm, name):
+    """A multi-value box's entries. Pro joins them with ';' and quotes
+    any entry with a space in it."""
+    p = pm.get(name)
+    vals = getattr(p, "values", None) if p is not None else None
+    if vals:
+        return [str(v).strip("'\" ") for v in vals if str(v).strip()]
+    text = _txt(pm, name)
+    return [v.strip("'\" ") for v in str(text).split(";") if v.strip()]
+
+
+def _table_note(ch):
+    ch.info("NEXT: open this table, select the rows you want (Select By "
+            "Attributes, or by hand) and run 5c on it - Pro passes only "
+            "the selected rows to a tool.")
+
+
+class WorldPopCatalogue:
+    """5a. What WorldPop has, one row per GeoTIFF. Downloads nothing."""
+
+    def __init__(self):
+        self.label = "5a. WorldPop - what is there? (lists, downloads nothing)"
+        try:
+            from equipop.doors.help import summary_for
+            self.description = summary_for("WorldPopCatalogue")
+        except Exception:
+            self.description = self.label
+
+    def getParameterInfo(self):
+        theme = _p("wp_theme", "1a. What", "GPString")
+        theme.filter.type = "ValueList"
+        theme.filter.list = list(WP_THEME_LABELS)
+        theme.value = WP_THEME_LABELS[0]
+        res = _p("wp_resolution", "1d. Resolution", "GPString")
+        res.filter.type = "ValueList"
+        res.filter.list = list(WP_RESOLUTION_LABELS)
+        res.value = WP_RESOLUTION_LABELS[0]
+        totals = _p("wp_totals", "1e. Age and sex: also list the totals - "
+                    "both sexes per band (t_), and all ages per sex "
+                    "(T_F, T_M; 100 m only)", "GPBoolean", required=False)
+        totals.value = False
+        exact = _p("wp_exact", "2a. Measure every file's size (one "
+                   "request each; otherwise one per country and year)",
+                   "GPBoolean", required=False)
+        exact.value = False
+        out = _p("CATALOGUE", "WorldPop catalogue", "DETable",
+                 direction="Output")
+        out.value = "memory\\worldpop_catalogue"
+        return [theme,
+                _p("wp_places", "1b. Countries - names or three-letter "
+                   "codes, separated by commas (Sweden, KEN, Burundi)",
+                   "GPString"),
+                _p("wp_years", "1c. Years - such as 2015, 2020 or "
+                   "2010-2020. Empty: every year there is", "GPString",
+                   required=False),
+                res, totals, exact, out]
+
+    def isLicensed(self):
+        return True
+
+    def updateParameters(self, parameters):
+        return
+
+    def updateMessages(self, parameters):
+        return
+
+    def execute(self, parameters, messages):
+        cat, _fr = _catalogue_modules()
+        from equipop.doors.fetching import FetchError
+        pm = _byname(parameters)
+        ch = _channel(messages)
+        places = _txt(pm, "wp_places").strip()
+        if not places:
+            raise arcpy.ExecuteError(
+                "Box 1b: name at least one country - Sweden, or SWE.")
+        try:
+            rows = cat.browse_worldpop(
+                _pick(pm, "wp_theme", WP_THEME_LABELS, WP_THEMES), places,
+                _txt(pm, "wp_years"),
+                _pick(pm, "wp_resolution", WP_RESOLUTION_LABELS,
+                      WP_RESOLUTIONS),
+                include_totals=_flag(pm, "wp_totals"),
+                exact_sizes=_flag(pm, "wp_exact"), say=ch.info)
+        except FetchError as exc:
+            raise arcpy.ExecuteError(str(exc))
+        _write_catalogue(rows, pm["CATALOGUE"].valueAsText, messages)
+        _table_note(ch)
+
+
+class OsmCatalogue:
+    """5b. What Geofabrik has, one row per layer. Downloads nothing."""
+
+    def __init__(self):
+        self.label = "5b. OpenStreetMap (Geofabrik) - what is there? (lists, downloads nothing)"
+        try:
+            from equipop.doors.help import summary_for
+            self.description = summary_for("OsmCatalogue")
+        except Exception:
+            self.description = self.label
+
+    def getParameterInfo(self):
+        layers = _p("osm_layers", "1b. Layers", "GPString",
+                    multiValue=True)
+        layers.filter.type = "ValueList"
+        layers.filter.list = list(OSM_THEMES)
+        layers.value = ["buildings"]
+        latest = _p("osm_latest", "1d. With years: also list today's "
+                    "extract", "GPBoolean", required=False)
+        latest.value = True
+        out = _p("CATALOGUE", "OpenStreetMap catalogue", "DETable",
+                 direction="Output")
+        out.value = "memory\\osm_catalogue"
+        return [_p("osm_places", "1a. Regions - names, two-letter codes "
+                   "or Geofabrik ids, separated by commas (Sweden, KE, "
+                   "bayern)", "GPString"),
+                layers,
+                _p("osm_years", "1c. Past years, as 1 January extracts - "
+                   "such as 2018, 2022. Empty: today's extract only",
+                   "GPString", required=False),
+                latest, out]
+
+    def isLicensed(self):
+        return True
+
+    def updateParameters(self, parameters):
+        return
+
+    def updateMessages(self, parameters):
+        return
+
+    def execute(self, parameters, messages):
+        cat, _fr = _catalogue_modules()
+        from equipop.doors.fetching import FetchError
+        pm = _byname(parameters)
+        ch = _channel(messages)
+        places = _txt(pm, "osm_places").strip()
+        if not places:
+            raise arcpy.ExecuteError(
+                "Box 1a: name at least one region - Sweden, KE, bayern.")
+        picked = [t for t in _multi(pm, "osm_layers") if t]
+        if not picked:
+            raise arcpy.ExecuteError("Box 1b: tick at least one layer.")
+        try:
+            rows = cat.browse_geofabrik(
+                places, picked, _txt(pm, "osm_years"),
+                latest=_flag_or(pm, "osm_latest", True), say=ch.info)
+        except FetchError as exc:
+            raise arcpy.ExecuteError(str(exc))
+        _write_catalogue(rows, pm["CATALOGUE"].valueAsText, messages)
+        _table_note(ch)
+
+
+class FetchSelected:
+    """5c. Download the selected catalogue rows into a folder."""
+
+    def __init__(self):
+        self.label = "5c. Fetch the rows you selected (downloads into a folder)"
+        try:
+            from equipop.doors.help import summary_for
+            self.description = summary_for("FetchSelected")
+        except Exception:
+            self.description = self.label
+
+    def getParameterInfo(self):
+        lim = _p("max_mb", "2. Stop before downloading if the selection "
+                 "is larger than this many MB (0: no limit)", "GPDouble",
+                 required=False)
+        lim.value = 5000
+        keep = _p("keep_pbf", "3. Keep the OpenStreetMap .pbf after its "
+                  "layers are written out", "GPBoolean", required=False)
+        keep.value = True
+        return [_p("rows", "1. The catalogue table from 5a or 5b (or a "
+                   "saved equipop_recipe.csv) - with the rows you want "
+                   "selected", "GPTableView"),
+                lim, keep,
+                _p("FOLDER", "Folder to fetch into", "DEFolder")]
+
+    def isLicensed(self):
+        return True
+
+    def updateParameters(self, parameters):
+        return
+
+    def updateMessages(self, parameters):
+        return
+
+    def execute(self, parameters, messages):
+        cat, fr = _catalogue_modules()
+        from equipop.doors.fetching import FetchError
+        pm = _byname(parameters)
+        ch = _channel(messages)
+        table = _txt(pm, "rows")
+        folder = _txt(pm, "FOLDER")
+        if not table:
+            raise arcpy.ExecuteError("Box 1: choose the catalogue table.")
+        if not folder:
+            raise arcpy.ExecuteError("Choose a folder to fetch into.")
+        names = [f.name for f in arcpy.ListFields(table)]
+        gone = [c for c in ("provider", "url", "file") if c not in names]
+        if gone:
+            raise arcpy.ExecuteError(
+                f"This table has no {', '.join(gone)} column, so it is not "
+                "a catalogue. Make one with 5a or 5b, or add an "
+                "equipop_recipe.csv to the map.")
+        fields = [n for n in names if n in cat.COLUMN_NAMES]
+        rows = []
+        with arcpy.da.SearchCursor(table, fields) as cur:
+            for rec in cur:
+                rows.append(dict(zip(fields, rec)))
+        try:
+            chosen = str(getattr(arcpy.Describe(table), "FIDSet", "") or "")
+        except Exception:
+            chosen = ""
+        ch.info(f"{len(rows)} row(s) selected in the table."
+                if chosen else
+                f"NO ROWS ARE SELECTED, so all {len(rows)} are taken - the "
+                "size limit in box 2 is there for exactly this.")
+
+        def say(line):
+            env = getattr(arcpy, "env", None)
+            if env is not None and getattr(env, "isCancelled", False):
+                raise arcpy.ExecuteError(
+                    "Cancelled. What had arrived is recorded in "
+                    "equipop_fetch.json, so running again continues.")
+            ch.info(line)
+        max_mb = _num(pm, "max_mb", 5000)
+        try:
+            fr.fetch_rows(rows, folder, say=say, max_mb=max_mb or None,
+                          keep_pbf=_flag_or(pm, "keep_pbf", True))
+        except FetchError as exc:
+            raise arcpy.ExecuteError(str(exc))
+
+
 class Toolbox:
     def __init__(self):
         self.label = "EquiPop"
@@ -4315,8 +4669,10 @@ class Toolbox:
         # them - and registering an untested tool puts it in front of
         # users on the strength of a reading. The simulator now covers
         # both, and tests/test_arcgis_continental.py EXECUTES them.
+        # v1.59.0, BACKLOG 414: machine 5 at last - 5a, 5b, 5c.
         self.tools = [CountsShares, ValueStatistics,
                       ContinentalRasters, SpatialDemography,
+                      WorldPopCatalogue, OsmCatalogue, FetchSelected,
                       FolderInventory]
         # two machines, one shared loader (v1.16). Friction/slope
         # stay DISTANCE INGREDIENTS on machine 1, not tools.

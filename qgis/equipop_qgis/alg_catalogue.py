@@ -56,8 +56,10 @@ _QT = {"str": QMetaType.Type.QString, "int": QMetaType.Type.Int,
 #: catalogue.WP_THEMES keys, in dropdown order.
 WP_THEMES = ["age_sex", "population"]
 WP_THEME_LABELS = [
-    "Age and sex - people per sex and age band (0, 1-4, 5-9 ... 90+)",
-    "Population - all people, one file per country and year",
+    "Age and sex - one file per sex and age band (0, 1-4, 5-9 ... 90+): "
+    "40 per country and year",
+    "Total population only - ONE file per country and year, not split "
+    "by age or sex",
 ]
 WP_RESOLUTIONS = ["1km", "100m"]
 WP_RESOLUTION_LABELS = [
@@ -135,12 +137,17 @@ class WorldPopCatalogue(_Catalogue):
         self.add(QgsProcessingParameterEnum(
             "wp_resolution", "1d. Resolution",
             options=list(WP_RESOLUTION_LABELS), defaultValue=0))
+        # v1.58.2 (John, 16 Oct): OUT OF ADVANCED. Reading the dropdown,
+        # "Population" looked like the age-sex files plus totals. It is
+        # not - it is one file of everyone - and the totals that DO sit
+        # beside the bands were hidden under Advanced, where nobody
+        # looking for them would see them.
         self.add(QgsProcessingParameterBoolean(
-            "wp_totals", "2a. Also list layers that are sums of others "
-                         "(both sexes, all ages)", defaultValue=False),
-                 advanced=True)
+            "wp_totals", "1e. Age and sex: also list the totals - both "
+                         "sexes per band (t_), and all ages per sex "
+                         "(T_F, T_M; 100 m only)", defaultValue=False))
         self.add(QgsProcessingParameterBoolean(
-            "wp_exact", "2b. Measure every file's size (one request "
+            "wp_exact", "2a. Measure every file's size (one request "
                         "each; otherwise one per country and year)",
             defaultValue=False), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(

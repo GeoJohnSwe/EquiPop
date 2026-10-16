@@ -685,8 +685,9 @@ WP_SERIES = (
     ("population", "2000-2020", "1km", "pop", "wpic1km", "unconstrained"),
     ("population", "2000-2020", "100m", "pop", "wpgp", "unconstrained"),
 )
-WP_THEMES = {"age_sex": "Age and sex (people per sex and age band)",
-             "population": "Population (all people)"}
+WP_THEMES = {"age_sex": "Age and sex (one file per sex and age band)",
+             "population": "Total population only (one file per country "
+                           "and year, not split by age or sex)"}
 
 _METHOD_WORDS = {
     "constrained": "constrained - people are placed only in cells "
@@ -1049,9 +1050,8 @@ def _summarise(rows, say):
         f"{'about ' if est else ''}{total:,.1f} MB if every row is "
         "taken" + (f" ({unknown} of unknown size)" if unknown else "")
         + ". NOTHING HAS BEEN DOWNLOADED.")
-    say("[catalogue] Select the rows you want - in QGIS, in the "
-        f"attribute table, e.g. Select by Expression {example} - then "
-        "fetch the selected rows.")
+    say(f"[catalogue] Select the rows you want - e.g. {example} - then "
+        "fetch the selected rows with 5c.")
 
 
 # =========================================================== Geofabrik

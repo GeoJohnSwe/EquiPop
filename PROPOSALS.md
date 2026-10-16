@@ -1,6 +1,11 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.58.1, 16 October 2026.**
+**Last updated: 1.59.0, 16 October 2026.**
+*Reviewed at 1.59.0: THE 1.58.0 LIMIT NARROWS. Fetching by selection
+may now be claimed for QGIS and ArcGIS Pro, and as run against the live
+WorldPop and Geofabrik services (16 October). One part is not yet
+confirmed live - past-year OpenStreetMap layers written from .pbf - so
+do not claim that part until it is.*
 *Reviewed at 1.58.1: NO CLAIM CHANGES. The fetch has now run against
 WorldPop for real, once, and stopped on a slow server; it now tries
 again. Still say QGIS, and still do not claim the live check until it

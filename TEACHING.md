@@ -1,6 +1,9 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.58.1, 16 October 2026.**
+**Last updated: 1.59.0, 16 October 2026.**
+*Reviewed at 1.59.0: ONE THING CHANGES. A class on ArcGIS Pro can now
+fetch the same way as a class on QGIS - list, select, fetch - and the
+same recipe file works in both.*
 *Reviewed at 1.58.1: NOTHING IN THIS FILE CHANGES. A fetch now waits
 out a slow server instead of stopping - which matters in a computer
 lab, where thirty students asking WorldPop at once is exactly when it

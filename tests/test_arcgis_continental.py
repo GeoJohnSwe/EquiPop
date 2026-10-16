@@ -91,11 +91,13 @@ def _params(tool, **vals):
 # --------------------------------------------------- the toolbox itself
 def test_the_toolbox_offers_every_registered_tool():
     """v1.47.11 added FolderInventory (BACKLOG 269) - a capability
-    that had shipped in 1.45.0 reachable from nowhere at all."""
+    that had shipped in 1.45.0 reachable from nowhere at all. v1.59.0
+    added machine 5 (BACKLOG 414), which Pro had never had."""
     pyt = _pyt()
     names = [t.__name__ for t in pyt.Toolbox().tools]
     assert names == ["CountsShares", "ValueStatistics",
                      "ContinentalRasters", "SpatialDemography",
+                     "WorldPopCatalogue", "OsmCatalogue", "FetchSelected",
                      "FolderInventory"], names
 
 

@@ -169,11 +169,8 @@ MATRIX = {
         # instead of a settings table to type into.
         "python": PYTHON,
         "qgis": door("qgis/equipop_qgis/alg_catalogue.py", "fetch_rows"),
-        "pro": not_yet(
-            "QGIS first, by John's choice (15 October 2026). Pro has no "
-            "attribute-table selection tool of the same shape, and a "
-            ".pbf layer needs pyogrio, which Pro's environment lacks.",
-            414, absent=("arcgis/EquiPop.pyt", "fetch_rows")),
+        # v1.59.0: the gap's witness appeared, as it was written to.
+        "pro": door("arcgis/EquiPop.pyt", "fetch_rows"),
         "stata": ruled_out("Downloading is not a Stata activity."),
     },
 

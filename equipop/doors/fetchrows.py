@@ -506,6 +506,12 @@ def fetch_rows(rows, folder, *, net=None, say=print, keep_pbf=True,
     say(f"[fetch] Recipe: {RECIPE} - the rows fetched, in the catalogue's "
         "columns. Fetch it again to repeat this selection (a 'latest' "
         "extract will then be that day's).")
+    # John, 16 Oct: 5 and 6 do different jobs - 5c records where each
+    # file came from, 6 reports what the files hold - and the natural
+    # order is 5c, then 6, then machine 3. Say so where 5c ends.
+    say("[fetch] Next: tool 6 (What is in this folder?) lists what the "
+        "folder now holds - layers, fields, projections, and which "
+        "rasters share a grid.")
     return {"manifest": read_manifest(folder) or man,
             "downloaded": [e["name"] for e in entries],
             "derived": [d["name"] for d in derived], "recipe": recipe}

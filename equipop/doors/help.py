@@ -723,8 +723,11 @@ HELP = {
     # ---- machine 5, catalogue first (v1.58.0, BACKLOG 414) ----
     "wp_theme": "WHAT TO LIST. Age and sex gives one file per sex and "
                 "age band - 0 (under one), 1-4, then five-year bands to "
-                "90+ - so a country and year is 40 files. Population "
-                "gives one file of all people per country and year.",
+                "90+ - so a country and year is 40 files. Total "
+                "population gives ONE file per country and year holding "
+                "everyone, not split by age or sex: it is not the age-"
+                "and-sex files with a total added. For totals BESIDE the "
+                "bands, choose age and sex and tick 1e.",
     "wp_places": "THE COUNTRIES, by name or three-letter code, separated "
                  "by commas: Sweden, KEN, Burundi. A part of a name "
                  "works when it fits one country only ('United Kingdom'); "
@@ -743,11 +746,13 @@ HELP = {
                      "47 MB at 100 m - three countries and two years "
                      "are 0.15 GB against 5.5 GB. Take 100 m when the "
                      "neighbourhoods are smaller than a kilometre.",
-    "wp_totals": "ALSO LIST THE LAYERS THAT ARE SUMS OF OTHERS: t_ "
-                 "(both sexes, the sum of f_ and m_) and T_F / T_M (all "
-                 "ages of one sex, 100 m only). Off by default: they "
-                 "add nothing that cannot be added up, and at 100 m "
-                 "they are a third of the download.",
+    "wp_totals": "FOR AGE AND SEX, ALSO LIST THE TOTALS WorldPop "
+                 "publishes beside the bands: t_ (both sexes in one band, "
+                 "the sum of f_ and m_) and T_F / T_M (all ages of one "
+                 "sex, 100 m only). Off by default: they add nothing that "
+                 "cannot be added up from the bands, and at 100 m they "
+                 "are a third of the download. For everyone in one file "
+                 "per year, choose Total population in 1a instead.",
     "wp_exact": "MEASURE EVERY FILE'S SIZE, one request each. Off: one "
                 "file per country and year is measured and the rest are "
                 "estimated from it - the size_is column says which.",
@@ -775,14 +780,12 @@ HELP = {
                   "compares like with like.",
     "CATALOGUE": "THE CATALOGUE TABLE: one row per downloadable thing, "
                  "with its size, date, licence and a note. Nothing has "
-                 "been downloaded. Leave it as a temporary layer, open "
-                 "its attribute table, select the rows you want and run "
-                 "5c on them.",
-    "rows": "THE ROWS TO FETCH: the table 5a or 5b made, with the rows "
-            "you want SELECTED and 'Selected features only' ticked - "
-            "or a saved equipop_recipe.csv to fetch a selection again. "
-            "A row pointing anywhere but WorldPop or Geofabrik is "
-            "refused.",
+                 "been downloaded. Keep it as {temptable}, open it, "
+                 "select the rows you want and run 5c on them.",
+    "rows": "THE ROWS TO FETCH: the table 5a or 5b made - "
+            "{selectionrule} - or a saved equipop_recipe.csv to fetch "
+            "a selection again. A row pointing anywhere but WorldPop or "
+            "Geofabrik is refused.",
     "max_mb": "A SAFETY LIMIT, in MB: a selection larger than this is "
               "refused before anything is downloaded, so 'select all' "
               "on a 100 m table cannot quietly start a 50 GB fetch. 0 "
@@ -816,6 +819,13 @@ LABELS = {
     # is fetching; this reads a folder that is already on disk.
     "FolderInventory": "6. What is in this folder? (reads, changes "
                        "nothing)",
+    # v1.58.0 in QGIS, v1.59.0 in Pro (BACKLOG 414): look, select, fetch.
+    "WorldPopCatalogue": "5a. WorldPop - what is there? (lists, downloads "
+                         "nothing)",
+    "OsmCatalogue": "5b. OpenStreetMap (Geofabrik) - what is there? "
+                    "(lists, downloads nothing)",
+    "FetchSelected": "5c. Fetch the rows you selected (downloads into a "
+                     "folder)",
 }
 
 
@@ -921,10 +931,10 @@ SUMMARY = {
 
 USAGE = {
     "WorldPopCatalogue":
-        "Name the countries and years and run. The table appears as a "
-        "temporary layer; open its attribute table and select rows - "
-        "Select by Expression with \"sex\" = 'f' AND \"age_from\" >= 15 "
-        "takes the women from fifteen up. The size column shows what "
+        "Name the countries and years and run. The table appears as "
+        "{temptable}; open it and select rows - {selectby} with "
+        "\"sex\" = 'f' AND \"age_from\" >= 15 takes the women from "
+        "fifteen up. The size column shows what "
         "the selection will cost before 5c downloads it. 1 km is the "
         "default: the same request at 100 m is 20 to 70 times larger "
         "(measured for Sweden, Kenya and Burundi).",
@@ -936,13 +946,13 @@ USAGE = {
         "United States) the table lists its parts: select the ones "
         "you need.",
     "FetchSelected":
-        "Choose the catalogue table and tick 'Selected features only' "
-        "- with nothing ticked it takes every row, which the size limit "
-        "in box 2 is there to catch. Point it at a folder; machine 3 "
+        "Choose the catalogue table and {selectionrule}. The size "
+        "limit in box 2 catches a selection larger than you meant. Point it at a folder; machine 3 "
         "and the inventory read that folder afterwards. To repeat a "
         "fetch, load equipop_recipe.csv from the folder as a layer and "
         "run this on it. A .pbf row needs GDAL's Python bindings, which "
-        "QGIS always has.",
+        "QGIS always has; in ArcGIS Pro, install pyogrio in the Pro "
+        "environment, or take those rows in QGIS.",
     "FolderInventory":
         "Point it at a folder - a country-per-folder download can "
         "stay exactly as it is, subfolders are searched. The table "
@@ -1030,6 +1040,13 @@ VOCAB = {
     "target": "feature class",
     "container": "a file geodatabase",
     "formatnote": "",
+    # v1.59.0: machine 5 in both doors. Selecting rows is the same act
+    # with different words - and in QGIS a tick-box, in Pro none.
+    "temptable": "a table in memory (the default)",
+    "selectby": "Select By Attributes",
+    "selectionrule": ("select your rows in it: Pro passes only the "
+                      "selected rows to a tool (every row when none is "
+                      "selected)"),
 }
 VOCAB_QGIS = {
     "target": "layer",
@@ -1037,6 +1054,10 @@ VOCAB_QGIS = {
     "formatnote": (" QGIS reads the format from the file extension, "
                    "so end the name with .gpkg or .shp - a bare name "
                    "is refused."),
+    "temptable": "a temporary layer (the default)",
+    "selectby": "Select by Expression",
+    "selectionrule": ("select your rows in it and tick 'Selected "
+                      "features only' (unticked, it takes every row)"),
 }
 
 

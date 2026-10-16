@@ -508,12 +508,19 @@ def test_the_doors_disagree_only_where_they_must():
     doors. So the two renderings must be identical everywhere except
     the handful of entries that genuinely name a container - if that
     list grows, the doors are drifting apart again and someone should
-    have to justify it in this test."""
+    have to justify it in this test.
+
+    v1.59.0, JUSTIFIED: 'CATALOGUE' and 'rows' (machine 5). Choosing
+    rows is the same act with different controls - QGIS needs its
+    'Selected features only' tick, Pro passes a selection by itself -
+    and the catalogue lands as a temporary layer in one door and a
+    table in memory in the other. Saying the same words in both would
+    send one door's users looking for a box that is not there."""
     differ = {n for n in HLP.HELP
               if HLP.help_for(n) != HLP.help_for(n, vocab=HLP.VOCAB_QGIS)}
-    assert differ == {"outfc"}, (
+    assert differ == {"outfc", "CATALOGUE", "rows"}, (
         f"these entries now read differently per door: {sorted(differ)} "
-        "- only 'outfc' should, because only it names the container")
+        "- only 'outfc', 'CATALOGUE' and 'rows' should (see above)")
 
 
 def test_the_qgis_words_say_what_qgis_actually_needs():
