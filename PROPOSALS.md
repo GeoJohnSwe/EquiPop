@@ -1,6 +1,10 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.58.0, 15 October 2026.**
+**Last updated: 1.58.1, 16 October 2026.**
+*Reviewed at 1.58.1: NO CLAIM CHANGES. The fetch has now run against
+WorldPop for real, once, and stopped on a slow server; it now tries
+again. Still say QGIS, and still do not claim the live check until it
+is back.*
 *Reviewed at 1.58.0: ONE CLAIM MAY BE ADDED, WITH ITS LIMIT. A proposal
 may say that WorldPop and OpenStreetMap data are fetched by selection
 from a catalogue, every file checked against the publisher's own

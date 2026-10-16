@@ -168,7 +168,8 @@ def main():
             ("4. Verify the folder", verify)):
         step(title, fn)
     say("")
-    say(f"- {net.calls} requests in all")
+    say(f"- {net.calls} requests in all; {net.retries} tried again after "
+        "the server dropped, cut or stalled them")
 
 
 def _count(path):

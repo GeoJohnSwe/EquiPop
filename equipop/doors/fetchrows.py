@@ -44,12 +44,14 @@ import os
 import struct
 import zlib
 
-from .catalogue import (COLUMN_NAMES, Net, NetError, check_url, coerce_row,
+from .catalogue import (COLUMN_NAMES, Net, NetError, Truncated, check_url,
+                        coerce_row,
                         date_of, layers_in_zip, parse_rule,
                         read_csv, size_of, total_mb, validator_of,
                         write_csv, zip_contents, _safe_id, _stamp)
 from .fetching import (MANIFEST, RECIPE, FetchError, read_manifest,
                        run_fetch, sha256_of, url_filename)
+
 PROVIDERS = ("WorldPop", "Geofabrik")
 
 
@@ -59,10 +61,16 @@ def download(net, url, dest):
 
     The same promises as fetching._get_file - the declared length is
     checked and nothing partial is left - but through the Net, so the
-    tests can serve it."""
-    sha, md5, n = hashlib.sha256(), hashlib.md5(usedforsecurity=False), 0
+    tests can serve it, and TRIED AGAIN FROM THE START when the
+    connection drops, stalls or is cut part-way (v1.58.1: WorldPop
+    dropped John's first live download, on a morning when every request
+    there took ten seconds). A file whose bytes are wrong is never
+    tried again; only one whose connection failed."""
     tmp = dest + ".part"
-    try:
+
+    def once():
+        sha, md5, n = (hashlib.sha256(), hashlib.md5(usedforsecurity=False),
+                       0)
         with net.open(url) as r, open(tmp, "wb") as f:
             declared = size_of(Net._headers(r))
             while True:
@@ -74,16 +82,18 @@ def download(net, url, dest):
                 f.write(b)
                 n += len(b)
         if declared is not None and n != declared:
-            raise FetchError(
+            raise Truncated(
                 f"{os.path.basename(dest)} is INCOMPLETE: the server "
-                f"declared {declared:,} bytes and {n:,} arrived. Nothing "
-                "was kept - try again.")
+                f"declared {declared:,} bytes and {n:,} arrived.")
+        return n, sha.hexdigest(), md5.hexdigest()
+    try:
+        got = net.attempt(url, once)
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
     os.replace(tmp, dest)
-    return n, sha.hexdigest(), md5.hexdigest()
+    return got
 
 
 def extract_member(net, zip_url, info, validator, dest):
@@ -94,7 +104,9 @@ def extract_member(net, zip_url, info, validator, dest):
     CRC-32. The If-Range validator means a zip replaced on the server
     since its contents were read answers with the whole file instead
     of the range - refused here - rather than with bytes of a
-    different zip at the old offsets."""
+    different zip at the old offsets. A connection that drops or is cut
+    is tried again from the member's first byte; a replaced zip, a
+    damaged stream or a wrong CRC never is."""
     if info.compress_type not in (zipfile_STORED, zipfile_DEFLATED):
         raise FetchError(
             f"{info.filename} is packed with method {info.compress_type}, "
@@ -106,11 +118,12 @@ def extract_member(net, zip_url, info, validator, dest):
                          "table of contents says one starts.")
     n_name, n_extra = struct.unpack("<HH", head[26:30])
     start = info.header_offset + 30 + n_name + n_extra
-    sha, md5 = hashlib.sha256(), hashlib.md5(usedforsecurity=False)
-    crc, total, got = 0, 0, 0
-    dec = zlib.decompressobj(-15) if info.compress_type else None
     tmp = dest + ".part"
-    try:
+
+    def once():
+        sha, md5 = hashlib.sha256(), hashlib.md5(usedforsecurity=False)
+        crc, total, got = 0, 0, 0
+        dec = zlib.decompressobj(-15) if info.compress_type else None
         with open(tmp, "wb") as f:
             def put(data):
                 nonlocal crc, total
@@ -148,7 +161,7 @@ def extract_member(net, zip_url, info, validator, dest):
                             f"not be unpacked ({e}). Nothing was kept - "
                             "try again.") from e
             if got != info.compress_size:
-                raise FetchError(
+                raise Truncated(
                     f"{info.filename} is INCOMPLETE: {got:,} of "
                     f"{info.compress_size:,} packed bytes arrived.")
             if total != info.file_size or (crc & 0xFFFFFFFF) != info.CRC:
@@ -157,13 +170,16 @@ def extract_member(net, zip_url, info, validator, dest):
                     f"of it (CRC-32 {info.CRC:08x}, {info.file_size:,} "
                     f"bytes; arrived {crc & 0xFFFFFFFF:08x}, {total:,} "
                     "bytes). Nothing was kept - try again.")
+        return (total, sha.hexdigest(), md5.hexdigest(),
+                "verified against the zip's own CRC-32")
+    try:
+        got = net.attempt(zip_url, once)
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
     os.replace(tmp, dest)
-    return (total, sha.hexdigest(), md5.hexdigest(),
-            "verified against the zip's own CRC-32")
+    return got
 
 
 zipfile_STORED, zipfile_DEFLATED = 0, 8
@@ -324,6 +340,7 @@ def fetch_rows(rows, folder, *, net=None, say=print, keep_pbf=True,
     Returns {"manifest", "downloaded", "derived", "recipe"}.
     """
     net = net or Net()
+    net.say = say
     rows = [coerce_row(r) for r in rows]
     check_rows(rows)
     # the same row twice - two catalogues stacked - is one row
@@ -495,8 +512,7 @@ def fetch_rows(rows, folder, *, net=None, say=print, keep_pbf=True,
 
 
 def _get_text(net, url):
-    with net.open(url) as r:
-        return r.read(64 * 1024).decode("utf-8", "replace")
+    return net.get_text(url)
 
 
 def _have(folder, known, name):

@@ -15,6 +15,7 @@ Last-Modified, ETag, and 404 for anything it does not hold.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import io
 import json
 import re
@@ -35,12 +36,19 @@ def fixture(name):
 
 
 class Response:
-    def __init__(self, status, headers, body):
+    def __init__(self, status, headers, body, cut=False):
         self.status, self.headers = status, dict(headers)
         self._buf = io.BytesIO(body or b"")
+        self._cut = cut                 # the connection dies at the end
 
     def read(self, n=-1):
-        return self._buf.read() if n is None or n < 0 else self._buf.read(n)
+        data = (self._buf.read() if n is None or n < 0
+                else self._buf.read(n))
+        if not data and self._cut:
+            # what http.client raises when the server closes the
+            # connection before the declared length has arrived
+            raise http.client.IncompleteRead(b"", 1)
+        return data
 
     def __enter__(self):
         return self
@@ -54,6 +62,7 @@ class FakeWeb:
         self.json = {}
         self.files = {}            # url -> dict(body, size, lm, etag)
         self.log = []              # (method, url, range)
+        self.trouble = {}          # (method, url) -> [what goes wrong]
 
     # ---------------------------------------------------------- setup
     def add_json(self, url, obj):
@@ -73,6 +82,13 @@ class FakeWeb:
         """The publisher writes a new file under the same name."""
         self.add_file(url, body=body, when=when)
 
+    def make_trouble(self, url, *actions, method="GET"):
+        """The next requests for `url` go wrong, one action each:
+        'drop' (closed without an answer - John's 16 October run),
+        'reset', 'timeout', 'cut' (half the body, then the connection
+        dies), or an HTTP status such as 503."""
+        self.trouble.setdefault((method, url), []).extend(actions)
+
     def count(self, method=None, contains=""):
         return sum(1 for m, u, _ in self.log
                    if (method is None or m == method) and contains in u)
@@ -82,6 +98,19 @@ class FakeWeb:
         url, method = req.full_url, req.get_method()
         rng = req.get_header("Range")
         self.log.append((method, url, rng))
+        todo = self.trouble.get((method, url))
+        act = todo.pop(0) if todo else None
+        if act == "drop":
+            raise http.client.RemoteDisconnected(
+                "Remote end closed connection without response")
+        if act == "reset":
+            raise ConnectionResetError(10054, "An existing connection was "
+                                       "forcibly closed by the remote host")
+        if act == "timeout":
+            raise TimeoutError("timed out")
+        if isinstance(act, int):
+            raise urllib.error.HTTPError(url, act, "Service Unavailable",
+                                         None, None)
         if url in self.json:
             body = json.dumps(self.json[url]).encode()
             return Response(200, {"Content-Type": "application/json",
@@ -99,9 +128,16 @@ class FakeWeb:
             m = re.fullmatch(r"bytes=(\d+)-(\d+)", rng)
             lo, hi = int(m[1]), min(int(m[2]), f["size"] - 1)
             part = body[lo:hi + 1]
+            if act == "cut":
+                return Response(206, {**hdr, "Content-Length": str(len(part)),
+                                      "Content-Range":
+                                          f"bytes {lo}-{hi}/{f['size']}"},
+                                part[:len(part) // 2], cut=True)
             return Response(206, {**hdr, "Content-Length": str(len(part)),
                                   "Content-Range":
                                       f"bytes {lo}-{hi}/{f['size']}"}, part)
+        if act == "cut":
+            return Response(200, hdr, body[:len(body) // 2], cut=True)
         return Response(200, hdr, body)
 
 

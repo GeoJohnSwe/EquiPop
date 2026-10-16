@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.58.0 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0w first, then 0v back to 0b
+*Amended through 1.58.1 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0x first, then 0w back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,37 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0x. 1.58.1 - THE FIRST LIVE RUN, AND A FLAW IN THE BREAK-CHECK
+
+**John's first live 5c stopped on its first file**: WorldPop closed the
+connection without answering (`RemoteDisconnected`), and he read it
+as a time-out. I could not reach WorldPop from the sandbox, so I sent
+a one-minute script asking for the same file six ways. Every way
+worked, EquiPop's name included, so nothing filters it and nothing on
+his machine blocks Python. **But every request took 7-11 s**,
+size checks and small files alike, where the probes two days earlier
+measured 0.2 s. The server was slow and dropped one request. 5c had
+tried each file once. Now `Net.attempt` tries a dropped, reset,
+stalled, busy or cut connection again (4 tries; 3, 10, 30 s), says
+each try, and never retries what retrying cannot fix. **Don't widen
+`transient()` without reading why each exclusion is there.**
+
+**The break-check harness was wrong, and it matters for every past
+release.** A break that edits a file without changing its size, made
+within the same second as the previous restore, matches the cached
+`.pyc` on mtime and size, so Python runs the old code. Here that hid
+a real break (`DEFAULT_TRIES = 4` -> `1`). It can also go the other
+way: a same-size break's `.pyc` can outlive its restore and fail a
+LATER test, which would read as "caught". **Run break-checks with
+`PYTHONDONTWRITEBYTECODE=1` and empty `__pycache__` first.** 1.58.0's
+79 breaks were rerun that way and all still caught. Earlier releases'
+break-checks were not rerun.
+
+**Speed is the next question, not correctness.** At 10 s a request, 40
+files take about seven minutes. Parallel downloads (three or four at a
+time) would cut that, at the cost of the per-file manifest commit
+becoming a lock. Not done; recorded in 414.
 
 ## 0w. 1.58.0 - FETCHING BY SELECTING, NOT BY TYPING
 

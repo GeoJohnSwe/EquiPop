@@ -94,8 +94,9 @@ because machine 3 stores tiles that way and says so in its manifest.
    argument still satisfies them (405's break-check proved it). An
    AST read of every row; its own release.
 12. **414** — FETCH, REDESIGNED AROUND A CATALOGUE. BUILT FOR QGIS IN
-   1.58.0 (5a, 5b, 5c). Open until John's live check
-   (tools/live_fetch_check.py) comes back; then Pro, then GHSL rows.
+   1.58.0 (5a, 5b, 5c); 1.58.1 tries a dropped connection again (John's
+   first live run). Open until the live check (tools/live_fetch_check.py)
+   comes back; then speed (parallel downloads), Pro, GHSL rows.
 13. **413** — a WHOLE-PLANET machine 3 run cannot work as built. Four
    causes, found from John's crashed Pro run; items (a) and (b) are
    the small patch, the rest are their own releases.
@@ -3659,6 +3660,20 @@ because machine 3 stores tiles that way and says so in its manifest.
   GHSL as rows (tiles); HDX (a search, not a tree - may stay in 5d);
   Geofabrik's -free.gpkg.zip; a memory estimate per raster row
   (practice 3 says size, count AND memory; only the first two are in).
+  1.58.1, 16 OCTOBER - THE FIRST LIVE RUN. 5c stopped on one WorldPop
+  file: RemoteDisconnected. John's six-way check (wp_get_check.py, kept
+  in the scratchpad, not the tree) found EVERY request working - EquiPop's
+  user agent, a browser's, Python's - and EVERY request taking 7-11 s,
+  HEAD included, where 14 October measured 0.2 s. Cause: a slow server
+  dropping a request, and a fetcher that tried once. Fixed: Net.attempt,
+  4 tries (3/10/30 s), transient() says which failures earn another try.
+  STILL OPEN FROM IT: (a) SPEED - at 10 s a request, 40 files are ~7 min;
+  three or four downloads at a time would cut that, but run_fetch commits
+  the manifest per file and would need a lock. (b) The QGIS network path
+  (QgsBlockingNetworkRequest) was not needed - Python reached WorldPop
+  directly - so 5c stays on urllib. (c) The break-check harness ran with
+  a .pyc cache, which can hide a same-size break or let one outlive its
+  restore; it now runs without. Earlier releases' checks were not rerun.
   THE ORIGINAL ENTRY FOLLOWS. John: the series of reruns needed to fetch anything
   "ended as a discussion between us where the info and what to fill in
   was unclear", and he wants best practices and an easier way to ask.

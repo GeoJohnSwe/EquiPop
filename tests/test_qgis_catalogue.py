@@ -40,6 +40,7 @@ def web(monkeypatch):
     w = fakeweb.captured(bodies=True)
     monkeypatch.setattr(cat.Net, "_urlopen", lambda self, req: w(req))
     monkeypatch.setattr(cat, "DEFAULT_PAUSE", 0)
+    monkeypatch.setattr(cat, "DEFAULT_WAITS", (0,))
     return w
 
 
@@ -284,3 +285,25 @@ def test_5c_refuses_qgis_temporary_folder(web, tmp_path, monkeypatch):
                                   "FOLDER": bad}, None,
                                  QgsProcessingFeedback())
     assert len(web.log) == before
+
+
+def test_johns_first_live_run_now_gets_its_file(web, tmp_path):
+    """16 October 2026, John's first live 5c: one population file, and
+    WorldPop dropped the connection without answering. 5c stopped with
+    'RemoteDisconnected', which read as a time-out. Now the drop is
+    tried again, the file arrives, and the log says what happened.
+
+    BROKEN WITH: DEFAULT_TRIES set to 1 (one try, as in 1.58.0)."""
+    _, df, _ = run(A.WorldPopCatalogue(), wp_theme=1, wp_places="Burundi",
+                   wp_years="2020", wp_resolution=0)
+    url = df["url"][0]
+    web.make_trouble(url, "drop")
+    folder = str(tmp_path / "f")
+    alg = A.FetchSelected()
+    alg.initAlgorithm()
+    fb = QgsProcessingFeedback()
+    alg.processAlgorithm({"rows": _selected(df, df["layer"] == "pop"),
+                          "FOLDER": folder, "max_mb": 5000}, None, fb)
+    assert df["file"][0] in os.listdir(folder)
+    assert "closed the connection without answering" in _said(fb)
+    assert "trying again" in _said(fb)

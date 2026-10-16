@@ -472,7 +472,9 @@ def test_the_inventory_does_not_take_the_recipe_for_data(picked, net,
 
 
 def test_a_short_download_is_refused(net, web, tmp_path):
-    """A server that announces more bytes than it sends: nothing kept.
+    """A server that announces more bytes than it sends, every time:
+    nothing kept, and after the last try the message says what the
+    server did and that it is not EquiPop.
 
     BROKEN WITH: download() not comparing the declared length."""
     url = "https://data.worldpop.org/GIS/short/bdi_pop_2020.tif"
@@ -486,6 +488,178 @@ def test_a_short_download_is_refused(net, web, tmp_path):
                                               + 100)
         return r
     dest = str(tmp_path / "x.tif")
-    with pytest.raises(FetchError, match="INCOMPLETE"):
-        fr.download(cat.Net(opener=opener, pause=0), url, dest)
+    with pytest.raises(FetchError, match="part-way through - 4 tries.*not "
+                                         "EquiPop"):
+        fr.download(cat.Net(opener=opener, pause=0, waits=(0,)), url, dest)
     assert os.listdir(tmp_path) == []
+
+
+# ============================================= a slow or stumbling server
+# v1.58.1. John's first live 5c run, 16 October 2026: WorldPop's file
+# server took about ten seconds over every request that morning and
+# dropped one without answering. 5c tried each file once and stopped.
+WP_FILE = ("https://data.worldpop.org/GIS/Population/Global_2015_2030/"
+           "R2025A/2020/BDI/v1/1km_ua/constrained/"
+           "bdi_pop_2020_CN_1km_R2025A_UA_v1.tif")
+
+
+@pytest.fixture
+def patient(web):
+    """A Net that tries again without waiting, and keeps what it said."""
+    said = []
+    return cat.Net(opener=web, pause=0, waits=(0,), say=said.append), said
+
+
+@pytest.mark.parametrize("trouble", [
+    ("drop",), ("reset",), ("timeout",), (503,), ("cut",),
+    ("drop", "cut", 502)])
+def test_a_stumble_is_tried_again_and_said(web, patient, tmp_path,
+                                           trouble):
+    """Dropped, reset, stalled, busy, or cut part-way: each is tried
+    again from the start, the file arrives whole, and each new try is
+    said - so a slow run reads as slow, not stuck.
+
+    BROKEN WITH: Net.attempt making one try only (tries forced to 1)."""
+    net, said = patient
+    web.make_trouble(WP_FILE, *trouble)
+    dest = str(tmp_path / "bdi.tif")
+    n, sha, _md5 = fr.download(net, WP_FILE, dest)
+    body = web.files[WP_FILE]["body"]
+    assert open(dest, "rb").read() == body and n == len(body)
+    assert len([m for m, u, r in web.log if u == WP_FILE]) == \
+        len(trouble) + 1
+    assert len([s for s in said if "trying again" in s]) == len(trouble)
+    assert os.listdir(tmp_path) == ["bdi.tif"]
+
+
+def test_johns_dropped_connection_is_named_for_what_it_was(web, patient):
+    """BROKEN WITH: what_happened returning the class name only, which
+    is what John read - 'RemoteDisconnected' - and took for a time-out."""
+    net, said = patient
+    web.make_trouble(WP_FILE, "drop", method="HEAD")
+    assert net.head(WP_FILE)[0] == 200
+    assert said == ["[net] data.worldpop.org closed the connection without "
+                    "answering (bdi_pop_2020_CN_1km_R2025A_UA_v1.tif) - "
+                    "trying again in 0 s, try 2 of 4."]
+
+
+def test_a_server_that_never_answers_stops_and_says_whose_it_is(
+        web, patient, tmp_path):
+    """BROKEN WITH: the final message left as the raw exception."""
+    net, said = patient
+    web.make_trouble(WP_FILE, *["drop"] * 10)
+    with pytest.raises(cat.NetError) as e:
+        fr.download(net, WP_FILE, str(tmp_path / "x.tif"))
+    assert "closed the connection without answering - 4 tries" in \
+        str(e.value)
+    assert "not EquiPop" in str(e.value)
+    assert len([m for m, u, r in web.log if u == WP_FILE]) == 4
+    assert os.listdir(tmp_path) == []
+
+
+@pytest.mark.parametrize("why", ["missing", "replaced", "crc"])
+def test_what_trying_again_cannot_fix_is_not_tried_again(web, patient,
+                                                         tmp_path, why):
+    """A missing file, a zip replaced on the server, bytes that fail the
+    CRC: one request each, then the refusal - retrying would only delay
+    the message, or, for a replaced zip, hide it.
+
+    BROKEN WITH: transient() answering True for everything."""
+    net, said = patient
+    if why == "missing":
+        with pytest.raises(cat.NetError, match="404"):
+            fr.download(net, WP_FILE + ".nope", str(tmp_path / "x"))
+        url = WP_FILE + ".nope"
+    else:
+        url = SWEDEN_ZIP
+        st, h = net.head(url)
+        infos = cat.zip_contents(net, url, cat.size_of(h),
+                                 cat.validator_of(h))
+        info = [i for i in infos if i.filename.endswith("roads_free_1.shp")][0]
+        if why == "replaced":
+            web.replace(url, fakeweb.shapefile_zip("sweden", seed=9),
+                        NEXT_DAY)
+            with pytest.raises(cat.NetError, match="REPLACED"):
+                fr.extract_member(net, url, info, cat.validator_of(h),
+                                  str(tmp_path / "x"))
+        else:
+            info.CRC ^= 1
+            with pytest.raises(FetchError, match="DOES NOT MATCH"):
+                fr.extract_member(net, url, info, cat.validator_of(h),
+                                  str(tmp_path / "x"))
+    assert not any("trying again" in s for s in said)
+    assert [n for n in os.listdir(tmp_path)] == []
+
+
+def test_a_member_cut_part_way_is_read_again(web, patient, tmp_path):
+    """BROKEN WITH: extract_member's stream outside Net.attempt."""
+    net, said = patient
+    st, h = net.head(SWEDEN_ZIP)
+    infos = cat.zip_contents(net, SWEDEN_ZIP, cat.size_of(h),
+                             cat.validator_of(h))
+    info = [i for i in infos if i.filename.endswith("roads_free_1.dbf")][0]
+    # the FIRST ranged GET is the member's 30-byte local header, which
+    # get_range already tries again; the SECOND is the member itself
+    web.make_trouble(SWEDEN_ZIP, None, "cut")
+    dest = str(tmp_path / "roads.dbf")
+    fr.extract_member(net, SWEDEN_ZIP, info, cat.validator_of(h), dest)
+    z = zipfile.ZipFile(io.BytesIO(web.files[SWEDEN_ZIP]["body"]))
+    assert open(dest, "rb").read() == z.read(info.filename)
+    assert [s for s in said if "part-way" in s] == [
+        "[net] download.geofabrik.de stopped sending part-way through "
+        "(sweden-latest-free.shp.zip) - trying again in 0 s, try 2 of 4."]
+    # the contents, the header, and the member twice
+    assert len(_gets(web, SWEDEN_ZIP, ranged=True)) == 1 + 1 + 2
+
+
+def test_a_busy_catalogue_and_a_busy_size_check_are_tried_again(web,
+                                                                patient):
+    """The browsing side too: WorldPop's index answering 503 once, and a
+    size check dropped once (5a measured sizes at ten seconds each that
+    morning).
+
+    BROKEN WITH: get_json and head calling open() directly, outside
+    Net.attempt."""
+    net, said = patient
+    idx = f"{fakeweb.WP}/pop/G2_CN_POP_R25A_1km"
+    web.make_trouble(idx, 503)
+    rec = f"{fakeweb.WP}/pop/G2_CN_POP_R25A_1km?iso3=BDI"
+    first = web.json[rec]["data"][0]
+    u = [x for x in first["files"] if x.endswith(".tif")][0]
+    web.make_trouble(u, "drop", method="HEAD")
+    rows = cat.browse_worldpop("population", "Burundi", "2015", net=net,
+                               say=said.append)
+    assert len(rows) == 1 and rows[0]["size_is"] == "measured"
+    assert len([s for s in said if "trying again" in s]) == 2
+
+
+@pytest.mark.parametrize("exc,want", [
+    ("RemoteDisconnected", True), ("ConnectionResetError", True),
+    ("TimeoutError", True), ("IncompleteRead", True), ("503", True),
+    ("429", True), ("404", False), ("403", False), ("gaierror", False),
+    ("NetError", False), ("FetchError", False), ("ValueError", False)])
+def test_which_failures_are_worth_another_try(exc, want):
+    """BROKEN WITH: a DNS failure (gaierror) counted as transient - a
+    misspelt host would then be asked four times before the refusal."""
+    import http.client
+    import socket
+    import urllib.error
+    err = {
+        "RemoteDisconnected": lambda: http.client.RemoteDisconnected("x"),
+        "ConnectionResetError": lambda: ConnectionResetError(),
+        "TimeoutError": lambda: TimeoutError(),
+        "IncompleteRead": lambda: http.client.IncompleteRead(b"", 1),
+        "503": lambda: urllib.error.HTTPError("u", 503, "x", None, None),
+        "429": lambda: urllib.error.HTTPError("u", 429, "x", None, None),
+        "404": lambda: urllib.error.HTTPError("u", 404, "x", None, None),
+        "403": lambda: urllib.error.HTTPError("u", 403, "x", None, None),
+        "gaierror": lambda: urllib.error.URLError(socket.gaierror(11001,
+                                                                  "x")),
+        "NetError": lambda: cat.NetError("replaced"),
+        "FetchError": lambda: FetchError("crc"),
+        "ValueError": lambda: ValueError(),
+    }[exc]()
+    wrapped = cat.NetError("could not reach")       # as Net.open wraps
+    wrapped.__cause__ = err
+    assert cat.transient(err) is want
+    assert cat.transient(wrapped) is want

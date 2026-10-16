@@ -189,8 +189,91 @@ def check_url(url):
 DEFAULT_PAUSE = 0.05
 
 
+#: HOW OFTEN A DROPPED, CUT, STALLED OR BUSY CONNECTION IS TRIED AGAIN,
+#: and how long to wait before each new try, in seconds.
+#:
+#: v1.58.1, John's first live 5c run (16 October 2026): WorldPop's file
+#: server took 7 to 11 seconds over EVERY request that morning - a size
+#: check, a 146 kB file and a 1.6 MB file alike - where the probes of
+#: 14 October had measured 0.2 s. One request it dropped without
+#: answering ("RemoteDisconnected"), and 5c, which tried each file
+#: once, stopped. A slow server is not a failure; a fetcher that gives
+#: up at its first stumble turns it into one.
+DEFAULT_TRIES = 4
+DEFAULT_WAITS = (3, 10, 30)
+
+
 class NetError(FetchError):
     """The network said no, in plain words."""
+
+
+class Truncated(NetError):
+    """Fewer bytes arrived than the server declared: a connection cut
+    part-way through, which is worth trying again."""
+
+
+def _root(exc):
+    """The failure underneath EquiPop's own wrapping."""
+    for _ in range(10):
+        if (isinstance(exc, NetError) and not isinstance(exc, Truncated)
+                and exc.__cause__ is not None):
+            exc = exc.__cause__
+        else:
+            break
+    return exc
+
+
+def transient(exc):
+    """Is this worth trying again? A dropped, cut, stalled or busy
+    connection is. A missing file, a refusal, a name that does not
+    resolve, a file REPLACED on the server, or bytes that fail their
+    checksum are not: trying again cannot change those, and must not
+    be allowed to hide them."""
+    import http.client
+    import socket
+    import ssl
+    import urllib.error
+    exc = _root(exc)
+    if isinstance(exc, Truncated):
+        return True
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in (408, 429, 500, 502, 503, 504)
+    if isinstance(exc, urllib.error.URLError) and isinstance(
+            getattr(exc, "reason", None), BaseException):
+        exc = exc.reason
+    if isinstance(exc, socket.gaierror):
+        return False
+    return isinstance(exc, (http.client.RemoteDisconnected,
+                            http.client.IncompleteRead, ConnectionError,
+                            TimeoutError, socket.timeout, ssl.SSLEOFError,
+                            ssl.SSLZeroReturnError))
+
+
+def what_happened(exc, timeout=None):
+    """A transient failure, in words a person can act on."""
+    import http.client
+    import ssl
+    import urllib.error
+    exc = _root(exc)
+    if isinstance(exc, Truncated):
+        return "stopped sending part-way through"
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"answered {exc.code} - busy or briefly unavailable"
+    if isinstance(exc, urllib.error.URLError) and isinstance(
+            getattr(exc, "reason", None), BaseException):
+        exc = exc.reason
+    if isinstance(exc, http.client.RemoteDisconnected):
+        return "closed the connection without answering"
+    if isinstance(exc, http.client.IncompleteRead):
+        return "stopped sending part-way through"
+    if isinstance(exc, TimeoutError):
+        return (f"did not answer within {timeout:g} s" if timeout
+                else "did not answer in time")
+    if isinstance(exc, (ssl.SSLEOFError, ssl.SSLZeroReturnError)):
+        return "ended the secure connection unexpectedly"
+    if isinstance(exc, ConnectionError):
+        return "broke the connection off"
+    return type(exc).__name__
 
 
 class Net:
@@ -202,11 +285,45 @@ class Net:
     .read(n), and is a context manager.
     """
 
-    def __init__(self, opener=None, pause=None, timeout=60):
+    def __init__(self, opener=None, pause=None, timeout=60, tries=None,
+                 waits=None, say=None):
         self._open = opener or self._urlopen
         self.pause = DEFAULT_PAUSE if pause is None else pause
         self.timeout = timeout
+        self.tries = max(1, int(DEFAULT_TRIES if tries is None else tries))
+        self.waits = tuple(DEFAULT_WAITS if waits is None else waits)
+        self.say = say or print
         self.calls = 0
+        self.retries = 0
+
+    def attempt(self, url, fn):
+        """fn(), tried again after a dropped, cut, stalled or busy
+        connection - and ONLY then (see transient). Each new try is
+        said, so a slow run reads as slow and not as stuck."""
+        host = urllib.parse.urlsplit(str(url)).hostname or str(url)
+        waited = 0.0
+        for i in range(1, self.tries + 1):
+            try:
+                return fn()
+            except Exception as e:
+                if not transient(e):
+                    raise
+                what = what_happened(e, self.timeout)
+                if i == self.tries:
+                    raise NetError(
+                        f"{host} {what} - {self.tries} tries in a row for "
+                        f"{url_filename(url)}, with {waited:g} s of waiting "
+                        "between them. That is the server being busy or "
+                        "down, not EquiPop: try again later.") from e
+                wait = (self.waits[min(i - 1, len(self.waits) - 1)]
+                        if self.waits else 0)
+                self.retries += 1
+                self.say(f"[net] {host} {what} ({url_filename(url)}) - "
+                         f"trying again in {wait:g} s, try {i + 1} of "
+                         f"{self.tries}.")
+                if wait:
+                    time.sleep(wait)
+                waited += wait
 
     def _urlopen(self, req):                          # pragma: no cover
         import urllib.request
@@ -246,23 +363,35 @@ class Net:
                            f"{type(e).__name__}: {e}") from e
 
     def get_json(self, url):
-        with self.open(url) as r:
-            body = r.read()
+        def once():
+            with self.open(url) as r:
+                return r.read()
+        body = self.attempt(url, once)
         try:
             return json.loads(body.decode("utf-8"))
         except Exception as e:
             raise NetError(f"{url} did not answer with readable JSON "
                            f"({type(e).__name__})") from e
 
+    def get_text(self, url, limit=64 * 1024):
+        """A small text file - a .md5 sidecar - capped at `limit`."""
+        def once():
+            with self.open(url) as r:
+                return r.read(limit)
+        return self.attempt(url, once).decode("utf-8", "replace")
+
     def head(self, url):
         """(status, headers). A 404 is an ANSWER here, not an error -
         whether a dated extract exists is asked exactly this way."""
         import urllib.error
-        try:
+
+        def once():
             with self.open(url, method="HEAD") as r:
                 return getattr(r, "status", 200), self._headers(r)
+        try:
+            return self.attempt(url, once)
         except NetError as e:
-            cause = e.__cause__
+            cause = _root(e)
             if isinstance(cause, urllib.error.HTTPError):
                 return cause.code, {}
             raise
@@ -274,19 +403,23 @@ class Net:
         hdr = {"Range": f"bytes={lo}-{hi}"}
         if validator:
             hdr["If-Range"] = validator
-        with self.open(url, headers=hdr) as r:
-            st = getattr(r, "status", 200)
-            if st != 206:
-                raise NetError(
-                    f"{url} did not send part of the file (status {st}). "
-                    + ("It has been REPLACED since it was looked at - "
-                       "look again." if validator and st == 200 else
-                       "The server does not offer partial downloads."))
-            body = r.read(hi - lo + 1)
-        if len(body) != hi - lo + 1:
-            raise NetError(f"{url} sent {len(body)} bytes of a "
-                           f"{hi - lo + 1}-byte range")
-        return body
+
+        def once():
+            with self.open(url, headers=hdr) as r:
+                st = getattr(r, "status", 200)
+                if st != 206:
+                    raise NetError(
+                        f"{url} did not send part of the file (status "
+                        f"{st}). "
+                        + ("It has been REPLACED since it was looked at - "
+                           "look again." if validator and st == 200 else
+                           "The server does not offer partial downloads."))
+                body = r.read(hi - lo + 1)
+            if len(body) != hi - lo + 1:
+                raise Truncated(f"{url} sent {len(body)} bytes of a "
+                                f"{hi - lo + 1}-byte range")
+            return body
+        return self.attempt(url, once)
 
 
 def size_of(headers):
@@ -667,6 +800,7 @@ def browse_worldpop(theme, places, years=None, resolution="1km", *,
                  estimated from it, which the size_is column says.
     """
     net = net or Net()
+    net.say = say
     if theme not in WP_THEMES:
         raise FetchError(
             f"No WorldPop theme {theme!r}. Choose one of: "
@@ -1097,6 +1231,7 @@ def browse_geofabrik(places, layers=("buildings",), years=None, *,
     comparison between two classifications.
     """
     net = net or Net()
+    net.say = say
     yrs = parse_years(years)
     want = gf_layers(layers)
     gf = GeofabrikCatalogue(net, say)

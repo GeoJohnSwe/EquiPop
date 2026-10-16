@@ -1,6 +1,10 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.58.0, 15 October 2026.**
+**Last updated: 1.58.1, 16 October 2026.**
+*Reviewed at 1.58.1: NOTHING IN THIS FILE CHANGES. A fetch now waits
+out a slow server instead of stopping - which matters in a computer
+lab, where thirty students asking WorldPop at once is exactly when it
+is slow.*
 *Reviewed at 1.58.0: ONE THING CHANGES FOR A COURSE. Getting data is
 now a selection, not a typing exercise: 5a/5b list what exists as a
 table, students select rows with an expression, 5c fetches them. A
