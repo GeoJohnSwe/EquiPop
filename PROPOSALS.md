@@ -1,6 +1,11 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.59.1, 16 October 2026.**
+**Last updated: 1.59.2, 17 October 2026.**
+*Reviewed at 1.59.2: NO CLAIM CHANGES; ONE MAY BE ADDED SOON. An
+outside review ran the full test suite on Windows for the first time
+(1,905 passed, 9 failed on 1.59.1; all 9 fixed). Once John's own
+Windows run of 1.59.2 is back clean, "tested on Linux and Windows" can
+be said. Not before.*
 *Reviewed at 1.59.1: ONE LIMIT LIFTS. Fetching in Pro has now run on a
 real machine (John, 16 October), so "tested in simulation" can go. The
 lattice join in Pro, by contrast, has only now become reachable - claim

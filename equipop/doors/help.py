@@ -542,11 +542,15 @@ HELP = {
     "weight": "WHICH PEOPLE DEFINE THE NEIGHBOURHOOD - k is a number "
               "of them. With one population raster, leave it blank and "
               "EquiPop will say which it used. A folder of age and sex "
-              "cohorts has no single column of people, so name the sum: "
-              "'total' (the t_ files - everybody) or 'sexes' (f_ plus "
-              "m_ - everybody; the way to say it for a folder fetched "
-              "without the t_ files, as 5a fetches by default). Or name "
-              "one column to make that cohort the population. Whatever "
+              "cohorts has no single column of people; LEFT BLANK, it "
+              "is taken as EVERYBODY when the folder settles who that "
+              "is - every age band for women and men of one year (f_ "
+              "plus m_, as 5a fetches by default), or every band of the "
+              "t_ files - and the log says which. Any other folder is "
+              "refused, with the reason, rather than guessed at. To "
+              "choose, name the sum: 'total' (the t_ files - everybody) "
+              "or 'sexes' (f_ plus m_ - everybody). Or name one column "
+              "to make that cohort the population. Whatever "
               "it holds, k counts: if the column holds households, k is "
               "households. Leave k blank as well and no population is "
               "needed at all - you get the point table.",
@@ -791,8 +795,12 @@ HELP = {
             "Geofabrik is refused.",
     "max_mb": "A SAFETY LIMIT, in MB: a selection larger than this is "
               "refused before anything is downloaded, so 'select all' "
-              "on a 100 m table cannot quietly start a 50 GB fetch. 0 "
-              "means no limit.",
+              "on a 100 m table cannot quietly start a 50 GB fetch. The "
+              "bytes are also counted as they arrive, so a file of "
+              "unknown size, or one that has grown since the catalogue "
+              "was made, stops the fetch at the limit; the file it "
+              "stops in is not kept, and those before it are. 0 means "
+              "no limit.",
     "keep_pbf": "KEEP THE OpenStreetMap .pbf after its layers have been "
                 "written to GeoPackages. Ticked by default: it is the "
                 "publisher's file, checked against its .md5, and more "
@@ -952,7 +960,10 @@ USAGE = {
         "you need.",
     "FetchSelected":
         "Choose the catalogue table and {selectionrule}. The size "
-        "limit in box 2 catches a selection larger than you meant. Point it at a folder; machine 3 "
+        "limit in box 2 catches a selection larger than you meant. "
+        "Cancel stops a download part-way: that file is not kept, the "
+        "ones before it are, and running again continues. Point it at "
+        "a folder; machine 3 "
         "and the inventory read that folder afterwards. To repeat a "
         "fetch, load equipop_recipe.csv from the folder as a layer and "
         "run this on it. A .pbf row needs GDAL's Python bindings, which "

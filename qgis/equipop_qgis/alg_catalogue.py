@@ -258,8 +258,8 @@ class FetchSelected(EquipopAlgorithm):
                     "equipop_recipe.csv) - tick 'Selected features only'",
             [QgsProcessing.TypeVector]))
         self.add(QgsProcessingParameterNumber(
-            "max_mb", "2. Stop before downloading if the selection is "
-                      "larger than this many MB (0: no limit)",
+            "max_mb", "2. Size limit in MB - stop if the selection, or "
+                      "what arrives, is larger (0: no limit)",
             type=QgsProcessingParameterNumber.Double, defaultValue=5000,
             minValue=0))
         self.add(QgsProcessingParameterBoolean(
@@ -302,7 +302,9 @@ class FetchSelected(EquipopAlgorithm):
         max_mb = self.parameterAsDouble(parameters, "max_mb", context)
 
         def say(line):
-            # CANCEL BETWEEN FILES. run_fetch records what has arrived
+            # CANCEL BETWEEN STEPS (a .pbf being written out, say);
+            # inside a download it is `cancelled` below, asked after
+            # every 1 MiB (v1.59.2). run_fetch records what has arrived
             # before it re-raises, so a cancelled job leaves a manifest
             # that a later run recognises rather than refuses.
             if feedback.isCanceled():
@@ -313,7 +315,8 @@ class FetchSelected(EquipopAlgorithm):
         try:
             fetch_rows(rows, folder, say=say, max_mb=max_mb or None,
                        keep_pbf=self.parameterAsBool(parameters, "keep_pbf",
-                                                     context))
+                                                     context),
+                       cancelled=feedback.isCanceled)
         except FetchError as e:
             raise QgsProcessingException(str(e))
         return {"FOLDER": folder}

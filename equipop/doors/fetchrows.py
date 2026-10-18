@@ -44,6 +44,7 @@ import os
 import struct
 import zlib
 
+from ..atomic import swap_in
 from .catalogue import (COLUMN_NAMES, Net, NetError, Truncated, check_url,
                         coerce_row,
                         date_of, layers_in_zip, parse_rule,
@@ -67,16 +68,23 @@ def download(net, url, dest):
     there took ten seconds). A file whose bytes are wrong is never
     tried again; only one whose connection failed."""
     tmp = dest + ".part"
+    name = os.path.basename(dest)
 
     def once():
         sha, md5, n = (hashlib.sha256(), hashlib.md5(usedforsecurity=False),
                        0)
         with net.open(url) as r, open(tmp, "wb") as f:
             declared = size_of(Net._headers(r))
+            if declared is not None:
+                # THE SIZE THE SERVER GIVES NOW, before a byte is read:
+                # a 'latest' extract can have grown since the catalogue
+                # was made, and a file of unknown size is known here.
+                net.block(name, declared, declared=True)
             while True:
                 b = r.read(1 << 20)
                 if not b:
                     break
+                net.block(name, n + len(b))
                 sha.update(b)
                 md5.update(b)
                 f.write(b)
@@ -88,11 +96,12 @@ def download(net, url, dest):
         return n, sha.hexdigest(), md5.hexdigest()
     try:
         got = net.attempt(url, once)
+        swap_in(tmp, dest)
+        net.done(got[0])
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
-    os.replace(tmp, dest)
     return got
 
 
@@ -111,6 +120,10 @@ def extract_member(net, zip_url, info, validator, dest):
         raise FetchError(
             f"{info.filename} is packed with method {info.compress_type}, "
             "which EquiPop does not unpack. Fetch the whole zip instead.")
+    # The packed size is what crosses the network, and the zip's own
+    # table of contents has already said what it is: checked before
+    # anything of this member is asked for.
+    net.block(os.path.basename(dest), info.compress_size, declared=True)
     head = net.get_range(zip_url, info.header_offset,
                          info.header_offset + 29, validator)
     if head[:4] != b"PK\x03\x04":
@@ -119,6 +132,7 @@ def extract_member(net, zip_url, info, validator, dest):
     n_name, n_extra = struct.unpack("<HH", head[26:30])
     start = info.header_offset + 30 + n_name + n_extra
     tmp = dest + ".part"
+    name = os.path.basename(dest)
 
     def once():
         sha, md5 = hashlib.sha256(), hashlib.md5(usedforsecurity=False)
@@ -151,6 +165,7 @@ def extract_member(net, zip_url, info, validator, dest):
                             b = r.read(1 << 20)
                             if not b:
                                 break
+                            net.block(name, got + len(b))
                             got += len(b)
                             put(dec.decompress(b) if dec else b)
                         if dec:
@@ -174,11 +189,12 @@ def extract_member(net, zip_url, info, validator, dest):
                 "verified against the zip's own CRC-32")
     try:
         got = net.attempt(zip_url, once)
+        swap_in(tmp, dest)
+        net.done(info.compress_size)
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
-    os.replace(tmp, dest)
     return got
 
 
@@ -327,20 +343,30 @@ def _relabel(r, date, say, told):
 
 
 def fetch_rows(rows, folder, *, net=None, say=print, keep_pbf=True,
-               max_mb=None, converter=None):
+               max_mb=None, converter=None, cancelled=None):
     """Download these catalogue rows into `folder`.
 
     rows      catalogue rows (dicts, or anything with those keys)
     keep_pbf  keep the .osm.pbf after its layers are written out. On by
               default: it is the publisher's file, checked against its
               .md5, and every layer can be taken from it again.
-    max_mb    refuse, before downloading, a selection larger than this
+    max_mb    the size limit. A selection whose listed sizes add up to
+              more is refused before anything is downloaded; and since
+              v1.59.2 the bytes are counted AS THEY ARRIVE, so files of
+              unknown size, or grown since the catalogue was made, stop
+              the fetch at the limit too.
     converter for .pbf rows; found automatically (find_converter)
+    cancelled a callable returning True once the person has pressed
+              Cancel - asked after every 1 MiB, so a large file stops
+              part-way and is not kept
 
     Returns {"manifest", "downloaded", "derived", "recipe"}.
     """
     net = net or Net()
     net.say = say
+    net.cancelled = cancelled
+    net.limit = float(max_mb) * 1e6 if max_mb else None
+    net.spent = 0
     rows = [coerce_row(r) for r in rows]
     check_rows(rows)
     # the same row twice - two catalogues stacked - is one row
@@ -358,6 +384,11 @@ def fetch_rows(rows, folder, *, net=None, say=print, keep_pbf=True,
     mb, n_dl, est = total_mb(rows)
     say(f"[fetch] {len(rows)} row(s): {n_dl} download(s), "
         f"{'about ' if est else ''}{mb:,.1f} MB.")
+    unsized = sum(1 for r in rows if r.get("size_mb") is None)
+    if unsized and max_mb:
+        say(f"[fetch] {unsized} row(s) have no size in the catalogue, so "
+            f"the limit of {float(max_mb):,.0f} MB is checked as the "
+            "bytes arrive.")
     if max_mb and mb > float(max_mb):
         raise FetchError(
             f"That is {mb:,.0f} MB, above the limit of {float(max_mb):,.0f} "
@@ -490,12 +521,19 @@ def fetch_rows(rows, folder, *, net=None, say=print, keep_pbf=True,
     for name, url, todo in jobs:
         src = os.path.join(folder, name)
         for r in todo:
-            d = _write_layer(src, name, url, r, folder, converter, say)
+            d, lines = _write_layer(src, name, url, r, folder, converter)
             # RECORDED AS SOON AS IT EXISTS, like every download: a
             # failure on the third layer must not leave the first two
             # on disk with no record of where they came from.
+            # v1.59.2: and recorded BEFORE anything is said about it.
+            # `say` is where a door hears Cancel, and it was called
+            # inside _write_layer, between the write and the record - so
+            # a Cancel then left a GeoPackage on disk that no manifest
+            # named, which the next run refused as foreign.
             _record(folder, [d])
             derived.append(d)
+            for line in lines:
+                say(line)
         if not keep_pbf:
             os.remove(src)
             _mark_removed(folder, name)
@@ -529,7 +567,9 @@ def _have(folder, known, name):
                 and sha256_of(p) == rec["sha256"])
 
 
-def _write_layer(src, src_name, url, r, folder, converter, say):
+def _write_layer(src, src_name, url, r, folder, converter):
+    """Write one layer of a .pbf to its GeoPackage. Returns (record,
+    lines to say) - said by the caller only once it is recorded."""
     out = os.path.join(folder, r["file"])
     if os.path.exists(out):
         raise FetchError(
@@ -542,20 +582,23 @@ def _write_layer(src, src_name, url, r, folder, converter, say):
         os.remove(tmp)
     try:
         n = converter.convert(src, osm_layer, where, tmp, r["layer"])
-        os.replace(tmp, out)
+        swap_in(tmp, out)
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
-    say(f"[fetch] {r['file']}: {n:,} features, {r['layer']} from {src_name}")
+    lines = [f"[fetch] {r['file']}: {n:,} features, {r['layer']} from "
+             f"{src_name}"]
     if n == 0:
-        say(f"[fetch]   NO {r['layer']} at all in {r['place']} on "
+        lines.append(
+            f"[fetch]   NO {r['layer']} at all in {r['place']} on "
             f"{r['date']} by the rule '{r['inside']}' - check the rule "
             "before reading this as an empty place.")
-    return {"name": r["file"], "url": url, "derived_from": src_name,
-            "rule": r["inside"], "features": n,
-            "written_by": converter.name, "bytes": os.path.getsize(out),
-            "sha256": sha256_of(out), "reused": False, **_provenance(r)}
+    return ({"name": r["file"], "url": url, "derived_from": src_name,
+             "rule": r["inside"], "features": n,
+             "written_by": converter.name, "bytes": os.path.getsize(out),
+             "sha256": sha256_of(out), "reused": False, **_provenance(r)},
+            lines)
 
 
 def _save(folder, man):
@@ -564,7 +607,7 @@ def _save(folder, man):
         json.dump(man, f, indent=2, ensure_ascii=False)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, os.path.join(folder, MANIFEST))
+    swap_in(tmp, os.path.join(folder, MANIFEST))
 
 
 def _record(folder, entries):

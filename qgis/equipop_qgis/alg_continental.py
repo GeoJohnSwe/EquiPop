@@ -96,7 +96,8 @@ class ContinentalRasters(EquipopAlgorithm):
             optional=True), advanced=True)
         self.add(QgsProcessingParameterString(
             "weight", "2b. Which people define the neighbourhood - "
-                      "'total', 'sexes', or one column name",
+                      "blank = everybody, when the folder settles who "
+                      "that is; or 'total', 'sexes', or one column name",
             optional=True), advanced=True)
         self.add(QgsProcessingParameterBoolean(
             "sumcohorts", "2c. Add all cohorts into one population",

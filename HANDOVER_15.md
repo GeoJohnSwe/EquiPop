@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.59.1 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0z first, then 0y back to 0b
+*Amended through 1.59.2 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0aa first, then 0z back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,80 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0aa. 1.59.2 - AN OUTSIDE REVIEW RAN THE SUITE ON WINDOWS
+
+The external review of 1.59.1 did what no release had done: it ran the
+whole suite on Windows, the only system real ArcGIS Pro runs on, and
+got 9 failures that Linux could not show. Every finding was reproduced
+here before it was fixed. The one Windows-only fault, the lock itself,
+cannot be produced on Linux, so os.replace was made to refuse the way
+Windows does.
+- **Windows refuses to replace a file for a moment** while a virus
+  scanner or OneDrive looks at it. One such refusal on the fetch
+  manifest stopped a fetch. Every swap (seven in machine 5, three
+  more in bigrun and meta) now goes through `equipop/atomic.swap_in`,
+  which tries again for about four seconds and then says what usually
+  holds a file. Behind it was a worse fault: when the manifest could
+  not be written at all, run_fetch said the files "listed above" had no
+  provenance (the unrecorded one had never been listed), then that what
+  arrived "IS recorded" - and the retry refused that very file. It now
+  names the unrecorded file and says what to do. A file that has
+  arrived but is not yet checked (its .md5 being fetched when the run
+  stops) is removed, so a retry never meets it.
+- **8 of the 9 failures were the simulator**, not the product:
+  CreateTable filed tables under os.path.join, which on Windows
+  is `work.gdb\wp`, and every look-up used `work.gdb/wp`. One
+  normaliser, `table_key`, for every table path in and out.
+- **The size limit added up the sizes the catalogue knew**, so files
+  of unknown size passed any limit (all 40 of Burundi's against
+  0.0001 MB). Bytes are now counted as they arrive (Net.block, after
+  every 1 MiB, and once against the size the server declares), and a
+  retried file counts once.
+- **Cancel was heard between files only.** `cancelled=` is passed by
+  both doors and asked after every 1 MiB, so a 1.9 GB .pbf stops
+  part-way and is not kept.
+- **A redirect was followed wherever it pointed.** safe_opener checks
+  the new address as check_url checks the first, and refuses https to
+  http. WorldPop and Geofabrik answer directly today. If that changes,
+  the refusal names the address.
+- **".gdb" as a substring** in three Pro checks: `data.gdb_backup` was
+  a geodatabase. `_in_container` tests the PARTS of the path.
+- The `C:\Data` escape in make_release_zip.py, plus a test that compiles
+  every source file with warnings as errors.
+
+**John's open question, answered with his go-ahead: a blank population
+box now means EVERYBODY when the folder settles who that is.**
+`rasterfolder.infer_everybody`:
+- `sexes` when the year has every age band for women and men, with
+  the same bands for both;
+- `total` when it has every t_ band;
+- refused otherwise, with the reason.
+
+"Every band" runs from under-one to the open top band: 90+ for R2025A,
+which the file names say, and 80+ for the older series. The review's
+rule refused a folder holding both complete sets as "competing". It is
+not: t_ is f_ + m_. That was changed, and is said in the log. The
+choice is printed and recorded in the returned manifest as
+`reference_population`. The tiled run's own manifest does not carry it
+yet.
+
+**Found on the way, twice:**
+- Pro's machine 3 caught ContinentalError only. The loader refuses with
+  ValueError, which is why John's 16 October refusal arrived as a
+  traceback. Caught now, as QGIS has caught it since 1.43.
+- The break-check found its own test outgrown. Once Cancel was heard
+  inside downloads, the old QGIS cancel test passed with the door's
+  between-steps check removed. A test written for that check alone
+  (Cancel while .pbf layers are written out) then showed a real gap.
+  Each layer was SAID before it was RECORDED, and `say` is where a
+  door hears Cancel. So a Cancel at that moment left a GeoPackage that
+  no manifest named, and the next run refused it as foreign. Now each
+  layer is recorded first.
+
+**For John:** `tools/windows_check.py` runs the suite on his machine
+and writes a report to send back. That is the Windows job the review
+asked for, without CI, which this project does not have.
 
 ## 0z. 1.59.1 - JOHN'S FIRST PRO RUN, AND A DRIFT IT UNCOVERED
 
@@ -52,6 +126,7 @@ OK). Two were real:
 weight is given and the folder's columns are an age-sex partition? It
 would remove the refusal for the common case, but it changes an analytical
 default that was refused deliberately, so it was not done unasked.
+*(Decided 17 October: yes, guarded - see 0aa.)*
 
 ## 0y. 1.59.0 - FETCHING IN PRO, AND WHAT THE LIVE CHECK SETTLED
 

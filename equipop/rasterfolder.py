@@ -195,6 +195,107 @@ def totals_overlap_parts(labels) -> list:
     return sorted(clash)
 
 
+# --- EVERYBODY, WHEN THE FOLDER SETTLES WHO THAT IS -------------------
+# v1.59.2. John, after his first Pro run: should a blank population box
+# simply mean everybody? Not always - k counts SOME population, and he
+# ruled long ago that the tool must not guess which. But for a folder
+# holding every age band of an age-and-sex set there is nothing to
+# guess: everybody is the only population the folder describes in
+# full. So a blank box takes it THEN, and only then, and says so; any
+# folder that leaves room for doubt is refused as before. (Rule from
+# the external review of 1.59.1, with one change: when both the f_/m_
+# and the t_ sets are complete, they are the same people counted two
+# ways, not two competing populations, so f_ plus m_ is taken.)
+
+#: WorldPop's open-ended top band: 90 and over in R2025A, 80 and over
+#: in the 2000-2020 series.
+TOP_BANDS = (80, 90)
+
+
+def _cohort(label):
+    """('f', 15, '2020') for the label f_15_2020; None for anything else."""
+    parts = str(label).split("_")
+    if (len(parts) == 3 and parts[0] in ("f", "m", "t")
+            and parts[1].isdigit() and parts[2].isdigit()
+            and len(parts[2]) == 4):
+        return parts[0], int(parts[1]), parts[2]
+    return None
+
+
+def _bands_to(top):
+    return [0, 1] + list(range(5, top + 1, 5))
+
+
+def _missing_bands(ages, top):
+    return [a for a in _bands_to(top) if a not in ages]
+
+
+def infer_everybody(value_cols, year=None, stems=()):
+    """Is there ONE unambiguous 'everybody' in these columns?
+
+    Returns ('sexes' | 'total', why) or (None, why not). 'sexes' when
+    the year has every age band for women and for men, the same bands
+    for both; else 'total' when it has every band of the t_ files.
+    Refused: a column that is not an age-and-sex layer, more than one
+    year with none chosen, a gap in the bands, or women and men with
+    different bands. "Every band" means from under-one to the open top
+    band - 90+ for an R2025A folder, which its file names say.
+    """
+    parsed = {c: _cohort(c) for c in value_cols}
+    other = [c for c, v in parsed.items() if v is None]
+    if other:
+        return None, (f"'{other[0]}' is not an age-and-sex layer, so "
+                      "'everybody' could mean more than one thing here")
+    years = sorted({v[2] for v in parsed.values()})
+    if year is None and len(years) > 1:
+        return None, (f"the folder holds {len(years)} years "
+                      f"({', '.join(years)}), and everybody summed over "
+                      "them would count each person once per year")
+    y = year if year is not None else years[0]
+    ages = {s: {v[1] for v in parsed.values() if v[0] == s and v[2] == y}
+            for s in ("f", "m", "t")}
+    r2025a = any("r2025a" in str(st).lower() for st in stems)
+    tops = (90,) if r2025a else TOP_BANDS
+
+    def full(a):
+        return bool(a) and max(a) in tops and \
+            sorted(a) == _bands_to(max(a))
+
+    if full(ages["f"]) and ages["f"] == ages["m"]:
+        top = max(ages["f"])
+        return "sexes", (
+            f"the folder holds every age band for women and for men in "
+            f"{y} (0 to {top}+), so everybody is the f_ and m_ files "
+            "summed" + (" - the t_ files hold the same people counted "
+                        "the other way, and are not added as well"
+                        if ages["t"] else ""))
+    if full(ages["t"]):
+        return "total", (
+            f"the folder holds every age band of the t_ files (women and "
+            f"men together) in {y} (0 to {max(ages['t'])}+), so everybody "
+            "is those summed")
+    # why not, in the folder's own terms
+    top = max(tops) if r2025a else (
+        90 if any(max(a or {0}) > 80 for a in ages.values()) else 80)
+    bits = []
+    for s, word in (("f", "women (f_)"), ("m", "men (m_)"),
+                    ("t", "both sexes (t_)")):
+        if ages[s]:
+            gone = _missing_bands(ages[s], top)
+            if gone:
+                bits.append(f"{word} lack the band"
+                            f"{'s' if len(gone) > 1 else ''} "
+                            f"{', '.join(map(str, gone[:6]))}"
+                            f"{' ...' if len(gone) > 6 else ''}")
+    if ages["f"] and ages["m"] and ages["f"] != ages["m"] and not bits:
+        bits.append("women and men do not have the same bands")
+    if not ages["f"] or not ages["m"]:
+        if not ages["t"]:
+            bits.append("there are not both women's and men's files")
+    return None, ("not every age band is here for " + y + ": "
+                  + "; ".join(bits or ["the bands are incomplete"]))
+
+
 def parse_name(stem: str, convention: str | None = None,
                pattern: str | None = None) -> dict:
     """Filename stem -> fields. Never raises; degrades to the stem.
@@ -700,6 +801,21 @@ def folder_to_cells(folders, weight: str | None = None,
     derived = tuple(compose or {})
     value_cols = measurement_columns(pts, derived=derived)
 
+    asked = weight
+    automatic = cannot = None
+    if weight is None and len(value_cols) > 1:
+        word, why = infer_everybody(
+            value_cols, year=normalise_year(kw.get("year")),
+            stems=list((man.get("files") or {})))
+        if word:
+            automatic, weight = why, word
+            print(f"[folder] No population was named, so EVERYBODY - "
+                  f"weight='{word}': {why}. To count another population, "
+                  "name it in 'Which people define the neighbourhood'.")
+        else:
+            cannot = why
+    picked_for_record = None
+
     # WEIGHT MAY BE A WORD (John, on his real download): "it asks for
     # the population, but all are populations". With sixty cohorts
     # there is no single column holding the people - the population is
@@ -756,6 +872,7 @@ def folder_to_cells(folders, weight: str | None = None,
         pts["_people"] = pts[picked].sum(axis=1)
         print(f"[folder] weight '{weight}' = the sum of {len(picked)} "
               f"columns, {pts['_people'].sum():,.0f} people")
+        picked_for_record = (weight.lower(), list(picked))
         weight = "_people"
     elif weight is None:
         if len(value_cols) != 1:
@@ -784,7 +901,10 @@ def folder_to_cells(folders, weight: str | None = None,
                 "Which people should define the neighbourhood? This "
                 f"folder holds {len(value_cols)} population columns and "
                 "k is a number of PEOPLE, so something has to say which "
-                "ones. In QGIS or ArcGIS Pro, type the word into the box "
+                "ones"
+                + (f" - and it cannot be taken as everybody, because "
+                   f"{cannot}" if cannot else "")
+                + ". In QGIS or ArcGIS Pro, type the word into the box "
                 "'Which people define the neighbourhood' (under "
                 "Advanced); from Python, pass weight=.\n"
                 + "\n".join(opts) + "\n"
@@ -889,6 +1009,15 @@ def folder_to_cells(folders, weight: str | None = None,
         "name": adv.name if adv is not None else str(_src),
         "warnings": list(adv.warnings) if adv is not None else []}
     man["weight_column"] = weight
+    # WHO k COUNTED, in the record of the run as well as in its log
+    # (v1.59.2): above all when nobody named them.
+    word, cols = picked_for_record or (weight, [weight])
+    man["reference_population"] = {
+        "weight": word, "columns": cols,
+        "chosen": ("automatically" if automatic else
+                   "as asked" if asked is not None else
+                   "the only population column"),
+        "why": automatic}
     print(f"[folder] {len(pts):,} points -> {len(cd):,} cells of "
           f"{unit_size:g} m, holding {cd.n.sum():,.1f} people")
     return cd, man

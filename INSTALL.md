@@ -61,11 +61,11 @@ route in section 2.
    Must print a path under `C:\OSGeo4W\`.
 3. Install:
    ```
-   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.59.1-py3-none-any.whl"
+   python -m pip install --user --no-deps --force-reinstall "C:\path\to\equipop-1.59.2-py3-none-any.whl"
    ```
 4. Verify (see below), then **restart QGIS**.
 5. Plugin: **Plugins → Manage and Install Plugins → Install from ZIP**,
-   choose `equipop_qgis-1.59.1.zip`, then restart QGIS again.
+   choose `equipop_qgis-1.59.2.zip`, then restart QGIS again.
 
 **pyproj is REQUIRED and QGIS does not ship it.** Install it in the
 same shell, before verifying:
@@ -95,7 +95,7 @@ before anything is downloaded.
 is not loaded, so nothing is memory-mapped. Prefix with `shell`:
 
 ```
-shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.59.1-py3-none-any.whl
+shell C:\Users\...\python.exe -m pip install --no-deps --force-reinstall C:\path\to\equipop-1.59.2-py3-none-any.whl
 shell C:\Users\...\python.exe -m pip install pyproj
 ```
 
@@ -126,7 +126,7 @@ py = os.path.join(sys.exec_prefix, "python.exe")
 env = dict(os.environ, PYTHONNOUSERSITE="1")
 subprocess.run([py, "-m", "pip", "install", "--no-deps",
                 "--force-reinstall",
-                r"C:\path\to\equipop-1.59.1-py3-none-any.whl"], env=env)
+                r"C:\path\to\equipop-1.59.2-py3-none-any.whl"], env=env)
 ```
 
 **Then pyproj, which Pro does not ship and `--no-deps` skipped.** Same
@@ -185,6 +185,21 @@ reported a traceback and looked broken.
 tree's 1.40.7 were different code, which cost a full round trip.
 `rasterfolder` importing is what proves the local build arrived; if it
 raises `ModuleNotFoundError`, pip found an older release instead.
+
+### The whole test suite, on Windows (v1.59.2)
+
+Extract `equipop_working_tree.zip` (it is in the release archive). In
+the Anaconda Prompt, go into the `EquiPop-<version>` folder it makes:
+
+```
+python tools\windows_check.py
+```
+
+It tests the code in that folder (not an installed copy), names any
+package the tests need that is missing and the line that installs it,
+and at the end names a report file to send back. Real ArcGIS Pro runs
+only on Windows, and the first outside run of the suite there (1.59.1)
+found failures Linux could not show.
 
 ---
 

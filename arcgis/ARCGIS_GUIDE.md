@@ -129,7 +129,14 @@ as a table in memory - one row per file or layer, with its size, date
 and licence - and downloads nothing. Open the table, select the rows
 you want (Select By Attributes, or by hand), and run 5c on it: Pro
 passes only the selected rows to a tool, and every row when none is
-selected, which the size limit in 5c's box 2 is there to catch.
+selected, which the size limit in 5c's box 2 is there to catch. Since
+1.59.2 the limit also counts the bytes as they arrive, so it holds for
+files whose size the catalogue does not know, and Cancel stops a
+download part-way (the file it stops in is not kept).
+Then *Raster Data Curation* on the fetched folder: with the population
+box (under Advanced) left blank, a folder holding every age band of
+women and men for one year is taken as EVERYBODY, and the messages say
+so; any other folder asks you to choose.
 OpenStreetMap rows for PAST YEARS come as `.pbf` and need pyogrio in
 the Pro environment (`pip install pyogrio` in its Python Command
 Prompt); without it 5c refuses those rows before downloading anything.

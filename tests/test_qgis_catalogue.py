@@ -229,10 +229,12 @@ def test_5c_with_nothing_selected_says_how(web, tmp_path):
 
 
 def test_5c_stops_when_cancelled_and_keeps_the_record(web, tmp_path):
-    """Cancel between files: what arrived is recorded, the job marked
+    """Cancel during a fetch: what arrived is recorded, the job marked
     incomplete, and the message says a rerun continues.
 
-    BROKEN WITH: say() not checking isCanceled."""
+    BROKEN WITH: both of the door's cancel checks removed - say() not
+    asking isCanceled, and `cancelled` not passed (since v1.59.2 either
+    one alone stops this run, so neither alone can break it)."""
     _, df, _ = run(A.WorldPopCatalogue(), wp_theme=0, wp_places="Burundi",
                    wp_years="2020", wp_resolution=0)
     fb = QgsProcessingFeedback()
@@ -253,6 +255,69 @@ def test_5c_stops_when_cancelled_and_keeps_the_record(web, tmp_path):
     man = json.load(open(os.path.join(folder, "equipop_fetch.json")))
     assert man["fetches"][-1]["status"] == "incomplete"
     assert 0 < len(man["files"]) < 20
+
+
+def test_5c_cancel_stops_inside_a_large_file(web, tmp_path):
+    """v1.59.2: Cancel is heard INSIDE a download, not only between
+    files - the door hands feedback.isCanceled to the engine, which
+    asks it after every 1 MiB. The file it stops in is not kept.
+
+    BROKEN WITH: FetchSelected not passing `cancelled` to fetch_rows."""
+    _, df, _ = run(A.WorldPopCatalogue(), wp_theme=0, wp_places="Burundi",
+                   wp_years="2020", wp_resolution=0)
+    pick = df[(df["sex"] == "f") & (df["age_from"] == 0)]
+    url = pick["url"].iloc[0]
+    web.files[url]["body"] = fakeweb.tif_bytes(url, n=4 << 20)
+    web.files[url]["size"] = len(web.files[url]["body"])
+    folder = str(tmp_path / "f")
+    part = os.path.join(folder, pick["file"].iloc[0] + ".part")
+    fb = QgsProcessingFeedback()
+    fb.isCanceled = lambda: (os.path.exists(part)
+                             and os.path.getsize(part) >= 1 << 20)
+    alg = A.FetchSelected()
+    alg.initAlgorithm()
+    with pytest.raises(QgsProcessingException,
+                       match="Cancelled while fetching"):
+        alg.processAlgorithm({"rows": _selected(df, df.index.isin(
+            pick.index)), "FOLDER": folder, "max_mb": 0}, None, fb)
+    assert not os.path.exists(part)
+    assert not os.path.exists(part[:-len(".part")])
+
+
+def test_5c_cancel_while_layers_are_written_keeps_the_one_written(
+        web, tmp_path):
+    """Cancel while a .pbf's layers are being written out. No download
+    is streaming then, so it is the door's check between steps - in
+    say() - that must hear it. The layer already written is RECORDED
+    (until v1.59.2 it was said before it was recorded, so a Cancel then
+    left a GeoPackage no manifest named, and the next run refused it as
+    foreign); the next layer is not started; a rerun finishes the job.
+
+    BROKEN WITH: say() not checking isCanceled."""
+    import json
+    if fr.find_converter() is None:
+        pytest.skip("no GDAL OSM driver here")
+    _, df, _ = run(A.OsmCatalogue(), osm_places="bayern",
+                   osm_layers=[1, 3], osm_years="2020", osm_latest=False)
+    folder = str(tmp_path / "f")
+    done = lambda: [n for n in (os.listdir(folder) if os.path.isdir(folder)
+                                else []) if n.endswith(".gpkg")
+                    and ".partial." not in n]
+    fb = QgsProcessingFeedback()
+    fb.isCanceled = lambda: bool(done())
+    alg = A.FetchSelected()
+    alg.initAlgorithm()
+    every = _selected(df, df.index == df.index)
+    with pytest.raises(QgsProcessingException, match="Cancelled"):
+        alg.processAlgorithm({"rows": every, "FOLDER": folder,
+                              "max_mb": 0}, None, fb)
+    assert len(done()) == 1
+    with open(os.path.join(folder, "equipop_fetch.json")) as f:
+        names = {x["name"] for x in json.load(f)["files"]}
+    assert done()[0] in names
+    alg.processAlgorithm({"rows": every, "FOLDER": folder, "max_mb": 0},
+                         None, QgsProcessingFeedback())
+    assert sorted(done()) == sorted(df["file"])        # roads, pois, pois_a
 
 
 def test_the_plugin_lists_the_new_tools():

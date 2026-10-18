@@ -85,7 +85,8 @@ class FakeWeb:
     def make_trouble(self, url, *actions, method="GET"):
         """The next requests for `url` go wrong, one action each:
         'drop' (closed without an answer - John's 16 October run),
-        'reset', 'timeout', 'cut' (half the body, then the connection
+        'reset', 'timeout', 'nolength' (no Content-Length),
+        'cut' (half the body, then the connection
         dies), or an HTTP status such as 503."""
         self.trouble.setdefault((method, url), []).extend(actions)
 
@@ -138,6 +139,10 @@ class FakeWeb:
                                       f"bytes {lo}-{hi}/{f['size']}"}, part)
         if act == "cut":
             return Response(200, hdr, body[:len(body) // 2], cut=True)
+        if act == "nolength":
+            # a server that does not say how long the file is
+            return Response(200, {k: v for k, v in hdr.items()
+                                  if k != "Content-Length"}, body)
         return Response(200, hdr, body)
 
 

@@ -46,6 +46,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .atomic import swap_in
+
 
 # --- WHERE A RECORD GOES, decided once (BACKLOG 159) ------------------
 # A GIS door's "destination" is not a path. It may carry a layer -
@@ -344,7 +346,7 @@ class RunLog:
         tmp = self._path.with_name(self._path.name + f".tmp.{os.getpid()}")
         try:
             tmp.write_text(json.dumps(self.doc, indent=1, default=str))
-            os.replace(tmp, self._path)
+            swap_in(tmp, self._path)
         except Exception as exc:                      # pragma: no cover
             self._write_error = f"{exc.__class__.__name__}: {exc}"
             try:

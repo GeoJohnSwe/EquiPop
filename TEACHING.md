@@ -1,6 +1,12 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.59.1, 16 October 2026.**
+**Last updated: 1.59.2, 17 October 2026.**
+*Reviewed at 1.59.2: NOTHING IN THIS FILE CHANGES, ONE STEP FEWER. A
+class that fetches an age-and-sex folder with 5a and runs machine 3 on
+it no longer has to type 'sexes': a blank population box takes
+everybody when the folder has every age band, and says so. In a lab,
+Cancel now stops a large download at once, and box 2's limit holds
+even when a size is unknown.*
 *Reviewed at 1.59.1: NOTHING IN THIS FILE CHANGES, ONE THING GETS
 EASIER. In Pro, raster curation now gives the plain point table with a
 blank k, as QGIS always has - which is the first thing a class looks at.*

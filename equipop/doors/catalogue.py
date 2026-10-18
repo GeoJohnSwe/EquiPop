@@ -66,6 +66,7 @@ import zipfile
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
+from ..atomic import swap_in
 from .fetching import FetchError, url_filename
 
 # ------------------------------------------------------------ the table
@@ -124,7 +125,7 @@ def write_csv(rows, path):
         for r in rows:
             w.writerow({k: ("" if r.get(k) is None else r.get(k))
                         for k in COLUMN_NAMES})
-    os.replace(tmp, path)
+    swap_in(tmp, path)
     return path
 
 
@@ -212,6 +213,20 @@ class Truncated(NetError):
     part-way through, which is worth trying again."""
 
 
+class Cancelled(FetchError):
+    """The person pressed Cancel. Never tried again."""
+
+
+class OverLimit(FetchError):
+    """The fetch would pass the size limit it was given. Never tried
+    again: the next try would pass it too."""
+
+
+class Redirected(NetError):
+    """A provider sent EquiPop on to an address it may not fetch from.
+    Never followed, never tried again."""
+
+
 def _root(exc):
     """The failure underneath EquiPop's own wrapping."""
     for _ in range(10):
@@ -276,6 +291,46 @@ def what_happened(exc, timeout=None):
     return type(exc).__name__
 
 
+def _redirect_handler():
+    import urllib.request
+
+    class SafeRedirect(urllib.request.HTTPRedirectHandler):
+        """A REDIRECT IS CHECKED LIKE THE FIRST ADDRESS. v1.59.2,
+        external review of 1.59.1: urllib follows a redirect wherever
+        it points, so a row could pass check_url and the bytes still
+        come from somewhere else - a plain-http address, or another
+        site. WorldPop and Geofabrik answer directly today; this keeps
+        it so if that ever changes, and names the address if it does."""
+
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            old = urllib.parse.urlsplit(req.full_url)
+            new = urllib.parse.urlsplit(newurl)
+            if old.scheme == "https" and new.scheme != "https":
+                raise Redirected(
+                    f"{req.full_url} sent EquiPop on to {newurl}, which is "
+                    "not https. EquiPop does not leave a secure address "
+                    "for an insecure one, so nothing was downloaded.")
+            try:
+                check_url(newurl)
+            except FetchError:
+                raise Redirected(
+                    f"{req.full_url} sent EquiPop on to {newurl}, which is "
+                    f"not at {' or '.join(ALLOWED_DOMAINS)}, so EquiPop "
+                    "did not follow it and nothing was downloaded. If the "
+                    "provider has moved its files, EquiPop needs updating "
+                    "- please report this message.") from None
+            return super().redirect_request(req, fp, code, msg, headers,
+                                            newurl)
+    return SafeRedirect
+
+
+def safe_opener(*extra):
+    """urllib's opener with redirects checked (extra handlers are for
+    the tests, which stand in for the https transport)."""
+    import urllib.request
+    return urllib.request.build_opener(_redirect_handler()(), *extra)
+
+
 class Net:
     """THE ONE DOOR TO THE NETWORK, so every test can replace it.
 
@@ -295,6 +350,42 @@ class Net:
         self.say = say or print
         self.calls = 0
         self.retries = 0
+        # v1.59.2, external review of 1.59.1. Two things the streaming
+        # loops now ask after EVERY BLOCK (1 MiB), not only between
+        # files: has the person pressed Cancel, and has this fetch
+        # passed its size limit? Before, Cancel waited for the file to
+        # finish - all 1.9 GB of Sweden's .pbf - and the limit was a
+        # sum of the sizes the catalogue knew, so files of unknown size
+        # passed it whatever they turned out to be.
+        self.cancelled = None      # callable -> bool, set by fetch_rows
+        self.limit = None          # bytes, or None for no limit
+        self.spent = 0             # bytes of files finished in this fetch
+
+    def block(self, name, arrived, declared=False):
+        """Called as a file streams in (and once before, with the size
+        the server declares). `arrived` is that file's bytes so far.
+        Raises Cancelled or OverLimit - neither is ever retried."""
+        if self.cancelled is not None and self.cancelled():
+            raise Cancelled(
+                f"Cancelled while fetching {name}. {name} was not kept. "
+                "Every file that arrived before it is recorded in "
+                "equipop_fetch.json, so running again continues where "
+                "this stopped.")
+        if self.limit is not None and self.spent + arrived > self.limit:
+            mb = self.limit / 1e6
+            raise OverLimit(
+                f"This fetch would pass its limit of {mb:,.0f} MB at "
+                f"{name}: {self.spent / 1e6:,.1f} MB had arrived before it, "
+                + (f"and the server says {name} is {arrived / 1e6:,.1f} MB"
+                   if declared else
+                   f"and {name} had reached {arrived / 1e6:,.1f} MB")
+                + f". {name} was not kept; the files before it are kept "
+                "and recorded. Raise the limit, or select fewer rows - "
+                "files already here are not downloaded again.")
+
+    def done(self, n):
+        """A file finished: its bytes count against the limit."""
+        self.spent += int(n)
 
     def attempt(self, url, fn):
         """fn(), tried again after a dropped, cut, stalled or busy
@@ -326,8 +417,7 @@ class Net:
                 waited += wait
 
     def _urlopen(self, req):                          # pragma: no cover
-        import urllib.request
-        return urllib.request.urlopen(req, timeout=self.timeout)
+        return safe_opener().open(req, timeout=self.timeout)
 
     @staticmethod
     def _headers(resp):

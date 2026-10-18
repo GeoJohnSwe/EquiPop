@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.59.1"
+TOOLBOX_VERSION = "1.59.2"
 
 
 def _announce_version(messages):
@@ -1616,8 +1616,7 @@ def _set_aliases(where, names, kw, messages):
     same rule as the run record, BACKLOG 348). And it may never fail a
     run: the results are written and verified before this starts.
     """
-    low = str(where or "").lower()
-    if ".gdb" not in low and ".sde" not in low:
+    if not _in_container(where, (".gdb", ".sde")):
         messages.addMessage(
             "Field aliases - a description on each new field - need a "
             "geodatabase target; this one cannot keep them. What each "
@@ -2448,8 +2447,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                "the write succeeded and only this message was wrong. "
                "Writing to a FILE GEODATABASE avoids both the cache "
                "and the speed penalty."
-               if not str(where).lower().endswith((".gdb",))
-               and ".gdb" not in str(where).lower() else ""))
+               if not _in_container(where) else ""))
     else:
         messages.addMessage(
             f"EquiPop: {len(res)} fields written and VERIFIED present "
@@ -2656,6 +2654,19 @@ def _settings_rows(engine, ref_mode, treat_mode, weight_field,
 #: Container formats that LOOK like a folder to the file system but
 #: are presented as a database by ArcGIS Catalog.
 _CONTAINERS = (".gdb", ".gpkg", ".sde", ".mdb")
+
+
+def _in_container(path, exts=(".gdb",)):
+    """Is some PART of this path a geodatabase (or one of `exts`)?
+
+    v1.59.2, external review of 1.59.1: these checks asked whether
+    ".gdb" appeared ANYWHERE in the text, so a folder called
+    data.gdb_backup counted as a geodatabase - 5c refused it as a
+    download folder, and 5a wrote a dBASE table into it. A part of
+    the path must END in .gdb. Both separators, as in _sidecar_path.
+    """
+    parts = [q for q in re.split(r"[\\/]+", str(path or "")) if q]
+    return any(q.lower().endswith(tuple(exts)) for q in parts)
 
 
 def _sidecar_path(target, suffix):
@@ -4081,7 +4092,8 @@ class ContinentalRasters:
                  required=False, category="Advanced"),
               # worded as QGIS words it, and as the refusal names it
               _p("weight", "Which people define the neighbourhood - "
-                 "'total', 'sexes', or one column name", "GPString",
+                 "blank = everybody, when the folder settles who that "
+                 "is; or 'total', 'sexes', or one column name", "GPString",
                  required=False, category="Advanced"),
               _p("sumcohorts", "Add all cohorts into one population",
                  "GPBoolean", required=False, category="Advanced"),
@@ -4158,8 +4170,11 @@ class ContinentalRasters:
                 sum_cohorts=bool(pm["sumcohorts"].value),
                 pattern=_txt(pm, "pattern") or None,
                 out_dir=_txt(pm, "tiles") or None, channel=ch)
-        except ContinentalError as exc:
+        except (ContinentalError, ValueError) as exc:
             # The spine refuses in plain words. Do not add to them.
+            # ValueError too, as in QGIS since 1.43: the LOADER refuses
+            # that way, and John's first Pro run of machine 3 (16 Oct)
+            # showed its refusal as a Python traceback (v1.59.2).
             raise arcpy.ExecuteError(str(exc))
 
         if "points_table" in man:
@@ -4411,10 +4426,11 @@ def _catalogue_target_problem(target):
     clear, but it came only after OK)."""
     if not target or str(target).lower().endswith(".csv"):
         return None
-    folder, name = os.path.split(str(target))
-    low = folder.lower().replace("/", "\\")
-    if ".gdb" in low or low in ("memory", "in_memory") \
-            or low.endswith(".sde"):
+    parts = [q for q in re.split(r"[\\/]+", str(target)) if q]
+    name, folder = (parts[-1] if parts else ""), parts[:-1]
+    if _in_container("/".join(folder), (".gdb", ".sde")) or (
+            len(folder) == 1 and folder[0].lower() in ("memory",
+                                                       "in_memory")):
         return None
     return (f"Save the catalogue in a geodatabase or in memory "
             f"(memory\\{os.path.splitext(name)[0] or 'catalogue'}), or "
@@ -4436,7 +4452,7 @@ def _check_folder_box(parameters):
     not go into a geodatabase (John, 16 Oct)."""
     for p in parameters:
         if p.name == "FOLDER" and p.valueAsText and \
-                ".gdb" in p.valueAsText.lower():
+                _in_container(p.valueAsText):
             p.setErrorMessage(
                 "Choose a folder on disk, not a geodatabase: the fetched "
                 "files are GeoTIFFs and shapefiles, which a geodatabase "
@@ -4458,7 +4474,11 @@ def _write_catalogue(rows, target, messages):
         write_csv(rows, target)
         messages.addMessage(f"[out] {len(rows)} row(s) -> {target}")
         return target
-    folder, name = os.path.split(target)
+    # Split on EITHER separator, as Pro hands back both - the same
+    # answer on every system (v1.59.2).
+    whole = target.rstrip("\\/")
+    name = re.split(r"[\\/]", whole)[-1]
+    folder = whole[:len(whole) - len(name)].rstrip("\\/")
     why = _catalogue_target_problem(target)
     if why:
         raise arcpy.ExecuteError(why)
@@ -4658,8 +4678,8 @@ class FetchSelected:
             self.description = self.label
 
     def getParameterInfo(self):
-        lim = _p("max_mb", "2. Stop before downloading if the selection "
-                 "is larger than this many MB (0: no limit)", "GPDouble",
+        lim = _p("max_mb", "2. Size limit in MB - stop if the selection, "
+                 "or what arrives, is larger (0: no limit)", "GPDouble",
                  required=False)
         lim.value = 5000
         keep = _p("keep_pbf", "3. Keep the OpenStreetMap .pbf after its "
@@ -4715,9 +4735,15 @@ class FetchSelected:
                 f"NO ROWS ARE SELECTED, so all {len(rows)} are taken - the "
                 "size limit in box 2 is there for exactly this.")
 
-        def say(line):
+        def stop_asked():
             env = getattr(arcpy, "env", None)
-            if env is not None and getattr(env, "isCancelled", False):
+            return bool(env is not None
+                        and getattr(env, "isCancelled", False))
+
+        def say(line):
+            # Cancel between steps; inside a download, `cancelled`
+            # below asks after every 1 MiB (v1.59.2).
+            if stop_asked():
                 raise arcpy.ExecuteError(
                     "Cancelled. What had arrived is recorded in "
                     "equipop_fetch.json, so running again continues.")
@@ -4725,7 +4751,8 @@ class FetchSelected:
         max_mb = _num(pm, "max_mb", 5000)
         try:
             fr.fetch_rows(rows, folder, say=say, max_mb=max_mb or None,
-                          keep_pbf=_flag_or(pm, "keep_pbf", True))
+                          keep_pbf=_flag_or(pm, "keep_pbf", True),
+                          cancelled=stop_asked)
         except FetchError as exc:
             raise arcpy.ExecuteError(str(exc))
 

@@ -59,7 +59,7 @@ def run(pro, cls, **values):
 
 
 def table(pro, key):
-    return pro.state["created"][key]
+    return pro.state["created"][H.table_key(key)]
 
 
 # ======================================================== the shapes
@@ -245,6 +245,38 @@ def test_5c_stops_when_pro_cancels(pro, tmp_path):
     assert 0 < len(man["files"]) < 40
 
 
+def test_5c_cancel_stops_inside_a_large_file_in_pro(pro, tmp_path):
+    """v1.59.2: Pro's Cancel is heard inside a download too - the door
+    hands the engine a check of arcpy.env.isCancelled, asked after
+    every 1 MiB. The file it stops in is not kept.
+
+    BROKEN WITH: FetchSelected not passing `cancelled` to fetch_rows."""
+    run(pro, "WorldPopCatalogue", wp_places="Burundi", wp_years="2020",
+        CATALOGUE=f"{GDB}/wp")
+    t = table(pro, f"{GDB}/wp")
+    pick = t.index[(t["sex"] == "f") & (t["age_from"] == 0)]
+    pro.state.setdefault("selections", {})[f"{GDB}/wp"] = set(pick)
+    url, name = t.loc[pick[0], "url"], t.loc[pick[0], "file"]
+    pro.web.files[url]["body"] = fakeweb.tif_bytes(url, n=4 << 20)
+    pro.web.files[url]["size"] = len(pro.web.files[url]["body"])
+    folder = str(tmp_path / "f")
+    os.makedirs(folder)
+    part = os.path.join(folder, name + ".part")
+
+    class Env:
+        @property
+        def isCancelled(self):
+            return (os.path.exists(part)
+                    and os.path.getsize(part) >= 1 << 20)
+    pro.arcpy.env = Env()
+    with pytest.raises(pro.arcpy.ExecuteError,
+                       match="Cancelled while fetching"):
+        run(pro, "FetchSelected", rows=f"{GDB}/wp", max_mb=0,
+            FOLDER=folder)
+    assert not os.path.exists(part)
+    assert not os.path.exists(os.path.join(folder, name))
+
+
 def test_an_old_package_is_told_to_upgrade(pro, monkeypatch):
     """`_doors()` passes on any package since 1.18; the catalogue is
     1.58. An older package must hear 'upgrade', not ImportError.
@@ -304,3 +336,67 @@ def test_the_fetch_folder_box_refuses_a_geodatabase(pro):
     pm["FOLDER"].clearMessage()
     tool.updateMessages(params)
     assert pm["FOLDER"].messages == []
+
+
+# ===== v1.59.2 - external review of 1.59.1 ============================
+@pytest.mark.parametrize("target, ok", [
+    ("C:/Data/work.gdb/wp", True),
+    ("C:\\Data\\Work.GDB\\wp", True),
+    ("C:/Data/work.gdb/fds/wp", True),
+    ("C:/Data/conn.sde/wp", True),
+    ("memory/wp", True),
+    ("memory\\wp", True),
+    ("C:/Data/cat.csv", True),
+    ("C:/Data/data.gdb_backup/wp", False),
+    ("C:\\Data\\old.gdb.zip\\wp", False),
+    ("C:/Data/plainfolder/wp", False),
+    ("C:/memory/wp", False)])
+def test_a_catalogue_target_is_judged_by_its_path_parts(pro, target, ok):
+    """A folder NAMED like a geodatabase is a folder. 'data.gdb_backup'
+    held '.gdb' and passed; a dBASE table then went into it.
+
+    BROKEN WITH: _in_container testing '.gdb' in the text."""
+    assert (pro.pyt._catalogue_target_problem(target) is None) == ok
+
+
+@pytest.mark.parametrize("folder, refused", [
+    ("C:/Data/work.gdb", True),
+    ("C:\\Data\\Work.GDB", True),
+    ("C:/Data/work.gdb/sub", True),
+    ("C:/Data/data.gdb_backup/downloads", False),
+    ("C:\\Data\\gdb_files\\fetched", False)])
+def test_5c_judges_a_geodatabase_folder_by_its_path_parts(pro, folder,
+                                                           refused):
+    """BROKEN WITH: _check_folder_box testing '.gdb' in the text."""
+    tool = pro.pyt.FetchSelected()
+    params = tool.getParameterInfo()
+    box = {p.name: p for p in params}["FOLDER"]
+    box.value = folder
+    tool.updateMessages(params)
+    assert bool(box.messages) == refused, box.messages
+
+
+@pytest.mark.parametrize("target", [
+    "C:\\Data\\work.gdb\\wp", "C:/Data\\work.gdb/wp", "C:/Data/work.gdb/wp",
+    "memory\\wp"])
+def test_a_catalogue_reaches_its_table_whichever_separator(pro, target,
+                                                          tmp_path):
+    """The review's Windows failure: the simulator filed the table under
+    one spelling of its path and looked it up under another. Any
+    spelling now finds it, and 5c reads it back.
+
+    BROKEN WITH: the simulator's CreateTable keyed by os.path.join
+    (table_key bypassed)."""
+    run(pro, "WorldPopCatalogue", wp_places="Burundi", wp_years="2020",
+        CATALOGUE=target)
+    t = table(pro, target)
+    assert len(t) == 40 and pro.arcpy.Exists(target)
+    for spelling in (target.replace("\\", "/"),
+                     target.replace("/", "\\")):
+        assert len(table(pro, spelling)) == 40
+    pro.state.setdefault("selections", {})[target] = {0}
+    folder = str(tmp_path / "f")
+    os.makedirs(folder)
+    run(pro, "FetchSelected", rows=target, FOLDER=folder)
+    assert [n for n in os.listdir(folder) if n.endswith(".tif")] == \
+        [t.loc[0, "file"]]

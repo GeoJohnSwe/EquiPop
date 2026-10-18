@@ -37,6 +37,7 @@ import time
 import numpy as np
 import pandas as pd
 
+from .atomic import swap_in
 from .fastcounts import run_knn_counts
 
 
@@ -66,7 +67,7 @@ def _atomic_write_json(obj, path):
             json.dump(obj, fh, indent=1)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        swap_in(tmp, path)
     except BaseException:
         # A failed write must not leave litter behind that the next
         # run has to reason about.
@@ -88,7 +89,7 @@ def _atomic_write_parquet(df, path):
     tmp = f"{path}.tmp.{os.getpid()}"
     try:
         df.to_parquet(tmp, index=False)
-        os.replace(tmp, path)
+        swap_in(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)

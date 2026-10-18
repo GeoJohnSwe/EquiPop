@@ -43,6 +43,8 @@ import json
 import os
 from datetime import datetime, timezone
 
+from ..atomic import swap_in
+
 MANIFEST = "equipop_fetch.json"
 #: The rows a catalogue fetch took (fetchrows.py) - written beside
 #: the manifest, and like it, not a data file.
@@ -220,7 +222,12 @@ def _get_file(url, dest, timeout=900):              # pragma: no cover
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
-    os.replace(tmp, dest)
+    try:
+        swap_in(tmp, dest)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
     return n, sha.hexdigest(), md5.hexdigest()
 
 
@@ -646,6 +653,12 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
     # dressed as a FetchError, because the two call for different
     # things from the user.
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # v1.59.2: WHAT THE MANIFEST ON DISK ACTUALLY SAYS, as opposed to
+    # what this run believes. The two differ only when a write fails,
+    # and that is exactly when the message at the end must not claim
+    # more than the file holds (external review of 1.59.1).
+    written = set()
+    unverified = None              # on disk, not yet checked or recorded
 
     def commit(failure=None, complete=False):
         """Write the manifest for whatever is verified so far.
@@ -709,7 +722,9 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
             json.dump(man, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, os.path.join(folder, MANIFEST))
+        swap_in(tmp, os.path.join(folder, MANIFEST))
+        written.clear()
+        written.update(f["name"] for f in files)
         return man
 
     failure = None
@@ -764,6 +779,13 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
                     f"{e['name']} already exists in {folder}. Refusing to "
                     "overwrite - move it aside, or fetch into a new folder.")
             got = get_file(e["url"], dest)
+            # From here until it is recorded, the file is on disk but
+            # neither checked nor in the manifest. Every refusal below
+            # removes it; so must anything else that stops the run in
+            # this window - a Cancel during the .md5 request, say -
+            # or a retry would meet a file of unknown origin and refuse
+            # it (v1.59.2).
+            unverified = dest
             # Transports may return (bytes, sha256) or (bytes, sha256,
             # md5). The publisher's checksum is MD5 for both HDX and
             # Geofabrik, so it is computed while streaming rather than by
@@ -858,6 +880,7 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
                           "publisher_md5": want or None,
                           "publisher_check": checked,
                           "reused": False})
+            unverified = None
             # THE ENTRY IS COMMITTED HERE, one line after the checks
             # that earned it and before the next download starts. Every
             # refusal above removes the file and raises, so nothing
@@ -870,24 +893,62 @@ def run_fetch(plan, folder, *, get_file=None, get_text=None,
         # above: the point is that no failure - network, disk, or the
         # user's own Ctrl-C - can leave verified files on disk with no
         # record of where they came from. Catching broadly is safe
-        # only because this handler does exactly two things, writes
-        # and re-raises, and claims nothing about what went wrong.
+        # only because this handler does exactly that, writes and
+        # re-raises, and claims nothing about what went wrong.
         failure = exc
+
+        def tell(line):
+            # A door's `say` may itself raise (QGIS and Pro raise from
+            # it on Cancel). Here that must not cut the account short:
+            # the ORIGINAL failure is re-raised below either way.
+            try:
+                say(line)
+            except BaseException:
+                pass
+
+        if unverified and os.path.exists(unverified):
+            try:
+                os.remove(unverified)
+                tell(f"[fetch] {os.path.basename(unverified)} was removed: "
+                     "it had arrived but was not yet checked when the run "
+                     "stopped. Running again fetches it afresh.")
+            except OSError:                       # pragma: no cover
+                pass
         try:
             commit(failure)
-        except BaseException as writing:        # pragma: no cover
-            # If the manifest itself cannot be written - the full disk
-            # that caused the original failure, most likely - say so
-            # and still raise the ORIGINAL. A secondary error must not
-            # replace the one the user needs to read.
-            say(f"[fetch] could not write {MANIFEST} "
-                f"({writing.__class__.__name__}: {writing}) - the "
-                f"files listed above are on disk WITHOUT provenance.")
-        say(f"[fetch] STOPPED after {fetched} downloaded and {kept} "
-            f"already present, of {len(plan['entries'])} planned. "
-            f"What arrived IS recorded in {MANIFEST}, so a retry "
-            "will recognise it instead of refusing it.")
-        raise
+            unwritten = None
+        except BaseException as writing:
+            # The manifest itself could not be written - the full disk
+            # that caused the original failure, or a file Windows kept
+            # locked. Say WHICH files that leaves without a record and
+            # what a retry will do with them; then raise the ORIGINAL,
+            # because a secondary error must not replace the one the
+            # user needs to read. Until v1.59.2 this said "the files
+            # listed above" (the unrecorded one had never been listed)
+            # and then, a line later, that everything WAS recorded.
+            unwritten = writing
+        if unwritten is None:
+            tell(f"[fetch] STOPPED after {fetched} downloaded and {kept} "
+                 f"already present, of {len(plan['entries'])} planned. "
+                 f"What arrived IS recorded in {MANIFEST}, so a retry "
+                 "will recognise it instead of refusing it.")
+        else:
+            loose = [f["name"] for f in files if f["name"] not in written]
+            it = "it" if len(loose) == 1 else "them"
+            tell(f"[fetch] could not write {MANIFEST} "
+                 f"({unwritten.__class__.__name__}: {unwritten})")
+            if loose:
+                tell("[fetch] NOT RECORDED, though on disk: "
+                     + ", ".join(loose) + f". A new run will refuse {it} "
+                     f"as of unknown origin - delete {it} or move {it} "
+                     "aside before running again.")
+            tell(f"[fetch] STOPPED after {fetched} downloaded and {kept} "
+                 f"already present, of {len(plan['entries'])} planned. "
+                 + ("Everything else that arrived is recorded in "
+                    f"{MANIFEST}." if loose else
+                    f"Everything that arrived was recorded in {MANIFEST} "
+                    "as it came, so a retry will recognise it."))
+        raise exc
 
     man = commit(complete=True)
 

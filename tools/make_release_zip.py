@@ -222,7 +222,7 @@ def verify(path, tree_version=None):
     version in its pyproject.toml and equipop/__init__.py.
 
     Extraction here is on whatever system runs the build - Linux, for
-    the bundle - and Linux will happily write a file called `C:\Data`.
+    the bundle - and Linux will happily write a file called `C:\\Data`.
     So Windows is checked by NAME, against the rules Windows applies,
     and extraction proves the archive is whole."""
     problems = []

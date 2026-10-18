@@ -891,7 +891,9 @@ def test_the_manifest_is_written_atomically(tmp_path):
     assert not (tmp_path / (MANIFEST + ".part")).exists()
     src = (Path(__file__).resolve().parents[1] / "equipop" / "doors"
            / "fetching.py").read_text(encoding="utf-8")
-    assert "os.replace(tmp, os.path.join(folder, MANIFEST))" in src
+    # v1.59.2: through atomic.swap_in, which is os.replace tried again
+    # while Windows has the file locked (tests/test_atomic.py).
+    assert "swap_in(tmp, os.path.join(folder, MANIFEST))" in src
 
 
 # ---------------------------------------------------------------------

@@ -95,8 +95,17 @@ because machine 3 stores tiles that way and says so in its manifest.
    AST read of every row; its own release.
 12. **414** — FETCH, REDESIGNED AROUND A CATALOGUE. QGIS 1.58.0, Pro
    1.59.0 (5a, 5b, 5c). EVERY PATH NOW LIVE-CONFIRMED IN QGIS (the last,
-   .pbf -> GeoPackage, by John on Liechtenstein, 16 Oct). Waiting on
-   John's first real Pro run. Then speed (parallel downloads), GHSL rows.
+   .pbf -> GeoPackage, by John on Liechtenstein, 16 Oct), and 5a/5c ran
+   in real Pro (16 Oct). Then speed (parallel downloads), GHSL rows.
+12a. **415** — after 1.59.2: John's run of tools/windows_check.py (the
+   suite on Windows - the review found 9 failures there that Linux could
+   not show); a WARNING BASELINE (about 760 warnings on Linux, every one
+   the same rasterio deprecation - `Affine * Affine` in rasterio's own
+   transform.py - so a new warning is invisible among them; filter that
+   one narrowly and fail on anything new); redirect checks and https-only
+   for the OLDER download path (5d: fetching._get_file and fetch.py,
+   which still follow any redirect and accept http); and the tiled run's
+   manifest does not yet carry reference_population.
 13. **413** — a WHOLE-PLANET machine 3 run cannot work as built. Four
    causes, found from John's crashed Pro run; items (a) and (b) are
    the small patch, the rest are their own releases.
@@ -3631,6 +3640,42 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 415 | DONE IN v1.59.2, 17 OCTOBER 2026 (follow-ups open, see the
+  top) | THE EXTERNAL REVIEW OF 1.59.1 - THE FIRST RUN OF THE SUITE ON
+  WINDOWS. 1,905 passed, 9 failed. Every finding reproduced first:
+  (1) os.replace refused while a scanner or OneDrive holds the file
+  (one intermittent failure). Now equipop/atomic.swap_in at every swap,
+  retried for about 4 s. Behind it, run_fetch's stop message said
+  everything was recorded when the manifest write had failed, and the
+  retry then refused the unrecorded file; it now names that file. A
+  file arrived but not yet checked when a run stops is removed.
+  (2) 8 failures: the ArcGIS simulator keyed CreateTable by
+  os.path.join, so on Windows 'work.gdb\wp' was never found as
+  'work.gdb/wp'. tests/test_arcgis_stub.table_key now, and Pro's
+  _write_catalogue splits on either separator.
+  (3) max_mb added up KNOWN sizes only: all 40 unknown-size Burundi
+  files passed 0.0001 MB. Net.block counts bytes per 1 MiB and against
+  the declared size; a retried file counts once.
+  (4) Cancel only between files. `cancelled=` from both doors, asked
+  per 1 MiB.
+  (5) Redirects followed blindly. safe_opener checks each with
+  check_url and refuses https -> http.
+  (6) '.gdb' substring checks in Pro: _in_container, by path part.
+  (7) make_release_zip.py's `C:\Data` escape; every source file is now
+  compiled with warnings as errors.
+  AND JOHN'S OPEN QUESTION, decided: a blank population box means
+  EVERYBODY when the folder settles it (rasterfolder.infer_everybody):
+  'sexes' for every age band of f_ and m_ in one year, 'total' for
+  every t_ band, else refused with the reason. The review would have
+  refused f_/m_ plus t_ as "competing"; they are the same people, so
+  'sexes' is taken and the log says why. Found on the way: Pro's
+  machine 3 let the loader's ValueError out as a traceback (John's 16
+  October run). And the break-check found the old QGIS cancel test
+  passing with the door's own check removed (the new per-block check
+  stopped it first); a test for that check alone found each .pbf layer
+  SAID before it was RECORDED, so a Cancel then left an unrecorded
+  GeoPackage. Recorded first now. tools/windows_check.py runs the suite
+  on Windows without CI.
 - 414 | BUILT FOR QGIS, v1.58.0, 15 OCTOBER 2026; OPEN FOR THE LIVE CHECK
   AND PRO | FETCH, REDESIGNED AROUND A CATALOGUE.
   WHAT 1.58.0 BUILT (John: "please do - and first for Q with the

@@ -39,6 +39,20 @@ class _Messages:
     addWarningMessage = addMessage
 
 
+def table_key(path):
+    """A table's path as the simulator files it: one separator.
+
+    v1.59.2, external review of 1.59.1. CreateTable filed a table under
+    os.path.join(out_path, out_name), which on Windows is
+    'C:/Data/work.gdb\\wp' - and every later look-up by the path the
+    door was given, 'C:/Data/work.gdb/wp', missed it. Eight Pro
+    catalogue tests failed on Windows for that alone, while passing
+    on Linux. Real arcpy takes either separator, so the simulator
+    must too: every table path in and out goes through here.
+    """
+    return re.sub(r"[\\/]+", "/", str(path))
+
+
 def _install_fake_arcpy(table: pd.DataFrame):
     arcpy = types.ModuleType("arcpy")
     da = types.ModuleType("arcpy.da")
@@ -121,8 +135,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
     def _df_for(key):
         # v1.59.0: a standalone table made by CreateTable (machine 5's
         # catalogue), looked up by the path it was made at
-        if str(key) in state.get("created", {}):
-            return state["created"][str(key)]
+        if table_key(key) in state.get("created", {}):
+            return state["created"][table_key(key)]
         key = _unalias(key)
         if key in state.get("aux_tables", {}):
             return state["aux_tables"][key]
@@ -580,7 +594,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
     # keeps what a real geodatabase would refuse: text longer than its
     # field, and text put into a number.
     def CreateTable(out_path, out_name, *a, **kw):
-        key = os.path.join(str(out_path), str(out_name))
+        key = table_key(f"{out_path}/{out_name}")
         state.setdefault("created", {})[key] = pd.DataFrame()
         state.setdefault("field_types", {})[key] = {}
         return key
@@ -588,7 +602,7 @@ def _install_fake_arcpy(table: pd.DataFrame):
     _add_field_to_layer = AddField
 
     def AddFieldAnywhere(layer, name, ftype, *a, **kw):
-        k = str(layer)
+        k = table_key(layer)
         if k in state.get("created", {}):
             state["created"][k][name] = pd.Series(dtype=object)
             state["field_types"][k][name] = (ftype, kw.get("field_length"))
@@ -597,7 +611,8 @@ def _install_fake_arcpy(table: pd.DataFrame):
 
     class InsertCursor:
         def __init__(self, table, fields):
-            self.key, self.fields, self.rows = str(table), list(fields), []
+            self.key, self.fields, self.rows = (table_key(table),
+                                                list(fields), [])
             types_ = state["field_types"][self.key]
             missing = [f for f in self.fields if f not in types_]
             if missing:
@@ -629,11 +644,13 @@ def _install_fake_arcpy(table: pd.DataFrame):
             return False
 
     def DeleteAnything(target):
-        for key in ("tables", "written", "created"):
+        for key in ("tables", "written"):
             state.get(key, {}).pop(str(target), None)
+        state.get("created", {}).pop(table_key(target), None)
 
     def ExistsAnywhere(target):
-        return str(target) in state.get("created", {}) or Exists(target)
+        return (table_key(target) in state.get("created", {})
+                or Exists(target))
 
     mgmt.CreateTable = CreateTable
     mgmt.AddField = AddFieldAnywhere

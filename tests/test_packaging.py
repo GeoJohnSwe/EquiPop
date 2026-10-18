@@ -1594,3 +1594,32 @@ def test_the_release_record_counts_what_pytest_reports():
         {"passed": 1747, "skipped": 16}, 1763)
     assert rr.collected("2 failed, 10 passed, 3 skipped, 1 error in 3s")[1] \
         == 16
+
+
+def test_no_source_file_warns_when_it_is_compiled():
+    """v1.59.2, external review of 1.59.1: tools/make_release_zip.py
+    held `C:\\Data` in an ordinary docstring - an invalid escape, which
+    Python 3.12 reports as a SyntaxWarning every time the tool runs (and
+    a later Python will refuse). Every source file is compiled here with
+    warnings made errors, so the next one stops the suite instead of
+    joining the warnings nobody reads.
+
+    BROKEN WITH: the escape put back into make_release_zip.py."""
+    import warnings
+    files = []
+    for dirpath, dirs, names in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in (
+            "__pycache__", "dist", "build", ".git", "equipop.egg-info")]
+        files.extend(os.path.join(dirpath, n) for n in names
+                     if n.endswith((".py", ".pyt")))
+    assert len(files) > 100, "the walk found too little"
+    bad = []
+    for f in files:
+        src = open(f, encoding="utf-8").read()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            try:
+                compile(src, f, "exec")
+            except (SyntaxError, SyntaxWarning, DeprecationWarning) as exc:
+                bad.append(f"{os.path.relpath(f, ROOT)}: {exc}")
+    assert not bad, "\n".join(bad)

@@ -454,6 +454,11 @@ INTERNAL = {
     # is the point: four formatters for one label gave one radius four
     # different column names across four doors.
     "labels",
+    # v1.59.2, external review of 1.59.1. Machinery: the one file swap
+    # every writer uses, tried again while Windows has the file locked.
+    # The fifth new module the matrix has stopped from shipping
+    # undeclared.
+    "atomic",
     "doors.help", "doors.report", "doors.fields", "doors.loader",
     "doors.rungs", "doors.registry", "doors.reference",
     "doors.decaynames", "doors.demography", "doors.continental",
