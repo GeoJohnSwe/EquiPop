@@ -97,9 +97,42 @@ because machine 3 stores tiles that way and says so in its manifest.
    1.59.0 (5a, 5b, 5c). EVERY PATH NOW LIVE-CONFIRMED IN QGIS (the last,
    .pbf -> GeoPackage, by John on Liechtenstein, 16 Oct), and 5a/5c ran
    in real Pro (16 Oct). Then speed (parallel downloads), GHSL rows.
-12a. **415** — after 1.59.2: John's run of tools/windows_check.py (the
+12a. **416** — rates and life expectancy in machine 4, BUILT in
+   1.60.0. Waiting on John's validation against Swedish municipalities;
+   then a user-supplied national table and the e0 growth correction.
+12b. **415** — after 1.59.2: John's run of tools/windows_check.py (the
    suite on Windows - the review found 9 failures there that Linux could
-   not show); a WARNING BASELINE (about 760 warnings on Linux, every one
+   not show). HIS FIRST RUN (18 Oct, Windows 11, Python 3.13.9) tested
+   nothing: all 1,974 tests stopped at setup on "Access is denied" for
+   pytest's own AppData\Local\Temp\pytest-of-<user> folder. The script
+   now gives pytest a scratch folder of its own (--basetemp) and removes
+   it (tests/test_windows_check.py); the fixed script went to John
+   directly, and ships in the next release. HIS SECOND RUN, SAME DAY:
+   1,943 passed, 33 skipped, 0 failed - the first clean run of the
+   suite on Windows (Windows 11, Python 3.13.9, numpy 2.5.2, pandas
+   2.3.3; no geopandas or pyogrio, so the .pbf tests skipped). It also
+   showed what Linux cannot yet: about 5,600 NumPy 2.5 warnings,
+   "Setting the shape on a NumPy array has been deprecated", pointed at
+   our `r.read(1)` lines (rasterfolder.py:470, slope.py:107) - most
+   likely raised inside rasterio 1.4.4's compiled reader, which Python
+   then reports at the nearest Python line. When NumPy turns that
+   into an error, reading rasters breaks until rasterio is updated.
+   Check rasterio's release notes before then; it belongs in the
+   warning baseline.
+   LIVE CHECK OF 1.59.2, 18 OCT (John, Anaconda, installed 1.59.2):
+   every step OK through the new redirect-checking opener - 88 real
+   requests to WorldPop (hub API, data server) and Geofabrik (index,
+   HEAD, Range, .md5), none refused, none retried. Two WorldPop files and
+   Sweden's railways (five members, each against the zip's CRC-32)
+   fetched with the per-block size and Cancel checks in place; verify:
+   7 unchanged. So "WorldPop and Geofabrik answer directly" is observed,
+   not assumed. The .pbf step skipped (no pyogrio in Anaconda), as on
+   16 October; it was confirmed in QGIS that day.
+   AND THE BLANK-POPULATION DEFAULT, 18 OCT: John ran machine 3 on a 5a
+   folder with the box empty - "works well". Every 1.59.2 change has
+   now run on his machine. Also: put windows_check.py
+   where it can be found - it was inside the working-tree zip inside the
+   release zip. Then a WARNING BASELINE (about 760 warnings on Linux, every one
    the same rasterio deprecation - `Affine * Affine` in rasterio's own
    transform.py - so a new warning is invisible among them; filter that
    one narrowly and fail on anything new); redirect checks and https-only
@@ -3640,6 +3673,80 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 419 | OPEN | FROM THE REVIEW OF 1.60.1, NOT DONE. (a) Provenance of
+  equipop/data/berlin_example.xlsx - asked of John; if third-party,
+  into THIRD_PARTY_NOTICES.md (both copies). (b) A preflight 'health
+  report' for a point layer (CRS, shape, cohorts, years, blanks,
+  coverage, memory) before an expensive run. (c) Chunked or columnar
+  point reading for national layers. (d) A border policy for the
+  rates: cells take the country of the nearest point to their centre;
+  the review offers largest-population or per-country contributions.
+  (e) Method/quality fields beside each estimate (WPP year, sex, k,
+  coverage) - the record has them; the output columns do not.
+- 418 | DONE v1.60.2, 18 OCTOBER 2026 | EXTERNAL REVIEW OF 1.60.1.
+  P1 children under five from one complete route; P1 EPSG:None
+  (points and folders) -> reprojected into the suggested projection;
+  P1 point cohort values: text/negative/inf refused, blanks = nobody,
+  counted (John). P2 redirects checked on 5a/5d and fetch(); plain x/y
+  need a CRS. P3 omitted fields named; WPP table checked at load;
+  THIRD_PARTY_NOTICES.md; CITATION.cff references. NEW: whole-country
+  warning from WPP's national population (John). Break-check 234/234.
+- 417 | DONE v1.60.1, 18 OCTOBER 2026 | MACHINE 4 FROM MACHINE 3'S POINTS.
+  John: "machine 4 only takes rasters - we should make it possible to
+  use the curated raster-to-point files as well". rasterfolder.
+  load_points (wide or long shape; EastWest/NorthSouth, lon/lat or x/y;
+  only iso3 and cohort fields used, the rest named; metres without a
+  CRS refused) behind load_source, so the rest of the path is the
+  folder's. QGIS: FeatureSource box 'points'; Pro: GPFeatureLayer
+  'points'; either one, not both. Same numbers from both routes,
+  tested in the engine and in both doors.
+- 416 | BUILT IN v1.60.0, 18 OCTOBER 2026; VALIDATION OPEN | LOCAL LIFE EXPECTANCY,
+  TFR AND CDR FROM ONE AGE PYRAMID (machine 4). John: a second-best,
+  model-based local LE ("LEpred") for global local demographic data, to
+  be validated against exposomes; regressors stay on the right-hand
+  side, so a composition measure is acceptable as a covariate.
+  THE TRAP: LE and TFR are free of age composition, so national rates
+  applied to local ages give the NATIONAL value everywhere. Only crude
+  measures (CDR, CBR, expected counts) vary under borrowed rates; LE and
+  TFR need a local signal of LEVEL.
+  JOHN'S SAME-YEAR IDEA (equal cohorts at birth, no net migration, so
+  the pyramid IS the life table): simulated on stable populations
+  (scratchpad lepred/sim.py, sim2.py, sim3.py). Read as stationary it
+  measures growth, not survival - about 1/CBR: a Kenya-like nation, e0
+  65.1, reads 32.5; a Sweden-like one growing 0.4 %, e0 81.1, reads 67.1.
+  READ RELATIVE TO THE NATION (local survival = national survival x
+  local/national age share, so the nation's own cohort history cancels;
+  needs only the WPP abridged life table) it recovers a poorer district
+  (57.7 -> 58.5), but e0 is FRAGILE to local growth: 3.0 % instead of
+  2.2 % reads 49.0, 1.2 % reads 97.6, young in-migrants 79.3. A growth
+  correction from local TFR (child-woman ratio) is exact in principle,
+  and +-5 % TFR error gives +-4 years.
+  NORMALISED AT 60 IT HOLDS: e60 20.2 read as 18.7-22.4 under those
+  growth differences, 20.2 under young in-migration and under a uniform
+  15 % loss of the 60+, and the poorer district 17.3 -> 17.5.
+  PROPOSED: e60 relative to the nation first; TFR from the child-woman
+  ratio (Hauer & Schmertmann 2020); CDR/CBR expected and local; e0 only
+  with the growth correction, flagged. VALIDATE against places with
+  known local LE (Swedish kommuner, English MSOAs, US counties) before
+  any global use. Caveats: WorldPop age structure comes from census
+  breakdowns at admin level; old-age misreporting inflates e60.
+  JOHN'S RULING (18 Oct): build e60, TFR, CBR, CDR - AND e50, e30, e0,
+  FLAGGED UNRELIABLE ("as a researcher I am not looking for truth but
+  variables to make better predictions"). He validates against Swedish
+  data.
+  BUILT IN 1.60.0: doors/vital.py; demography.vital_plan /
+  vital_references / apply_vital (same traverse as the indices, tiled
+  too); equipop/data/wpp2024_reference.csv.xz from the wpp2024 R
+  package (CC BY 3.0 IGO; life tables within 0.05 years of WPP's e0);
+  box 1e and 2d in both doors. TFR is read against the nation as well
+  (an absolute reading was 5-6 % low at 2.5 % growth). Each cell takes
+  the country of the point nearest its centre. Tests on populations
+  built from WPP's own Kenya schedules: e60 of a district with 40 %
+  higher death rates within half a year; TFR and CBR within 4 % for
+  rates 30 % either side of Kenya's; CDR within 3 %.
+  STILL OPEN: John's Swedish validation; a user-supplied national
+  table (SCB's instead of WPP's); the e0 growth correction from local
+  TFR (exact in simulation, +-4 years for a 5 % TFR error).
 - 415 | DONE IN v1.59.2, 17 OCTOBER 2026 (follow-ups open, see the
   top) | THE EXTERNAL REVIEW OF 1.59.1 - THE FIRST RUN OF THE SUITE ON
   WINDOWS. 1,905 passed, 9 failed. Every finding reproduced first:

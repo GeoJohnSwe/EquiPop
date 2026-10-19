@@ -1,6 +1,21 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.59.2, 17 October 2026.**
+**Last updated: 1.60.2, 18 October 2026.**
+*Reviewed at 1.60.2: NO TEACHING CHANGES. The external review's fixes
+- children under five, projections without a code, a point layer's
+values - and the whole-country warning change no exercise; the
+warning is worth pointing at when a class clips a country.*
+*Reviewed at 1.60.1: ONE STEP FEWER. Machine 4 now starts from the point
+layer machine 3 made as well as from the folder, so a class that has
+looked at its points first does not have to point at the rasters
+again.*
+*Reviewed at 1.60.0: ONE THING CHANGES. Machine 4 now gives life
+expectancy at 60, TFR, CBR and CDR from the same age-sex folder - a
+class can map them, and then has to be told what they are: estimates
+read from an age pyramid against the nation's, not registered events.
+That distinction is itself a good lesson in demography, and the
+UNRELIABLE flag on life expectancy from birth, 30 and 50 is where to
+start it.*
 *Reviewed at 1.59.2: NOTHING IN THIS FILE CHANGES, ONE STEP FEWER. A
 class that fetches an age-and-sex folder with 5a and runs machine 3 on
 it no longer has to type 'sexes': a blank population box takes

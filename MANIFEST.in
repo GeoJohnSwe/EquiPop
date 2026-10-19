@@ -9,6 +9,11 @@
 # package became two halves of one thing and belong in one archive.
 
 include CITATION.cff
+# v1.60.2, review of 1.60.1: the licence of the data EquiPop carries,
+# where a distributor looks first. Its twin inside the package rides
+# in the wheel (pyproject package-data).
+include THIRD_PARTY_NOTICES.md
+include LICENSE
 include MANUAL.md
 include MANUAL_BEGINNER.md
 include MANUAL_TOPICS.md

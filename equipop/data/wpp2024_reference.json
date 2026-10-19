@@ -1,0 +1,49 @@
+{
+ "what": "National life tables (by WorldPop age band) and fertility schedules, for machine 4's life expectancy, TFR, CBR and CDR",
+ "source": "United Nations, Department of Economic and Social Affairs, Population Division (2024). World Population Prospects 2024. Via the wpp2024 R package 1.1-3 (2024-11-26), https://github.com/PPgp/wpp2024",
+ "licence": "Creative Commons Attribution 3.0 IGO (https://creativecommons.org/licenses/by/3.0/igo/)",
+ "variant": "estimates to 2023, medium variant from 2024",
+ "years": [
+  2000,
+  2030
+ ],
+ "countries": 236,
+ "bands": [
+  0,
+  1,
+  5,
+  10,
+  15,
+  20,
+  25,
+  30,
+  35,
+  40,
+  45,
+  50,
+  55,
+  60,
+  65,
+  70,
+  75,
+  80,
+  85,
+  90
+ ],
+ "fertility_bands": [
+  10,
+  15,
+  20,
+  25,
+  30,
+  35,
+  40,
+  45,
+  50
+ ],
+ "life_table": "single-year mx -> q = m/(1+(1-a)m), a = 0.5, a0 Andreev & Kingkade 2015 (both sexes: mean of the women's and men's rule), open 100+ lives l/m; aggregated to bands",
+ "population": "pop: WPP 2024's national population of that sex (popAge1dt summed over ages to 2023, popproj1dt medium from 2024), in people",
+ "check": "largest difference from WPP's own e0: 0.050 years (SOM 2011 F: 33.701 against WPP's 33.651)",
+ "not_mapped_to_iso3": [],
+ "sha256": "d1bd2b5bd8d749a8e6d0e522f487123073802c84126b933d88e27f9708720f9f"
+}

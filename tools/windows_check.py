@@ -9,13 +9,16 @@ could not show: a fake-ArcGIS path joined with the wrong separator, and
 a manifest that Windows briefly refused to replace. Real ArcGIS Pro
 runs only on Windows, so the suite has to pass there too. This runs it.
 
-HOW: extract equipop_working_tree.zip from the release archive, then
-in the Anaconda Prompt (Start menu > Anaconda Prompt) go into the
-EquiPop-<version> folder it makes, and run:
+HOW (v1.60.0, after John looked for it inside a zip inside a zip):
+extract the release archive, then in the Anaconda Prompt (Start menu >
+Anaconda Prompt) go into the folder it made and run
 
-    python tools\\windows_check.py
+    python windows_check.py
 
-or with the full path to this file. It uses the Python it is started
+A copy sits at the top of the archive, beside equipop_working_tree.zip,
+and unpacks that zip next to itself the first time. The copy inside the
+tree (tools/windows_check.py) works as before: it tests the tree it is
+in. It uses the Python it is started
 with, tests the code in THIS folder (not an installed EquiPop), changes
 nothing outside the report, and needs no network. It takes a few
 minutes. At the end it names the report file - send that back.
@@ -31,11 +34,43 @@ import importlib
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import zipfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+TREE_ZIP = "equipop_working_tree.zip"
+
+
+def _is_tree(path):
+    return (os.path.isdir(os.path.join(path, "tests"))
+            and os.path.isdir(os.path.join(path, "equipop")))
+
+
+def find_root(here=HERE):
+    """The tree to test: the one this file sits in (tools/..), or - for
+    the copy at the top of a release archive - the working tree zip
+    beside it, unpacked next to it on first use."""
+    up = os.path.dirname(here)
+    if _is_tree(up):
+        return up
+    z = os.path.join(here, TREE_ZIP)
+    if os.path.isfile(z):
+        with zipfile.ZipFile(z) as zz:
+            top = zz.namelist()[0].split("/")[0]
+            target = os.path.join(here, top)
+            if not _is_tree(target):
+                print(f"Unpacking {TREE_ZIP} into {target} ...")
+                zz.extractall(here)
+        if _is_tree(target):
+            return target
+    return up
+
+
+ROOT = find_root()
 
 #: Needed: without these, tests fail rather than skip.
 NEEDED = ("pytest", "numpy", "pandas", "scipy", "pyproj", "rasterio",
@@ -63,12 +98,13 @@ def _have(name):
         return None
 
 
-def main(argv=None):
+def main(argv=None, report_dir=None):
     if not os.path.isdir(os.path.join(ROOT, "tests")) or \
             not os.path.isdir(os.path.join(ROOT, "equipop")):
-        print(f"This file should sit in the tools folder of an extracted "
-              f"EquiPop source zip; {ROOT} has no tests or equipop "
-              "folder beside it.")
+        print(f"Found no EquiPop tree to test. Run this either from the "
+              "folder the release archive was extracted to (beside "
+              f"{TREE_ZIP}), or as tools\\windows_check.py inside an "
+              "extracted EquiPop tree.")
         return 2
     version = _version_of_tree()
     print(f"EquiPop {version} - the test suite, on this machine")
@@ -99,19 +135,33 @@ def main(argv=None):
     print(f"  testing: {used[0]}\n")
 
     stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M")
-    report = os.path.join(os.path.dirname(ROOT),
+    report = os.path.join(report_dir or os.path.dirname(ROOT),
                           f"EquiPop_{version}_windows_check_{stamp}.txt")
+    # A SCRATCH FOLDER OF ITS OWN. John's first run (18 October 2026)
+    # stopped every one of 1,974 tests before it began: "Access is
+    # denied" on C:\Users\<him>\AppData\Local\Temp\pytest-of-<him>,
+    # the folder pytest keeps for itself and reuses between runs. One
+    # left behind by another program, or under other rights, locks
+    # pytest out for good - and it says nothing about EquiPop. So the
+    # suite is given a new folder made by this process (--basetemp),
+    # never touches that one, and the folder is removed afterwards.
+    scratch = tempfile.mkdtemp(prefix="equipop_check_")
     cmd = [sys.executable, "-m", "pytest", "tests", "-q", "-rfEs",
-           "--tb=short", "-p", "no:cacheprovider"]
+           "--tb=short", "-p", "no:cacheprovider",
+           f"--basetemp={os.path.join(scratch, 'pytest')}"]
     t0 = time.time()
     lines = []
-    with subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True,
-                          encoding="utf-8", errors="replace") as p:
-        for line in p.stdout:
-            print(line, end="")
-            lines.append(line)
-        code = p.wait()
+    try:
+        with subprocess.Popen(cmd, cwd=ROOT, env=env,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True,
+                              encoding="utf-8", errors="replace") as p:
+            for line in p.stdout:
+                print(line, end="")
+                lines.append(line)
+            code = p.wait()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
     minutes = (time.time() - t0) / 60
 
     tail = [ln.strip() for ln in lines if re.search(

@@ -283,6 +283,11 @@ class QgsCoordinateReferenceSystem:
     def authid(self):
         return self._id
 
+    def toWkt(self):
+        """v1.60.2: a USER: system has no code to look up, so the door
+        sends its definition; a test sets _wkt to give it one."""
+        return getattr(self, "_wkt", "")
+
     def isGeographic(self):
         return self._id in ("EPSG:4326", "EPSG:4258")
 

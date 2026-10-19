@@ -160,6 +160,10 @@ HAND=$(ls -1 HANDOVER_*.md | sed 's/HANDOVER_\([0-9]*\)\.md/\1 &/' \
        | sort -n | tail -1 | cut -d' ' -f2)
 cp BACKLOG.md MANUAL.md INSTALL.md "$HAND" "$WORK/"
 cp arcgis/ARCGIS_GUIDE.md "$WORK/"
+# v1.60.0: the Windows check at the TOP of the archive, beside the
+# working tree it unpacks and tests - John looked for it inside the
+# working-tree zip inside the release zip, and could not find it.
+cp tools/windows_check.py "$WORK/"
 
 # ---- 9. verify, leave the tree as it was found, install -------------
 # Every archive a user unzips is re-opened, CRC-checked, name-checked

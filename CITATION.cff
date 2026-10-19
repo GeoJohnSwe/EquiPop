@@ -20,7 +20,7 @@ repository-code: "https://github.com/GeoJohnSwe/EquiPop"
 # tests/test_doctor.py now asserts it against the package. The
 # preferred-citation below is the 2014 report and does NOT move with
 # the software version.
-version: 1.59.2
+version: 1.60.2
 preferred-citation:
   type: report
   title: "Introducing the EquiPop software: An application for the calculation of k-nearest neighbour contexts/neighbourhoods"
@@ -124,3 +124,40 @@ references:
     location:
       name: "Sofia, Bulgaria"
     year: 2026
+  # v1.60.2, external review of 1.60.1: the data machine 4's rates are
+  # read against, and the methods named in the code. The data's
+  # licence and how EquiPop derived the table: THIRD_PARTY_NOTICES.md.
+  - type: data
+    title: "World Population Prospects 2024"
+    authors:
+      - name: "United Nations, Department of Economic and Social Affairs, Population Division"
+    year: 2024
+    license: CC-BY-3.0-IGO
+    url: "https://population.un.org/wpp/"
+    repository: "https://github.com/PPgp/wpp2024"
+    notes: "Via the wpp2024 R package 1.1-3 (2024-11-26). EquiPop ships a derived table, equipop/data/wpp2024_reference.csv.xz, built by tools/make_wpp_reference.py."
+  - type: article
+    title: "Average age at death in infancy and infant mortality level: Reconsidering the Coale-Demeny formulas at current levels of low mortality"
+    authors:
+      - family-names: "Andreev"
+        given-names: "Evgeny M."
+      - family-names: "Kingkade"
+        given-names: "W. Ward"
+    journal: "Demographic Research"
+    volume: 33
+    issue: 13
+    start: 363
+    end: 390
+    year: 2015
+  - type: article
+    title: "Evaluation of methodologies for small area life expectancy estimation"
+    authors:
+      - family-names: "Eayres"
+        given-names: "D."
+      - family-names: "Williams"
+        given-names: "E. S."
+    journal: "Journal of Epidemiology and Community Health"
+    volume: 58
+    issue: 3
+    start: 243
+    year: 2004

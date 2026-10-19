@@ -23,11 +23,15 @@ so the machinery is machine 1's, with two treatment groups and a
 division. Nothing new is being computed; what is new is that the
 groups are named after demography rather than after columns.
 
-WHAT IS DELIBERATELY ABSENT. TFR, ASFR, CBR, CDR and life expectancy
-are NOT here, because they need vital events and an age-sex folder
-carries stock, not flow. If a births raster is added to the folder it
-becomes an ordinary column and they open up with no new machinery -
-see BACKLOG 216, and read the circularity note there first.
+RATES AND LIFE EXPECTANCY, v1.60.0 (BACKLOG 416). An age-sex folder
+carries stock, not flow, so TFR, CBR, CDR and life expectancy cannot
+be MEASURED here. They can be ESTIMATED, model-based: the nation's own
+schedules (UN WPP 2024) give the age pattern, and the neighbourhood's
+pyramid, read against the nation's, gives the level. That is
+doors/vital.py; vital_plan() and apply_vital() below run it over the
+same neighbourhoods as the indices, in the same traverse. Life
+expectancy from 50, 30 and birth is computed on John's request and
+NAMED UNRELIABLE - see vital.py for why.
 
 WORLDPOP AGE BANDS ARE NOT ALL FIVE YEARS (John): 0 is under-one on
 its own, 1 covers 1-4, then fives, and the last is open at 90+. Every
@@ -38,6 +42,8 @@ arithmetic on the age number.
 from __future__ import annotations
 
 import re
+
+import numpy as np
 
 
 class DemographyError(Exception):
@@ -650,6 +656,280 @@ def plan(name, labels, year=None, num_spec=None,
                            if (noted or gaps) else None)}
 
 
+# ------------------------------------------- rates and life expectancy
+VITAL_SEXES = {"both": "B", "women": "F", "men": "M"}
+
+
+def vital_plan(labels, names, year=None, sex="both") -> dict:
+    """Which columns the rates and life expectancies are read from.
+
+    names: keys of vital.MEASURES. sex: 'both', 'women' or 'men' - the
+    people the life tables and the CDR are for. TFR and CBR always use
+    the women and the children of both sexes.
+    Refuses, naming every missing (sex, band), rather than read a
+    pyramid with a hole in it: a missing band is read as nobody alive
+    at that age.
+    """
+    from . import vital as V
+    names = list(names or [])
+    bad = [n for n in names if n not in V.MEASURES]
+    if bad:
+        raise DemographyError(
+            f"No such measure: {', '.join(bad)}. Available: "
+            + ", ".join(V.MEASURES))
+    if sex not in VITAL_SEXES:
+        raise DemographyError(
+            f"sex must be one of {', '.join(VITAL_SEXES)}; got {sex!r}.")
+    yrs = years_in(labels)
+    if year is None:
+        if len(yrs) != 1:
+            raise DemographyError(
+                (f"These points carry {len(yrs)} years "
+                 f"({', '.join(yrs)}). Rates are read for ONE year - "
+                 "say which.") if yrs else
+                "No columns here look like a cohort (sex_age_year).")
+        year = yrs[0]
+    from ..rasterfolder import normalise_year
+    year = normalise_year(year)
+    if year not in yrs:
+        raise DemographyError(
+            f"No cohort here carries the year {year}. These points "
+            f"have {', '.join(yrs)}.")
+
+    here = [d for d in (_split(c) for c in labels)
+            if d and d["year"] == year]
+    present = {(d["sex"], int(d["age"])) for d in here}
+    if sex == "both":
+        sexes = pick_sex(labels, year)
+    else:
+        sexes = ({"women": "f", "men": "m"}[sex],)
+        if not any(sx == sexes[0] for sx, _a in present):
+            raise DemographyError(
+                f"Life tables for {sex} need the {sexes[0]}_ files, and "
+                f"this folder has none for {year}.")
+    oldest = max(a for _sx, a in present)
+    top = max(b for b in V.BANDS if b <= min(oldest, V.BANDS[-1]))
+    bands = [b for b in V.BANDS if b <= top]
+
+    # the labels as they are spelled in the folder, not as rebuilt
+    by_key = {(d["sex"], int(d["age"])): lab for lab, d in
+              ((c, _split(c)) for c in labels)
+              if d and d["year"] == year}
+
+    def pick(sx_set, band):
+        return [by_key[(sx, a)] for sx, a in sorted(present)
+                if sx in sx_set and (a == band or (band == top and
+                                                   a > top))]
+    missing = [f"{sx}_{b:02d}" for sx in sexes for b in bands
+               if (sx, b) not in present]
+    if missing:
+        raise DemographyError(
+            "Rates and life expectancy read the WHOLE pyramid, and this "
+            f"one has holes for {year}: missing " + ", ".join(missing)
+            + ". A missing band would read as nobody alive at that age. "
+            "Fetch the missing files (5a lists them).")
+    plan_ = {"names": names, "year": year, "sexes": list(sexes),
+             "sex": sex, "sexcode": VITAL_SEXES[sex] if sex != "both"
+             else "B", "top": top, "bands": bands,
+             "band_cols": {b: pick(sexes, b) for b in bands},
+             "folded": sorted({a for _sx, a in present if a > top})}
+    if any(n in V.NEEDS_WOMEN for n in names):
+        gone = [f"f_{a:02d}" for a in V.FERT if ("f", a) not in present]
+        if gone:
+            raise DemographyError(
+                "TFR and CBR are read from the women and the children "
+                "under five, so they need the women's files (f_) for "
+                f"ages 10-54 - missing for {year}: " + ", ".join(gone)
+                + ". A folder of t_ (both sexes) files cannot say how "
+                "many of the people are women.")
+        route = _child_route(present, year)
+        plan_["women_cols"] = {a: pick(("f",), a) for a in V.FERT}
+        plan_["child_cols"] = pick(route, 0) + pick(route, 1)
+        plan_["child_route"] = list(route)
+    return plan_
+
+
+def _child_route(present, year):
+    """WHICH CHILDREN UNDER FIVE TFR AND CBR COUNT - one complete route.
+
+    v1.60.2, external review of 1.60.1 (P1). This summed whatever age-0
+    and age-1 files happened to be present, of the sexes pick_sex chose,
+    so a folder missing m_00 counted girls under five and boys aged 1-4
+    without a word, and a folder of women's files alone counted girls.
+    Because each neighbourhood's children are read against the nation's
+    children counted the same way, most of that cancelled - but it was
+    silent, and it need not have cancelled. Now: girls and boys, or the
+    both-sexes files, each COMPLETE for ages 0 and 1; one sex alone only
+    when the folder has no files at all for the other (girls against
+    the nation's girls is then a fair ratio, and the run says so).
+    Anything else is refused by name.
+    """
+    sexes = {sx for sx, _a in present}
+    routes = [r for r in (("f", "m"), ("t",)) if set(r) <= sexes]
+    if not routes:
+        routes = [(sx,) for sx in ("f", "m") if sx in sexes]
+    holes = {}
+    for r in routes:
+        holes[r] = [f"{sx}_{a:02d}" for sx in r for a in (0, 1)
+                    if (sx, a) not in present]
+        if not holes[r]:
+            return r
+    gone = sorted({h for hs in holes.values() for h in hs})
+    raise DemographyError(
+        "TFR and CBR count the children under five - ages 0 and 1-4 - "
+        f"and this folder's are incomplete for {year}: missing "
+        + ", ".join(gone) + ". Counting the ones that happen to be there "
+        "would read a missing file as no children. Fetch the missing "
+        "files (5a lists them).")
+
+
+def vital_groups(vplan) -> dict:
+    """compose= for run_folder: one group per band, per fertility band
+    of the women, and the children."""
+    out = {f"vb_{b}": cols for b, cols in vplan["band_cols"].items()}
+    if "women_cols" in vplan:
+        out.update({f"vw_{a}": c for a, c in vplan["women_cols"].items()})
+        out["vc"] = list(vplan["child_cols"])
+    return out
+
+
+def vital_references(vplan, pts):
+    """{iso3: national schedules + the folder's own national pyramid}.
+
+    THE NATION'S PYRAMID IS THE FOLDER'S OWN TOTAL for that country,
+    not WPP's: WorldPop is aligned to WPP's totals, and reading the
+    neighbourhood against the same source's national pyramid cancels
+    the source's own habits (age heaping, old ages overstated) wherever
+    they are national. A folder clipped to part of a country is read
+    against that part - which the run says.
+    """
+    from . import vital as V
+    if "iso3" not in pts.columns:
+        raise DemographyError(
+            "Rates and life expectancy are read against each point's "
+            "NATION, and these points carry no country code - WorldPop "
+            "file names start with one (bdi_f_00_2020...).")
+    groups = vital_groups(vplan)
+    refs, absent = {}, []
+    for iso, part in pts.groupby("iso3", observed=True):
+        iso = str(iso)
+        if not iso:
+            continue
+        tot = {g: float(part[c].to_numpy(float).sum()) for g, c in
+               groups.items()}
+        try:
+            nat = V.national(iso, vplan["year"], vplan["sexcode"],
+                             top=vplan["top"])
+        except V.VitalError:
+            absent.append(iso.upper())
+            continue
+        i60 = vplan["bands"].index(60) if 60 in vplan["bands"] else None
+        P = np.array([tot[f"vb_{b}"] for b in vplan["bands"]])
+        refs[iso] = {
+            "nat": nat, "P": P,
+            # v1.60.2: how much of the country this folder holds,
+            # against WPP's national population of the same sex
+            "coverage": (float(P.sum() / nat["pop"]) if nat["pop"] > 0
+                         else np.nan),
+            "e60": (float(nat["L"][i60:].sum() / nat["l"][i60])
+                    if i60 is not None else np.nan)}
+        if "women_cols" in vplan:
+            refs[iso]["C"] = tot["vc"]
+            refs[iso]["W"] = np.array([tot[f"vw_{a}"] for a in V.FERT])
+    return refs, absent
+
+
+class CellCountries:
+    """Which country each result cell belongs to.
+
+    THE RESULT TABLE DOES NOT CARRY ONE: points become cells, and the
+    cell table keeps no country code (build_cells' label_col would put
+    it in CellId, which must stay unique). So the points' own codes are
+    kept - three small arrays, not the folder - and each cell takes the
+    country of the point nearest its centre. A cell straddling a border
+    therefore takes the country holding its middle, which is a rule,
+    stated, rather than a guess.
+    """
+
+    def __init__(self, lon, lat, iso, crs, epsg):
+        from pyproj import Transformer
+        from scipy.spatial import cKDTree
+        tr = Transformer.from_crs(crs or "EPSG:4326", f"EPSG:{epsg}",
+                                  always_xy=True)
+        x, y = tr.transform(np.asarray(lon, float), np.asarray(lat, float))
+        self.iso = np.asarray(iso).astype(str)
+        self.tree = cKDTree(np.column_stack([x, y]))
+
+    def __call__(self, frame):
+        xy = frame[["EastWest", "NorthSouth"]].to_numpy(float)
+        _d, idx = self.tree.query(xy)
+        return self.iso[idx]
+
+
+def apply_vital(frame, k_values, vplan, refs, countries=None):
+    """Add the rates and life expectancies to a result frame, in place,
+    and drop the band counts they were read from. THE ONE ARITHMETIC,
+    for the in-memory run and for each tile of a tiled one.
+
+    countries: a CellCountries, or None when the folder holds one
+    country (every cell is then that country's)."""
+    from . import vital as V
+    bands = vplan["bands"]
+    names = vplan["names"]
+    if "iso3" in frame.columns:
+        iso = frame["iso3"].astype(str).to_numpy()
+    elif countries is not None:
+        iso = countries(frame)
+    elif len(refs) == 1:
+        iso = np.array([next(iter(refs))] * len(frame))
+    else:
+        iso = np.array([""] * len(frame))
+    for k in k_values:
+        S = np.column_stack([frame[f"T_vb_{b}_{k}"].to_numpy(float)
+                             for b in bands])
+        out = {n: np.full(len(frame), np.nan) for n in names}
+        e60_all = np.full(len(frame), np.nan)
+        for code in np.unique(iso):
+            ref = refs.get(code)
+            if ref is None:
+                continue
+            rows = iso == code
+            nat = ref["nat"]
+            for n in names:
+                start = V.MEASURES[n]["start"]
+                if start is not None and start in bands:
+                    out[n][rows] = V.life_expectancy(
+                        S[rows], ref["P"], nat["l"], nat["L"],
+                        bands.index(start))
+            if any(n in V.NEEDS_LE60 for n in names) and 60 in bands:
+                e60 = V.life_expectancy(S[rows], ref["P"], nat["l"],
+                                        nat["L"], bands.index(60))
+                e60_all[rows] = e60
+                if "crude_death_rate" in names:
+                    out["crude_death_rate"][rows] = V.crude_death_rate(
+                        S[rows], S[rows].sum(axis=1), nat, e60,
+                        ref["e60"])
+            if any(n in V.NEEDS_WOMEN for n in names):
+                C = frame[f"T_vc_{k}"].to_numpy(float)[rows]
+                W = np.column_stack([frame[f"T_vw_{a}_{k}"].to_numpy(
+                    float)[rows] for a in V.FERT])
+                N = frame[f"N_{k}"].to_numpy(float)[rows]
+                tfr, cbr = V.fertility(C, W, N, nat["f"], nat["tfr"],
+                                       ref["C"], ref["W"])
+                if "total_fertility_rate" in names:
+                    out["total_fertility_rate"][rows] = tfr
+                if "crude_birth_rate" in names:
+                    out["crude_birth_rate"][rows] = cbr
+        for n in names:
+            frame[f"{V.MEASURES[n]['code']}_{k}"] = out[n]
+    machinery = [c for c in frame.columns
+                 if re.match(r"^[TR]_v(b|w)_\d+_\d+$", c)
+                 or re.match(r"^[TR]_vc_\d+$", c)
+                 or re.match(r"^v(b|w)_\d+_local$|^vc_local$", c)]
+    frame.drop(columns=machinery, inplace=True)
+    return frame
+
+
 # ------------------------------------------------------------- running
 
 def index_triples(k_values, out_name, num_group="num", den_group="den"):
@@ -804,7 +1084,8 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
 
 
 def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
-                epsg=None, overrides=None, channel=None, **kw):
+                epsg=None, overrides=None, channel=None, vital=None,
+                vital_sex="both", points=None, points_crs=None, **kw):
     """SEVERAL indices in ONE traverse of the data.
 
     John's preference, and it matters at continental scale: loading
@@ -814,6 +1095,13 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
 
     overrides: {index_name: {"numerator": [...], "denominator": [...]}}
     so a door can offer the suggested columns and let them be edited.
+    vital: keys of vital.MEASURES - life expectancy, TFR, CBR, CDR,
+    read from the pyramid against the nation's (v1.60.0), over the
+    SAME neighbourhoods in the same traverse. vital_sex: 'both',
+    'women' or 'men', for the life tables and the CDR.
+    points, points_crs: the point table machine 3 wrote from such a
+    folder, used INSTEAD of it (folders is then ignored) - John, 18
+    October: the curated points should do as well as the rasters.
     """
     import contextlib
     import io
@@ -821,7 +1109,7 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     import numpy as np
 
     from .continental import check_folders, run_folder
-    from ..rasterfolder import load_folder
+    from ..rasterfolder import load_source
 
     say = channel.info if channel is not None else print
     # BACKLOG 365, v1.53.4. TILED NOW WORKS, and this is the path
@@ -831,17 +1119,32 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     # them are added in a SINGLE read and write per tile, not one pass
     # per index - reading eleven million rows four times to add four
     # columns would undo the reason for tiling.
-    check_folders(folders)      # before we peek at the labels
-    names = list(names)
-    if not names:
+    if points is None:
+        check_folders(folders)  # before we peek at the labels
+    names = list(names or [])
+    vital = list(vital or [])
+    if not names and not vital:
+        from .vital import MEASURES
         raise DemographyError(
-            "No index chosen. Available: " + ", ".join(sorted(INDICES)))
+            "Nothing chosen. Indices: " + ", ".join(sorted(INDICES))
+            + ". Rates and life expectancy: " + ", ".join(MEASURES))
 
     with contextlib.redirect_stdout(io.StringIO()):
-        pts, _m = load_folder(folders, **{k: v for k, v in kw.items()
-                                          if k in ("convention", "labels",
-                                                   "pattern")})
+        pts, _m = load_source(folders, points, points_crs,
+                              **{k: v for k, v in kw.items()
+                                 if k in ("convention", "labels",
+                                          "pattern")})
     labels = [c for c in pts.columns if c not in ("lon", "lat", "iso3")]
+    vplan = refs = where = None
+    if vital:
+        # BEFORE the points are let go: the nation's pyramid is the
+        # folder's own total per country, and with several countries
+        # each cell must learn which one it is in.
+        vplan = vital_plan(labels, vital, year=year, sex=vital_sex)
+        refs, absent = vital_references(vplan, pts)
+        if pts["iso3"].nunique() > 1:
+            where = (pts["lon"].to_numpy(), pts["lat"].to_numpy(),
+                     pts["iso3"].astype(str).to_numpy())
     del pts
 
     plans, compose, groups = {}, {}, []
@@ -863,7 +1166,15 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
         say(f"   on top    : {' + '.join(pl['numerator'])}")
         say(f"   divided by: {' + '.join(pl['denominator'])}")
 
-    sexes = plans[names[0]]["sexes"]
+    if vital:
+        compose.update(vital_groups(vplan))
+        groups += list(vital_groups(vplan))
+        _say_vital(say, vplan, refs, absent, k_values)
+        if year is None:
+            year = vplan["year"]
+
+    sexes = (plans[names[0]]["sexes"] if names
+             else list(pick_sex(labels, vplan["year"])))
     man = run_folder(folders, k_values=k_values, unit_size=unit_size,
                      epsg=epsg,
                      weight="sexes" if sexes != ["t"] else "total",
@@ -873,18 +1184,30 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
                      # been downloaded (BACKLOG 273).
                      year=year,
                      compose=compose, groups=groups, channel=channel,
-                     **kw)
+                     points=points, points_crs=points_crs, **kw)
 
     triples = []
     for nm in names:
         code = INDICES[nm]["code"]
         triples += index_triples(k_values, code,
                                  f"{code}_num", f"{code}_den")
+    countries = None
+    if where is not None:
+        countries = CellCountries(*where, man.get("crs"),
+                                  (man.get("projection") or {})["epsg"])
+
+    def finish(df):
+        apply_index(df, triples)
+        if vital:
+            apply_vital(df, k_values, vplan, refs, countries)
+        return df
+
     if kw.get("out_dir") is not None:
         from ..bigrun import map_tiles
-        tman = map_tiles(kw["out_dir"],
-                         lambda df: apply_index(df, triples),
-                         what=f"{len(names)} index column(s)")
+        tman = map_tiles(kw["out_dir"], finish,
+                         what=f"{len(triples)} index and "
+                              f"{len(vital) * len(k_values)} rate "
+                              "column(s)")
         columns = list(tman.get("columns") or [])
         say(f"{len(triples)} index column(s) added to each of the "
             f"{man['tiles']} tiles in {kw['out_dir']}: "
@@ -893,24 +1216,111 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
             "run has no single result table, which is what lets it be "
             "bigger than memory.")
     else:
-        apply_index(man["results"], triples)
+        finish(man["results"])
         columns = list(man["results"].columns)
     man["plans"] = plans
+    if vital:
+        from .vital import citation
+        man["vital"] = {k: v for k, v in vplan.items()
+                        if k in ("names", "year", "sex", "sexes", "top",
+                                 "bands", "folded")}
+        man["vital"]["reference"] = citation()
+        man["vital"]["countries"] = sorted(c.upper() for c in refs)
+        # the share of WPP's national population each country's folder
+        # total is - what the 'nation' was, in the record
+        man["vital"]["national_coverage"] = {
+            c.upper(): round(r["coverage"], 4) for c, r in refs.items()}
     say("")
     say("WHAT THE FIELDS MEAN:")
     for line in explain_fields(columns, plans,
-                               (man.get("projection") or {}).get("epsg")):
+                               (man.get("projection") or {}).get("epsg"),
+                               vital=vplan):
         say(line)
     say("")
-    say(f"{len(names)} {'index' if len(names) == 1 else 'indices'} over "
-        "the SAME neighbourhoods, in one traverse - each is a ratio of "
-        "two counts among the k nearest people, so none of them "
-        "inherits anything from an administrative unit.")
+    if names:
+        say(f"{len(names)} {'index' if len(names) == 1 else 'indices'} "
+            "over the SAME neighbourhoods, in one traverse - each is a "
+            "ratio of two counts among the k nearest people, so none of "
+            "them inherits anything from an administrative unit.")
+    if vital:
+        say("The rates and life expectancies are MODEL-BASED: read from "
+            "each neighbourhood's age pyramid against its nation's, with "
+            "the nation's age patterns from UN WPP 2024. Use them as "
+            "what they are - predictors - and say so where they are "
+            "published.")
     return man
 
 
+def _say_vital(say, vplan, refs, absent, k_values):
+    """What the rates and life expectancies are about to be read from."""
+    from . import vital as V
+    sx = {"both": "both sexes", "women": "women", "men": "men"}[
+        vplan["sex"]]
+    say(f"Rates and life expectancy, {vplan['year']} - from each "
+        f"neighbourhood's age pyramid ({sx}, bands 0 to "
+        f"{vplan['top']}+), read against its nation's:")
+    for n in vplan["names"]:
+        mm = V.MEASURES[n]
+        say(f"   {mm['code']:5s} {mm['label']}")
+    if vplan["folded"]:
+        say(f"   NOTE: age band(s) {', '.join(map(str, vplan['folded']))} "
+            f"are folded into {vplan['top']}+.")
+    route = vplan.get("child_route")
+    if route in (["f"], ["m"]):
+        who = "girls" if route == ["f"] else "boys"
+        say(f"   NOTE: the children under five are counted from the "
+            f"{who} alone - the folder holds no files for the other sex. "
+            f"They are read against the nation's {who}, so the ratio "
+            "holds as long as the sex ratio at birth is the nation's.")
+    flagged = [V.MEASURES[n]["code"] for n in vplan["names"]
+               if not V.MEASURES[n]["reliable"]]
+    if flagged:
+        say(f"   {', '.join(flagged)}: UNRELIABLE, computed because they "
+            "were asked for. Read from below 60, a neighbourhood growing "
+            "faster than the nation, or drawing young migrants, reads as "
+            "one with different mortality. Use them as predictors only.")
+    if any(V.MEASURES[n]["start"] is not None for n in vplan["names"]) \
+            and min(k_values) < V.LE_K_FLOOR:
+        say(f"   NOTE: k = {min(k_values):,} is below {V.LE_K_FLOOR:,}. "
+            "A life expectancy read from so few people is noisy - the "
+            "85-89 and 90+ bands then hold a handful each. 5,000 is the "
+            "usual floor for small-area life expectancy.")
+    for iso, ref in sorted(refs.items())[:8]:
+        nat = ref["nat"]
+        bits = []
+        if 60 in vplan["bands"]:
+            bits.append(f"e60 {ref['e60']:.1f}")
+        bits.append(f"e0 {nat['L'].sum():.1f}")
+        bits.append(f"TFR {nat['tfr']:.2f}")
+        say(f"   national reference, {iso.upper()}: " + ", ".join(bits)
+            + f" ({int(ref['P'].sum()):,} people in this folder)")
+    if len(refs) > 8:
+        say(f"   ... and {len(refs) - 8} more countries")
+    # THE NATION IS THE FOLDER'S OWN TOTAL (v1.60.2, John's choice of
+    # the review's options): a folder clipped to part of a country
+    # reads that part as the nation, silently. WorldPop's totals are
+    # matched to the UN's, so a whole country holds about WPP's
+    # population; well short of it, the run says so.
+    short = sorted((r["coverage"], iso) for iso, r in refs.items()
+                   if r["coverage"] < V.WHOLE_COUNTRY)
+    if short:
+        say("   WARNING: NOT THE WHOLE COUNTRY? " + "; ".join(
+            f"{iso.upper()} holds {cov:.0%} of WPP's {vplan['year']} "
+            f"population" for cov, iso in short[:8])
+            + (f"; and {len(short) - 8} more" if len(short) > 8 else "")
+            + ". Each neighbourhood is read against the folder's own "
+            "total for its country, so a folder holding part of a "
+            "country reads that part as the nation - its rates come "
+            "out relative to the region, not the country. Give the "
+            "whole country (5a fetches it) for national comparisons.")
+    if absent:
+        say(f"   NOTE: no national life table for {', '.join(absent)} - "
+            "those points are left empty.")
+    say(f"   Reference: {V.citation()}")
+
+
 # ------------------------------------------------------ what it means
-def explain_fields(columns, plans=None, epsg=None):
+def explain_fields(columns, plans=None, epsg=None, vital=None):
     """One line per output field, in plain words.
 
     John, on his first real result: "I have no explanation to what the
@@ -974,6 +1384,25 @@ def explain_fields(columns, plans=None, epsg=None):
                 out.append(f"  {c}: {lab} {half} as a SHARE of the "
                            f"{k} - the same count divided by {k}")
             continue
+        # <code>_<k>  - a rate or life expectancy (v1.60.0)
+        if vital:
+            from .vital import MEASURES
+            hit = None
+            for nm in vital["names"]:
+                mm = MEASURES[nm]
+                mk = re.match(rf"^{mm['code']}_(\d+)$", c)
+                if mk:
+                    hit = (mm, mk.group(1))
+                    break
+            if hit:
+                mm, k = hit
+                out.append(f"  {c}: >>> "
+                           + ("UNRELIABLE - " if not mm["reliable"]
+                              else "")
+                           + f"{mm['label']} over the nearest {k} "
+                           f"people: {mm['about']}. MODEL-BASED, read "
+                           "from the age pyramid against the nation's")
+                continue
         # <code>_<k>  - the index itself
         for nm, pl in (plans or {}).items():
             code = INDICES[nm]["code"]

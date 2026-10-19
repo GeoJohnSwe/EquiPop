@@ -110,7 +110,11 @@ def _install_fake_arcpy(table: pd.DataFrame):
                 key, _fallback_catalog_path(key)),
             spatialReference=_SR(type=state.get("crs_types", {})
                                  .get(key, "Projected"),
-                                 name="SWEREF99 TM"))
+                                 name="SWEREF99 TM",
+                                 # v1.60.1: real layers carry their
+                                 # code; 0 is what arcpy gives for none
+                                 factoryCode=state.get("crs_codes", {})
+                                 .get(key, 0)))
         # the selected object ids, ';'-joined, empty with no selection
         d.FIDSet = ";".join(str(i + 1) for i in sorted(
             state.get("selections", {}).get(str(_layer)) or []))

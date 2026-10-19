@@ -113,7 +113,8 @@ def run_folder(folders, *, k_values=None, r_values=None,
                unit_size=1000.0, epsg=None, weight=None, groups=None,
                sum_cohorts=False, keep_zero=False, out_dir=None,
                tile_m=50_000.0, convention=None, labels=None,
-               pattern=None, channel=None, year=None):
+               pattern=None, channel=None, year=None,
+               points=None, points_crs=None):
     """Load a folder of rasters, build the cells, run the neighbourhoods.
 
     folders    : one folder, or several. Subfolders are included, so a
@@ -154,7 +155,11 @@ def run_folder(folders, *, k_values=None, r_values=None,
             f"The cell size must be a positive number of metres; got "
             f"{unit_size!r}.")
 
-    folders = check_folders(folders)
+    # points= : the table machine 3 wrote, in place of the folder
+    # (v1.60.1). Machine 4 uses it; the points-only branch below is
+    # what MAKES such a table, so it still wants the folder.
+    if points is None or points_only:
+        folders = check_folders(folders)
 
     t0 = time.time()
     if points_only:
@@ -194,11 +199,15 @@ def run_folder(folders, *, k_values=None, r_values=None,
             folders, weight=weight, unit_size=unit_size, epsg=epsg,
             groups=groups, compose=compose, sum_cohorts=sum_cohorts,
             keep_zero=keep_zero, convention=convention,
-            labels=labels, pattern=pattern, year=year)
+            labels=labels, pattern=pattern, year=year,
+            points=points, points_crs=points_crs)
     man["seconds_loading"] = round(time.time() - t0, 1)
 
     n_cells = len(cd)
-    say(f"{len(man['files'])} {_plural(len(man['files']), 'raster')} "
+    source = ("the point table" if man.get("source") == "points" else
+              f"{len(man['files'])} "
+              f"{_plural(len(man['files']), 'raster')}")
+    say(f"{source} "
         f"-> {man['points']:,} points -> {n_cells:,} cells of "
         f"{unit_size:g} m, holding {cd.n.sum():,.1f} people.")
     if man["unparsed"]:

@@ -137,6 +137,17 @@ Then *Raster Data Curation* on the fetched folder: with the population
 box (under Advanced) left blank, a folder holding every age band of
 women and men for one year is taken as EVERYBODY, and the messages say
 so; any other folder asks you to choose.
+
+**Rates and life expectancy (machine 4, v1.60.0).** *Spatial
+Demographic Analysis* has a box for life expectancy at 60, TFR, CBR
+and CDR. They are MODEL-BASED: each neighbourhood's age pyramid is
+read against its nation's, with the nation's age patterns from UN WPP
+2024, which ships with EquiPop. Life expectancy at 50, 30 and birth is
+offered too, marked UNRELIABLE - use it as a predictor only. Use a k
+of 5,000 or more for life expectancy, and folders holding whole
+countries. Since 1.60.1 the tool also takes the point layer *Raster
+Data Curation* made (k left blank) instead of the folder - the same
+numbers either way.
 OpenStreetMap rows for PAST YEARS come as `.pbf` and need pyogrio in
 the Pro environment (`pip install pyogrio` in its Python Command
 Prompt); without it 5c refuses those rows before downloading anything.

@@ -22,7 +22,7 @@ function reports HTTP/network errors verbatim so the cause is visible.
 
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import urlopen, Request
+from urllib.request import Request
 import shutil
 import zipfile
 
@@ -47,6 +47,59 @@ def _check_scheme(url: str) -> None:
             + ". EquiPop only downloads over http(s); to use a local "
             "file, pass its path to the reader directly instead of "
             "fetching it.")
+
+
+class RedirectRefused(ConnectionError):
+    """A redirect EquiPop will not follow. Never worth another try."""
+
+
+#: Handlers the tests put in front of the network; empty in real use.
+_TEST_HANDLERS: tuple = ()
+
+
+def _on(host, domains):
+    host = (host or "").lower()
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def checked_opener(domains=None, *extra, origin=None):
+    """urllib's opener, with every redirect checked like the address.
+
+    v1.60.2, external review of 1.60.1 (P2). 1.59.2 checked redirects
+    in the catalogue's client (5c) only; this module's fetch() and the
+    older download path (5a, 5d) used urllib's plain opener, which follows a
+    redirect wherever it points - to plain http, or to another site.
+    Refused here, the address named:
+      - a step down from https to http;
+      - any scheme but http(s) (urllib would follow ftp:);
+      - with `domains`, a host outside them - unless it is the very
+        host the request started at (`origin`).
+    """
+    import urllib.request
+    start = (urlparse(str(origin)).hostname or "").lower() if origin \
+        else ""
+
+    class _Checked(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            old, new = urlparse(req.full_url), urlparse(newurl)
+            scheme = (new.scheme or "").lower()
+            why = None
+            if scheme not in ALLOWED_SCHEMES:
+                why = f"its scheme is {scheme or 'none'!r}"
+            elif old.scheme.lower() == "https" and scheme != "https":
+                why = "it is not https - EquiPop does not leave a secure " \
+                      "address for an insecure one"
+            elif domains and not (_on(new.hostname, domains) or (
+                    start and (new.hostname or "").lower() == start)):
+                why = f"it is not at {' or '.join(domains)}"
+            if why:
+                raise RedirectRefused(
+                    f"{req.full_url} sent EquiPop on to {newurl}, and "
+                    f"{why}; it was not followed and nothing was "
+                    "downloaded.")
+            return super().redirect_request(req, fp, code, msg, headers,
+                                            newurl)
+    return urllib.request.build_opener(_Checked(), *extra)
 
 
 def fetch(url: str, workdir: str, unzip: bool = False,
@@ -82,7 +135,8 @@ def fetch(url: str, workdir: str, unzip: bool = False,
         print(f"[fetch] downloading {url}")
         req = Request(url, headers={"User-Agent": "equipop-pangea"})
         try:
-            with urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
+            with checked_opener(None, *_TEST_HANDLERS).open(
+                    req, timeout=timeout) as r, open(dest, "wb") as f:
                 shutil.copyfileobj(r, f)
         except Exception as e:
             if dest.exists():

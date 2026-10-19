@@ -282,3 +282,58 @@ Nordic CSVs: separator is sniffed, but check the row count. Coordinates
 that "look wrong": compare ranges against the claimed CRS. Slow runs:
 switch to `run_knn_counts`; very large areas: tile with A/B zones.
 Everything the engines print is also captured by RunLog.
+
+## 16. Rates and life expectancy from an age pyramid (machine 4)
+*v1.60.0.* An age-and-sex raster folder holds people, not births or
+deaths, so no rate can be *measured* from it. Machine 4 *estimates*
+them, and every output says so:
+
+    run_indices(folder, [], vital=["life_expectancy_60",
+                "total_fertility_rate", "crude_birth_rate",
+                "crude_death_rate"], k_values=[5000])
+
+Machine 4 can start from a folder of rasters, or - since 1.60.1 -
+from the point layer machine 3 made from one (`points=`, with
+`points_crs=` its coordinate system). The two give the same numbers.
+In a point layer a blank cohort value is read as nobody - counted per
+field in the log and kept in the record as `blanks_as_zero` - while
+text, a negative number or an infinity is refused by field. Plain
+x/y coordinates need their coordinate system; lon/lat and machine 3's
+EastWest/NorthSouth are read as degrees when they fit.
+
+**How.** Each neighbourhood's age pyramid is read **against its
+nation's**. The nation's own age patterns come from UN World Population
+Prospects 2024, which ships with EquiPop for 236 countries, 2000-2030.
+The nation's pyramid is the folder's own total for that country, so
+give whole countries. Since 1.60.2 the log warns when a country holds
+under 90% of WPP's population for it (WorldPop's totals are matched
+to the UN's, so a whole country comes close to 100%), and the run's
+record keeps each share as `vital.national_coverage`.
+- **Life expectancy:** if every cohort had started equally large and
+  nobody moved, the pyramid *would* be the life table. It is not -
+  births grew - so the local share of each age is divided by the
+  national share, and the nation's birth history cancels out.
+- **TFR:** the children under five per woman, with the women weighted
+  by the nation's fertility at their age, relative to the same ratio
+  nationally (the approach of Hauer & Schmertmann, *Demography* 2020).
+- **CBR:** births a year per 1,000 people, from the same reading.
+- **CDR:** the nation's death rates below 60, and from 60 the level the
+  neighbourhood's e60 implies.
+
+**How far to trust it.** Tested on simulated populations with known
+answers:
+- Life expectancy at 60 (`e60_k`) holds up. It stays within about two
+  years when local growth differs from the nation's, and is untouched
+  by young migrants.
+- From 50, 30 and birth it does not. A neighbourhood growing faster
+  than the nation, or drawing young adults, reads as one with different
+  mortality. Those columns end in **u** (`e50u_k`, `e30u_k`, `e0u_k`),
+  are labelled UNRELIABLE in the log, and are meant as predictors in a
+  model, not as life expectancies.
+- Use a **k of 5,000 or more** for life expectancy; fewer people leave
+  the oldest bands nearly empty.
+
+**Before publishing,** check the estimates against places where the
+real figure is known (for Sweden, SCB publishes life expectancy by
+municipality). Cite UN WPP 2024 for the national schedules, under its
+licence: CC BY 3.0 IGO.

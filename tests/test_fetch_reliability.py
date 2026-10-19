@@ -366,7 +366,11 @@ def test_only_http_and_https_are_downloaded():
             if not isinstance(node, ast.FunctionDef):
                 continue
             body = ast.dump(node)
-            opens = "urlopen" in body
+            # v1.60.2: the paths now open through checked_opener (the
+            # redirect check); a function using it must check the
+            # scheme as well. checked_opener itself only builds one.
+            opens = ("urlopen" in body or ("checked_opener" in body
+                                           and node.name != "checked_opener"))
             if not opens:
                 continue
             assert "_check_scheme" in body, (

@@ -1,11 +1,24 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.59.2, 17 October 2026.**
+**Last updated: 1.60.2, 18 October 2026.**
+*Reviewed at 1.60.2: NO CLAIM CHANGES. The rates now warn when a
+folder is not the whole country, and the WPP data's licence is set out
+in THIRD_PARTY_NOTICES.md - both strengthen what is already claimed.*
+*Reviewed at 1.60.1: NO CLAIM CHANGES. Machine 4 reads machine 3's
+point layer as well as the folder; the same numbers either way.*
+*Reviewed at 1.60.0: ONE CAPABILITY MAY BE CLAIMED, WITH ITS LIMITS.
+Machine 4 estimates local life expectancy at 60, TFR, CBR and CDR from
+age-sex rasters anywhere in the world, with UN WPP 2024 as the national
+reference. Claim them as MODEL-BASED predictors, validated on simulated
+populations; do not claim them as measured, and do not claim life
+expectancy from birth, 30 or 50 at all until John's validation against
+Swedish municipalities is back.*
 *Reviewed at 1.59.2: NO CLAIM CHANGES; ONE MAY BE ADDED SOON. An
 outside review ran the full test suite on Windows for the first time
-(1,905 passed, 9 failed on 1.59.1; all 9 fixed). Once John's own
-Windows run of 1.59.2 is back clean, "tested on Linux and Windows" can
-be said. Not before.*
+(1,905 passed, 9 failed on 1.59.1; all 9 fixed). John's own Windows
+run of 1.59.2 came back clean on 18 October - 1,943 passed, 0 failed,
+Windows 11, Python 3.13 - so "tested on Linux and Windows" may now be
+said.*
 *Reviewed at 1.59.1: ONE LIMIT LIFTS. Fetching in Pro has now run on a
 real machine (John, 16 October), so "tested in simulation" can go. The
 lattice join in Pro, by contrast, has only now become reachable - claim

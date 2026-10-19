@@ -60,24 +60,31 @@ class FetchError(Exception):
 # part that cannot be exercised in development - the sandbox blocks
 # every WorldPop host - so it is kept to two tiny functions and
 # everything else is testable.
-def _get_json(url, timeout=60):                     # pragma: no cover
-    import urllib.request
+def _open(url, timeout):
+    """THE OLDER PATH'S ONE WAY ONTO THE NETWORK (v1.60.2, review of
+    1.60.1, P2): the scheme checked (review H1), and every redirect
+    checked as 5c's are - https only once https, and on a provider's
+    own site or the host the request started at."""
+    import importlib
+    from .catalogue import ALLOWED_DOMAINS
+    # the MODULE: `from .. import fetch` is the function of that name,
+    # which the package exports
+    F = importlib.import_module("..fetch", __package__)
+    F._check_scheme(url)
+    return F.checked_opener(ALLOWED_DOMAINS, *F._TEST_HANDLERS,
+                            origin=url).open(url, timeout=timeout)
 
-    from ..fetch import _check_scheme          # review H1, one reader
-    _check_scheme(url)
-    with urllib.request.urlopen(url, timeout=timeout) as r:
+
+def _get_json(url, timeout=60):
+    with _open(url, timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
-def _get_text(url, timeout=60):                     # pragma: no cover
+def _get_text(url, timeout=60):
     """Fetch a small text sidecar - Geofabrik's .md5, and nothing
     larger. Capped so a mis-typed URL cannot stream a raster into
     memory (BACKLOG 291)."""
-    import urllib.request
-
-    from ..fetch import _check_scheme          # review H1, one reader
-    _check_scheme(url)
-    with urllib.request.urlopen(url, timeout=timeout) as r:
+    with _open(url, timeout) as r:
         return r.read(64 * 1024).decode("utf-8", "replace")
 
 
@@ -184,7 +191,7 @@ def parse_md5_sidecar(text, name=None):
     return first
 
 
-def _get_file(url, dest, timeout=900):              # pragma: no cover
+def _get_file(url, dest, timeout=900):
     """Stream to disk. Returns (bytes, sha256, md5).
 
     CHECKS THE DECLARED LENGTH. The loop stopped at whatever arrived,
@@ -193,15 +200,12 @@ def _get_file(url, dest, timeout=900):              # pragma: no cover
     CLEANS UP ON FAILURE, because the QGIS message claimed nothing
     partial was kept and .part files were being left behind.
     """
-    import urllib.request
-
     from ..fetch import _check_scheme          # review H1, one reader
     _check_scheme(url)
     sha, md5, n = hashlib.sha256(), hashlib.md5(usedforsecurity=False), 0
     tmp = dest + ".part"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r, \
-                open(tmp, "wb") as f:
+        with _open(url, timeout) as r, open(tmp, "wb") as f:
             declared = r.headers.get("Content-Length")
             declared = int(declared) if declared and declared.isdigit() \
                 else None

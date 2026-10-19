@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.59.2 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0aa first, then 0z back to 0b
+*Amended through 1.60.2 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0ad first, then 0ac back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,125 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0ad. 1.60.2 - THE EXTERNAL REVIEW OF 1.60.1
+
+The review came the same evening: three P1, two P2, three P3, and
+"product decisions". All reproduced first; all fixed; MANUAL's 1.60.2
+row lists them. John decided two things:
+- a blank cohort value in a point layer is NOBODY ("zero is our way -
+  also because what is missing in some column (year or cohort) will
+  be needed when compared later") - counted and said, never refused;
+- the whole-country warning: WPP's national population now rides in
+  the reference table, and under 90% of it is warned about.
+
+Calibrations worth keeping:
+- **The under-five finding was real but mostly cancelled.** Local and
+  national children were counted the same way, so the ratio barely
+  moved. It was fixed for being silent.
+- **EPSG:None was older than the point route.** A raster folder in a
+  custom projection failed the same way, since BACKLOG 277.
+- **The degrees guess is now by name.** lon/lat and EastWest/NorthSouth
+  are still guessed; plain x/y are refused.
+
+Two lessons from the break-check:
+- A test must not compute its expected value through the code under
+  test. The coverage test did, and its break survived.
+- `from equipop import fetch` is the FUNCTION. The module needs
+  importlib, as test_fetch_reliability already said.
+
+Open: the provenance of equipop/data/berlin_example.xlsx was asked of
+John - if third-party, it belongs in THIRD_PARTY_NOTICES.md. Not done:
+the preflight "health report", chunked point reading, a border policy
+(cells still take the country of the point nearest their centre).
+
+## 0ac. 1.60.1 - MACHINE 4 FROM MACHINE 3'S POINTS
+
+John, an hour after 1.60.0, with a screenshot of Pro's machine 4
+dialog: it takes only a folder of rasters, and should take the point
+layer machine 3 makes as well. Both doors now have a second box. The
+engine reads the points with `rasterfolder.load_points` (wide or long
+shape, coordinates in their own CRS) through `load_source`, so
+everything after loading - weights, compose, projection, cells - is
+the folder's own code path. The test that matters: the same run from
+the folder and from its points gives the same numbers - also for a
+layer saved in UTM first, in both doors. Break-check 204 of 204.
+
+Two things caught while writing it, in case they come back:
+- Pro's factoryCode is not always EPSG. Esri numbers its own
+  projections in the same field, so `_pyproj_crs` tries EPSG, then
+  ESRI, then the WKT.
+- In the long shape, the pivot keys are the coordinates and iso3 ONLY.
+  The first version used every other field, so an OBJECTID made every
+  row its own point. The totals were right; the point count was not.
+
+**His screenshot also showed no rates box.** Because `indices` carried
+no asterisk, it looked like the 1.59.2 toolbox (a required box with a
+value shows none in Pro). It is not proven: he was asked to confirm
+which Pro files he had.
+
+## 0ab. 1.60.0 - RATES AND LIFE EXPECTANCY FROM ONE PYRAMID
+
+John asked for a second-best local life expectancy built on national
+data. Then he proposed reading the pyramid itself as the life table
+(equal cohorts, no migration), and asked for TFR, CDR and CBR the same
+way. **The design came out of a simulation, not a reading**
+(BACKLOG 416):
+- Read absolutely, John's rule measures growth: a Kenya-like nation
+  with e0 65 reads 32.
+- Read against the nation, the nation's birth history cancels.
+  - From 60 it holds: within about two years under local growth
+    differences, and untouched by young migrants.
+  - From birth it does not: e0 49 for a true 65 at 3.0 % growth against
+    2.2 %.
+
+His ruling: build e60, and build e50, e30 and e0 too, FLAGGED, because
+they are predictors for his models and he will validate them against
+Swedish data.
+
+**What is new:**
+- `equipop/doors/vital.py` (the estimators).
+- `vital_plan` / `vital_references` / `apply_vital` in
+  `doors/demography.py`, in the same traverse as the indices.
+- `equipop/data/wpp2024_reference.csv.xz` with its `.json` record.
+- `tools/make_wpp_reference.py`, which builds the table from the
+  wpp2024 R package. It REFUSES to write if its life tables miss WPP's
+  e0 by more than 0.25 years; it was 0.05.
+- Box 1e (the measures) and box 2d (whose life tables) in both doors.
+
+**Decisions taken in the build, each said in the output:**
+- **The nation's pyramid is the folder's OWN total per country**, not
+  WPP's. The source's habits (age heaping, old ages overstated) then
+  cancel where they are national.
+- **TFR is read against the nation too.** Child survival, the five-year
+  lag and counting habits then cancel. An absolute reading was 5-6 %
+  low at 2.5 % growth.
+- **CDR uses the nation's rates below 60, and above 60 a factor solved
+  so a band life table gives the local e60.**
+- **Each cell takes the country of the point nearest its centre.** The
+  cell table carries no country code, and build_cells' label_col would
+  have overwritten CellId.
+- **Output columns are e60, e50u, e30u, e0u, TFR, CBR and CDR.** The u
+  marks the unreliable ones, and every name fits a shapefile's ten
+  characters at k = 10,000.
+
+**The break-check found two tests that could not fail.**
+- The empty-band test passed with the non-finite guard removed. An
+  empty start band gives NaN on its own; the guard matters only for an
+  INFINITE answer, which comes when the nation has nobody in a band
+  that a border neighbourhood does. The test now builds that case.
+- The nation's-CDR test passed with the e60 scaling removed, because
+  the band-table approximation is too small to show at that tolerance.
+  It now pins what it can see: theta solved the right way round.
+
+**Found on the way:** `windows_check.py` needed its own pytest scratch
+folder (John's first run, 18 Oct). It now also sits at the top of the
+release archive, because John could not find it inside two zips.
+
+**Open:** John's validation against Swedish municipalities; a
+user-supplied national table (an SCB life table instead of WPP's); a
+growth correction for e0 from the local TFR (exact in simulation, ±4
+years for a 5 % TFR error).
 
 ## 0aa. 1.59.2 - AN OUTSIDE REVIEW RAN THE SUITE ON WINDOWS
 
@@ -103,6 +222,18 @@ yet.
 **For John:** `tools/windows_check.py` runs the suite on his machine
 and writes a report to send back. That is the Windows job the review
 asked for, without CI, which this project does not have.
+
+*18 October:* his first run tested nothing. Every test stopped at
+setup on "Access is denied" for pytest's own folder in
+`AppData\Local\Temp`. The script now gives pytest a scratch folder of
+its own; that fixed copy went to him by hand and is in the tree for the
+next release. **His second run: 1,943 passed, 33 skipped, 0 failed -
+the first clean run on Windows.** It also showed NumPy 2.5 deprecation
+warnings at our raster reads, most likely from inside rasterio (see
+BACKLOG 415). **His live check of the installed 1.59.2 passed too:** 88
+real requests through the new redirect check, none refused, so the
+providers really do answer directly. And machine 3 with the population
+box blank, on a 5a folder: "works well" (18 October).
 
 ## 0z. 1.59.1 - JOHN'S FIRST PRO RUN, AND A DRIFT IT UNCOVERED
 

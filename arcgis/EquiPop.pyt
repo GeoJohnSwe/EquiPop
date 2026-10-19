@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.59.2"
+TOOLBOX_VERSION = "1.60.2"
 
 
 def _announce_version(messages):
@@ -4213,6 +4213,84 @@ INDEX_ROWS = [
     "Sex ratio",         "m:",       "f:",
 ]
 
+# v1.60.0, BACKLOG 416: rates and life expectancy, read from each
+# neighbourhood's age pyramid against its nation's. Written down, as
+# the QGIS door writes them down, and pinned against vital.MEASURES
+# and against the QGIS lists by tests/test_vital_doors.py.
+RATE_NAMES = ["life_expectancy_60", "life_expectancy_50",
+              "life_expectancy_30", "life_expectancy_0",
+              "total_fertility_rate", "crude_birth_rate",
+              "crude_death_rate"]
+RATE_LABELS = ["Life expectancy at 60",
+               "Life expectancy at 50 (UNRELIABLE)",
+               "Life expectancy at 30 (UNRELIABLE)",
+               "Life expectancy at birth (UNRELIABLE)",
+               "Total fertility rate", "Crude birth rate",
+               "Crude death rate"]
+RATE_SEXES = ["both", "women", "men"]
+RATE_SEX_LABELS = ["Both sexes", "Women", "Men"]
+
+
+def _machine3_points(layer, messages):
+    """The point layer machine 3 wrote, as a table for the engine:
+    coordinates from the geometry in the layer's OWN coordinate system
+    (the engine projects them as it projects a folder's pixels, so the
+    two routes agree), iso3, and every cohort field. A table without
+    geometry is read through its EastWest/NorthSouth fields."""
+    desc = arcpy.Describe(layer)
+    names = [f.name for f in arcpy.ListFields(layer)]
+    keep = [n for n in names
+            if n in ("iso3", "cohort", "population")
+            or re.match(r"^[fmt]_\d+_\d{4}$", n)]
+    geom = str(getattr(desc, "shapeType", "")) == "Point"
+    if geom:
+        data = _read_columns(layer, ["SHAPE@X", "SHAPE@Y"] + keep,
+                             messages, context="point layer")
+        data["EastWest"] = np.asarray(data.pop("SHAPE@X"), float)
+        data["NorthSouth"] = np.asarray(data.pop("SHAPE@Y"), float)
+    else:
+        xy = [n for n in ("EastWest", "NorthSouth") if n in names]
+        data = _read_columns(layer, xy + keep, messages, table=True,
+                             context="point table")
+    import pandas as pd
+    table = pd.DataFrame(data)
+    # not read, but named in the log by the engine (review of 1.60.1)
+    table.attrs["fields_not_used"] = [
+        n for n in names if n not in keep
+        and n not in ("EastWest", "NorthSouth", "Shape", "SHAPE")
+        and n != getattr(desc, "OIDFieldName", None)
+        and n != getattr(desc, "shapeFieldName", None)]
+    return table, _pyproj_crs(getattr(desc, "spatialReference", None))
+
+
+def _pyproj_crs(sr):
+    """arcpy's spatial reference as text pyproj can read, or None.
+
+    factoryCode alone is not enough: Esri numbers its own projections
+    (World Mollweide 54009, Web Mercator 102100 ...) in the same field
+    as EPSG's, and 'EPSG:54009' does not exist. So the code is tried
+    under EPSG and then ESRI; a projection with no code at all goes as
+    its definition (exportToString's first part is Esri WKT)."""
+    if sr is None:
+        return None
+    code = getattr(sr, "factoryCode", 0) or 0
+    if code:
+        try:
+            from pyproj import CRS
+        except ImportError:                           # pragma: no cover
+            return f"EPSG:{code}"
+        for auth in ("EPSG", "ESRI"):
+            try:
+                CRS.from_user_input(f"{auth}:{code}")
+                return f"{auth}:{code}"
+            except Exception:
+                continue
+    try:
+        wkt = str(sr.exportToString()).split(";")[0].strip()
+    except Exception:
+        wkt = ""
+    return wkt or None
+
 
 class SpatialDemography:
     """MACHINE 4 for Pro. BACKLOG 235.
@@ -4237,18 +4315,28 @@ class SpatialDemography:
         names = ["Ageing index", "Child-woman ratio",
                  "Dependency ratio", "Sex ratio"]
         ps = [_p("folder", "Folder of population rasters (.tif) - "
-                 "subfolders are searched", "DEFolder"),
+                 "subfolders are searched", "DEFolder", required=False),
+              # v1.60.1, John: the curated raster-to-point files should
+              # do as well as the rasters. Either box, not both.
+              _p("points", "...or the point layer machine 3 made from "
+                 "such a folder (instead of the folder)",
+                 "GPFeatureLayer", required=False),
               _p("indices", "Which indices (tick several - they cost "
-                 "one pass, not one each)", "GPString"),
+                 "one pass, not one each)", "GPString", required=False),
               _p("k", "Neighbourhood sizes, in PEOPLE (e.g. 1000)",
                  "GPString"),
               _p("unit", "Analysis cell size, in metres", "GPDouble",
                  required=False),
+              _p("rates", "Rates and life expectancy - MODEL-BASED, "
+                 "read from the age pyramid against the nation's (tick "
+                 "several)", "GPString", required=False),
               _p("year", "Which year (blank = the only one present)",
                  "GPString", required=False, category="Advanced"),
               _p("crs", "Projection to work in (blank = suggested)",
                  "GPCoordinateSystem", required=False,
                  category="Advanced"),
+              _p("ratesex", "Life tables and death rate for",
+                 "GPString", required=False, category="Advanced"),
               _p("settings", "Change a measure - one row per index. "
                  "Ages as '0-4', '65-', 'f:15-49', or two ranges "
                  "'0-14,65-'. Edit a cell to alter that half.",
@@ -4265,11 +4353,18 @@ class SpatialDemography:
         ps[-2].value = [list(r) for r in
                         (INDEX_ROWS[i:i + 3]
                          for i in range(0, len(INDEX_ROWS), 3))]
-        ps[1].filter.type = "ValueList"
-        ps[1].filter.list = names
-        ps[1].multiValue = True
-        ps[1].value = "Child-woman ratio"
-        ps[3].value = 1000.0
+        by = {p.name: p for p in ps}
+        by["indices"].filter.type = "ValueList"
+        by["indices"].filter.list = names
+        by["indices"].multiValue = True
+        by["indices"].value = "Child-woman ratio"
+        by["unit"].value = 1000.0
+        by["rates"].filter.type = "ValueList"
+        by["rates"].filter.list = list(RATE_LABELS)
+        by["rates"].multiValue = True
+        by["ratesex"].filter.type = "ValueList"
+        by["ratesex"].filter.list = list(RATE_SEX_LABELS)
+        by["ratesex"].value = RATE_SEX_LABELS[0]
         return ps
 
     def updateMessages(self, parameters):
@@ -4278,8 +4373,14 @@ class SpatialDemography:
         accepts, because a space is a value - reached the engine as nothing at all. k is compulsory here and has no radius to fall back on, so a
         whitespace-only box is refused by name.
         """
-        _k_or_r_message(_byname(parameters), need_one=False,
-                        k_required=True)
+        pm = _byname(parameters)
+        _k_or_r_message(pm, need_one=False, k_required=True)
+        # Either the folder or the points: said in the dialog, before
+        # Run, the moment both are filled in.
+        if pm.get("folder") is not None and pm.get("points") is not None \
+                and pm["folder"].valueAsText and pm["points"].valueAsText:
+            pm["points"].setErrorMessage(
+                "Give the folder OR machine 3's point layer, not both.")
         return
 
     def execute(self, parameters, messages):
@@ -4300,8 +4401,25 @@ class SpatialDemography:
                     f"No such index: {piece!r}. Use one of: "
                     + "; ".join(sorted(by_label)))
             picked.append(by_label[piece])
-        if not picked:
-            raise arcpy.ExecuteError("Tick at least one index.")
+        rates, raw = [], _txt(pm, "rates")
+        for piece in raw.replace(";", ",").split(","):
+            piece = piece.strip().strip("'\"")
+            if not piece:
+                continue
+            if piece not in RATE_LABELS:
+                raise arcpy.ExecuteError(
+                    f"No such rate: {piece!r}. Use one of: "
+                    + "; ".join(RATE_LABELS))
+            rates.append(RATE_NAMES[RATE_LABELS.index(piece)])
+        if not picked and not rates:
+            raise arcpy.ExecuteError(
+                "Tick at least one index or rate.")
+        sex_label = _txt(pm, "ratesex") or RATE_SEX_LABELS[0]
+        if sex_label not in RATE_SEX_LABELS:
+            raise arcpy.ExecuteError(
+                f"Life tables for {sex_label!r}? Use one of: "
+                + ", ".join(RATE_SEX_LABELS))
+        sex = RATE_SEXES[RATE_SEX_LABELS.index(sex_label)]
 
         # BACKLOG 377, v1.53.2. A SIXTH and SEVENTH open-coded k
         # parser lived here, one per door, and the property test
@@ -4336,13 +4454,25 @@ class SpatialDemography:
             if edit:
                 over[key] = edit
 
+        folder, layer = _txt(pm, "folder"), _txt(pm, "points")
+        if bool(folder) == bool(layer):
+            raise arcpy.ExecuteError(
+                "Give EITHER the folder of rasters OR the point layer "
+                "machine 3 made from one"
+                + (" - not both." if folder else "."))
+        points = points_crs = None
+        if layer:
+            points, points_crs = _machine3_points(layer, messages)
+            folder = None
         try:
             man = run_indices(
-                _txt(pm, "folder"), picked, k_values=ks,
+                folder, picked, k_values=ks,
                 unit_size=_num(pm, "unit", 1000.0) or 1000.0,
                 year=_txt(pm, "year") or None,
                 epsg=_epsg_of(pm.get("crs")),
-                overrides=over or None, channel=ch)
+                overrides=over or None, channel=ch,
+                vital=rates, vital_sex=sex,
+                points=points, points_crs=points_crs)
         except (DemographyError, ContinentalError, ValueError) as exc:
             raise arcpy.ExecuteError(str(exc))
 

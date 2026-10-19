@@ -459,6 +459,9 @@ INTERNAL = {
     # The fifth new module the matrix has stopped from shipping
     # undeclared.
     "atomic",
+    # v1.60.0, BACKLOG 416. The arithmetic behind machine 4's rates and
+    # life expectancies; reached through doors.demography.run_indices.
+    "doors.vital",
     "doors.help", "doors.report", "doors.fields", "doors.loader",
     "doors.rungs", "doors.registry", "doors.reference",
     "doors.decaynames", "doors.demography", "doors.continental",
