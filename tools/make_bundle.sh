@@ -159,6 +159,8 @@ python tools/make_release_zip.py "$V" "$WORK" \
 HAND=$(ls -1 HANDOVER_*.md | sed 's/HANDOVER_\([0-9]*\)\.md/\1 &/' \
        | sort -n | tail -1 | cut -d' ' -f2)
 cp BACKLOG.md MANUAL.md INSTALL.md "$HAND" "$WORK/"
+# v1.61.0: the formulas of machine 4's rates, where a reader looks
+cp METHODS_RATES.md "$WORK/"
 cp arcgis/ARCGIS_GUIDE.md "$WORK/"
 # v1.60.0: the Windows check at the TOP of the archive, beside the
 # working tree it unpacks and tests - John looked for it inside the

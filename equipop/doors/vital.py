@@ -335,6 +335,83 @@ def crude_death_rate(S, N, nat, e60_local, e60_nat):
     return cdr
 
 
+# ------------------------------------- each person against their own
+#                                         country (v1.60.1 -> 1.61.0)
+#
+# John, 19 October: a neighbourhood that crosses a border should not be
+# read wholly against the country of its cell; "bring the destination
+# cell values from its country and weight the results accordingly".
+# Every estimator above is a sum over the neighbourhood's people, so
+# each POINT can carry its own country's coefficients before the sums
+# are taken (demography.vital_own_groups builds them). The functions
+# below then read the pooled sums. Within one country every one of
+# them reduces EXACTLY to the function above it - tested.
+
+def life_expectancy_own(X, Sa):
+    """e(a) = sum over people aged b>=a of (P_a/P_b)(L_b/l_a) of their
+    own country, over the people aged a: X / S_a."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        e = np.asarray(X, float) / np.asarray(Sa, float)
+    e[~np.isfinite(e)] = np.nan
+    return e
+
+
+def fertility_own(C, E, Y, Z, N):
+    """(TFR, CBR) from the pooled sums: C children 0-4; E the births a
+    year each woman's own country's rates predict; Y = E x that
+    country's children per predicted birth (C_nat / E_nat); Z = E x
+    that country's TFR; N everybody.
+
+    lambda = C / Y - the children there are, over the children each
+    woman's own country would lead one to expect; TFR = lambda x the
+    E-weighted national TFR; CBR = 1000 lambda E / N."""
+    C, E, Y, Z, N = (np.asarray(v, float) for v in (C, E, Y, Z, N))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lam = C / Y
+        tfr = lam * Z / E
+        cbr = 1000 * lam * E / N
+    tfr[~np.isfinite(tfr)] = np.nan
+    cbr[~np.isfinite(cbr)] = np.nan
+    return tfr, cbr
+
+
+def crude_death_rate_own(D0, D60, MM, S60p, N, e60_local, e60_ref,
+                         widths60):
+    """CDR from the pooled sums: D0 the deaths below 60 at each person's
+    own country's rates; D60 the same from 60; MM (rows, bands from 60)
+    the people aged 60+ times their country's rate in each band - so
+    MM / S60p is the neighbourhood's own MIX of national schedules from
+    60; e60_ref the e60 the people aged 60 would have at their own
+    nations' tables. The mix is scaled by theta so its e60 stands to
+    the base as the local e60 stands to e60_ref; deaths from 60 are
+    then theta x D60."""
+    MM = np.asarray(MM, float)
+    S60p = np.asarray(S60p, float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        m_mix = MM / S60p[:, None]
+        ok_m = np.isfinite(m_mix).all(axis=1) & (m_mix > 0).all(axis=1)
+        m_mix[~ok_m] = 1.0                       # placeholder, masked
+        base = _e_from(m_mix, widths60, 0)
+        target = (np.asarray(e60_local, float)
+                  / np.asarray(e60_ref, float) * base)
+    ok = ok_m & np.isfinite(target)
+    lo = np.full(target.shape, np.log(0.02))
+    hi = np.full(target.shape, np.log(50.0))
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        e = _e_from(np.exp(mid)[:, None] * m_mix, widths60, 0)
+        too_long = e > np.where(ok, target, 0.0)
+        lo = np.where(too_long, mid, lo)
+        hi = np.where(too_long, hi, mid)
+    theta = np.exp((lo + hi) / 2)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cdr = 1000 * (np.asarray(D0, float)
+                      + theta * np.asarray(D60, float)) / np.asarray(N, float)
+    cdr[~ok | ~np.isfinite(cdr)] = np.nan
+    return cdr
+
+
 __all__ = ["MEASURES", "BANDS", "FERT", "VitalError", "reference",
            "national", "life_expectancy", "fertility",
-           "crude_death_rate", "citation"]
+           "crude_death_rate", "citation", "life_expectancy_own",
+           "fertility_own", "crude_death_rate_own"]

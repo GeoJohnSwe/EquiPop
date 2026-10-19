@@ -1,6 +1,14 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.60.2, 18 October 2026.**
+**Last updated: 1.61.0, 19 October 2026.**
+*Reviewed at 1.61.0: ONE NEW RESOURCE. METHODS_RATES.md sets out
+every formula behind machine 4's rates - the natural handout when a
+class meets them. Border neighbourhoods now read each person against
+their own country by default.*
+*Reviewed at 1.60.3: NO TEACHING CHANGES. Cells are built in one pass
+(a country-sized class exercise now runs in minutes) and a door
+refuses a package older than itself - worth showing a class that
+installs the wheel and the toolbox separately.*
 *Reviewed at 1.60.2: NO TEACHING CHANGES. The external review's fixes
 - children under five, projections without a code, a point layer's
 values - and the whole-country warning change no exercise; the

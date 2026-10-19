@@ -358,6 +358,50 @@ def _tif_paths(folders) -> list[str]:
     return sorted(set(out))
 
 
+def apply_compose(pts, compose, tag="folder"):
+    """COMPOSE: named columns built from existing ones, once, as loaded.
+
+    A list of columns is their plain SUM - "everyone under five" =
+    f_00 + f_01 + m_00 + m_01. Machine 4 needs these and so will anyone
+    building an index by hand.
+
+    A dict {"cols": [...], "by": "iso3", "coef": {code: [c1, c2, ...]}}
+    is a sum WEIGHTED PER ROW by the row's own code (v1.61.0): each
+    point carries its own country's coefficients, which is how machine
+    4 reads every person against their own nation. A code with no
+    coefficients contributes nothing.
+    """
+    for name, spec in (compose or {}).items():
+        cols = list(spec["cols"] if isinstance(spec, dict) else spec)
+        missing = [c for c in cols if c not in pts.columns]
+        if missing:
+            raise ValueError(
+                f"Cannot build {name!r}: no such column(s) "
+                f"{', '.join(missing)}.")
+        if not isinstance(spec, dict):
+            pts[name] = pts[cols].sum(axis=1)
+            print(f"[{tag}] {name} = {len(cols)} columns, "
+                  f"{pts[name].sum():,.1f} people")
+            continue
+        by = spec.get("by", "iso3")
+        if by not in pts.columns:
+            raise ValueError(
+                f"Cannot build {name!r}: it is weighted by {by!r}, which "
+                "these points do not carry.")
+        codes = pd.Categorical(pts[by].astype(str))
+        coef = np.zeros((len(codes.categories), len(cols)))
+        for i, code in enumerate(codes.categories):
+            got = spec["coef"].get(code)
+            if got is not None:
+                coef[i] = np.asarray(got, float)
+        idx = np.asarray(codes.codes)
+        acc = np.zeros(len(pts))
+        for j, c in enumerate(cols):
+            acc += pts[c].to_numpy(float) * coef[idx, j]
+        pts[name] = acc
+    return pts
+
+
 def load_folder(folders, compose: dict | None = None,
                 keep_index: bool = False,
                 convention: str | None = None,
@@ -612,15 +656,7 @@ def load_folder(folders, compose: dict | None = None,
     # five" = f_00 + f_01 + m_00 + m_01. Machine 4 needs these and so
     # will anyone building an index by hand. Done here so the sum is
     # made once, from the columns as loaded.
-    for name, parts in (compose or {}).items():
-        missing = [c for c in parts if c not in pts.columns]
-        if missing:
-            raise ValueError(
-                f"Cannot build {name!r}: no such column(s) "
-                f"{', '.join(missing)}.")
-        pts[name] = pts[list(parts)].sum(axis=1)
-        print(f"[folder] {name} = {len(parts)} columns, "
-              f"{pts[name].sum():,.1f} people")
+    apply_compose(pts, compose, "folder")
 
     measure_cols = measurement_columns(pts)
 
@@ -828,15 +864,7 @@ def load_points(table, crs=None, compose: dict | None = None,
               "people of that cohort there.")
     other = dropped + [str(c) for c in df.columns
                        if c not in (xs, ys, "iso3") and c not in cohorts]
-    for name, parts in (compose or {}).items():
-        missing = [c for c in parts if c not in pts.columns]
-        if missing:
-            raise ValueError(
-                f"Cannot build {name!r}: no such column(s) "
-                f"{', '.join(missing)}.")
-        pts[name] = pts[list(parts)].sum(axis=1)
-        print(f"[points] {name} = {len(parts)} columns, "
-              f"{pts[name].sum():,.1f} people")
+    apply_compose(pts, compose, "points")
     man = {"files": {}, "labels": list(cohorts), "crs": crs,
            "points": int(len(pts)), "unparsed": [], "source": "points",
            "blanks_as_zero": blanks, "fields_not_used": other}

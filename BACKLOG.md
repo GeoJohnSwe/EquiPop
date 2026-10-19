@@ -3673,6 +3673,34 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 422 | DONE v1.61.0, 19 OCTOBER 2026 | MACHINE 4 FOR MERGED REGIONS.
+  (a) A tiles box in both doors (the engine has out_dir already). (b)
+  Each person read against their OWN country as the default, the
+  cell's country as the option: per-cell coefficients from the cell's
+  own country, so the neighbourhood sums ARE the pooled estimators;
+  exactly today's formulas within one country (HANDOVER 0ae has the
+  forms). (c) A methods document with every formula, shipped and
+  linked from the help. Measured: a Turkey-sized run peaks near
+  9.5 GB in the neighbourhood step - tiles matter for anything larger.
+- 421 | DONE v1.60.3, 19 OCTOBER 2026 | build_cells IN ONE PASS. The
+  per-cell loop cost 0.31 ms per cell-group: John's Turkey with the
+  rates (32 groups) sat silent over an hour. np.add.reduceat over
+  sorted segments (not bincount - left-to-right summation put a cell
+  of exactly k people 1.4e-12 short; test_unitsize caught it).
+  28,000 cells 286 s -> 0.5 s. The old loop is the answer key in
+  test_review_1_60_1.
+- 420 | DONE v1.60.3, 19 OCTOBER 2026 | A PACKAGE OLDER THAN
+  ITS DOOR IS REFUSED. John, 19 October: Pro machine 4 with the 1.60.2
+  toolbox -> "TypeError: run_folder() got an unexpected keyword
+  argument 'vital'". The package in arcgispro-equipop was 1.59.2 (its
+  demography.py line 867 is 1.59.2's run_folder call): the toolbox
+  files were replaced, the wheel was not installed. Only machines 1-2
+  ever announced versions, and only as a warning. Now every Pro tool
+  calls _announce_version first, and an OLDER package stops the run
+  with both versions, where the package lives, and the install line;
+  a NEWER one (usually a cached toolbox, BACKLOG 314) still warns.
+  QGIS check_versions refuses the same case. Tests in
+  test_review_1_60_1.py; the two QGIS mismatch tests updated.
 - 419 | OPEN | FROM THE REVIEW OF 1.60.1, NOT DONE. (a) Provenance of
   equipop/data/berlin_example.xlsx - asked of John; if third-party,
   into THIRD_PARTY_NOTICES.md (both copies). (b) A preflight 'health

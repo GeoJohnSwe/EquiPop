@@ -13,6 +13,9 @@ include CITATION.cff
 # where a distributor looks first. Its twin inside the package rides
 # in the wheel (pyproject package-data).
 include THIRD_PARTY_NOTICES.md
+# v1.61.0, John: "provide the users with the formulas of the new
+# models". Its twin inside the package rides in the wheel.
+include METHODS_RATES.md
 include LICENSE
 include MANUAL.md
 include MANUAL_BEGINNER.md

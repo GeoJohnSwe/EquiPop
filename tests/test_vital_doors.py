@@ -38,7 +38,7 @@ def _pyt_lists():
         if isinstance(node, ast.Assign) and isinstance(
                 node.targets[0], ast.Name) and node.targets[0].id in (
                 "RATE_NAMES", "RATE_LABELS", "RATE_SEXES",
-                "RATE_SEX_LABELS"):
+                "RATE_SEX_LABELS", "RATE_REFS", "RATE_REF_LABELS"):
             out[node.targets[0].id] = ast.literal_eval(node.value)
     return out
 
@@ -53,8 +53,11 @@ def test_both_doors_offer_the_packages_measures_in_its_words():
     assert Q.RATE_NAMES == list(V.MEASURES)
     assert Q.RATE_LABELS == [V.MEASURES[n]["label"] for n in Q.RATE_NAMES]
     pro = _pyt_lists()
+    # v1.61.0: whose nation - the engine's rules, in its order
+    from equipop.doors.demography import VITAL_REFERENCES
+    assert Q.RATE_REFS == list(VITAL_REFERENCES)
     for name in ("RATE_NAMES", "RATE_LABELS", "RATE_SEXES",
-                 "RATE_SEX_LABELS"):
+                 "RATE_SEX_LABELS", "RATE_REFS", "RATE_REF_LABELS"):
         assert pro[name] == getattr(Q, name), name
 
 

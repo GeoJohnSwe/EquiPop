@@ -783,10 +783,13 @@ def test_a_version_mismatch_is_mentioned_once():
     real = equipop_qgis.__version__
     try:
         equipop_qgis.__version__ = "9.9.9"
-        check_versions(CountsAndShares.channel(fb))
+        # v1.60.3: a package BEHIND its plugin is refused, not warned
+        # about - the plugin asks it for things it does not have
+        with pytest.raises(QgsProcessingException) as e:
+            check_versions(CountsAndShares.channel(fb))
     finally:
         equipop_qgis.__version__ = real
-    said = " ".join(fb.warnings)
+    said = str(e.value)
     # 9.9.9 makes the PLUGIN the newer half, so the advice is to
     # install the matching WHEEL. It used to say "pip install
     # --upgrade equipop" whichever half was ahead, which is useless
@@ -1280,13 +1283,21 @@ def test_the_mismatch_message_offers_BOTH_routes():
     try:
         equipop.__version__, equipop_qgis.__version__ = "1.43.4", "1.44.0"
         ch = Ch()
-        check_versions(ch)
-        said = " ".join(ch.said)
+        # v1.60.3: the package behind the plugin is refused, with both
+        # routes in the refusal
+        with pytest.raises(QgsProcessingException) as e:
+            check_versions(ch)
+        said = str(e.value)
         assert "--upgrade" in said, "the published route"
         assert ".whl" in said, "the local-build route"
-        assert "plain `pip install` does nothing" in said, (
+        assert "plain `pip install`" in said and "does nothing" in said, (
             "name the thing that actually happened")
-        assert "plugin is ahead" in said
+        assert "OLDER than this plugin" in said
+        # and the package AHEAD of the plugin is still one warning
+        equipop.__version__, equipop_qgis.__version__ = "1.44.0", "1.43.4"
+        ch = Ch()
+        check_versions(ch)
+        assert "package is ahead" in " ".join(ch.said)
     finally:
         equipop.__version__, equipop_qgis.__version__ = was
 

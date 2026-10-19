@@ -839,6 +839,163 @@ def vital_references(vplan, pts):
     return refs, absent
 
 
+#: Whose nation a neighbourhood's people are read against (v1.61.0).
+#: 'own'  - every person their own country's: a neighbourhood across a
+#:          border pools both, each side against its own nation. The
+#:          default (John, 19 October).
+#: 'cell' - the whole neighbourhood against the country of its cell:
+#:          the rule to 1.60.3.
+VITAL_REFERENCES = {"own": "each person's own country",
+                    "cell": "the country of the neighbourhood's cell"}
+
+
+def vital_own_groups(vplan, refs) -> dict:
+    """compose= specs for 'own': each POINT carries its own country's
+    coefficients, so the neighbourhood sums ARE the pooled estimators
+    (vital.life_expectancy_own, fertility_own, crude_death_rate_own).
+
+    Within one country these reduce exactly to the 'cell' arithmetic:
+      vo_s<a>  people aged a                     (coef 1)
+      vo_x<a>  people aged b>=a x (P_a/P_b)(L_b/l_a), their nation's
+      vo_c     children 0-4                      (coef 1)
+      vo_e     women x f_x, their nation's - births a year predicted
+      vo_y     the same x C_nat/E_nat - children predicted
+      vo_z     the same x TFR_nat
+      vo_n     everybody in the pyramid          (coef 1)
+      vo_d0    people below 60 x m_b; vo_d60 the same from 60
+      vo_p60   people aged 60+                   (coef 1)
+      vo_m<b>  people aged 60+ x m_b of their nation, b = 60 ... top
+      vo_r60   people aged 60 x e60 of their nation
+    A country with no national table carries zeros: its people are
+    left out of every sum rather than read against somebody else's.
+    """
+    from . import vital as V
+    bands = vplan["bands"]
+    bc = vplan["band_cols"]
+    names = vplan["names"]
+    starts = sorted({V.MEASURES[n]["start"] for n in names
+                     if V.MEASURES[n]["start"] is not None
+                     and V.MEASURES[n]["start"] in bands})
+    cdr = "crude_death_rate" in names and 60 in bands
+    if cdr and 60 not in starts:
+        starts.append(60)
+
+    def cols_of(bs):
+        return [c for b in bs for c in bc[b]]
+
+    def band_of(bs):
+        return [b for b in bs for _c in bc[b]]
+
+    def spec(bs, per_country):
+        """{"cols", "by", "coef"}: per_country(ref) -> {band: coef}."""
+        cols, which = cols_of(bs), band_of(bs)
+        coef = {}
+        for iso, ref in refs.items():
+            per = per_country(ref)
+            coef[iso] = [float(per.get(b, 0.0)) for b in which]
+        return {"cols": cols, "by": "iso3", "coef": coef}
+
+    def ones(_ref):
+        return {b: 1.0 for b in bands}
+
+    out = {}
+    for a in starts:
+        ia = bands.index(a)
+        out[f"vo_s{a}"] = spec([a], ones)
+
+        def x_coef(ref, ia=ia):
+            nat, P = ref["nat"], ref["P"]
+            got = {}
+            for j in range(ia, len(bands)):
+                if P[j] > 0 and nat["l"][ia] > 0:
+                    got[bands[j]] = (P[ia] / P[j]) * nat["L"][j] \
+                        / nat["l"][ia]
+            return got
+        out[f"vo_x{a}"] = spec(bands[ia:], x_coef)
+    if any(n in V.NEEDS_WOMEN for n in names):
+        wc = vplan["women_cols"]
+        fert = [a for a in V.FERT]
+
+        def wspec(scale):
+            cols = [c for a in fert for c in wc[a]]
+            which = [a for a in fert for _c in wc[a]]
+            coef = {}
+            for iso, ref in refs.items():
+                nat = ref["nat"]
+                f = dict(zip(V.FERT, nat["f"]))
+                s = scale(ref)
+                coef[iso] = [float(f[a] * s) for a in which]
+            return {"cols": cols, "by": "iso3", "coef": coef}
+
+        def r_of(ref):
+            e_nat = float((np.asarray(ref["W"], float)
+                           * np.asarray(ref["nat"]["f"], float)).sum())
+            return ref["C"] / e_nat if e_nat > 0 else 0.0
+        out["vo_c"] = {"cols": list(vplan["child_cols"]), "by": "iso3",
+                       "coef": {iso: [1.0] * len(vplan["child_cols"])
+                                for iso in refs}}
+        out["vo_e"] = wspec(lambda ref: 1.0)
+        out["vo_y"] = wspec(r_of)
+        out["vo_z"] = wspec(lambda ref: ref["nat"]["tfr"])
+    if cdr:
+        i60 = bands.index(60)
+        old = bands[i60:]
+
+        def m_of(ref):
+            return dict(zip(bands, ref["nat"]["m"]))
+        out["vo_n"] = spec(bands, ones)
+        out["vo_d0"] = spec(bands[:i60], m_of)
+        out["vo_d60"] = spec(old, m_of)
+        out["vo_p60"] = spec(old, ones)
+        for b in old:
+            out[f"vo_m{b}"] = spec(
+                old, lambda ref, b=b: {o: m_of(ref)[b] for o in old})
+        out["vo_r60"] = spec([60], lambda ref: {60: ref["e60"]})
+    return out
+
+
+def apply_vital_own(frame, k_values, vplan):
+    """The rates and life expectancies from the 'own' sums, in place;
+    the sums dropped after. The 'own' twin of apply_vital."""
+    from . import vital as V
+    bands = vplan["bands"]
+    names = vplan["names"]
+
+    def T(g, k):
+        return frame[f"T_{g}_{k}"].to_numpy(float)
+    for k in k_values:
+        for n in names:
+            a = V.MEASURES[n]["start"]
+            if a is not None and a in bands:
+                frame[f"{V.MEASURES[n]['code']}_{k}"] = \
+                    V.life_expectancy_own(T(f"vo_x{a}", k), T(f"vo_s{a}", k))
+        if any(n in V.NEEDS_WOMEN for n in names):
+            tfr, cbr = V.fertility_own(T("vo_c", k), T("vo_e", k),
+                                       T("vo_y", k), T("vo_z", k),
+                                       frame[f"N_{k}"].to_numpy(float))
+            if "total_fertility_rate" in names:
+                frame[f"TFR_{k}"] = tfr
+            if "crude_birth_rate" in names:
+                frame[f"CBR_{k}"] = cbr
+        if "crude_death_rate" in names and 60 in bands:
+            i60 = bands.index(60)
+            old = bands[i60:]
+            widths = [b2 - b1 for b1, b2 in zip(old, old[1:])] + [None]
+            s60 = T("vo_s60", k)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                e60 = T("vo_x60", k) / s60
+                e60_ref = T("vo_r60", k) / s60
+            frame[f"CDR_{k}"] = V.crude_death_rate_own(
+                T("vo_d0", k), T("vo_d60", k),
+                np.column_stack([T(f"vo_m{b}", k) for b in old]),
+                T("vo_p60", k), T("vo_n", k), e60, e60_ref, widths)
+    machinery = [c for c in frame.columns
+                 if re.match(r"^[TR]_vo_[a-z0-9]+_\d+$", c)
+                 or re.match(r"^vo_[a-z0-9]+_local$", c)]
+    frame.drop(columns=machinery, inplace=True)
+    return frame
+
+
 class CellCountries:
     """Which country each result cell belongs to.
 
@@ -1085,7 +1242,8 @@ def run_index(folders, name, *, k_values, unit_size=1000.0, year=None,
 
 def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
                 epsg=None, overrides=None, channel=None, vital=None,
-                vital_sex="both", points=None, points_crs=None, **kw):
+                vital_sex="both", vital_reference="own", points=None,
+                points_crs=None, **kw):
     """SEVERAL indices in ONE traverse of the data.
 
     John's preference, and it matters at continental scale: loading
@@ -1102,6 +1260,9 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     points, points_crs: the point table machine 3 wrote from such a
     folder, used INSTEAD of it (folders is then ignored) - John, 18
     October: the curated points should do as well as the rasters.
+    vital_reference: 'own' (each person against their own country, the
+    default since 1.61.0) or 'cell' (the neighbourhood against its
+    cell's country) - VITAL_REFERENCES.
     """
     import contextlib
     import io
@@ -1123,6 +1284,10 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
         check_folders(folders)  # before we peek at the labels
     names = list(names or [])
     vital = list(vital or [])
+    if vital_reference not in VITAL_REFERENCES:
+        raise DemographyError(
+            f"vital_reference must be one of "
+            f"{', '.join(VITAL_REFERENCES)}; got {vital_reference!r}.")
     if not names and not vital:
         from .vital import MEASURES
         raise DemographyError(
@@ -1142,7 +1307,8 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
         # each cell must learn which one it is in.
         vplan = vital_plan(labels, vital, year=year, sex=vital_sex)
         refs, absent = vital_references(vplan, pts)
-        if pts["iso3"].nunique() > 1:
+        vplan["rule"] = vital_reference
+        if vital_reference == "cell" and pts["iso3"].nunique() > 1:
             where = (pts["lon"].to_numpy(), pts["lat"].to_numpy(),
                      pts["iso3"].astype(str).to_numpy())
     del pts
@@ -1167,8 +1333,10 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
         say(f"   divided by: {' + '.join(pl['denominator'])}")
 
     if vital:
-        compose.update(vital_groups(vplan))
-        groups += list(vital_groups(vplan))
+        vg = (vital_own_groups(vplan, refs) if vital_reference == "own"
+              else vital_groups(vplan))
+        compose.update(vg)
+        groups += list(vg)
         _say_vital(say, vplan, refs, absent, k_values)
         if year is None:
             year = vplan["year"]
@@ -1198,7 +1366,9 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
 
     def finish(df):
         apply_index(df, triples)
-        if vital:
+        if vital and vital_reference == "own":
+            apply_vital_own(df, k_values, vplan)
+        elif vital:
             apply_vital(df, k_values, vplan, refs, countries)
         return df
 
@@ -1223,7 +1393,7 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
         from .vital import citation
         man["vital"] = {k: v for k, v in vplan.items()
                         if k in ("names", "year", "sex", "sexes", "top",
-                                 "bands", "folded")}
+                                 "bands", "folded", "rule")}
         man["vital"]["reference"] = citation()
         man["vital"]["countries"] = sorted(c.upper() for c in refs)
         # the share of WPP's national population each country's folder
@@ -1256,9 +1426,14 @@ def _say_vital(say, vplan, refs, absent, k_values):
     from . import vital as V
     sx = {"both": "both sexes", "women": "women", "men": "men"}[
         vplan["sex"]]
+    rule = vplan.get("rule", "cell")
     say(f"Rates and life expectancy, {vplan['year']} - from each "
         f"neighbourhood's age pyramid ({sx}, bands 0 to "
-        f"{vplan['top']}+), read against its nation's:")
+        f"{vplan['top']}+), read against "
+        + ("EACH PERSON'S OWN NATION - a neighbourhood across a border "
+           "pools both sides, each against its own country:"
+           if rule == "own" else
+           "the nation of the neighbourhood's cell:"))
     for n in vplan["names"]:
         mm = V.MEASURES[n]
         say(f"   {mm['code']:5s} {mm['label']}")
@@ -1401,7 +1576,10 @@ def explain_fields(columns, plans=None, epsg=None, vital=None):
                               else "")
                            + f"{mm['label']} over the nearest {k} "
                            f"people: {mm['about']}. MODEL-BASED, read "
-                           "from the age pyramid against the nation's")
+                           "from the age pyramid against "
+                           + ("each person's own nation"
+                              if vital.get("rule", "cell") == "own"
+                              else "the nation of the cell"))
                 continue
         # <code>_<k>  - the index itself
         for nm, pl in (plans or {}).items():

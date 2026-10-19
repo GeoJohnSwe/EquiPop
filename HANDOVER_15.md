@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.60.2 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0ad first, then 0ac back to 0b
+*Amended through 1.61.0 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0af first, then 0ae back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,48 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0af. 1.61.0 - OWN-COUNTRY RATES, TILES IN MACHINE 4, THE FORMULAS
+
+BACKLOG 422 as agreed in 0ae. What to know before changing it:
+- **The 'own' rule is per-POINT coefficients plus plain neighbourhood
+  sums.** `apply_compose` gained a dict spec:
+  {"cols", "by": "iso3", "coef": {iso: [...]}}. Any new measure that
+  is a sum over people can follow the same route.
+- **A changed default can hide the old path from its own tests.** The
+  1.60 machine-4 tests silently started running 'own' and stopped
+  reaching the 'cell' arithmetic. Three of the break-check's breaks
+  survived for that reason, and those tests now run both rules.
+- **METHODS_RATES.md has two copies**: at the top of the repository
+  and as equipop/METHODS_RATES.md. A test keeps them identical. Edit
+  both, or copy one onto the other.
+
+## 0ae. 1.60.3 - CELLS IN ONE PASS; AN OLD PACKAGE IS REFUSED
+
+John's first run of the rates on a whole country, Turkey at 1 km. Two
+things came up the same day.
+
+1. **The wheel had not been installed.** The traceback named 1.59.2's
+   demography.py line 867. Every door now refuses a package older than
+   itself.
+2. **The run then sat silent for over an hour.** build_cells did four
+   pandas operations per cell per group. It now runs in one pass.
+
+His result map of TFR looked plausible to him (high in the southeast).
+
+Next, agreed with John and NOT in 1.60.3 (BACKLOG 422):
+- **Tiles for machine 4 in both doors.**
+- **Each person read against their OWN country, as the default.** The
+  cell's country, today's rule, becomes the option. Every estimator is
+  a sum over people, so each pixel can carry its own country's
+  coefficients before the neighbourhood sums are taken. That avoids
+  splitting by country, and with one country it reduces EXACTLY to
+  today's formulas. Concretely, per cell:
+  - LE: X_a = sum_b S_b (P_a/P_b) L_b / l_a, against S_a;
+  - TFR: E, E*r and E*TFR_nat, with r = C_nat/E_nat;
+  - CDR: the deaths below 60, and S_b*m_b for each band from 60.
+- **A methods document with every formula**, both forms, shipped and
+  linked from the help.
 
 ## 0ad. 1.60.2 - THE EXTERNAL REVIEW OF 1.60.1
 

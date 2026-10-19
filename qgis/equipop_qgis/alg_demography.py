@@ -25,6 +25,7 @@ from qgis.core import (QgsCoordinateReferenceSystem, QgsFeature, QgsField,
                        QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterFeatureSource,
                        QgsProcessingParameterFile,
+                       QgsProcessingParameterFolderDestination,
                        QgsProcessingParameterMatrix,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString, QgsWkbTypes)
@@ -80,6 +81,11 @@ RATE_LABELS = ["Life expectancy at 60",
                "Crude death rate"]
 RATE_SEXES = ["both", "women", "men"]
 RATE_SEX_LABELS = ["Both sexes", "Women", "Men"]
+# v1.61.0, John: whose nation a neighbourhood's people are read
+# against. The engine's VITAL_REFERENCES, in this order - a test pins it.
+RATE_REFS = ["own", "cell"]
+RATE_REF_LABELS = ["Each person's own country (pools across a border)",
+                   "The country of the neighbourhood's cell"]
 
 
 def _index_names():
@@ -171,8 +177,18 @@ class SpatialDemography(EquipopAlgorithm):
             "ratesex", "2d. Life tables and death rate for",
             options=list(RATE_SEX_LABELS), defaultValue=0),
             advanced=True)
+        self.add(QgsProcessingParameterEnum(
+            "rateref", "2e. Read the rates against",
+            options=list(RATE_REF_LABELS), defaultValue=0),
+            advanced=True)
+        # v1.61.0, John: "please add also an opportunity to split a run
+        # into tiles for Q and Pro" - merged regions are coming.
+        self.add(QgsProcessingParameterFolderDestination(
+            "tiles", "2f. Folder for a TILED, resumable run "
+                     "(blank = run in memory)",
+            optional=True), advanced=True)
         self.add(QgsProcessingParameterCrs(
-            "outcrs", "2e. Write the output in (blank = the same "
+            "outcrs", "2g. Write the output in (blank = the same "
                       "projection the rasters were in)",
             optional=True), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
@@ -198,6 +214,14 @@ class SpatialDemography(EquipopAlgorithm):
                 "Boxes 1b and 1e: tick at least one index or rate.")
         sex = RATE_SEXES[self.parameterAsEnum(parameters, "ratesex",
                                               context)]
+        rule = RATE_REFS[self.parameterAsEnum(parameters, "rateref",
+                                              context)]
+        # an optional FolderDestination left alone arrives as the
+        # literal TEMPORARY_OUTPUT (machine 3 learnt this first)
+        tiles = (self.parameterAsString(parameters, "tiles",
+                                        context) or "").strip()
+        if tiles in ("", "TEMPORARY_OUTPUT"):
+            tiles = None
 
         folder = (self.parameterAsFile(parameters, "folder", context)
                   or "").strip()
@@ -238,12 +262,18 @@ class SpatialDemography(EquipopAlgorithm):
                               unit_size=unit, year=year, epsg=epsg,
                               overrides=over or None, channel=ch,
                               vital=rates, vital_sex=sex,
+                              vital_reference=rule, out_dir=tiles,
                               points=points, points_crs=points_crs)
         except (DemographyError, ContinentalError, ValueError) as exc:
             # The engine refuses in plain words. Do not add to them.
             raise QgsProcessingException(str(exc))
 
-        return {"OUTPUT": self._write(man["results"], man, parameters,
+        if tiles:
+            from equipop.bigrun import load_tiled
+            table = load_tiled(tiles)
+        else:
+            table = man["results"]
+        return {"OUTPUT": self._write(table, man, parameters,
                                       context, feedback)}
 
     # -----------------------------------------------------------------

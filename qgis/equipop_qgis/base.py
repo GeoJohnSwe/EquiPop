@@ -82,6 +82,19 @@ def _doors():
     return D
 
 
+def _package_behind():
+    """(plugin, package) when the package is older, else None."""
+    try:
+        import equipop
+        from . import __version__ as plugin_version
+        pkg = getattr(equipop, "__version__", "unknown")
+    except Exception:                               # pragma: no cover
+        return None
+    if pkg != "unknown" and _newer(plugin_version, pkg):
+        return plugin_version, pkg
+    return None
+
+
 def _newer(a, b):
     """Is version a newer than b? Numeric compare, not string.
 
@@ -128,14 +141,36 @@ def matrix_cells(alg, parameters, name, context):
 
 
 def check_versions(channel):
-    """Say when the two halves are from different releases.
+    """Say when the two halves are from different releases - and STOP
+    when the package is the older one.
 
     The contract number only changes when something STRUCTURAL does,
     so an older package can sit quietly under a newer plugin and run
     with old behaviour - which cost an exchange when a fix that lived
     in the package looked like it had not worked (John, v1.26.1).
-    A mismatch is not an error; it is worth one line.
+
+    v1.60.3: an older package is now refused, as in Pro. John met
+    "run_folder() got an unexpected keyword argument 'vital'" in Pro
+    with the 1.60.2 toolbox over the 1.59.2 package; a plugin ahead of
+    its package asks it for things it has never heard of in exactly
+    the same way. A package AHEAD of the plugin stays a warning.
     """
+    older = _package_behind()
+    if older:
+        from qgis.core import QgsProcessingException
+        plugin_version, pkg = older
+        raise QgsProcessingException(
+            f"The equipop package in QGIS's Python is {pkg}, OLDER than "
+            f"this plugin ({plugin_version}). The plugin asks for things "
+            f"{pkg} does not have, so the run would fail part-way. "
+            "Match them, then restart QGIS:\n"
+            "  published release:  python -m pip install --upgrade "
+            "equipop\n"
+            "  local build:  python -m pip install --no-deps "
+            f"--force-reinstall equipop-{plugin_version}"
+            "-py3-none-any.whl\n"
+            "(in the OSGeo4W Shell; --upgrade is required, plain `pip "
+            "install` does nothing when a version is already there).")
     try:
         import equipop
         from . import __version__ as plugin_version

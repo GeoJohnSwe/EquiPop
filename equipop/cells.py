@@ -311,37 +311,73 @@ def build_cells(
                   f"individuals count towards k but not towards {v} statistics.")
 
     # --- aggregate ---
+    # ONE VECTORISED PASS (v1.60.3). This walked the cells in Python
+    # and, in each, ran four pandas operations per group - about
+    # 0.3 ms per cell and group. Harmless for a town; John's Turkey at
+    # 1 km with machine 4's rates is ~450,000 cells x 32 groups, which
+    # sat silent for well over an hour after the projection line
+    # (19 October). Every number here is a per-cell SUM: the rows are
+    # sorted by cell once (stably, so each cell keeps its own row
+    # order) and each sum is one np.add.reduceat over the cells'
+    # segments. NOT bincount, which adds strictly left to right: 1000
+    # pixels of 0.1 then make 99.9999999999986, and a cell holding
+    # exactly k people reads as short of it (test_unitsize caught
+    # that). The value arrays are the same sorted rows, split at the
+    # boundaries. tests/test_review_1_60_1 checks all of it against
+    # the old loop.
     groups = df.groupby(["_E", "_N"], sort=True)
-    E, N, n = [], [], []
-    bsums = {v: [] for v in binary_vars}
-    bvalid = {v: [] for v in binary_vars}
-    varrs = {v: [] for v in value_vars}
-    vwts = {v: [] for v in value_vars} if weights is not None else {}
-    labels = [] if label_col else None
-    mixed = 0
+    gi = groups.ngroup().to_numpy()
+    keys = groups.size().index
+    m_cells = len(keys)
+    E = keys.get_level_values(0).to_numpy(np.int64)
+    N = keys.get_level_values(1).to_numpy(np.int64)
+    order = np.argsort(gi, kind="stable")          # row order kept
+    g_sorted = gi[order]
+    starts = (np.flatnonzero(np.r_[True, g_sorted[1:] != g_sorted[:-1]])
+              if len(gi) else np.zeros(0, dtype=np.int64))
 
-    for (e, nn), g in groups:
-        E.append(e)
-        N.append(nn)
-        n.append(float(g[weights].sum()) if weights is not None else len(g))
-        for v in binary_vars:
-            if weights is None:
-                bsums[v].append(g[v].sum())
-                bvalid[v].append(int(g[v].notna().sum()))
-            else:
-                w = g[weights]
-                bsums[v].append(float((g[v].fillna(0) * w).sum()))
-                bvalid[v].append(float(w[g[v].notna()].sum()))
+    def per_cell(x):
+        if not m_cells:
+            return np.zeros(0)
+        return np.add.reduceat(np.asarray(x, float)[order], starts)
+
+    wcol = (df[weights].to_numpy(float) if weights is not None else None)
+    n = (per_cell(wcol) if weights is not None
+         else np.bincount(gi, minlength=m_cells).astype(np.int64))
+    bsums, bvalid = {}, {}
+    for v in binary_vars:
+        col = df[v].to_numpy(float)
+        ok = ~np.isnan(col)
+        # a blank contributes nothing; an infinity is NOT made finite
+        val = np.where(ok, col, 0.0)
+        if weights is None:
+            bsums[v] = per_cell(val)
+            bvalid[v] = np.bincount(gi[ok], minlength=m_cells)
+        else:
+            bsums[v] = per_cell(val * wcol)
+            bvalid[v] = per_cell(np.where(ok, wcol, 0.0))
+    varrs = {}
+    vwts = {}
+    if value_vars:
         for v in value_vars:
-            keep = g[v].notna()
-            varrs[v].append(g.loc[keep, v].to_numpy(dtype=float))
+            col = df[v].to_numpy(float)[order]
+            ok = ~np.isnan(col)
+            cuts = np.searchsorted(g_sorted[ok], np.arange(1, m_cells))
+            varrs[v] = (np.split(col[ok], cuts) if m_cells else [])
             if weights is not None:
-                vwts[v].append(g.loc[keep, weights].to_numpy(dtype=float))
-        if label_col:
-            uniq = g[label_col].astype(str).unique()
-            if len(uniq) > 1:
-                mixed += 1
-            labels.append("|".join(sorted(uniq)))
+                vwts[v] = (np.split(wcol[order][ok], cuts) if m_cells
+                           else [])
+    labels = None
+    mixed = 0
+    if label_col:
+        u = (pd.DataFrame({"g": gi,
+                           "l": df[label_col].astype(str).to_numpy()})
+             .drop_duplicates().sort_values(["g", "l"], kind="stable"))
+        per = np.bincount(u["g"].to_numpy(), minlength=m_cells)
+        mixed = int((per > 1).sum())
+        joined = u.groupby("g", sort=True)["l"].agg("|".join) if mixed \
+            else u.set_index("g")["l"]
+        labels = joined.reindex(range(m_cells)).tolist()
 
     if label_col and mixed:
         print(f"[cells] WARNING: {mixed} cells contain several distinct "
@@ -353,10 +389,8 @@ def build_cells(
     # above walked, so row i of the matrix is cell i.
     sum_matrix, sum_names = None, list(sum_vars)
     if sum_vars:
-        m_cells = len(E)
-        gi = groups.ngroup().to_numpy()
-        wcol = (df[weights].to_numpy(float) if weights is not None
-                else np.ones(len(df)))
+        if wcol is None:
+            wcol = np.ones(len(df))
         if sum_by is None:
             n_lev, code = 1, np.zeros(len(df), dtype=np.int64)
         else:

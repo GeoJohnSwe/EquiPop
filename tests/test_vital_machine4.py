@@ -109,15 +109,20 @@ def test_the_whole_folder_read_as_one_neighbourhood_is_the_nation(folder):
     assert "World Population Prospects 2024" in man["vital"]["reference"]
 
 
-def test_the_west_dies_younger_and_its_death_rate_shows_it(folder):
+@pytest.mark.parametrize("rule", ["own", "cell"])
+def test_the_west_dies_younger_and_its_death_rate_shows_it(folder, rule):
     """Death rates from 60 half again as high in the west half: its e60
     comes out lower and its CDR higher, while TFR, which the old do not
-    touch, comes out the same on both sides.
+    touch, comes out the same on both sides. Under BOTH rules (v1.61.0:
+    'own' became the default, and the 1.61.0 break-check found this
+    test no longer reached the 'cell' arithmetic at all).
 
     BROKEN WITH: the CDR given the nation's e60 instead of the
-    neighbourhood's."""
+    neighbourhood's; and the cell estimator returning the national
+    e(a)."""
     man = run_indices(str(folder), [], vital=ALL, k_values=[5000],
-                      unit_size=1000.0, epsg=32737)
+                      unit_size=1000.0, epsg=32737,
+                      vital_reference=rule)
     r = man["results"]
     west = r["EastWest"] < r["EastWest"].median()
     e60w, e60e = r.loc[west, "e60_5000"].median(), \
@@ -222,7 +227,8 @@ def test_a_tiled_run_gives_the_same_answers(folder, tmp_path):
         assert np.allclose(a, b, equal_nan=True), c
 
 
-def test_each_cell_is_read_against_its_own_country(tmp_path):
+@pytest.mark.parametrize("rule", ["own", "cell"])
+def test_each_cell_is_read_against_its_own_country(tmp_path, rule):
     """Two countries side by side, each with the SAME pyramid in every
     pixel: every neighbourhood well inside a country is that country's
     pyramid, so its e60 must be that country's - Uganda's in the west,
@@ -245,7 +251,8 @@ def test_each_cell_is_read_against_its_own_country(tmp_path):
                         transform=from_origin(x0, 0.5, PX, PX)) as d:
                     d.write(a, 1)
     man = run_indices(str(tmp_path), [], vital=["life_expectancy_60"],
-                      k_values=[2000], unit_size=1000.0, epsg=32736)
+                      k_values=[2000], unit_size=1000.0, epsg=32736,
+                      vital_reference=rule)
     r = man["results"]
     assert man["vital"]["countries"] == ["KEN", "UGA"]
 

@@ -301,6 +301,19 @@ text, a negative number or an infinity is refused by field. Plain
 x/y coordinates need their coordinate system; lon/lat and machine 3's
 EastWest/NorthSouth are read as degrees when they fit.
 
+**Every formula** - sections 2 to 5 below in full, with the
+assumptions and references - is in `METHODS_RATES.md` (in the release,
+and inside the installed package as `equipop/METHODS_RATES.md`).
+
+**Whose nation (since 1.61.0).** By default each person is read
+against their OWN country (`vital_reference="own"`): a neighbourhood
+across a border pools both sides, each against its own nation, and
+lands between the two nations rather than jumping where the reference
+flips. Within one country this is exactly the older rule,
+`vital_reference="cell"` - the whole neighbourhood against its cell's
+country. Machine 4 can also run TILED (`out_dir=`, box 2f), as
+machine 3 can, for merged regions larger than memory.
+
 **How.** Each neighbourhood's age pyramid is read **against its
 nation's**. The nation's own age patterns come from UN World Population
 Prospects 2024, which ships with EquiPop for 236 countries, 2000-2030.

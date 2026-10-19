@@ -3070,10 +3070,12 @@ def test_every_run_says_which_toolbox_and_package_are_live():
     assert "EquiPop toolbox" in said and pyt.TOOLBOX_VERSION in said, said
 
     # and it must SHOUT when the two disagree, because that is the
-    # state a stale cached module leaves you in
+    # state a stale cached module leaves you in - a toolbox OLDER than
+    # the package (v1.60.3: a package older than the toolbox is
+    # refused outright; test_review_1_60_1 holds that test)
     import equipop
     real = equipop.__version__
-    equipop.__version__ = "0.0.1"
+    equipop.__version__ = "99.0.0"
     try:
         m2 = _Msg()
         pyt._announce_version(m2)

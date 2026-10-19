@@ -1,6 +1,12 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.60.2, 18 October 2026.**
+**Last updated: 1.61.0, 19 October 2026.**
+*Reviewed at 1.61.0: STRONGER, NO NEW CLAIM. Multi-country regions
+are read with each person against their own nation (no seams at
+borders), larger regions run tiled, and the methods are written out
+in METHODS_RATES.md for reviewers.*
+*Reviewed at 1.60.3: NO CLAIM CHANGES. Country-scale runs of the
+rates now take minutes (Turkey at 1 km, John, 19 October).*
 *Reviewed at 1.60.2: NO CLAIM CHANGES. The rates now warn when a
 folder is not the whole country, and the WPP data's licence is set out
 in THIRD_PARTY_NOTICES.md - both strengthen what is already claimed.*

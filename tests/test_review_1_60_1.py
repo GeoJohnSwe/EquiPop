@@ -559,3 +559,166 @@ def test_the_third_party_notice_travels_in_both_archives():
     entry = cff.split('title: "World Population Prospects 2024"', 1)
     assert len(entry) == 2 and "license: CC-BY-3.0-IGO" in \
         entry[1].split("  - type:", 1)[0]
+
+
+# ------------------- 1.60.3: an old package under a new toolbox, in Pro
+def test_every_pro_tool_refuses_a_package_older_than_the_toolbox():
+    """John, 19 October: "run_folder() got an unexpected keyword
+    argument 'vital'" - the 1.60.2 toolbox over the 1.59.2 package.
+    Every machine now stops before it starts, names both versions and
+    says how to install the right wheel.
+
+    BROKEN WITH: the older-package refusal removed (machines 1-2 then
+    only warn and 3-6 run on); and with the call left out of machine
+    4's execute."""
+    import equipop
+    import test_arcgis_continental as AC
+    pyt = AC._pyt()
+    real = equipop.__version__
+    equipop.__version__ = "1.59.2"
+    try:
+        for cls in pyt.Toolbox().tools:
+            tool = cls()
+            with pytest.raises(pyt.arcpy.ExecuteError,
+                               match="OLDER THAN THIS TOOLBOX") as e:
+                tool.execute(tool.getParameterInfo(), AC._Messages())
+            assert "package 1.59.2" in str(e.value), cls.__name__
+            assert f"equipop-{pyt.TOOLBOX_VERSION}-py3-none-any.whl" in \
+                str(e.value)
+    finally:
+        equipop.__version__ = real
+
+
+def test_a_package_newer_than_the_toolbox_only_warns():
+    """A newer package is most often a toolbox Pro has cached
+    (BACKLOG 314); the run can work, so it is a warning.
+
+    BROKEN WITH: the refusal made to cover any mismatch."""
+    import equipop
+    import test_arcgis_continental as AC
+    pyt = AC._pyt()
+    real = equipop.__version__
+    equipop.__version__ = "99.0.0"
+    try:
+        m = AC._Messages()
+        pyt._announce_version(m)
+        assert any("DIFFERENT VERSIONS" in str(x) for x in m.log)
+    finally:
+        equipop.__version__ = real
+
+
+def test_qgis_refuses_a_package_older_than_the_plugin():
+    """The same rule in QGIS, at machine 4's door.
+
+    BROKEN WITH: check_versions only warning again."""
+    import equipop
+    import equipop_qgis
+    from qgis.core import QgsProcessingException
+    real = equipop.__version__
+    equipop.__version__ = "1.59.2"
+    try:
+        with pytest.raises(QgsProcessingException,
+                           match="OLDER than this plugin"):
+            _qgis_lines(folder="x")
+    finally:
+        equipop.__version__ = real
+    assert equipop_qgis.__version__ != "1.59.2"
+
+
+# ------------- 1.60.3: build_cells in one pass, answers unchanged
+def _old_aggregate(df, binary_vars, value_vars, weights, label_col):
+    """build_cells' per-cell loop as it was to 1.60.2, kept here as the
+    answer key for the vectorised pass."""
+    out = {"E": [], "N": [], "n": [], "bs": {v: [] for v in binary_vars},
+           "bv": {v: [] for v in binary_vars},
+           "va": {v: [] for v in value_vars},
+           "vw": {v: [] for v in value_vars}, "lab": []}
+    for (e, nn), g in df.groupby(["_E", "_N"], sort=True):
+        out["E"].append(e)
+        out["N"].append(nn)
+        out["n"].append(float(g[weights].sum()) if weights else len(g))
+        for v in binary_vars:
+            if weights is None:
+                out["bs"][v].append(g[v].sum())
+                out["bv"][v].append(int(g[v].notna().sum()))
+            else:
+                w = g[weights]
+                out["bs"][v].append(float((g[v].fillna(0) * w).sum()))
+                out["bv"][v].append(float(w[g[v].notna()].sum()))
+        for v in value_vars:
+            keep = g[v].notna()
+            out["va"][v].append(g.loc[keep, v].to_numpy(dtype=float))
+            if weights:
+                out["vw"][v].append(g.loc[keep, weights].to_numpy(float))
+        if label_col:
+            out["lab"].append("|".join(sorted(
+                g[label_col].astype(str).unique())))
+    return out
+
+
+@pytest.mark.parametrize("weighted", [False, True])
+def test_build_cells_in_one_pass_gives_the_loops_answers(weighted):
+    """Sums, valid counts, the value arrays in their row order, and the
+    labels - against the loop it replaced, with blanks, an infinity,
+    several rows per cell and mixed labels.
+
+    BROKEN WITH: the valid count taken from every row (blanks counted
+    as valid); and with the value arrays split without the stable
+    sort (rows out of order within a cell)."""
+    from equipop.cells import build_cells
+    rng = np.random.default_rng(7)
+    n = 3000
+    df = pd.DataFrame({"x": rng.integers(0, 40, n) * 100.0 + 3,
+                       "y": rng.integers(0, 30, n) * 100.0 + 7,
+                       "w": rng.random(n) * 9,
+                       "lab": rng.choice(["a", "b", "c"], n, p=[.8, .15, .05])})
+    for v in ("g1", "g2", "v1"):
+        df[v] = rng.random(n)
+        df.loc[rng.random(n) < 0.1, v] = np.nan
+    df.loc[5, "g2"] = np.inf
+    with redirect_stdout(io.StringIO()):
+        cd = build_cells(df, "x", "y", binary_vars=["g1", "g2"],
+                         value_vars=["v1"], unit_size=100.0,
+                         label_col="lab", weights="w" if weighted else None)
+    d = df.copy()
+    d["_E"] = (np.floor(d["x"] / 100) * 100 + 50).astype(int)
+    d["_N"] = (np.floor(d["y"] / 100) * 100 + 50).astype(int)
+    old = _old_aggregate(d, ["g1", "g2"], ["v1"], "w" if weighted else None,
+                         "lab")
+    assert np.array_equal(cd.E, old["E"]) and np.array_equal(cd.N, old["N"])
+    assert np.allclose(cd.n, old["n"], rtol=1e-12, atol=0)
+    for v in ("g1", "g2"):
+        assert np.allclose(cd.binary_sums[v], old["bs"][v], rtol=1e-12,
+                           atol=1e-12, equal_nan=True)
+        assert np.allclose(cd.binary_valid[v], old["bv"][v], rtol=1e-12)
+    assert len(cd.value_arrays["v1"]) == len(old["va"]["v1"])
+    for a, b in zip(cd.value_arrays["v1"], old["va"]["v1"]):
+        assert np.array_equal(a, b)
+    if weighted:
+        for a, b in zip(cd.value_weights["v1"], old["vw"]["v1"]):
+            assert np.array_equal(a, b)
+    assert cd.labels == old["lab"]
+    assert any("|" in s for s in cd.labels)
+
+
+def test_build_cells_is_fast_enough_for_a_country():
+    """32 groups over 20,000 cells: the loop took about 0.3 ms per cell
+    and group here - over three minutes; one pass takes a second or
+    two.
+
+    BROKEN WITH: the per-cell loop put back."""
+    import time
+    from equipop.cells import build_cells
+    rng = np.random.default_rng(0)
+    n = 30000
+    df = pd.DataFrame({"x": rng.integers(0, 20000, n) * 1000.0 + 500,
+                       "y": np.full(n, 500.0), "w": rng.random(n) * 50})
+    gs = [f"g{i}" for i in range(32)]
+    for g in gs:
+        df[g] = rng.random(n)
+    t = time.time()
+    with redirect_stdout(io.StringIO()):
+        cd = build_cells(df, "x", "y", binary_vars=gs, unit_size=1000.0,
+                         weights="w")
+    assert len(cd) > 15000
+    assert time.time() - t < 30

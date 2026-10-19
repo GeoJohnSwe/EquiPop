@@ -706,18 +706,56 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.60.2"
+TOOLBOX_VERSION = "1.61.0"
+
+
+def _vtuple(v):
+    try:
+        return tuple(int(p) for p in str(v).split(".")[:3])
+    except ValueError:
+        return None
 
 
 def _announce_version(messages):
-    """Say which toolbox and which package are actually running."""
+    """Say which toolbox and which package are actually running - and
+    REFUSE when the package is the older of the two.
+
+    v1.60.3. John, 19 October, machine 4 from the 1.60.2 toolbox:
+    "TypeError: run_folder() got an unexpected keyword argument
+    'vital'". The toolbox was 1.60.2; the package in Pro's environment
+    was still 1.59.2 (its demography.py line 867 is 1.59.2's), so the
+    toolbox asked it for rates it has never heard of. Two gaps made
+    that a puzzle rather than a sentence: only machines 1 and 2 ever
+    called this (3 to 6 said nothing at all), and a mismatch was only
+    a warning. A package OLDER than its toolbox cannot do what the
+    toolbox asks, so the run stops before it starts and says how to
+    install the right one. A NEWER package is usually a toolbox Pro has
+    cached (BACKLOG 314) - still a warning, since the run can work.
+    """
     try:
         import equipop
         pkg = getattr(equipop, "__version__", "unknown")
+        where = os.path.dirname(getattr(equipop, "__file__", "") or "")
     except Exception:                                # pragma: no cover
-        pkg = "not installed"
+        pkg, where = "not installed", ""
     messages.addMessage(
         f"EquiPop toolbox {TOOLBOX_VERSION}, package {pkg}.")
+    old, new = _vtuple(pkg), _vtuple(TOOLBOX_VERSION)
+    if old and new and old < new:
+        raise arcpy.ExecuteError(
+            f"THE EQUIPOP PACKAGE IN PRO'S PYTHON IS OLDER THAN THIS "
+            f"TOOLBOX - toolbox {TOOLBOX_VERSION}, package {pkg}"
+            + (f" (in {where})" if where else "") + ". The toolbox "
+            f"asks for things {pkg} does not have, so the run would "
+            "fail part-way, typically with 'unexpected keyword "
+            f"argument'. Match them in Pro's environment: Start menu -> "
+            "ArcGIS -> Python Command Prompt, then EITHER the wheel "
+            "from the release\n"
+            f"    pip install --no-deps --force-reinstall "
+            f"\"C:\\path\\to\\equipop-{TOOLBOX_VERSION}-py3-none-any.whl\"\n"
+            "OR, once that release is on PyPI,\n"
+            "    pip install --upgrade --no-deps equipop\n"
+            "and restart Pro.")
     if pkg not in ("unknown", "not installed") and pkg != TOOLBOX_VERSION:
         messages.addWarningMessage(
             f"THE TOOLBOX AND THE PACKAGE ARE DIFFERENT VERSIONS - "
@@ -3761,6 +3799,7 @@ class FolderInventory:
         return
 
     def execute(self, parameters, messages):
+        _announce_version(messages)    # v1.60.3: every machine
         from equipop.doors.inventory import inventory
 
         pm = _byname(parameters)
@@ -4148,6 +4187,7 @@ class ContinentalRasters:
         return
 
     def execute(self, parameters, messages):
+        _announce_version(messages)    # v1.60.3: every machine
         from equipop.doors.continental import (ContinentalError,
                                                run_folder)
         pm = _byname(parameters)
@@ -4229,6 +4269,10 @@ RATE_LABELS = ["Life expectancy at 60",
                "Crude death rate"]
 RATE_SEXES = ["both", "women", "men"]
 RATE_SEX_LABELS = ["Both sexes", "Women", "Men"]
+# v1.61.0: the engine's VITAL_REFERENCES, in this order (a test pins it)
+RATE_REFS = ["own", "cell"]
+RATE_REF_LABELS = ["Each person's own country (pools across a border)",
+                   "The country of the neighbourhood's cell"]
 
 
 def _machine3_points(layer, messages):
@@ -4337,6 +4381,12 @@ class SpatialDemography:
                  category="Advanced"),
               _p("ratesex", "Life tables and death rate for",
                  "GPString", required=False, category="Advanced"),
+              _p("rateref", "Read the rates against", "GPString",
+                 required=False, category="Advanced"),
+              # v1.61.0, John: tiles for merged regions, as machine 3
+              _p("tiles", "Folder for a TILED, resumable run (blank "
+                 "= run in memory)", "DEFolder", required=False,
+                 category="Advanced"),
               _p("settings", "Change a measure - one row per index. "
                  "Ages as '0-4', '65-', 'f:15-49', or two ranges "
                  "'0-14,65-'. Edit a cell to alter that half.",
@@ -4365,6 +4415,9 @@ class SpatialDemography:
         by["ratesex"].filter.type = "ValueList"
         by["ratesex"].filter.list = list(RATE_SEX_LABELS)
         by["ratesex"].value = RATE_SEX_LABELS[0]
+        by["rateref"].filter.type = "ValueList"
+        by["rateref"].filter.list = list(RATE_REF_LABELS)
+        by["rateref"].value = RATE_REF_LABELS[0]
         return ps
 
     def updateMessages(self, parameters):
@@ -4384,6 +4437,7 @@ class SpatialDemography:
         return
 
     def execute(self, parameters, messages):
+        _announce_version(messages)    # v1.60.3: every machine
         from equipop.doors.continental import ContinentalError
         from equipop.doors.demography import (INDICES, DemographyError,
                                               run_indices)
@@ -4420,6 +4474,12 @@ class SpatialDemography:
                 f"Life tables for {sex_label!r}? Use one of: "
                 + ", ".join(RATE_SEX_LABELS))
         sex = RATE_SEXES[RATE_SEX_LABELS.index(sex_label)]
+        ref_label = _txt(pm, "rateref") or RATE_REF_LABELS[0]
+        if ref_label not in RATE_REF_LABELS:
+            raise arcpy.ExecuteError(
+                f"Read the rates against {ref_label!r}? Use one of: "
+                + "; ".join(RATE_REF_LABELS))
+        rule = RATE_REFS[RATE_REF_LABELS.index(ref_label)]
 
         # BACKLOG 377, v1.53.2. A SIXTH and SEVENTH open-coded k
         # parser lived here, one per door, and the property test
@@ -4471,13 +4531,18 @@ class SpatialDemography:
                 year=_txt(pm, "year") or None,
                 epsg=_epsg_of(pm.get("crs")),
                 overrides=over or None, channel=ch,
-                vital=rates, vital_sex=sex,
-                points=points, points_crs=points_crs)
+                vital=rates, vital_sex=sex, vital_reference=rule,
+                points=points, points_crs=points_crs,
+                out_dir=_txt(pm, "tiles") or None)
         except (DemographyError, ContinentalError, ValueError) as exc:
             raise arcpy.ExecuteError(str(exc))
 
-        _write_points(man["results"], man, pm["out"].valueAsText,
-                      messages)
+        if _txt(pm, "tiles"):
+            from equipop.bigrun import load_tiled
+            table = load_tiled(_txt(pm, "tiles"))
+        else:
+            table = man["results"]
+        _write_points(table, man, pm["out"].valueAsText, messages)
 
 
 # ====================================================================
@@ -4709,6 +4774,7 @@ class WorldPopCatalogue:
         return
 
     def execute(self, parameters, messages):
+        _announce_version(messages)    # v1.60.3: every machine
         cat, _fr = _catalogue_modules()
         from equipop.doors.fetching import FetchError
         pm = _byname(parameters)
@@ -4775,6 +4841,7 @@ class OsmCatalogue:
         return
 
     def execute(self, parameters, messages):
+        _announce_version(messages)    # v1.60.3: every machine
         cat, _fr = _catalogue_modules()
         from equipop.doors.fetching import FetchError
         pm = _byname(parameters)
@@ -4834,6 +4901,7 @@ class FetchSelected:
         return
 
     def execute(self, parameters, messages):
+        _announce_version(messages)    # v1.60.3: every machine
         cat, fr = _catalogue_modules()
         from equipop.doors.fetching import FetchError
         pm = _byname(parameters)

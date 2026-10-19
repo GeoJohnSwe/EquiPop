@@ -625,7 +625,19 @@ HELP = {
              "read from the file names; the nation's pyramid is the "
              "folder's own total for it, so give whole countries - "
              "the log warns when a country holds under 90% of WPP's "
-             "population for it.",
+             "population for it. Every formula, its assumptions and "
+             "references: METHODS_RATES.md, in the release and inside "
+             "the installed package.",
+    "rateref": "WHOSE NATION THE PEOPLE ARE READ AGAINST (v1.61.0). "
+               "Each person's own country, the default: a neighbourhood "
+               "that crosses a border pools both sides, each person "
+               "against their own nation's life table, fertility and "
+               "pyramid - so the rates change smoothly across the "
+               "border instead of jumping where the reference flips. "
+               "Within one country this gives exactly what the other "
+               "choice gives. The country of the neighbourhood's cell "
+               "reads everybody in it against that one country, as "
+               "EquiPop did to 1.60.3.",
     "ratesex": "WHOSE LIFE TABLES - both sexes, women or men - for the "
                "life expectancies and the crude death rate. Women and "
                "men each get their own national table. TFR and CBR "

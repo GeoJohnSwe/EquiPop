@@ -147,7 +147,12 @@ offered too, marked UNRELIABLE - use it as a predictor only. Use a k
 of 5,000 or more for life expectancy, and folders holding whole
 countries. Since 1.60.1 the tool also takes the point layer *Raster
 Data Curation* made (k left blank) instead of the folder - the same
-numbers either way.
+numbers either way. Since 1.61.0, under Advanced: *Read the rates
+against* - each person's own country (the default; a neighbourhood
+across a border pools both sides) or the country of the cell - and a
+*Folder for a TILED, resumable run* for merged regions larger than
+memory, as in *Raster Data Curation*. Every formula is in
+`METHODS_RATES.md`, beside the toolbox in the release.
 OpenStreetMap rows for PAST YEARS come as `.pbf` and need pyogrio in
 the Pro environment (`pip install pyogrio` in its Python Command
 Prompt); without it 5c refuses those rows before downloading anything.
