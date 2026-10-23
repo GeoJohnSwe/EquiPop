@@ -31,7 +31,7 @@ import zipfile
 
 #: Optional packages the suite can use; absent, their tests skip.
 OPTIONAL = ("geopandas", "rasterio", "esda", "libpysal", "cffconvert",
-            "openpyxl", "pyreadstat", "matplotlib")
+            "yaml", "openpyxl", "pyreadstat", "matplotlib")
 CORE = ("numpy", "pandas", "scipy", "pytest")
 
 _PROBE = """
@@ -55,10 +55,17 @@ def _sha(path):
     return h.hexdigest()
 
 
+#: The child writes its output as UTF-8 and we read it as UTF-8
+#: (BACKLOG 426) - otherwise each side uses its own system encoding,
+#: and a path or test name with "ö" in it could be misread.
+_CHILD_ENV = dict(os.environ, PYTHONIOENCODING="utf-8")
+
+
 def environment(python):
     import json
     r = subprocess.run([python, "-c", _PROBE % (CORE, OPTIONAL)],
-                       capture_output=True, text=True, check=True)
+                       capture_output=True, check=True, env=_CHILD_ENV,
+                       text=True, encoding="utf-8", errors="replace")
     return json.loads(r.stdout)
 
 
@@ -66,7 +73,8 @@ def run_suite(python, tree):
     """The suite's final summary line, run from `tree`."""
     r = subprocess.run([python, "-m", "pytest", "-q", "-p",
                         "no:cacheprovider"], cwd=tree,
-                       capture_output=True, text=True)
+                       capture_output=True, env=_CHILD_ENV,
+                       text=True, encoding="utf-8", errors="replace")
     last = [ln for ln in r.stdout.splitlines() if " in " in ln
             and re.search(r"\d+ (passed|failed)", ln)]
     if not last:

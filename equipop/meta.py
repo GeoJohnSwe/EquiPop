@@ -316,7 +316,14 @@ class RunLog:
         self._flush()
         if write_txt:
             txt = out.parent / (out.stem + ".meta.txt")
-            with open(txt, "w") as f:
+            # BACKLOG 426. UTF-8 BY NAME. With no encoding given, Python
+            # up to 3.14 writes in the system's encoding - cp1252 on a
+            # Western Windows machine, where "Şanlıurfa" in a path, layer
+            # or field name cannot be written at all and the QGIS door
+            # reported the provenance as unwritable - and Python 3.15
+            # writes UTF-8. The same run gave different bytes depending
+            # on the Python under it. Named, it is UTF-8 everywhere.
+            with open(txt, "w", encoding="utf-8") as f:
                 f.write(self.render_txt())
         print(f"[meta] wrote {self._path.name}"
               + (f" + {out.stem}.meta.txt" if write_txt else ""))
@@ -345,7 +352,8 @@ class RunLog:
             return
         tmp = self._path.with_name(self._path.name + f".tmp.{os.getpid()}")
         try:
-            tmp.write_text(json.dumps(self.doc, indent=1, default=str))
+            tmp.write_text(json.dumps(self.doc, indent=1, default=str),
+                           encoding="utf-8")
             swap_in(tmp, self._path)
         except Exception as exc:                      # pragma: no cover
             self._write_error = f"{exc.__class__.__name__}: {exc}"
@@ -389,7 +397,7 @@ class RunLog:
 
 def load_meta(path: str) -> dict:
     """Read a .meta.json back (first step of the planned rerun())."""
-    return json.loads(Path(path).read_text())
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 # --------------------------------------------------------------------

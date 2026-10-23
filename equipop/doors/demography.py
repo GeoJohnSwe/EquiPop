@@ -955,8 +955,10 @@ def vital_own_groups(vplan, refs) -> dict:
 
 
 def apply_vital_own(frame, k_values, vplan):
-    """The rates and life expectancies from the 'own' sums, in place;
-    the sums dropped after. The 'own' twin of apply_vital."""
+    """The rates and life expectancies from the 'own' sums, added to
+    `frame`; RETURNS the frame with the sums dropped - use the return
+    value (BACKLOG 427: the drop is no longer in place). The 'own' twin
+    of apply_vital."""
     from . import vital as V
     bands = vplan["bands"]
     names = vplan["names"]
@@ -992,8 +994,10 @@ def apply_vital_own(frame, k_values, vplan):
     machinery = [c for c in frame.columns
                  if re.match(r"^[TR]_vo_[a-z0-9]+_\d+$", c)
                  or re.match(r"^vo_[a-z0-9]+_local$", c)]
-    frame.drop(columns=machinery, inplace=True)
-    return frame
+    # BACKLOG 427. NOT `inplace=True`: pandas 3.1 deprecates it for
+    # drop (PDEP-8) and pandas 4 removes it - and pandas 3.1 is what a
+    # Python 3.15 install gets. The callers take the return value.
+    return frame.drop(columns=machinery)
 
 
 class CellCountries:
@@ -1024,9 +1028,10 @@ class CellCountries:
 
 
 def apply_vital(frame, k_values, vplan, refs, countries=None):
-    """Add the rates and life expectancies to a result frame, in place,
-    and drop the band counts they were read from. THE ONE ARITHMETIC,
-    for the in-memory run and for each tile of a tiled one.
+    """Add the rates and life expectancies to a result frame, and
+    RETURN it without the band counts they were read from - use the
+    return value (BACKLOG 427). THE ONE ARITHMETIC, for the in-memory
+    run and for each tile of a tiled one.
 
     countries: a CellCountries, or None when the folder holds one
     country (every cell is then that country's)."""
@@ -1083,8 +1088,10 @@ def apply_vital(frame, k_values, vplan, refs, countries=None):
                  if re.match(r"^[TR]_v(b|w)_\d+_\d+$", c)
                  or re.match(r"^[TR]_vc_\d+$", c)
                  or re.match(r"^v(b|w)_\d+_local$|^vc_local$", c)]
-    frame.drop(columns=machinery, inplace=True)
-    return frame
+    # BACKLOG 427. NOT `inplace=True`: pandas 3.1 deprecates it for
+    # drop (PDEP-8) and pandas 4 removes it - and pandas 3.1 is what a
+    # Python 3.15 install gets. The callers take the return value.
+    return frame.drop(columns=machinery)
 
 
 # ------------------------------------------------------------- running
@@ -1367,9 +1374,9 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
     def finish(df):
         apply_index(df, triples)
         if vital and vital_reference == "own":
-            apply_vital_own(df, k_values, vplan)
+            df = apply_vital_own(df, k_values, vplan)
         elif vital:
-            apply_vital(df, k_values, vplan, refs, countries)
+            df = apply_vital(df, k_values, vplan, refs, countries)
         return df
 
     if kw.get("out_dir") is not None:
@@ -1386,7 +1393,7 @@ def run_indices(folders, names, *, k_values, unit_size=1000.0, year=None,
             "run has no single result table, which is what lets it be "
             "bigger than memory.")
     else:
-        finish(man["results"])
+        man["results"] = finish(man["results"])
         columns = list(man["results"].columns)
     man["plans"] = plans
     if vital:

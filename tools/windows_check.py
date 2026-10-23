@@ -127,10 +127,14 @@ def main(argv=None, report_dir=None):
     # THE TREE'S OWN CODE, not an installed copy. `python -m pytest`
     # from the tree's folder puts it first on the path; checked rather
     # than assumed, and said in the report.
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    # The children write UTF-8 and are read as UTF-8 (BACKLOG 426): a
+    # Windows user folder with "ö" in it is a path this probe prints.
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+               PYTHONIOENCODING="utf-8")
     probe = subprocess.run(
         [sys.executable, "-c", "import equipop; print(equipop.__file__)"],
-        cwd=ROOT, env=env, capture_output=True, text=True)
+        cwd=ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
     used = (probe.stdout or probe.stderr).strip().splitlines()[-1:] or ["?"]
     print(f"  testing: {used[0]}\n")
 

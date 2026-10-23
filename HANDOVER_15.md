@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.61.0 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0af first, then 0ae back to 0b
+*Amended through 1.61.3 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0ai first, then 0ah back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,82 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0ai. 1.61.3 - PYTHON 3.15, AND WHAT IT SURFACED
+
+John asked what the new Python means for EquiPop (22 October 2026).
+Python 3.15.0 shipped on 9 October and 3.15.1, a security release, on
+21 October. The answer was measured, not read: 3.15.1 was installed in
+the session's sandbox and the whole suite run on it. It passed. Four
+things were still worth fixing (BACKLOG 426-429):
+
+- **Name the encoding on every text file.** From 3.15 the default is
+  UTF-8 (PEP 686); before, it is the system's - cp1252 on a Western
+  Windows machine, where ArcGIS Pro 3.6 runs Python 3.13. The
+  .meta.txt was written in it: different bytes per Python, and on
+  Windows a Turkish name ("Şanlıurfa") could not be written at all.
+  tests/test_python_3_15.py has three guards - a simulated cp1252
+  open, Python's own `-X warn_default_encoding` detector run as a
+  subprocess, and an AST scan of all of EquiPop's code. **The scan
+  cannot see a Path's `.open()`** (rasterio.open looks the same), and
+  the detector cannot see Path.write_text (the warning is attributed
+  to pathlib, not to equipop) - which is why there are three.
+- **apply_vital and apply_vital_own RETURN the trimmed frame.** They
+  no longer drop in place (pandas 3.1 deprecates `inplace=`). Both
+  callers in run_indices take the return value; a new caller must too.
+- **CITATION.cff failed its schema from 1.60.2 to 1.61.2**, and the
+  check that says so skipped in every release run because cffconvert
+  was not installed. venv_geo and the 3.15 venv now have cffconvert
+  and pyyaml. **Not the system python3, and not the `test` extra**:
+  cffconvert 2.0.0 pins jsonschema<4. Installed in the system python3
+  it broke the `mcp` package there (removed again, jsonschema put
+  back); in the extra it would downgrade any user's Jupyter. pyyaml is
+  in the extra. A new citation test needs neither.
+- **Python 3.11 is the floor.** A test checks that pyproject, both
+  manuals, the reviewer brief and the Stata door's advice say the
+  same number.
+
+The 3.15 environment, to rebuild it: `/usr/local/bin/uv python install
+3.15`, `uv venv -p 3.15`, then `uv pip install --only-binary=:all:`
+the core and optional libraries (all have 3.15 wheels except jenkspy),
+plus setuptools and build for the sdist test, and pyyaml (no 3.15
+wheel; it builds from source, with its C extension). Beware
+`/root/.local/bin/uv`: an old 0.8.17 that shadows the current one and
+knows no 3.15.
+
+## 0ah. 1.61.2 - EVERY FAST-ENGINE SETTING BATCHED
+
+Decay, radii, `sampled` and long rings now take _solve_batch as well;
+_solve runs only when BATCHED is False, which the tests use as the
+answer key.
+
+OFFERED TO JOHN, not built, waiting for his word:
+1. **An "e0 anchored at 60"**: national mortality below 60, local
+   from 60, so e0* = e0_nat + (l60/l0)(e60_local - e60_nat). It would
+   sit beside the unreliable e0u, e30u and e50u.
+2. **A per-cohort-k variant of life expectancy**, his own register
+   practice: the distance to the k nearest people of each band, then
+   the density ratio in place of S_b/S_a.
+
+Also told him: as far as known, WorldPop's age structure comes from
+census proportions by administrative unit. If so, the patchy e0u map
+reflects those units, and validation should be at their level.
+
+## 0ag. 1.61.1 - THE FAST ENGINE IN CHUNKS, BIT FOR BIT; PROGRESS
+
+- **The default path is now batched.** fastcounts._solve_batch handles
+  k values with whole or proportional overshoot, either self rule, no
+  decay and no radii; everything else still goes through _solve.
+- **_solve is now the REFERENCE.** test_batched_engine runs both
+  engines and requires the same table bit for bit. A change to one
+  must be made to the other.
+- **Bit-for-bit depends on rowsum_like_numpy** reproducing numpy's
+  pairwise sum. If a future numpy changes that order, the
+  equal-to-np.sum test fails first: read that failure before
+  loosening anything.
+- John ran Turkey at 700 m with k = 5,000 and 9,000 (661,567 cells).
+  The search was about 0.4 ms per origin before this release and is
+  about a fifth of that now.
 
 ## 0af. 1.61.0 - OWN-COUNTRY RATES, TILES IN MACHINE 4, THE FORMULAS
 

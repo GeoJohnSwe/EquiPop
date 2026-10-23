@@ -1,6 +1,17 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.61.0, 19 October 2026.**
+**Last updated: 1.61.3, 23 October 2026.**
+*Reviewed at 1.61.3: ONE LINE CHANGES. Students now need Python 3.11 or
+newer (3.10 reaches its end of life this month). Everything in the course
+runs on Python 3.15 as well, tested.*
+*Reviewed at 1.61.2: NO TEACHING CHANGES. Decay and radius runs are
+faster with identical results; METHODS_RATES.md now shows why e0 read
+from a pyramid goes wrong - a good classroom example of an estimator
+dominated by the wrong signal.*
+*Reviewed at 1.61.1: NO TEACHING CHANGES. The neighbourhood search is
+about five times faster with identical results, and long runs print
+their progress - a class waiting on a country-sized run can see it
+moving.*
 *Reviewed at 1.61.0: ONE NEW RESOURCE. METHODS_RATES.md sets out
 every formula behind machine 4's rates - the natural handout when a
 class meets them. Border neighbourhoods now read each person against

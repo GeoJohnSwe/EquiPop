@@ -72,6 +72,32 @@ def test_every_reference_type_is_in_the_schema():
     assert not bad, f"reference types not in the CFF schema: {bad}"
 
 
+def test_every_licence_is_one_the_schema_accepts():
+    """Runs WITHOUT yaml or cffconvert - a regular expression - so it
+    protects every install, including the release environment that
+    lacked cffconvert for two releases.
+
+    CFF 1.2.0 takes a licence only from ITS OWN snapshot of the SPDX
+    list, which predates `CC-BY-3.0-IGO` - the World Population
+    Prospects licence, added as `license:` in 1.60.2. The file then
+    failed its schema, and test_it_is_valid_CFF_not_merely_valid_yaml,
+    the check that says so, skipped wherever cffconvert was missing,
+    which was everywhere the release was tested (BACKLOG 428). A
+    licence the schema does not know goes in the entry's `notes`.
+
+    BROKEN WITH: `license: CC-BY-3.0-IGO` restored on the WPP entry."""
+    import re
+    known = {"MIT", "Apache-2.0", "BSD-3-Clause", "CC-BY-4.0",
+             "CC0-1.0", "GPL-3.0-only", "GPL-3.0-or-later"}
+    found = re.findall(r"^\s*license:\s*\"?([^\s\"#]+)", _text(), re.M)
+    assert found, "the software's own licence line is gone"
+    bad = [lic for lic in found if lic not in known]
+    assert not bad, (
+        f"licence ids CFF 1.2.0 may not accept: {bad}. Put such a "
+        "licence in the entry's notes, or check it with cffconvert and "
+        "add it to `known` here.")
+
+
 def test_conference_and_institution_are_entities_not_strings():
     """CFF models an organisation as an object with a `name`."""
     yaml = pytest.importorskip("yaml")

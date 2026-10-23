@@ -1,7 +1,7 @@
 # Rates and life expectancy from an age pyramid: the formulas
 
 *EquiPop machine 4, Spatial Demographic Analysis, since 1.60.0. This
-document matches 1.61.0. It is kept identical to
+document matches 1.61.2. It is kept identical to
 `equipop/METHODS_RATES.md` inside the installed package.*
 
 An age-and-sex population raster (WorldPop, for example) counts people.
@@ -85,6 +85,30 @@ survival. Migration and local differences in past births also move ρ.
 - Below 60 they are not: a growing or in-migrating neighbourhood looks
   like one with high mortality. That is why e50, e30 and e0 carry a
   `u` and are marked UNRELIABLE. Use them as predictors only.
+
+**Why e0 goes furthest wrong.** Write s_b = S_b / P_b, the
+neighbourhood's share of the nation's people in band b. Then
+
+    e(0)  =  Σ_b L_b · s_b  /  (s_0 · l_0)
+
+Every band is divided by the neighbourhood's share of the nation's
+INFANTS. A neighbourhood with half as large a share of infants as of
+everybody else gets twice the national e0, and one with twice as large
+a share gets half of it. Fertility, migration of young families and
+age reporting move s_0; mortality hardly does. So e0u behaves like the
+inverse of a relative birth rate: its map looks like an upside-down
+TFR map. From 60 the bands compared are neighbours, so survival
+dominates the ratio.
+
+**Worked example, Turkey 2020.** The WPP life table and a whole-country
+folder's totals are real; the neighbourhood counts are made up: 200,
+170, 110, 70, 40, 18 and 6 people aged 60–64 … 90+, out of k = 5,000.
+
+| Band | 60–64 | 65–69 | 70–74 | 75–79 | 80–84 | 85–89 | 90+ | Sum |
+|---|---|---|---|---|---|---|---|---|
+| L_b / l_60 | 4.86 | 4.46 | 3.90 | 3.14 | 2.10 | 1.04 | 0.40 | 19.89 = national e60 |
+| ρ_b | 1.000 | 1.018 | 0.996 | 0.934 | 0.840 | 0.742 | 0.609 | |
+| L_b ρ_b / l_60 | 4.86 | 4.55 | 3.88 | 2.93 | 1.77 | 0.77 | 0.24 | 19.0 = local e60 |
 
 ---
 
@@ -216,6 +240,17 @@ people are left out rather than read against another nation.
   log warns. 5,000 is the usual floor for small-area life expectancy
   (Eayres & Williams 2004).
 - TFR and CBR are steadier at small k.
+- **Why one neighbourhood for every band, and not k people per age
+  band** (the usual design when deaths are counted):
+  - This method has no deaths. All its information is in the MIX of
+    ages within one neighbourhood, so every band must come from the
+    same people.
+  - If each band had its own k nearest, every band would hold exactly
+    k people and every ratio would be 1. The information would sit in
+    how far one had to go to find them.
+  - So the single neighbourhood must be large enough that its thinnest
+    band is not one or two people. Aged 90 and over is about 0.2% of
+    Turkey: about 10 people at k = 5,000, and 1 at k = 500.
 
 **Whole countries.** The log warns when a country's folder total is
 under 90% of WPP's population for it. The run's record keeps every

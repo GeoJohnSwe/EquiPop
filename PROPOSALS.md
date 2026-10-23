@@ -1,6 +1,11 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.61.0, 19 October 2026.**
+**Last updated: 1.61.3, 23 October 2026.**
+*Reviewed at 1.61.3: NO CLAIM CHANGES. Python 3.11 is now the minimum;
+the suite passes on Python 3.15.*
+*Reviewed at 1.61.2: NO CLAIM CHANGES.*
+*Reviewed at 1.61.1: NO CLAIM CHANGES. Country-scale searches are
+about five times faster, with results identical bit for bit.*
 *Reviewed at 1.61.0: STRONGER, NO NEW CLAIM. Multi-country regions
 are read with each person against their own nation (no seams at
 borders), larger regions run tiled, and the methods are written out

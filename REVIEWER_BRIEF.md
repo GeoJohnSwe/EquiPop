@@ -39,7 +39,7 @@ Everything below is aimed at those two problems.
 - **The `MANUAL.md` version table**, which is the change history in
   prose — it is long, but it is where the *reasoning* behind odd
   decisions lives.
-- **A working environment**, so you can run the suite: Python 3.10+,
+- **A working environment**, so you can run the suite: Python 3.11+,
   `pip install -e ".[test]"`. Note **BACKLOG 101**: the suite still
   writes run manifests into the working directory, so use a
   disposable clone.

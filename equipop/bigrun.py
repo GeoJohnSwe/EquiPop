@@ -63,7 +63,9 @@ def _md5(path, blocksize=1 << 20):
 def _atomic_write_json(obj, path):
     tmp = f"{path}.tmp.{os.getpid()}"
     try:
-        with open(tmp, "w") as fh:
+        # UTF-8 by name (BACKLOG 426): the same bytes under every
+        # Python, whatever the system's own encoding.
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(obj, fh, indent=1)
             fh.flush()
             os.fsync(fh.fileno())
@@ -205,7 +207,7 @@ def run_knn_counts_tiled(cd, k_values=None, r_values=None, decay=None,
     }
 
     if resume and os.path.exists(mpath):
-        with open(mpath) as fh:
+        with open(mpath, encoding="utf-8") as fh:
             man = json.load(fh)
         # DOES THE FINISHED WORK ANSWER THE QUESTION BEING ASKED?
         # Resume skipped tiles on FILENAME AND EXISTENCE ALONE, never
@@ -303,7 +305,9 @@ def load_tiled(out_dir: str, columns=None,
                verify: bool = True) -> pd.DataFrame:
     """Concatenate all tiles (optionally selected columns only - at
     16M rows, load only what you need). verify=True checks md5s."""
-    man = json.load(open(os.path.join(out_dir, "manifest.json")))
+    with open(os.path.join(out_dir, "manifest.json"),
+              encoding="utf-8") as fh:
+        man = json.load(fh)
     parts = []
     for name, info in man["tiles"].items():
         p = os.path.join(out_dir, name)
@@ -345,7 +349,8 @@ def map_tiles(out_dir: str, fn, *, what: str = "column") -> dict:
     if not os.path.exists(mpath):
         raise IOError(f"[bigrun] no manifest.json in {out_dir} - this "
                       "is not a tiled run directory")
-    man = json.load(open(mpath))
+    with open(mpath, encoding="utf-8") as fh:
+        man = json.load(fh)
     names = sorted(man.get("tiles") or {})
     if not names:
         raise IOError(f"[bigrun] {out_dir} holds no tiles to work on")

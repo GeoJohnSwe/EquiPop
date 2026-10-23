@@ -557,7 +557,9 @@ def test_the_third_party_notice_travels_in_both_archives():
     assert "\ninclude THIRD_PARTY_NOTICES.md\n" in manifest
     cff = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
     entry = cff.split('title: "World Population Prospects 2024"', 1)
-    assert len(entry) == 2 and "license: CC-BY-3.0-IGO" in \
+    # v1.61.3 (BACKLOG 428): the licence is named in the entry's notes,
+    # because CFF 1.2.0's `license:` list does not contain CC-BY-3.0-IGO.
+    assert len(entry) == 2 and "Licence CC BY 3.0 IGO" in \
         entry[1].split("  - type:", 1)[0]
 
 

@@ -6,7 +6,7 @@ MANUAL.md (the development manual), which serves as this document's
 scientific appendix.*
 
 ## 1. Installation
-Requires Python ≥ 3.10. With Anaconda: create an environment once
+Requires Python ≥ 3.11. With Anaconda: create an environment once
 (`conda create -n equipop python=3.12 -y`, `conda activate equipop`),
 then `pip install equipop` — or, working from source, unzip the package
 folder and work inside it. Optional extras: `pip install

@@ -3673,6 +3673,34 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 429 | DONE v1.61.3, 23 OCTOBER 2026 | PYTHON 3.11 IS THE FLOOR.
+  3.10 reaches end of life in October 2026; 3.11 is the oldest Python a
+  current ArcGIS Pro ships. pyproject, MANUAL, MANUAL_TOPICS, the
+  reviewer brief and the Stata door's pip advice, kept equal by a test.
+- 428 | DONE v1.61.3, 23 OCTOBER 2026 | CITATION.cff INVALID SINCE
+  1.60.2: `license: CC-BY-3.0-IGO` on the WPP entry is not in CFF
+  1.2.0's licence list. Moved to notes. The cffconvert check had
+  skipped in every release run; cffconvert is now in the release
+  venvs (NOT the `test` extra: it pins jsonschema<4, which would
+  downgrade a user's Jupyter), pyyaml in the extra, and a regex check
+  needs neither.
+- 427 | DONE v1.61.3, 23 OCTOBER 2026 | NO IN-PLACE DROP. pandas 3.1
+  (what Python 3.15 installs) deprecates `drop(inplace=True)`; machine
+  4's rate step used it twice. The functions return the trimmed frame.
+- 426 | DONE v1.61.3, 23 OCTOBER 2026 | UTF-8 BY NAME on every text
+  file EquiPop opens. Python 3.15 defaults to UTF-8, older Pythons on
+  Windows to cp1252: the .meta.txt differed by Python, and a Turkish
+  name could not be written at all on Windows (QGIS lost the file).
+- 425 | OFFERED, AWAITING JOHN | (a) e0/e30/e50 ANCHORED AT 60 beside
+  the unreliable ones; (b) PER-COHORT k for life expectancy (distance to
+  the k nearest of each band; density ratios). HANDOVER 0ah.
+- 424 | DONE v1.61.2, 19 OCTOBER 2026 | EVERY FAST-ENGINE SETTING
+  BATCHED: decay, radii, sampled, long rings. Bit for bit with _solve.
+- 423 | DONE v1.61.1, 19 OCTOBER 2026 | THE FAST ENGINE IN CHUNKS, AND A
+  PROGRESS LINE. _solve_batch, bit for bit with _solve (the reference;
+  tests/test_batched_engine.py). About 5x on the search. Progress per
+  tenth of a pass over 20,000 origins. (Decay, radii, `sampled` and
+  long rings followed in 1.61.2 - 424.)
 - 422 | DONE v1.61.0, 19 OCTOBER 2026 | MACHINE 4 FOR MERGED REGIONS.
   (a) A tiles box in both doors (the engine has out_dir already). (b)
   Each person read against their OWN country as the default, the
