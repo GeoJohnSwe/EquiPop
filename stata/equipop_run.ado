@@ -1,4 +1,4 @@
-*! equipop_run.ado - EquiPop 1.6: ONE command, the whole toolbox.
+*! equipop_run v1.62.1  -  ONE command, the whole toolbox (since EquiPop 1.6).
 *! Syntax:
 *!   equipop_run, engine(counts|stats|friction|slope|fca|lisa) x() y() [...]
 *! Engines and their options:

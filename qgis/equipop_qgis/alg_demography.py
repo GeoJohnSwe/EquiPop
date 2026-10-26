@@ -149,6 +149,12 @@ class SpatialDemography(EquipopAlgorithm):
                      "several)",
             options=list(RATE_LABELS), allowMultiple=True,
             defaultValue=[], optional=True))
+        # v1.62.0, John: in the main dialog, not under Advanced - it
+        # decides the answer for every neighbourhood near a border, and
+        # where it sat, he had forgotten it existed.
+        self.add(QgsProcessingParameterEnum(
+            "rateref", "1f. Read the rates against",
+            options=list(RATE_REF_LABELS), defaultValue=0))
         self.add(QgsProcessingParameterString(
             "year", "2a. Which year (blank = the only one present)",
             optional=True), advanced=True)
@@ -177,18 +183,14 @@ class SpatialDemography(EquipopAlgorithm):
             "ratesex", "2d. Life tables and death rate for",
             options=list(RATE_SEX_LABELS), defaultValue=0),
             advanced=True)
-        self.add(QgsProcessingParameterEnum(
-            "rateref", "2e. Read the rates against",
-            options=list(RATE_REF_LABELS), defaultValue=0),
-            advanced=True)
         # v1.61.0, John: "please add also an opportunity to split a run
         # into tiles for Q and Pro" - merged regions are coming.
         self.add(QgsProcessingParameterFolderDestination(
-            "tiles", "2f. Folder for a TILED, resumable run "
+            "tiles", "2e. Folder for a TILED, resumable run "
                      "(blank = run in memory)",
             optional=True), advanced=True)
         self.add(QgsProcessingParameterCrs(
-            "outcrs", "2g. Write the output in (blank = the same "
+            "outcrs", "2f. Write the output in (blank = the same "
                       "projection the rasters were in)",
             optional=True), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(

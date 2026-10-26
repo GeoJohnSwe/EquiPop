@@ -115,11 +115,17 @@ def test_the_cell_size_is_validated_before_it_reaches_the_engine():
         "represent - see BACKLOG 155")
 
 
-def test_the_fractional_cell_size_really_is_unrepresentable():
-    """The reason for the rule, checked rather than quoted.
+def test_a_fractional_cell_size_is_now_representable():
+    """The reason for the rule, checked rather than quoted - and in
+    1.62.1 it STOPPED being true, exactly as this test was written to
+    announce. It read: "cells are now evenly spaced at a fractional
+    size - BACKLOG 155's rule may no longer be needed". Exact
+    midpoints (cells.grid_midpoints, BACKLOG 439) put a 2.5 m grid's
+    centres at 1.25, 3.75, 6.25.
 
-    If this ever stops being true the rule should be revisited rather
-    than kept out of habit.
+    The REFUSAL stays in every door until John rules on lifting it
+    (BACKLOG 445): it is now a rule kept by choice, not by necessity,
+    and this test says so instead of guarding a reason that is gone.
     """
     import pandas as pd
 
@@ -128,10 +134,7 @@ def test_the_fractional_cell_size_really_is_unrepresentable():
     df = pd.DataFrame({"e": [0.1, 2.6, 5.1], "n": [0.0, 0.0, 0.0]})
     cells = build_cells(df, "e", "n", unit_size=2.5)
     centres = sorted({float(v) for v in cells.E})
-    gaps = {round(b - a, 6) for a, b in zip(centres, centres[1:])}
-    assert gaps != {2.5}, (
-        "cells are now evenly spaced at a fractional size - BACKLOG "
-        "155's rule may no longer be needed")
+    assert centres == [1.25, 3.75, 6.25]
 
 
 def test_the_guards_report_through_the_door_not_the_helper():

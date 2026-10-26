@@ -1808,7 +1808,7 @@ def test_generating_the_help_does_not_dirty_the_working_tree(tmp_path):
     pyt_src = open(os.path.join(root, "arcgis", "EquiPop.pyt"),
                    encoding="utf-8").read()
     n_tools = len([t for t in re.search(
-        r"self\.tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
+        r"self\.all_tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
         if t.strip()])
     assert len(written) == n_tools, (
         f"--out produced {sorted(written)} for {n_tools} registered "
@@ -3613,7 +3613,7 @@ def test_the_help_generator_reads_the_checkout_not_an_installed_equipop(
     pyt_src = open(os.path.join(root, "arcgis", "EquiPop.pyt"),
                    encoding="utf-8").read()
     n_tools = len([t for t in re.search(
-        r"self\.tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
+        r"self\.all_tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
         if t.strip()])
     assert len(list(out.glob("*.pyt.xml"))) == n_tools
 

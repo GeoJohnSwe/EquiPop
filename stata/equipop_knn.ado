@@ -1,4 +1,4 @@
-*! equipop_knn v1.35  -  ALIAS. The command is now called -equipop-.
+*! equipop_knn v1.62.1  -  ALIAS (since 1.35). The command is now called -equipop-.
 *!
 *! Kept working so that do-files written against v1.0-v1.34 keep
 *! running unchanged. It forwards everything, untouched, to equipop.

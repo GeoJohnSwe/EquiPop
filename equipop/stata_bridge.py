@@ -575,11 +575,11 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
 
     # individuals -> cells (weights become cell population)
     cells = dv.copy()
-    half = unit_size / 2.0
-    cells["_E"] = (np.floor(cells["_x"] / unit_size) * unit_size
-                   + half).astype(np.int64)
-    cells["_N"] = (np.floor(cells["_y"] / unit_size) * unit_size
-                   + half).astype(np.int64)
+    # v1.62.1: exact midpoints - an odd cell size merged the cells
+    # either side of 0 (cells.grid_midpoints)
+    from .cells import grid_midpoints
+    cells["_E"] = grid_midpoints(cells["_x"], unit_size)
+    cells["_N"] = grid_midpoints(cells["_y"], unit_size)
     # BACKLOG 168. Alongside each treatment total, the WEIGHT of the
     # rows whose value for it is usable. Not the count of rows: with
     # aggregated input a row stands for many people, and the
@@ -689,10 +689,9 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
 # =====================================================================
 
 def _snap(x, y, unit):
-    half = unit / 2.0
-    E = (np.floor(np.asarray(x, float) / unit) * unit + half)
-    N = (np.floor(np.asarray(y, float) / unit) * unit + half)
-    return E.astype(np.int64), N.astype(np.int64)
+    # v1.62.1: exact midpoints (cells.grid_midpoints), not int()
+    from .cells import grid_midpoints
+    return grid_midpoints(x, unit), grid_midpoints(y, unit)
 
 
 def _add_empty_origin_cells(cd, E, N, value_vars):

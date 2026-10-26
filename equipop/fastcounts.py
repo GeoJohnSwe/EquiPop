@@ -276,7 +276,15 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
             # any more, so requiring it only forced a decay run to
             # scan the whole map - 283 neighbour cells where 64 would
             # do, on the measurement that found this.
-            if ((cpop[r, -1] < kmax or covered < rmax)
+            # BACKLOG 430 (external review of 1.61.3). `covered <= rmax`,
+            # NOT `<`. A radius takes every cell at distance <= r, and the
+            # cells not fetched are at distance >= covered - so when the
+            # window ENDS ON the radius, the rest of that ring may lie
+            # outside it. Six cells in a cross gave N_r100 = 3 with a
+            # three-cell window and 5 exhaustively. The same rule as the
+            # k ring cut below: a window that may have sliced the
+            # boundary is widened, never trusted.
+            if ((cpop[r, -1] < kmax or (r_values and covered <= rmax))
                     and dist.shape[1] < n_cells):
                 unsat.append(oi)
                 continue
@@ -496,9 +504,14 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                 rec[f"N_r{lab}"] = cp[pos]  # construction)
                 for v in bvars:
                     rec[f"T_{v}_r{lab}"] = cgrp[v][r][pos]
+                    # Guarded on the share's OWN denominator (BACKLOG
+                    # 431): people present but none with a usable value
+                    # is 0/0 - NaN either way, but tested on cp it was
+                    # computed, and warned about, 37 times a suite run.
                     rec[f"R_{v}_r{lab}"] = (cgrp[v][r][pos]
                                             / cok[v][r][pos]
-                                            if cp[pos] > 0 else np.nan)
+                                            if cok[v][r][pos] > 0
+                                            else np.nan)
                 if decay is not None:
                     rec[f"ND_r{lab}"] = float(cpopd[r][pos])
                     for v in bvars:
@@ -587,7 +600,9 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         window = M < n_cells
         unsat = np.zeros(C, bool)
         if window:
-            unsat |= (cpop[:, -1] < kmax) | (dist[:, -1] < rmax)
+            unsat |= cpop[:, -1] < kmax
+            if r_values:                 # <=, not <: BACKLOG 430, as _solve
+                unsat |= dist[:, -1] <= rmax
             cut = np.zeros(C, bool)
             for k in k_values:
                 p = pos_k[k]
@@ -769,7 +784,8 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
             for v in bvars:
                 t = at(cgS[v], pos)
                 cols[f"T_{v}_r{lab}"] = t
-                cols[f"R_{v}_r{lab}"] = _ratio(t, at(coS[v], pos), npos)
+                den = at(coS[v], pos)          # BACKLOG 431, as _solve
+                cols[f"R_{v}_r{lab}"] = _ratio(t, den, den)
             if decay is not None:
                 cols[f"ND_r{lab}"] = at(cpdS, pos)
                 for v in bvars:

@@ -72,12 +72,26 @@ def find_root(here=HERE):
 
 ROOT = find_root()
 
-#: Needed: without these, tests fail rather than skip.
+#: Needed: without these, tests fail rather than skip - or, for
+#: `yaml`, skip the citation checks without saying so (BACKLOG 432:
+#: pyyaml joined the test extra in 1.61.3 and this list did not).
 NEEDED = ("pytest", "numpy", "pandas", "scipy", "pyproj", "rasterio",
-          "openpyxl", "pyarrow")
+          "openpyxl", "pyarrow", "yaml")
 #: Wanted: without these, the tests that need them are skipped - the
 #: run is still worth having, but says less.
 WANTED = ("geopandas", "pyogrio", "shapely", "matplotlib")
+#: Reported, never suggested. cffconvert runs the full citation-schema
+#: check, but it pins jsonschema below 4, so installing it into Pro's
+#: or Anaconda's Python could break that Python's own tools. The
+#: release record runs it in an environment of its own; here the
+#: report only says whether it was present (BACKLOG 432).
+REPORTED = ("cffconvert",)
+#: The name pip installs where it differs from the name imported.
+PIP_NAME = {"yaml": "pyyaml"}
+
+
+def _pip(names):
+    return " ".join(PIP_NAME.get(n, n) for n in names)
 
 
 def _version_of_tree():
@@ -111,18 +125,23 @@ def main(argv=None, report_dir=None):
     print(f"  code   : {ROOT}")
     print(f"  Python : {sys.version.split()[0]} ({sys.executable})")
 
-    found = {n: _have(n) for n in NEEDED + WANTED}
+    found = {n: _have(n) for n in NEEDED + WANTED + REPORTED}
     missing = [n for n in NEEDED if not found[n]]
     if missing:
         print("\nThese packages are needed for the tests and are not in "
               "this Python:\n  " + ", ".join(missing))
         print("Install them with this line, then run this again:\n"
-              f"  pip install {' '.join(missing)}")
+              f"  pip install {_pip(missing)}")
         return 2
     lacking = [n for n in WANTED if not found[n]]
     if lacking:
         print(f"  (without {', '.join(lacking)}, the tests that need "
-              f"them are skipped: pip install {' '.join(lacking)})")
+              f"them are skipped: pip install {_pip(lacking)})")
+    if not found["cffconvert"]:
+        print("  (without cffconvert the full citation-schema check is "
+              "skipped. It is not suggested for this Python: it would "
+              "downgrade jsonschema, which other tools here may need. "
+              "The release record runs it.)")
 
     # THE TREE'S OWN CODE, not an installed copy. `python -m pytest`
     # from the tree's folder puts it first on the path; checked rather
@@ -178,7 +197,7 @@ def main(argv=None, report_dir=None):
         f"code     : {ROOT}",
         f"imported : {used[0]}",
         "packages : " + ", ".join(f"{n} {found[n] or 'MISSING'}"
-                                  for n in NEEDED + WANTED),
+                                  for n in NEEDED + WANTED + REPORTED),
         f"took     : {minutes:.1f} min",
         f"result   : {tail[-1] if tail else 'no summary line - see below'}",
         "", "-" * 70, ""]

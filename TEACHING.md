@@ -1,6 +1,23 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.61.3, 23 October 2026.**
+**Last updated: 1.62.1, 26 October 2026.**
+*Reviewed at 1.62.1: NO TEACHING CHANGES, ONE BETTER SEMINAR. The theta(k)
+seminar now has a permutation p-value to argue about, and the no-groups
+check is the limit the groups approach. Grids of an odd cell size (1 m,
+25 m) are now exact on both sides of zero; the course uses 100 m. Stata
+students get `help equipop_run` at last.*
+*Reviewed at 1.62.0: ONE STEP MORE, ONE NEW SEMINAR. Tools 3 to 6 are
+now hidden until shown, so a class that uses machine 3, 4, 5a-5c or 6
+starts by running tool 0 (or the lab image sets
+EQUIPOP_SHOW_ALL_TOOLS=1); classes on machines 1 and 2 see less to be
+distracted by. MANUAL_TOPICS.md section 17 (theta(k)) and
+examples/cookbook_13_theta_profile.py make a seminar on inequality of
+opportunity: three synthetic worlds, and the students say which is
+which from the profiles. Box 2e of machine 4 is now box 1f.*
+*Reviewed at 1.61.4: NO TEACHING CHANGES. A radius count could fall
+short when the search window ended exactly on the radius; no example
+in the course met it, and the Book's results are unchanged (tested).
+A good classroom case of two methods agreeing on the wrong answer.*
 *Reviewed at 1.61.3: ONE LINE CHANGES. Students now need Python 3.11 or
 newer (3.10 reaches its end of life this month). Everything in the course
 runs on Python 3.15 as well, tested.*

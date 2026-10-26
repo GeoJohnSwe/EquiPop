@@ -15,7 +15,8 @@
 # from - once per interpreter given, and prints a block for the
 # release note: the totals, the versions that produced them, the
 # optional packages that were absent (each one turns tests into
-# skips), and the SHA-256 of every file in the bundle.
+# skips), and the SHA-256 of every other file in the bundle (the
+# release note that carries this block is added to it afterwards).
 #
 # Usage:  python tools/release_record.py <bundle_dir> [python ...]
 #         (no interpreter given: this one)
@@ -117,7 +118,12 @@ def main(argv):
                       f"{env['python']}, {core}.",
                       f"  Optional present: {', '.join(present) or 'none'}"
                       f"; absent: {', '.join(absent) or 'none'}."]
-    lines += ["", "SHA-256 of every file in the bundle:", "", "```"]
+    # "every OTHER file" (v1.61.4, review of 1.61.3): this record
+    # becomes part of RELEASE_x.md, which is placed in the bundle after
+    # it is written - so the note cannot list its own checksum.
+    lines += ["", "SHA-256 of every other file in the bundle (the release "
+              "note, which carries this list, is added after it):", "",
+              "```"]
     for name in sorted(os.listdir(bundle)):
         p = os.path.join(bundle, name)
         if os.path.isfile(p) and not name.startswith("."):

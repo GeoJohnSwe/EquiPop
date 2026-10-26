@@ -12,10 +12,11 @@
 * ValFloat (continuous), ValCount (count).
 * ============================================================
 
-* --- one-time setup (uncomment and adapt on first use) -------
-* python query                          // which Python does Stata see?
-* python set exec "C:\Users\you\anaconda3\envs\equipop\python.exe", perm
-* shell pip install equipop             // into THAT python
+* --- one-time setup (uncomment on first use) ----------------
+* equipop doctor          // which Python Stata uses, and whether it works
+* equipop setup           // installs the engine into THAT Python
+* Use a plain python.org Python for Stata, not Anaconda - Anaconda's
+* numpy closes Stata on import (help equipop).
 
 * --- make the command visible this session -------------------
 * (not needed after `ssc install equipop` - the command is already

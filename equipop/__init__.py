@@ -50,7 +50,7 @@ and fails if any of the optional libraries arrive uninvited.
 
 from importlib import import_module as _import_module
 
-__version__ = "1.61.3"
+__version__ = "1.62.1"
 
 # name -> the module it lives in. This is the whole public surface;
 # adding a name here is how a new export is published.
@@ -102,6 +102,9 @@ _LAZY = {
     # which is the one thing the doctor exists to diagnose.
     "advise_unit": "unitsize",
     "format_advice": "unitsize",
+    # v1.62.0, BACKLOG 436: theta(k), the scale profile of inequality
+    # of opportunity by neighbourhood type.
+    "theta_profile": "opportunity",
 }
 
 # Submodules reachable as attributes after a plain `import equipop`,
@@ -111,7 +114,7 @@ _SUBMODULES = frozenset({
     "cells", "datasets", "decay", "decompose", "describe", "doctor", "doors", "fastcounts",
     "fca", "fetch", "friction", "gridby", "hex", "io", "meta",
     "overshoot", "projection", "raster", "segregation", "selfpot",
-    "latticejoin", "rasterfolder", "slope", "stata_bridge", "stats", "transform", "unitsize", "viz", "wstats",
+    "latticejoin", "opportunity", "rasterfolder", "slope", "stata_bridge", "stats", "transform", "unitsize", "viz", "wstats",
 })
 
 # Modules that cannot even be IMPORTED without an optional library,
@@ -128,7 +131,7 @@ _EXTRAS = {
     "viz": ("matplotlib", "viz"),
 }
 
-__all__ = ["project_to_metric", "snap_to_grid", "run_knn", "Decay", "run_knn_stats", "build_cells", "CellData", "run_knn_friction", "load_friction_table", "suggest_projection", "suggest_projection_xy", "assign_zones", "read_table", "save_output", "fetch", "build_hex_cells", "RunLog", "load_meta", "list_layers", "run_knn_counts", "seg_profile", "aggregate_output", "map_output"]
+__all__ = ["project_to_metric", "snap_to_grid", "run_knn", "Decay", "run_knn_stats", "build_cells", "CellData", "run_knn_friction", "load_friction_table", "suggest_projection", "suggest_projection_xy", "assign_zones", "read_table", "save_output", "fetch", "build_hex_cells", "RunLog", "load_meta", "list_layers", "run_knn_counts", "seg_profile", "theta_profile", "aggregate_output", "map_output"]
 
 
 def __getattr__(name):

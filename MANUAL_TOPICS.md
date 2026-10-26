@@ -240,7 +240,9 @@ small-group places WITH the upward bias it exists to keep out.
 between-group share measures opportunity depends on whether the
 grouping is a circumstance beyond a person's control - a judgement
 for the analysis, not the tool. What EquiPop computes is the ex-ante
-kind: groups compared by their means.
+kind: groups compared by their means. The question across the whole
+population - how much of inequality lines up with the KIND of
+neighbourhood people come from, and at what scale - is section 17.
 
 **Cost.** Small: measured on 50,000 points at k=400, one field split
 into twenty groups took 28 s against 20 s unsplit.
@@ -311,7 +313,7 @@ across a border pools both sides, each against its own nation, and
 lands between the two nations rather than jumping where the reference
 flips. Within one country this is exactly the older rule,
 `vital_reference="cell"` - the whole neighbourhood against its cell's
-country. Machine 4 can also run TILED (`out_dir=`, box 2f), as
+country. Machine 4 can also run TILED (`out_dir=`, box 2e), as
 machine 3 can, for merged regions larger than memory.
 
 **How.** Each neighbourhood's age pyramid is read **against its
@@ -350,3 +352,100 @@ answers:
 real figure is known (for Sweden, SCB publishes life expectancy by
 municipality). Cite UN WPP 2024 for the national schedules, under its
 licence: CC BY 3.0 IGO.
+
+## 17. Inequality of opportunity across scales: θ(k)
+*New in 1.62.0, in Python only for its test round; corrected in 1.62.1
+after an external review.* Section 10 splits
+inequality INSIDE each neighbourhood. This asks the reverse question,
+over everybody: how much of the inequality of an outcome lines up with
+the KIND of neighbourhood people come from - and at what neighbourhood
+size that is strongest.
+
+**The steps.**
+1. An **outcome** and the **people** it is measured on: adult income,
+   say, for everyone aged 30-40, each placed where they grew up.
+2. One neighbourhood **character**: the share of the k nearest people
+   with low education (a 0/1 field gives a share; any other number
+   gives a mean). EquiPop measures it around each person, for every k
+   asked for.
+3. **Types.** Everyone is lined up by that character and the line is
+   cut into equal-sized groups - 10 unless `groups=` says otherwise. A
+   type is one group: "the tenth from the most disadvantaged
+   neighbourhoods at this k".
+4. The outcome's inequality (MLD; Theil if it has zeros) is split
+   exactly into the part BETWEEN the types and the part WITHIN them.
+   **θ(k) = between ÷ total.**
+5. Repeated for each k, the profile shows the scale at which the
+   neighbourhood lines up most with the outcome.
+
+```python
+import equipop
+prof = equipop.theta_profile(
+    people,                        # one row per person, metric x / y
+    outcome="income", character="low_edu",
+    family="parents_edu",          # optional: what is ON TOP of family
+    k_values=[100, 200, 400, 800, 1600, 3200, 6400],
+    context=adults,                # optional: whom the neighbourhood is made of
+    groups=10)
+```
+
+**What comes back**, one row per k (shares, so 0.06 is 6%):
+
+| column | what it is |
+|---|---|
+| `theta` | between the types ÷ total |
+| `theta_nogroups` | the same with no groups: the inequality of the outcome predicted from the character (a quadratic fitted to the outcome itself) ÷ total - what θ approaches as the groups get finer. If `theta` is far below it, the groups are too coarse. Empty, with a `note`, if the fit predicts an outcome of zero or below |
+| `noise`, `noise_p95` | θ with the outcome shuffled among the same people (99 times by default): its mean and 95th percentile - what chance alone gives. About (groups − 1) ÷ people |
+| `p_value` | the share of shuffles that reach θ, counting θ itself: (1 + shuffles ≥ θ) ÷ (1 + shuffles). 0.01 is the smallest with 99 shuffles. The run names a peak only where it is 0.05 or less |
+| `groups`, `smallest_group` | groups formed (people sharing a cell share a group, so ties can merge two), and the smallest |
+| `theta_family` | with `family=`: family background alone |
+| `theta_on_top` | what the neighbourhood adds on top of family: θ(groups × family) − θ(family) |
+| `noise_on_top`, `noise_on_top_p95`, `p_value_on_top` | the same, with the outcome shuffled only WITHIN each family category |
+| `note` | why a row, or a column of it, is empty |
+
+**Why equal-sized groups, and why 10** - measured on a synthetic town
+with the effect planted at 800 people. The profile peaked at 800
+however the types were formed, so the choice moves the LEVEL, not the
+scale. Too few groups understate: 3 groups gave 76% of the no-groups
+value at the peak, 5 gave 90%, 10 gave 97%, 20 gave 99.5% (1.62.1).
+Fixed
+cut-offs (under 10%, 10-20% ...) are not offered: bigger neighbourhoods
+are more alike, so the outer groups empty as k grows - five types at
+k = 25, three from k = 3,200 - and the k's stop being comparable. Too
+MANY groups add noise: with 2,000 people and no relationship at all,
+100 groups gave θ = 5.7% from chance. The chance columns measure that
+on your own data, and the run says where θ is not clearly above it.
+
+**On top of family.** "Neighbourhood alone" mixes the place with who
+lives there. In a town where only family background mattered and
+families with low-educated parents clustered, the neighbourhood alone
+gave 1% - and 0.00% on top of family. So give `family=` whenever the
+people carry it (registers that link generations often do so only for
+the younger cohorts - under about 40 - which is where to start).
+
+**Choices that matter.**
+- The person's OWN 100 m cell is left out of their neighbourhood
+  (`self_rule="exclude"`): otherwise a small neighbourhood is largely
+  their own household, and θ at small k measures family twice.
+- `context=` builds the neighbourhood from another population - all
+  adults around people aged 30-40. Without it, the people themselves.
+- As in section 10, a type under `min_group` people (30) leaves that
+  k's θ EMPTY, never zero.
+- **Weights** (`weight=`) are numbers of people per row, and also
+  weight the neighbourhood when no `context=` is given. The shuffles
+  move people, not rows, so they need whole numbers; with fractional
+  weights the chance columns are left empty and the run says so.
+- **Settings are refused, never rounded**: k = 10.9, groups = 2.9 or a
+  negative minimum stop the run with a sentence.
+- **Memory** does not grow with `shuffles` (1.62.1): a few arrays of
+  one number per person. On a national register, try a subsample
+  first to see the time per k; the run prints it when a k takes over
+  five seconds.
+
+**What it is, and is not.** The ex-ante reading, groups compared by
+their means. It describes how inequality lines up with neighbourhood
+type, not what the neighbourhood causes. On gridded census or WorldPop
+counts it describes places; it becomes inequality of opportunity only
+with individuals' own outcomes and backgrounds - registers.
+`examples/cookbook_13_theta_profile.py` builds the synthetic town and
+runs all three of its worlds.

@@ -571,7 +571,7 @@ def test_the_sdist_really_carries_the_pro_sidecars(tmp_path):
         pyt_src = open(os.path.join(arc, "EquiPop.pyt"),
                        encoding="utf-8").read()
         n_tools = len([t for t in re.search(
-            r"self\.tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
+            r"self\.all_tools = \[([^\]]+)\]", pyt_src).group(1).split(",")
             if t.strip()])
         assert len(made) == n_tools, (
             f"the generator wrote {sorted(made)} for {n_tools} tools")
@@ -632,7 +632,8 @@ def test_the_arcgis_guide_names_the_files_it_says_it_names():
     guide = open(os.path.join(ROOT, "arcgis", "ARCGIS_GUIDE.md"),
                  encoding="utf-8").read()
     listed = set(re.findall(r"EquiPop[.\w]*\.pyt(?:\.xml)?", guide))
-    must = {"EquiPop.pyt", "EquiPop.CountsShares.pyt.xml",
+    must = {"EquiPop.pyt", "EquiPop.ShowTools.pyt.xml",
+            "EquiPop.CountsShares.pyt.xml",
             "EquiPop.ValueStatistics.pyt.xml",
             "EquiPop.ContinentalRasters.pyt.xml",
             "EquiPop.SpatialDemography.pyt.xml",
@@ -653,19 +654,32 @@ def test_the_arcgis_guide_names_the_files_it_says_it_names():
 
 
 def test_the_guide_does_not_undercount_the_toolbox():
-    """It also said "Two tools appear" when four do."""
+    """It also said "Two tools appear" when four do.
+
+    v1.62.0 (BACKLOG 438): two numbers now - the tools that appear
+    when the toolbox is added (tool 0 and the standard set), and how
+    many appear once tool 0 shows the rest. Both are counted from the
+    code, not written here."""
+    from equipop.doors.toolset import EXTENDED, STANDARD
     guide = open(os.path.join(ROOT, "arcgis", "ARCGIS_GUIDE.md"),
                  encoding="utf-8").read()
     pyt = open(os.path.join(ROOT, "arcgis", "EquiPop.pyt"),
                encoding="utf-8").read()
-    registered = re.search(r"self\.tools = \[([^\]]+)\]", pyt).group(1)
-    n = len([t for t in registered.split(",") if t.strip()])
+    registered = [t.strip() for t in re.search(
+        r"self\.all_tools = \[([^\]]+)\]", pyt).group(1).split(",")
+        if t.strip()]
+    shown = [t for t in registered if t in STANDARD]
+    assert set(registered) <= set(STANDARD) | set(EXTENDED), registered
+    words = {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6,
+             "SEVEN": 7, "EIGHT": 8, "NINE": 9, "TEN": 10}
     claim = re.search(r"pick the \.pyt\. (TWO|THREE|FOUR|FIVE|SIX|SEVEN|"
                       r"EIGHT|NINE|TEN) tools appear", guide)
     assert claim, "the guide no longer says how many tools appear"
-    assert {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6,
-            "SEVEN": 7, "EIGHT": 8, "NINE": 9,
-            "TEN": 10}[claim.group(1)] == n
+    assert words[claim.group(1)] == len(shown)
+    every = re.search(r"\(or restart Pro\)\. (TWO|THREE|FOUR|FIVE|SIX|"
+                      r"SEVEN|EIGHT|NINE|TEN) tools then appear", guide)
+    assert every, "the guide no longer says how many tools tool 0 shows"
+    assert words[every.group(1)] == len(registered)
 
 
 def test_the_handover_keeps_up_with_the_version():
@@ -1252,7 +1266,9 @@ def test_the_version_bump_survives_a_round_trip(tmp_path):
                 "qgis/equipop_qgis/__init__.py",
                 "qgis/equipop_qgis/metadata.txt", "arcgis/EquiPop.pyt",
                 "stata/equipop.pkg", "stata/equipop.ado",
-                "CITATION.cff", "equipop_test_pass.do", "INSTALL.md"]
+                "CITATION.cff", "equipop_test_pass.do", "INSTALL.md",
+                # v1.61.4: the two older commands' banners
+                "stata/equipop_knn.ado", "stata/equipop_run.ado"]
     for rel in declared:
         src = os.path.join(ROOT, rel)
         dst = tmp_path / rel
@@ -1323,8 +1339,28 @@ def test_the_version_bump_survives_a_round_trip(tmp_path):
         "declaration in the same file has overwritten the first, or "
         "the tool stopped part-way:\n  " + "\n  ".join(stale))
 
+    # (1b) v1.61.4, found by the break-check: the checks above take
+    # their list of declarations FROM THE TOOL, and the round trip
+    # below cannot see a line the tool does not know - it never moves,
+    # so it comes back identical. Removing the equipop_run.ado
+    # declaration passed both. So the banners Stata's `which` prints
+    # are checked from the files themselves: every .ado, found by
+    # glob, must say the new version after one bump.
+    from pathlib import Path as _P
+    for src_ado in sorted((_P(ROOT) / "stata").glob("*.ado")):
+        ado = tmp_path / "stata" / src_ado.name
+        assert ado.exists(), (f"{src_ado.name} is not in `declared` "
+                              "above, so its banner is never bumped here")
+        first = ado.read_text(encoding="utf-8").splitlines()[0]
+        assert first.startswith(f"*! {ado.stem} v9.9.9 "), (
+            f"{ado.name}'s banner did not move with the bump: {first!r}"
+            " - add it to DECLARATIONS in tools/bump_version.py (and to "
+            "`declared` above, so it is copied here)")
+
     # (2) and back again: every file byte-identical, which catches a
-    # declaration the tool does not know about at all.
+    # declaration that is written over, or one the tool cannot undo.
+    # (Not one the tool does not know at all: that line never moves,
+    # and comes back identical - which is what (1b) is for.)
     bump(here)
     moved = [r for r in declared if before[r] != digests()[r]]
     assert not moved, (
@@ -1623,3 +1659,19 @@ def test_no_source_file_warns_when_it_is_compiled():
             except (SyntaxError, SyntaxWarning, DeprecationWarning) as exc:
                 bad.append(f"{os.path.relpath(f, ROOT)}: {exc}")
     assert not bad, "\n".join(bad)
+
+
+def test_the_bundle_copies_every_pro_sidecar_not_a_list():
+    """v1.62.0. make_bundle.sh copied the Pro help sidecars by a written
+    list of eight tool names. Tool 0 made nine, and the first 1.62.0
+    bundle shipped without tool 0's help - every check green, because
+    nothing compared the bundle with the toolbox. It now copies every
+    sidecar make_help_xml wrote (one per tool in all_tools) and stops
+    if the count differs from the toolbox's.
+
+    BROKEN WITH: the written list restored."""
+    src = open(os.path.join(ROOT, "tools", "make_bundle.sh"),
+               encoding="utf-8").read()
+    assert 'cp arcgis/EquiPop.*.pyt.xml "$WORK/"' in src
+    assert "for t in CountsShares" not in src
+    assert "Pro help sidecars for $WANT tools" in src

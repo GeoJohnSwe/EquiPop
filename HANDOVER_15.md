@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.61.3 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0ai first, then 0ah back to 0b
+*Amended through 1.62.1 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0al first, then 0ak back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,153 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0al. 1.62.1 - THE REVIEW OF 1.62.0, AND STATA READY FOR SSC
+
+An external review of 1.62.0 (26 October) found one pre-existing core
+fault and six in theta(k); all reproduced (scratchpad
+review1620/verify.py), all fixed (BACKLOG 439-442). John ruled the two
+method questions: the no-groups check fits the outcome, and a p-value.
+
+- **Exact midpoints** (cells.grid_midpoints, cells.exact_coords): THE
+  rule for every square grid. Whole midpoints come back int64, so even
+  sizes are unchanged byte for byte; odd sizes keep their .5. If you
+  add a snapping path, use it - six copies of `.astype(int)` is how
+  this happened. The test that cannot be fooled is translation
+  invariance (tests/test_odd_cells.py).
+- **theta(k)'s chance machinery** is _Chance: rows expanded to people
+  once per k, outcomes shuffled IN PLACE, group sizes and the total
+  fixed (they are permutation-invariant), family's part fixed under
+  within-family shuffles. Memory: a few arrays per person, independent
+  of `shuffles`. The p-value is (1 + #draws >= theta)/(1 + shuffles);
+  a peak is named only where p <= 0.05, so 19 shuffles can say so.
+- **theta_nogroups** is a WLS fit of y on [1, c, c^2] (and family
+  dummies): the conditional mean. Empty, with a note, if it predicts a
+  non-positive outcome - a log-link fit was tried and rejected: it
+  gave 0.79 where the truth is 1 (y exactly linear in c).
+- **Stata** (442): tests/stata_sim.py is the harness - read its
+  docstring before trusting it further than it reaches. make_sthlp.py
+  writes three help files. make_bundle.sh builds both Stata archives
+  from equipop.pkg's f lines (the third written list removed this
+  month, after the Pro sidecars and the round-trip test).
+- **Break-check 381/381** after one real gap: a memory test on the
+  whole run cannot see the shuffles - the engine sets the peak.
+  Measure the part, not the run. (tracemalloc does see numpy.)
+- **Left for John**: 443 (negative H and Atkinson at k scales in the
+  segregation profile), 444 (cell identities collide in pairs in
+  seeded draws) and 445 (fractional cell sizes could now be allowed -
+  the test written to announce exactly that fired). All need his
+  ruling; none is touched.
+
+## 0ak. 1.62.0 - THETA(K) FOR A TEST ROUND; TOOLS 3-6 HIDDEN
+
+John, 25 October 2026, three things (BACKLOG 436-438).
+
+- **theta(k)** (equipop/opportunity.py, tests/test_opportunity.py,
+  MANUAL_TOPICS section 17, cookbook_13). 405's step 4, unblocked by
+  SHOWING John the binning question on data before asking it: a
+  synthetic town (the generator is in the test and the cookbook) with
+  three worlds - neighbourhood at 800 plus family, family only,
+  nothing. He chose 10 groups, low education, family background for
+  under-40s. Design points worth keeping:
+  - the noise floor is MEASURED by shuffling, not a formula; with
+    family, the shuffle is WITHIN family categories, which is the null
+    for "nothing on top of family";
+  - the no-groups check fits a quadratic on log y (MLD) - Theil fits y
+    and is empty if a prediction is not positive;
+  - own cell excluded by default (else small-k theta measures the
+    household);
+  - people in a cell with no context population are added as EMPTY
+    cells so they still get a neighbourhood;
+  - a peak is named in the messages only among k's above 3x noise -
+    the first draft named a "peak" in pure noise.
+  Python only; the matrix carries witnesses for QGIS, Pro and Stata
+  (Stata is the likeliest next door: registers live there). John is
+  to run it on his registers - expect questions about the context
+  population (all adults vs. the cohort) and about family coding.
+- **Tools 3-6 hidden until shown** (equipop/doors/toolset.py, tool 0
+  in qgis/equipop_qgis/alg_show.py and EquiPop.pyt's ShowTools). The
+  QGIS stub gained Qgis.ProcessingAlgorithmFlag, flags(), a registry
+  and refreshAlgorithms; conftest gives the suite its own settings
+  folder, so no test reads or writes a developer's real choice. Pro's
+  tests and make_help_xml read `Toolbox().all_tools`, never `tools`.
+  UNVERIFIED IN REAL QGIS: that HideFromToolbox re-evaluates after
+  refreshAlgorithms() from inside a NoThreading algorithm. tool 0
+  says "restart QGIS" if the toolbox does not change - ask John what
+  he sees.
+- **Box 1f**: the rates reference left Advanced in both doors; QGIS's
+  advanced boxes renumbered (tiles 2e, output CRS 2f).
+- **The first 1.62.0 bundle had no EquiPop.ShowTools.pyt.xml**:
+  make_bundle.sh copied sidecars by a written list of eight names.
+  It now copies `arcgis/EquiPop.*.pyt.xml` and checks the count
+  against all_tools. Found by reading the bundle listing, not by
+  any check - read the listing every release.
+- **Break-check 351/351** after two fixes to θ(k)'s tests: a weight
+  test with ONE weight for everybody cannot see weights ignored
+  (use unequal weights), and a noise floor tested only in the null
+  world cannot see 'no shuffling' (chance = theta there). Same lesson
+  as 1.61.4's bump test: a check must be able to tell the fault
+  from the truth in the case it is run on.
+
+## 0aj. 1.61.4 - THE RADIUS WINDOW, AND THE REVIEW OF 1.61.3
+
+An external review of 1.61.3 (23 October 2026) found one real fault
+and three small ones; John said go (BACKLOG 430-435).
+
+- **A radius must widen a window that ENDS ON it** (430). The fast
+  engine's coverage test for radii was `covered < rmax`; a radius
+  takes distance <= r, and the unfetched cells are at >= covered, so
+  equality is exactly the case where the ring may continue outside
+  the window. Both paths (_solve and _solve_batch) had the same `<`,
+  so their bit-for-bit agreement proved nothing about it - **two
+  implementations agreeing is not evidence when they share a rule.**
+  The k-ring logic already did this right (it widens when the window
+  may have cut the boundary); the radius was simply never held to
+  it. tests/test_radius_window.py compares short windows with the
+  whole map, which is the test that would always have caught it.
+  test_window_sensitivity.py's "radius" test was about Dist_k, which
+  is why this sat next to it unseen.
+- **Guard a ratio on its own denominator** (431). The per-origin
+  share tested the population, not the valid count, and computed 0/0
+  for people with no usable value: right answer (NaN), 37 warnings a
+  run. The batched path hid the same thing under np.errstate; it now
+  passes the real denominator too (no behaviour change there, so no
+  break-check entry for it).
+- **windows_check.py: NEEDED / WANTED / REPORTED** (432). yaml is
+  needed (pip name pyyaml, via PIP_NAME); cffconvert is REPORTED
+  only - never suggested, because it pins jsonschema<4 and would
+  break tools in Pro's or Anaconda's Python.
+- **Wording** (433): release_record says "every other file" (the
+  RELEASE note is added to the bundle after the record is written);
+  REVIEWER_BRIEF points to the public repository for history. The
+  public repo has tags for the published releases from v1.5.1 (not
+  every release - some went out as archives only).
+- **Ado banners** (434): equipop_knn.ado and equipop_run.ado carry
+  the release in their `*!` line, in bump_version's DECLARATIONS
+  and in test_packaging's round-trip list (that list is written out
+  by hand on purpose - it must not come from the tool it checks).
+- **Classifiers 3.11-3.15** (435). Labels for PyPI, nothing more: a
+  pure-Python wheel installs the same way everywhere. (A stranger's
+  suggestion that a 3.13 classifier would make pip pick "precompiled
+  binary wheels" was wrong, and John was told not to apply it.) Each
+  listed version is one the release record runs: environments for
+  3.12, 3.13 and 3.14 are in the scratchpad under pyver/, built with
+  `/usr/local/bin/uv` (3.12 and 3.13 are system Pythons; 3.14 came
+  from `uv python install`). A test keeps the list starting at
+  requires-python with no gaps. Before adding 3.16, check it is in
+  trove-classifiers - PyPI refuses an upload with an unknown one.
+- **The break-check found a test that checked the tool with the
+  tool's own list.** test_the_version_bump_survives_a_round_trip
+  read DECLARATIONS from bump_version.py, and its round trip cannot
+  see a line the tool does not know (it never moves, so it comes
+  back identical) - though its comment claimed it could. Removing
+  a banner's declaration passed. Step (1b) now checks every
+  stata/*.ado banner from the files themselves. The same shape as
+  the radius fault: **a check that shares its rule with the thing
+  it checks agrees with it.** (The third survivor was the break
+  file's own error: a five-cell window holds the cross's whole
+  ring, so it cannot show the fault. bc1614_three.py re-ran the
+  three; all caught.)
 
 ## 0ai. 1.61.3 - PYTHON 3.15, AND WHAT IT SURFACED
 

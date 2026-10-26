@@ -308,3 +308,33 @@ def test_the_formulas_travel_with_the_release_and_the_package():
         ROOT / "MANIFEST.in").read_text(encoding="utf-8")
     assert 'cp METHODS_RATES.md "$WORK/"' in (
         ROOT / "tools" / "make_bundle.sh").read_text(encoding="utf-8")
+
+
+# ------------------------------------------- v1.62.0: in the main dialog
+def test_the_reference_choice_is_in_the_main_dialog_of_both_doors():
+    """John, 25 October: he had forgotten the choice existed, because
+    both doors kept it under Advanced. It decides every neighbourhood
+    near a border, so it now sits with the rates it governs - box 1f in
+    QGIS, beside the rates in Pro.
+
+    BROKEN WITH: QGIS's box back under Advanced; and Pro's back in the
+    Advanced category."""
+    sys.path.insert(0, str(ROOT / "qgis"))
+    import qgis_stub
+    qgis_stub.install()
+    from qgis.core import QgsProcessingParameterDefinition as D
+    from equipop_qgis.alg_demography import SpatialDemography
+    alg = SpatialDemography()
+    alg.initAlgorithm()
+    by = {p.name(): p for p in alg.parameterDefinitions()}
+    assert not by["rateref"].flags() & D.FlagAdvanced
+    assert by["rateref"].description().startswith("1f. ")
+    main = [n for n, p in by.items() if not p.flags() & D.FlagAdvanced]
+    assert main.index("rateref") == main.index("rates") + 1
+    import test_arcgis_continental as AC
+    _pyt, tool, _state = AC._tool("SpatialDemography")
+    ps = tool.getParameterInfo()
+    names = [p.name for p in ps]
+    ref = ps[names.index("rateref")]
+    assert ref.category in (None, "")
+    assert names.index("rateref") == names.index("rates") + 1

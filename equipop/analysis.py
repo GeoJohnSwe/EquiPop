@@ -188,9 +188,13 @@ def run_knn(
         return nm[kind].format(k=k)
 
     # ---- fast lookup: (E, N) -> (count_all, count_group) ----
-    lookup: dict[tuple[int, int], tuple[float, float]] = {}
+    # v1.62.1: keyed by the EXACT midpoint. int() truncated toward
+    # zero, so with an odd cell size (midpoints ending in .5) the
+    # cells either side of 0 shared a key (cells.grid_midpoints).
+    lookup: dict[tuple[float, float], tuple[float, float]] = {}
     for row in cells.itertuples(index=False):
-        key = (int(getattr(row, "E_grid")), int(getattr(row, "N_grid")))
+        key = (float(getattr(row, "E_grid")),
+               float(getattr(row, "N_grid")))
         lookup[key] = (float(getattr(row, count_all_col)),
                        float(getattr(row, count_group_col)))
 
@@ -207,19 +211,20 @@ def run_knn(
     print(f"[analysis] {len(rings)} distance rings ready")
 
     results = []
-    step = int(unit_size)
+    step = float(unit_size)
 
     for row in cells.itertuples(index=False):
-        e0 = int(getattr(row, "E_grid"))
-        n0 = int(getattr(row, "N_grid"))
+        e0 = float(getattr(row, "E_grid"))
+        n0 = float(getattr(row, "N_grid"))
         local_all, local_grp = lookup[(e0, n0)]
         origin_ident = int(overshoot.cell_identity(
             round(e0 / step), round(n0 / step)))
 
         rec: dict = {
             "Id": getattr(row, id_col) if id_col else None,
-            "EastWest": e0,
-            "NorthSouth": n0,
+            # whole numbers stay integers, as before 1.62.1
+            "EastWest": int(e0) if e0.is_integer() else e0,
+            "NorthSouth": int(n0) if n0.is_integer() else n0,
             "CountAllLocal": local_all,
             "CountGroupLocal": local_grp,
         }

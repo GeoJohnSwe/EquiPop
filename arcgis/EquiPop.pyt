@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.61.3"
+TOOLBOX_VERSION = "1.62.1"
 
 
 def _vtuple(v):
@@ -4374,6 +4374,9 @@ class SpatialDemography:
               _p("rates", "Rates and life expectancy - MODEL-BASED, "
                  "read from the age pyramid against the nation's (tick "
                  "several)", "GPString", required=False),
+              # v1.62.0, John: in the main dialog, not under Advanced
+              _p("rateref", "Read the rates against", "GPString",
+                 required=False),
               _p("year", "Which year (blank = the only one present)",
                  "GPString", required=False, category="Advanced"),
               _p("crs", "Projection to work in (blank = suggested)",
@@ -4381,8 +4384,6 @@ class SpatialDemography:
                  category="Advanced"),
               _p("ratesex", "Life tables and death rate for",
                  "GPString", required=False, category="Advanced"),
-              _p("rateref", "Read the rates against", "GPString",
-                 required=False, category="Advanced"),
               # v1.61.0, John: tiles for merged regions, as machine 3
               _p("tiles", "Folder for a TILED, resumable run (blank "
                  "= run in memory)", "DEFolder", required=False,
@@ -4955,6 +4956,88 @@ class FetchSelected:
             raise arcpy.ExecuteError(str(exc))
 
 
+#: v1.62.0, BACKLOG 438: tool 0's two answers. WRITTEN DOWN, not
+#: imported, so the dialog opens even under an older package; the same
+#: words as equipop.doors.toolset.CHOICES - a test pins it.
+SHOW_CHOICES = ["Only tools 1 and 2 (the standard set)",
+                "All tools, 1 to 6"]
+
+
+class ShowTools:
+    """TOOL 0 - show or hide tools 3 to 6 (v1.62.0, BACKLOG 438).
+
+    John, 25 October 2026: the same toolbox for everybody, differing
+    in one thing - whether tools 3 to 6 are listed - and "let us make
+    the default to hide - but please indicate in help etc., how it can
+    be lifted". The rule and the saved choice are in
+    equipop.doors.toolset, shared with QGIS. A Python toolbox has no
+    way to hide a tool it lists, so a hidden tool is simply not in the
+    list; Pro re-reads the list when the toolbox is refreshed.
+    """
+
+    def __init__(self):
+        self.label = "0. Show or hide tools 3-6"
+        try:
+            from equipop.doors.help import summary_for
+            self.description = summary_for("ShowTools")
+        except Exception:                            # pragma: no cover
+            self.description = ("Shows or hides tools 3 to 6 in this "
+                                "toolbox.")
+        self.canRunInBackground = False
+
+    def getParameterInfo(self):
+        p = _p("show", "Which tools the toolbox shows", "GPString")
+        p.filter.type = "ValueList"
+        p.filter.list = list(SHOW_CHOICES)
+        try:
+            from equipop.doors.toolset import show_all
+            p.value = SHOW_CHOICES[1 if show_all() else 0]
+        except Exception:
+            p.value = SHOW_CHOICES[0]
+        return [p]
+
+    def isLicensed(self):
+        return True
+
+    def updateParameters(self, parameters):
+        return
+
+    def updateMessages(self, parameters):
+        return
+
+    def execute(self, parameters, messages):
+        _announce_version(messages)
+        from equipop.doors.toolset import set_show_all, state_sentence
+        pm = _byname(parameters)
+        pick = _txt(pm, "show") or SHOW_CHOICES[0]
+        if pick not in SHOW_CHOICES:
+            raise arcpy.ExecuteError(
+                f"'{pick}' is not one of the two choices: "
+                + "; ".join(SHOW_CHOICES))
+        try:
+            where = set_show_all(pick == SHOW_CHOICES[1])
+        except OSError as exc:
+            raise arcpy.ExecuteError(
+                f"The choice could not be saved ({exc}). Nothing has "
+                "changed.")
+        messages.addMessage(f"Saved in {where}.")
+        messages.addMessage(state_sentence())
+        messages.addMessage(
+            "To see the change, right-click the EquiPop toolbox in the "
+            "Catalog pane and choose Refresh (or restart Pro).")
+
+
+def _shown_tools(every):
+    """The tools the toolbox lists: tools 3 to 6 only when shown. If
+    the rule cannot be read - an older package - every tool is listed,
+    because a tool hidden by an error could not be found at all."""
+    try:
+        from equipop.doors.toolset import is_shown
+        return [t for t in every if is_shown(t.__name__)]
+    except Exception:
+        return list(every)
+
+
 class Toolbox:
     def __init__(self):
         self.label = "EquiPop"
@@ -4966,10 +5049,15 @@ class Toolbox:
         # users on the strength of a reading. The simulator now covers
         # both, and tests/test_arcgis_continental.py EXECUTES them.
         # v1.59.0, BACKLOG 414: machine 5 at last - 5a, 5b, 5c.
-        self.tools = [CountsShares, ValueStatistics,
-                      ContinentalRasters, SpatialDemography,
-                      WorldPopCatalogue, OsmCatalogue, FetchSelected,
-                      FolderInventory]
+        # v1.62.0, BACKLOG 438: EVERY tool, in order. The help files
+        # and the tests read THIS list, so a hidden tool still gets
+        # its '?' page and its tests. What Pro LISTS is `tools`: tool
+        # 0 and tools 1 and 2, and 3 to 6 once tool 0 shows them.
+        self.all_tools = [ShowTools, CountsShares, ValueStatistics,
+                          ContinentalRasters, SpatialDemography,
+                          WorldPopCatalogue, OsmCatalogue, FetchSelected,
+                          FolderInventory]
+        self.tools = _shown_tools(self.all_tools)
         # two machines, one shared loader (v1.16). Friction/slope
         # stay DISTANCE INGREDIENTS on machine 1, not tools.
 

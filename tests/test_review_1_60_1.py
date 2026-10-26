@@ -579,7 +579,7 @@ def test_every_pro_tool_refuses_a_package_older_than_the_toolbox():
     real = equipop.__version__
     equipop.__version__ = "1.59.2"
     try:
-        for cls in pyt.Toolbox().tools:
+        for cls in pyt.Toolbox().all_tools:
             tool = cls()
             with pytest.raises(pyt.arcpy.ExecuteError,
                                match="OLDER THAN THIS TOOLBOX") as e:

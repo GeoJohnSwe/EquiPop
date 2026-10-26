@@ -75,3 +75,28 @@ def work_outside_the_repository(tmp_path_factory):
             "repository is not a scratch directory, and anything "
             "left here can be committed by accident and shipped "
             "inside a release zip.")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def toolbox_settings_of_its_own(tmp_path_factory):
+    """v1.62.0, BACKLOG 438. Tool 0 SAVES a choice - which tools the
+    GIS toolboxes show - in the user's own settings folder, and the
+    doors read it. The suite must neither read the developer's real
+    choice (a test of the default would pass or fail by whoever runs
+    it) nor overwrite it. So the settings folder is a temporary one,
+    and the environment override is cleared: every run starts from
+    John's default, tools 3 to 6 hidden."""
+    keep = {k: os.environ.get(k) for k in
+            ("APPDATA", "XDG_CONFIG_HOME", "EQUIPOP_SHOW_ALL_TOOLS")}
+    home = tmp_path_factory.mktemp("settings")
+    os.environ["APPDATA"] = str(home)
+    os.environ["XDG_CONFIG_HOME"] = str(home)
+    os.environ.pop("EQUIPOP_SHOW_ALL_TOOLS", None)
+    try:
+        yield
+    finally:
+        for k, v in keep.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v

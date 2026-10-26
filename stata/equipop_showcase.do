@@ -1,8 +1,8 @@
 * ============================================================================
-* equipop_showcase.do - EquiPop 1.46.4 from Stata: every function, one script
+* equipop_showcase.do - EquiPop from Stata: every function, one script
 * ----------------------------------------------------------------------------
 * Requires: Stata 17+, Python visible to Stata (help python), and the
-* package installed in THAT Python:  pip install equipop
+* EquiPop package installed in THAT Python - -equipop setup- does it.
 *
 * Runs either from the stata/ folder of the EquiPop repository or
 * straight after `ssc install equipop, all` - the data is located
@@ -25,11 +25,13 @@ set more off
 * ---------------------------------------------------------------------------
 * SECTION 0 - one-time setup (uncomment and adapt on FIRST use only)
 * ---------------------------------------------------------------------------
-* python query
-*     // shows which Python Stata uses. If it is not the one where you
-*     // installed equipop, point Stata to the right one, e.g.:
-* python set exec "C:\ProgramData\anaconda3\python.exe", permanently
-*     // then, in a terminal for that Python:  pip install equipop
+* equipop doctor
+*     // which Python Stata uses, and whether EquiPop's libraries load
+* equipop setup
+*     // installs or updates the engine in THAT Python
+* Use a plain python.org Python for Stata, not Anaconda: Anaconda's
+* numpy closes Stata on import (see help equipop). To point Stata at
+* one:  python set exec "C:\...\Python312\python.exe", permanently
 
 * make the equipop command visible this session (ado in current folder)
 adopath + "`c(pwd)'"
@@ -178,6 +180,9 @@ cd = build_cells(dv, "x", "y", value_vars=["ValFloat"], unit_size=UNIT)
 st = run_knn_stats(cd, [K], stats={"ValFloat": ["mean", "median", "gini"]})
 st = st.set_index(["EastWest", "NorthSouth"])
 
+# each row's cell midpoint. Whole numbers because UNIT is even; for an
+# odd cell size use equipop.cells.grid_midpoints (1.62.1), which keeps
+# the .5 that int64 would cut off.
 half = UNIT / 2.0
 E = (np.floor(dv["x"] / UNIT) * UNIT + half).astype("int64")
 N = (np.floor(dv["y"] / UNIT) * UNIT + half).astype("int64")
@@ -319,4 +324,4 @@ end
 * ---------------------------------------------------------------------------
 * Done. Everything above is now ordinary Stata: regress, margins, graph.
 * ============================================================================
-display as result "equipop_showcase.do completed - EquiPop 1.46.4 full tour"
+display as result "equipop_showcase.do completed - the EquiPop full tour"

@@ -1,6 +1,7 @@
 {smcl}
-{* *! version 1.61.3}{...}
-{vieweralsosee "[R] regress" "help regress"}{...}
+{* *! version 1.62.1}{...}
+{vieweralsosee "equipop_run" "help equipop_run"}{...}
+{vieweralsosee "equipop_knn" "help equipop_knn"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
 {viewerjumpto "Description" "equipop##description"}{...}
 {viewerjumpto "Options" "equipop##options"}{...}
@@ -11,7 +12,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.61.3)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.62.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -401,7 +402,22 @@ a count {cmd:ValCount}.
 {pstd}The new variables are named in {cmd:r(varlist)}, so they can be used directly:{p_end}
 {phang}{cmd:. regress income `r(varlist)'}{p_end}
 
+{marker related}{...}
+{title:Related commands}
+
+{pstd}{help equipop_run:equipop_run} reaches EquiPop's other engines with one command: value statistics, barriers and terrain, floating catchment accessibility and local Moran's I. {help equipop_knn:equipop_knn} is this command's former name and still works.{p_end}
+
+{marker references}{...}
+{title:References}
+
+{phang}Östh, J., W. A. V. Clark, and B. Malmberg. 2015. Measuring the scale of segregation using k-nearest neighbor aggregates. {it:Geographical Analysis} 47: 34-49.{p_end}
+
+{phang}Östh, J., J. Lyhagen, and A. Reggiani. 2016. A new way of determining distance decay parameters in spatial interaction models with application to job accessibility analysis in Sweden. {it:European Journal of Transport and Infrastructure Research} 16: 344-363.{p_end}
+
 {marker author}{...}
 {title:Author}
 
-{pstd}John Östh, OsloMet. {browse "https://github.com/GeoJohnSwe/EquiPop"}{p_end}
+{pstd}John Östh{break}
+OsloMet - Oslo Metropolitan University, Norway; Lund University and Uppsala University, Sweden{break}
+{browse "mailto:johnosth@oslomet.no":johnosth@oslomet.no}{break}
+{browse "https://github.com/GeoJohnSwe/EquiPop"}{p_end}

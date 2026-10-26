@@ -3673,6 +3673,115 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 445 | OPEN, 26 OCTOBER 2026 | FRACTIONAL CELL SIZES COULD NOW BE
+  ALLOWED. Every door refuses them (155, 1.29.8) because integer
+  centres made a 2.5 m grid's spacing 2 and 3. Exact midpoints (439)
+  removed that reason: the test written to announce it did
+  (test_review_findings). The refusal stays until John rules -
+  lifting it touches QGIS, Pro and Stata validation and their help.
+- 444 | OPEN, FOUND 26 OCTOBER 2026 | SEEDED-DRAW CELL IDENTITIES COLLIDE
+  IN PAIRS. overshoot.cell_identity is given round(midpoint / unit):
+  midpoints are k*u + u/2, so the argument is k + 0.5, and round-half-
+  to-even sends 1.5 and 2.5 both to 2 - every pair of neighbouring
+  cells shares an identity, in both radial engines alike (so the
+  parity tests agree). Affects only the seeded overshoot modes
+  (`sampled`), where two cells then share a random key. Fixing it
+  (floor instead of round) changes every seeded draw ever published:
+  John's ruling first.
+- 443 | OPEN, FOUND 26 OCTOBER 2026 | THE SEGREGATION PROFILE'S ENTROPY
+  AND ATKINSON INDICES GO NEGATIVE AT k SCALES. seg_indices_at_scale
+  weights overlapping neighbourhoods by their N_k against P from the
+  LOCAL counts; the neighbourhoods' weighted composition is not P, and
+  H and Atkinson(0.5) - bounded at 0 for a partition - come out
+  slightly negative (showcase section 8: H -0.0197, -0.0286, -0.0268).
+  D, Gini, isolation and SI are unaffected. A method question (P from
+  the units' own weighted composition, or report the bounded indices
+  only at k): John's ruling.
+- 442 | DONE v1.62.1, 26 OCTOBER 2026 | THE STATA FILES FOR SSC. Help for
+  equipop_run and equipop_knn (there was none); help gives an address,
+  references and related commands; showcase and example no longer
+  name 1.46.4 or advise Anaconda; both Stata archives built from the
+  pkg's f lines. tests/stata_sim.py runs the shipped Python halves
+  against the shipped data through a stand-in sfi: every showcase
+  EXPECT holds; equipop_run reaches all engines. Not reachable here,
+  still John's: a real-Stata run with `set varabbrev off`, and a fresh
+  `ssc install`.
+- 441 | DONE v1.62.1, 26 OCTOBER 2026 | THETA(K): GROUPS, DEGENERATE DATA,
+  SETTINGS, AND JOHN'S TWO METHOD RULINGS (review of 1.62.0, P2 and
+  questions). The completing person stays in its group (300 values ->
+  10 x 30); constant outcome and unusable character refused in words,
+  a k with nobody gives an empty row with a note; fractional and
+  negative settings refused. The no-groups check fits the outcome, not
+  its log (bounded; 1.046 -> 1 in the exact case); 95th percentile and
+  permutation p-value per k, 99 shuffles by default.
+- 440 | DONE v1.62.1, 26 OCTOBER 2026 | THETA(K) WEIGHTS AND CHANCE
+  (review of 1.62.0, P1 x3). Implicit context takes `weight`; shuffles
+  move people (fractional weights: chance columns empty, said); one
+  shuffle at a time, so memory does not grow with them.
+- 439 | DONE v1.62.1, 26 OCTOBER 2026 | ODD CELL SIZES ACROSS ZERO (review
+  of 1.62.0, P1; pre-existing). int() truncation merged the cells either
+  side of 0. cells.grid_midpoints / exact_coords everywhere; even sizes
+  unchanged; translation-invariance tests through three engines.
+- 438 | DONE v1.62.0, 25 OCTOBER 2026 | TOOLS 3-6 HIDDEN UNTIL SHOWN.
+  John: one plugin for everybody, "the same except for ONE detail - the
+  visualisation of the 3 and up tools", default hidden, "please indicate
+  in help etc., how it can be lifted". equipop.doors.toolset holds the
+  rule and the saved choice (one JSON file per user, shared by QGIS and
+  Pro; EQUIPOP_SHOW_ALL_TOOLS overrides). Tool 0 in both doors. QGIS:
+  HideFromToolbox flag, every tool still registered (models keep
+  working), tool 0 runs NoThreading and refreshes the provider. Pro: the
+  list filtered, `all_tools` keeps every tool for the help files and the
+  tests, refresh to see a change. Any failure shows everything. Not
+  done, and why: separately named plugins (IT approval, QGIS's
+  experimental flag) - John chose the switch.
+- 437 | DONE v1.62.0, 25 OCTOBER 2026 | "READ THE RATES AGAINST" IN THE
+  MAIN DIALOG of machine 4 (QGIS box 1f; Pro beside the rates). Under
+  Advanced since 1.61.0, and John had forgotten it existed.
+- 436 | BUILT v1.62.0 FOR A TEST ROUND, 25 OCTOBER 2026; DOORS OPEN |
+  theta(k) - 405's STEP 4. equipop.theta_profile: the between-type
+  share of an outcome's inequality (MLD, or Theil with zeros), with
+  types = equal-sized groups of the neighbourhood character at each k.
+  JOHN'S RULINGS for the round: 10 groups, low education as the
+  character, family background (known for people under ~40) as the
+  second circumstance. Reports beside theta: the no-groups share
+  (Ferreira-Gignoux, quadratic in the character), a SHUFFLED noise
+  floor, the smallest group, and on top of family (types = groups x
+  family, minus family alone; its floor shuffles within family). Own
+  cell left out by default. Decided from a synthetic town with planted
+  truths, shown to John first: the peak sat at the planted scale
+  whichever way types were formed; 3/5/10/20 groups gave 73/85/92/95%
+  of the no-groups value; fixed cut-offs emptied their outer groups as
+  k grew (5 types -> 3) and are not offered; 100 groups on 2,000
+  people gave 5.7% from noise alone. Python only: QGIS, Pro and Stata
+  doors wait on the round (the matrix carries their witnesses).
+- 435 | DONE v1.61.4, 23 OCTOBER 2026 | PYTHON 3.11-3.15 CLASSIFIERS.
+  Labels for PyPI only (a pure-Python wheel). Every version listed is
+  run by the build record; a test keeps the list starting at the floor
+  with no gaps.
+- 434 | DONE v1.61.4, 23 OCTOBER 2026 | ADO BANNERS CARRY THE RELEASE.
+  `which equipop_knn` said v1.35 and `which equipop_run` EquiPop 1.6.
+  Both banners now move with bump_version, tested.
+- 433 | DONE v1.61.4, 23 OCTOBER 2026 | WORDING (review of 1.61.3, P3).
+  The build record lists every OTHER file (the release note is added
+  after it); the reviewer brief points to the public GitHub history
+  instead of promising a clone.
+- 432 | DONE v1.61.4, 23 OCTOBER 2026 | THE WINDOWS CHECK MISSED PYYAML
+  (review of 1.61.3, P2). pyyaml joined the test extra in 1.61.3 and
+  not the checker's list, so the citation checks skipped in silence.
+  Now needed, named as pip knows it; cffconvert reported, never
+  suggested (it pins jsonschema<4).
+- 431 | DONE v1.61.4, 23 OCTOBER 2026 | 0/0 IN THE RADIUS SHARE (review
+  of 1.61.3, P3). Guarded on the population rather than the share's
+  own denominator: NaN either way, but 37 RuntimeWarnings a suite run.
+- 430 | DONE v1.61.4, 23 OCTOBER 2026 | A RADIUS DEPENDED ON THE SEARCH
+  WINDOW (review of 1.61.3, P1). A window ending exactly on the radius
+  was trusted although the ring of equal distances could continue
+  beyond it; both engine paths shared the rule, so comparing them
+  could not show it. Six cells in a cross: N_r100 = 3 instead of 5.
+  On a 100 m lattice the automatic window never met it (300 m - 2 km);
+  tiled runs (fixed 4,096-cell window) did at 4.5 km, 24 of 8,100
+  cells, up to 0.17% short. `<=` now, on both paths, and
+  test_radius_window.py compares every short window with the whole map.
 - 429 | DONE v1.61.3, 23 OCTOBER 2026 | PYTHON 3.11 IS THE FLOOR.
   3.10 reaches end of life in October 2026; 3.11 is the oldest Python a
   current ArcGIS Pro ships. pyproject, MANUAL, MANUAL_TOPICS, the

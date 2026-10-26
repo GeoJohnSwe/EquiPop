@@ -8,7 +8,6 @@ Two jobs:
 Original coordinates are always kept; new columns are added, never replaced.
 """
 
-import math
 import pandas as pd
 from pyproj import Transformer, CRS
 
@@ -83,16 +82,15 @@ def snap_to_grid(
     so a point at easting 788450.417 snaps to 788450
     (floor(788450.417 / 100) * 100 + 50 = 788450).
 
-    Adds columns 'E_grid' and 'N_grid' (integers).
+    Adds columns 'E_grid' and 'N_grid': integers whenever the
+    midpoints are whole (every even cell size), exact halves otherwise
+    (v1.62.1 - int() truncated toward zero, so an odd cell size merged
+    the two cells either side of 0; see cells.grid_midpoints).
     """
+    from .cells import grid_midpoints
     df = df.copy()
-    half = unit_size / 2.0
-
-    def snap(v: float) -> int:
-        return int(math.floor(v / unit_size) * unit_size + half)
-
-    df["E_grid"] = df[easting_col].apply(snap)
-    df["N_grid"] = df[northing_col].apply(snap)
+    df["E_grid"] = grid_midpoints(df[easting_col], unit_size)
+    df["N_grid"] = grid_midpoints(df[northing_col], unit_size)
     return df
 
 

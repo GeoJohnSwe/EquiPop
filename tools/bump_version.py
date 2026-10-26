@@ -60,6 +60,11 @@ DECLARATIONS = [
      "TODAY"),
     ("stata/equipop.ado", r'^(\*! equipop v)\S+(\s)'),
     ("stata/equipop.ado", r'^(\s*local eqp_ado_version\s+")[^"]+(")'),
+    # The other two commands' banners, which Stata's `which` prints.
+    # They said "v1.35" and "EquiPop 1.6" for years, next to an
+    # equipop.ado that moved every release (v1.61.4, review of 1.61.3).
+    ("stata/equipop_knn.ado", r'^(\*! equipop_knn v)\S+(\s)'),
+    ("stata/equipop_run.ado", r'^(\*! equipop_run v)\S+(\s)'),
     ("CITATION.cff", r'^(version:\s*)\S+()'),
     ("equipop_test_pass.do", r'^(\*! EquiPop )\S+(\s)'),
     ("equipop_test_pass.do", r'^(global EQP_EXPECT\s+")[^"]+(")'),

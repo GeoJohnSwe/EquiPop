@@ -1,6 +1,26 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.61.3, 23 October 2026.**
+**Last updated: 1.62.1, 26 October 2026.**
+*Reviewed at 1.62.1: NO CLAIM CHANGES. theta(k) corrected after an
+external review (weights, chance, memory, settings) and now reports a
+permutation p-value - still 'in test', still not to be reported as
+results. The Stata package is ready for SSC with help for all three
+commands.*
+*Reviewed at 1.62.0: ONE CLAIM MOVES FROM 'MAY NOT' TO 'IN TEST'. The
+scale profile theta(k) - how much of an outcome's inequality lines up
+with neighbourhood type, at each k, and how much of that is on top of
+family background - is built (equipop.theta_profile, Python only) and
+recovers planted truths on a synthetic town, including that
+'neighbourhood alone' can be family composition. MAY say it is
+implemented and being tested on register data. MAY NOT yet report
+results, nor present it as causal, nor as in the GIS tools. The
+1.55.0 cautions stand: opportunity only if the types are circumstances;
+ecological unless the people are individuals with their own outcomes
+and backgrounds.*
+*Reviewed at 1.61.4: NO CLAIM CHANGES. Radius results no longer
+depend on the search window in a rare boundary case (up to 0.17%
+short at the edge of a tiled 4.5 km run, now exact); the claim that
+the window affects speed only is now true and tested.*
 *Reviewed at 1.61.3: NO CLAIM CHANGES. Python 3.11 is now the minimum;
 the suite passes on Python 3.15.*
 *Reviewed at 1.61.2: NO CLAIM CHANGES.*

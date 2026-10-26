@@ -94,3 +94,68 @@ def test_the_copy_beside_the_release_zip_finds_the_tree(tmp_path):
         assert "2 passed" in out
     assert (rel / "EquiPop-9.9.9" / "tests" / "test_tmp.py").exists()
     assert len(list(rel.glob("EquiPop_9.9.9_windows_check_*.txt"))) >= 1
+
+
+# ------------------- v1.61.4: what the check needs, and what it reports
+def _checker(monkeypatch, absent):
+    """The tree's own windows_check, with `absent` reported missing and
+    the two child processes faked - so nothing is installed and no
+    suite is run."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "windows_check_under_test", ROOT / "tools" / "windows_check.py")
+    wc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wc)
+    real = wc._have
+    monkeypatch.setattr(wc, "_have",
+                        lambda n: None if n in absent else real(n) or "x")
+
+    class _Probe:
+        stdout, stderr = "equipop/__init__.py\n", ""
+
+    class _Suite:
+        def __init__(self, *a, **k):
+            self.stdout = iter(["1 passed in 0.01s\n"])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def wait(self):
+            return 0
+    monkeypatch.setattr(wc.subprocess, "run", lambda *a, **k: _Probe())
+    monkeypatch.setattr(wc.subprocess, "Popen", _Suite)
+    return wc
+
+
+def test_pyyaml_is_needed_and_named_as_pip_knows_it(monkeypatch, tmp_path,
+                                                    capsys):
+    """pyyaml joined the test extra in 1.61.3, for the citation checks;
+    without it they skip in silence. The check stops and gives the
+    install line - `pyyaml`, which is what pip installs, not `yaml`,
+    which is what Python imports.
+
+    BROKEN WITH: `yaml` left out of NEEDED (the check ran and passed)."""
+    wc = _checker(monkeypatch, {"yaml"})
+    assert wc.main(report_dir=str(tmp_path)) == 2
+    out = capsys.readouterr().out
+    assert "pip install pyyaml" in out and "pip install yaml" not in out
+
+
+def test_cffconvert_is_reported_but_never_suggested(monkeypatch, tmp_path,
+                                                    capsys):
+    """The full schema check needs cffconvert, which would downgrade
+    jsonschema in Pro's or Anaconda's Python. So its absence is in the
+    report, and the advice says why it is not offered.
+
+    BROKEN WITH: cffconvert left out of the report's package line."""
+    wc = _checker(monkeypatch, {"cffconvert"})
+    assert wc.main(report_dir=str(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "pip install cffconvert" not in out
+    assert "not suggested for this Python" in out
+    report = next(tmp_path.glob("*_windows_check_*.txt")).read_text(
+        encoding="utf-8")
+    assert "cffconvert MISSING" in report

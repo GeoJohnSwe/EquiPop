@@ -18,6 +18,16 @@ Text moved unchanged from arcgis/make_help_xml.py in 1.18.0.
 """
 
 HELP = {
+    # v1.62.0, BACKLOG 438: tool 0's one box.
+    "show":
+        "WHICH TOOLS THE TOOLBOX SHOWS. Tools 1 and 2 - counts and "
+        "shares, value statistics - are always shown. Tools 3 to 6 - "
+        "raster curation, spatial demography, the downloads (5a to "
+        "5c) and the folder inventory - are hidden until you choose "
+        "'All tools' here. Hiding only changes the list: nothing is "
+        "uninstalled, results do not change, and the choice is kept "
+        "for the next session and for both QGIS and ArcGIS Pro on this "
+        "computer. Choose 'Only tools 1 and 2' to hide them again.",
     # BACKLOG 102/42. Stata reached the decay boxes first (1.39);
     # QGIS still has none, and Pro's wording should come from here
     # when 102 is done rather than being written a third time.
@@ -637,7 +647,9 @@ HELP = {
                "Within one country this gives exactly what the other "
                "choice gives. The country of the neighbourhood's cell "
                "reads everybody in it against that one country, as "
-               "EquiPop did to 1.60.3.",
+               "EquiPop did to 1.60.3. In the main dialog since 1.62.0, "
+               "because it matters for every run with more than one "
+               "country.",
     "ratesex": "WHOSE LIFE TABLES - both sexes, women or men - for the "
                "life expectancies and the crude death rate. Women and "
                "men each get their own national table. TFR and CBR "
@@ -875,6 +887,9 @@ HELP = {
 # LABELS, so nothing noticed. A name in two places drifts, exactly like
 # a rule in two places.
 LABELS = {
+    # v1.62.0, BACKLOG 438. Numbered 0: it is about the toolbox, not
+    # an analysis, and it must sort first so it is found.
+    "ShowTools": "0. Show or hide tools 3-6",
     "CountsShares": "1. Counts and Shares (k / radius / decay)",
     "ValueStatistics": "2. Value Statistics (numeric fields among the "
                        "k nearest)",
@@ -895,6 +910,13 @@ LABELS = {
 
 
 SUMMARY = {
+    "ShowTools":
+        "Shows or hides tools 3 to 6 in the toolbox. Tools 1 and 2 are "
+        "EquiPop's standard set and are always there; 3 to 6 - raster "
+        "curation, spatial demography, downloads from WorldPop and "
+        "OpenStreetMap, and the folder inventory - are hidden until "
+        "you show them here. Nothing is installed or removed, and no "
+        "result changes.",
     "WorldPopCatalogue":
         "Lists what WorldPop has for some countries and years - one "
         "row per GeoTIFF, with its sex, age band, resolution, size, "
@@ -998,6 +1020,10 @@ SUMMARY = {
 }
 
 USAGE = {
+    "ShowTools":
+        "Choose 'All tools, 1 to 6' and run; {afterswitch} Run it again "
+        "with 'Only tools 1 and 2' to hide them. The choice is saved "
+        "for both QGIS and ArcGIS Pro on this computer.",
     "WorldPopCatalogue":
         "Name the countries and years and run. The table appears as "
         "{temptable}; open it and select rows - {selectby} with "
@@ -1077,7 +1103,10 @@ USAGE = {
         "longer. Cell size is the speed control: doubling it "
         "quarters the number of origins. Long result names need a "
         "roomy target: shapefile field names cap at 10 characters, "
-        "so {container} is the safer home for them.",
+        "so {container} is the safer home for them. "
+        "MORE TOOLS: 3 to 6 - raster curation, spatial demography, "
+        "downloads and the folder inventory - are hidden until shown; "
+        "{showtools}",
     "ValueStatistics":
         "Give the treatment values, tick the measures, set k. Use the "
         "reference population's count field whenever a point stands "
@@ -1086,7 +1115,10 @@ USAGE = {
         "their box. Tick MLD or Theil and give a grouping field to "
         "split inequality between and within groups. As with "
         "machine 1, cell size controls the "
-        "runtime and {container} avoids the shapefile name limit.",
+        "runtime and {container} avoids the shapefile name limit. "
+        "MORE TOOLS: 3 to 6 - raster curation, spatial demography, "
+        "downloads and the folder inventory - are hidden until shown; "
+        "{showtools}",
 }
 
 
@@ -1111,6 +1143,13 @@ USAGE = {
 # there, and he reasonably read it as "you must save into a database
 # first".
 VOCAB = {
+    # v1.62.0, BACKLOG 438: how hidden tools are shown, in each door
+    "showtools": ("run 0. Show or hide tools 3-6, then right-click the "
+                  "EquiPop toolbox in the Catalog pane and choose "
+                  "Refresh."),
+    "afterswitch": ("then right-click the EquiPop toolbox in the "
+                    "Catalog pane and choose Refresh (or restart Pro) "
+                    "to see them."),
     "target": "feature class",
     "container": "a file geodatabase",
     "formatnote": "",
@@ -1123,6 +1162,11 @@ VOCAB = {
                       "selected)"),
 }
 VOCAB_QGIS = {
+    "showtools": ("run 0. Show or hide tools 3-6 in the EquiPop group "
+                  "of the Processing Toolbox."),
+    "afterswitch": ("they appear in the Processing Toolbox at once (if "
+                    "not, restart QGIS). Hidden tools still run from "
+                    "saved models and scripts."),
     "target": "layer",
     "container": "a GeoPackage (.gpkg)",
     "formatnote": (" QGIS reads the format from the file extension, "

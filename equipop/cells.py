@@ -134,6 +134,35 @@ class CellData:
         return h.hexdigest()
 
 
+def exact_coords(a) -> np.ndarray:
+    """Coordinates as EXACT numbers: int64 when every value is whole,
+    float64 otherwise. Never truncated.
+
+    v1.62.1, external review of 1.62.0. Snapped midpoints were cast
+    with .astype(int), which truncates toward ZERO. With an odd cell
+    size every midpoint ends in .5, so the cells either side of 0 moved
+    in opposite directions: at 1 m, points at -0.25 and +0.25 became
+    ONE cell at 0 holding both; at 3 m the two centres were recorded
+    2 m apart. Even sizes (100 m, 1 km) have whole midpoints and come
+    back as integers exactly as before, so no such run changes.
+    """
+    a = np.asarray(a, dtype=float)
+    r = np.round(a)
+    if a.size == 0 or np.array_equal(r, a):
+        return r.astype(np.int64)
+    return a
+
+
+def grid_midpoints(v, unit_size) -> np.ndarray:
+    """Each value's cell MIDPOINT on a square grid of `unit_size`
+    (cells [k*u, (k+1)*u), midpoint k*u + u/2), exact - see
+    exact_coords. The one rule every square-grid path uses: build_cells,
+    snap_to_grid, the Stata bridge and theta_profile."""
+    u = float(unit_size)
+    v = np.asarray(v, dtype=float)
+    return exact_coords(np.floor(v / u) * u + u / 2.0)
+
+
 def split_sum_name(var: str, code: int) -> str:
     """The name of `var`'s sum over the people with group code `code`
     (build_cells(sum_by=...)). The ONE place this is spelled."""
@@ -261,13 +290,15 @@ def build_cells(
         df = df[~bad]
 
     # --- snap to grid midpoints ---
+    # v1.62.1: EXACT midpoints (grid_midpoints) - an odd cell size
+    # used to merge the two cells either side of 0. Unsnapped
+    # coordinates are kept as given, not truncated.
     if snap:
-        half = unit_size / 2.0
-        df["_E"] = (np.floor(df[e_col] / unit_size) * unit_size + half).astype(int)
-        df["_N"] = (np.floor(df[n_col] / unit_size) * unit_size + half).astype(int)
+        df["_E"] = grid_midpoints(df[e_col], unit_size)
+        df["_N"] = grid_midpoints(df[n_col], unit_size)
     else:
-        df["_E"] = df[e_col].astype(int)
-        df["_N"] = df[n_col].astype(int)
+        df["_E"] = exact_coords(df[e_col])
+        df["_N"] = exact_coords(df[n_col])
 
     # --- report missing values in analysis variables ---
     # BACKLOG 168, John's ruling: a declared code IS missing.
@@ -329,8 +360,8 @@ def build_cells(
     gi = groups.ngroup().to_numpy()
     keys = groups.size().index
     m_cells = len(keys)
-    E = keys.get_level_values(0).to_numpy(np.int64)
-    N = keys.get_level_values(1).to_numpy(np.int64)
+    E = exact_coords(keys.get_level_values(0).to_numpy(float))
+    N = exact_coords(keys.get_level_values(1).to_numpy(float))
     order = np.argsort(gi, kind="stable")          # row order kept
     g_sorted = gi[order]
     starts = (np.flatnonzero(np.r_[True, g_sorted[1:] != g_sorted[:-1]])
@@ -419,8 +450,9 @@ def build_cells(
         sum_matrix = np.concatenate(blocks, axis=1)
 
     cd = CellData(
-        E=np.array(E, dtype=np.int64),
-        N=np.array(N, dtype=np.int64),
+        # v1.62.1: exact - integers for every even cell size, as before
+        E=exact_coords(E),
+        N=exact_coords(N),
         n=np.array(n, dtype=float if weights is not None else np.int64),
         binary_sums={v: np.array(a, dtype=float) for v, a in bsums.items()},
         binary_valid={v: np.array(a, dtype=float)

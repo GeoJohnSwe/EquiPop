@@ -153,7 +153,7 @@ e60 relative to the nation's:
 ## 5. Whose nation: each person's own (the default since 1.61.0)
 
 A neighbourhood near a border holds people of two or more countries.
-There are two rules (box 2e, `vital_reference=`):
+There are two rules (box 1f in QGIS, in the main dialog in Pro; `vital_reference=`):
 
 - **`own` (the default): each person against their own country.**
   Each pixel carries its own country's figures (iso3 from the WorldPop

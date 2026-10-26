@@ -251,7 +251,9 @@ def test_a_file_not_yet_checked_is_removed_when_the_run_stops(tmp_path):
 SWAPS = {
     "equipop/doors/catalogue.py": 1, "equipop/doors/fetching.py": 2,
     "equipop/doors/fetchrows.py": 4, "equipop/bigrun.py": 2,
-    "equipop/meta.py": 1}
+    "equipop/meta.py": 1,
+    # v1.62.0, BACKLOG 438: tool 0's saved choice
+    "equipop/doors/toolset.py": 1}
 
 
 def test_every_swap_goes_through_swap_in():

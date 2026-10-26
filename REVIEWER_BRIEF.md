@@ -16,7 +16,8 @@ for what we sent you:
    write "not verifiable" where the answer was one command away. You
    recommended holding 1.29.4 over the population-weight bug; with
    history you would have seen it entered in **1.21** and has been
-   published since, which changes the recommendation.
+   published since, which changes the recommendation. (Since then the
+   history is public - see the first item below.)
 2. **You had an outdated handover and no `BACKLOG.md` context.** So
    several findings you reported carefully — the missing icon, tests
    writing outside tmp, QGIS lacking variable bandwidth — were already
@@ -28,8 +29,17 @@ Everything below is aimed at those two problems.
 
 ## What we will send next time
 
-- **A git clone, not an export.** Tags back to v1.0, so `git log -S`
-  can date anything.
+- **The history, from the public repository**
+  (<https://github.com/GeoJohnSwe/EquiPop>). The review archive we
+  send is an export of one release and carries no `.git` - each
+  review is of a frozen, checksummed release, not a moving branch.
+  To date a defect, clone the repository beside it and use
+  `git log -S` there. Each published release is one commit and one
+  tag (`v1.61.3`, ...), back to v1.5.1. Not every release is published
+  there - some were delivered only as archives - so a date found that
+  way is "by this published release", which is the date that matters
+  to a user. (Changed in 1.61.4: this brief promised a clone for
+  years after the archive stopped being one - review of 1.61.3.)
 - **`BACKLOG.md` as it stands**, which is the authoritative list of
   what we already know. Anything with an item number is known; please
   do not spend time re-deriving it, but **do** tell us if our

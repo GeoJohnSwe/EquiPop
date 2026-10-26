@@ -31,6 +31,16 @@ from equipop.doors.help import HELP          # noqa: E402
 from equipop import __version__              # noqa: E402
 
 OUT = os.path.join(ROOT, "stata", "equipop.sthlp")
+#: v1.62.1 (preparing the SSC submission): every command SSC installs
+#: has a help file. `help equipop_run` and `help equipop_knn` found
+#: nothing for as long as the two commands have shipped.
+OUT_RUN = os.path.join(ROOT, "stata", "equipop_run.sthlp")
+OUT_KNN = os.path.join(ROOT, "stata", "equipop_knn.sthlp")
+#: The contact a help file gives - the address in pyproject.toml and
+#: CITATION.cff.
+EMAIL = "johnosth@oslomet.no"
+AFFILIATION = ("OsloMet - Oslo Metropolitan University, Norway; Lund "
+               "University and Uppsala University, Sweden")
 
 # Stata option -> the key its explanation lives under in help.py.
 # A Stata option with no entry is a test failure, not a silent gap.
@@ -288,7 +298,8 @@ def build():
     add = L.append
     add("{smcl}")
     add("{* *! version %s}{...}" % v)
-    add("{vieweralsosee \"[R] regress\" \"help regress\"}{...}")
+    add("{vieweralsosee \"equipop_run\" \"help equipop_run\"}{...}")
+    add("{vieweralsosee \"equipop_knn\" \"help equipop_knn\"}{...}")
     add("{viewerjumpto \"Syntax\" \"equipop##syntax\"}{...}")
     add("{viewerjumpto \"Description\" \"equipop##description\"}{...}")
     add("{viewerjumpto \"Options\" \"equipop##options\"}{...}")
@@ -739,11 +750,185 @@ def build():
         "they can be used directly:{p_end}")
     add("{phang}{cmd:. regress income `r(varlist)'}{p_end}")
     add("")
+    add("{marker related}{...}")
+    add("{title:Related commands}")
+    add("")
+    add("{pstd}{help equipop_run:equipop_run} reaches EquiPop's other "
+        "engines with one command: value statistics, barriers and "
+        "terrain, floating catchment accessibility and local Moran's "
+        "I. {help equipop_knn:equipop_knn} is this command's former "
+        "name and still works.{p_end}")
+    add("")
+    _references(add)
+    _author(add)
+    return "\n".join(L) + "\n"
+
+
+def _references(add):
+    add("{marker references}{...}")
+    add("{title:References}")
+    add("")
+    add("{phang}Östh, J., W. A. V. Clark, and B. Malmberg. 2015. "
+        "Measuring the scale of segregation using k-nearest neighbor "
+        "aggregates. {it:Geographical Analysis} 47: 34-49.{p_end}")
+    add("")
+    add("{phang}Östh, J., J. Lyhagen, and A. Reggiani. 2016. A new way "
+        "of determining distance decay parameters in spatial "
+        "interaction models with application to job accessibility "
+        "analysis in Sweden. {it:European Journal of Transport and "
+        "Infrastructure Research} 16: 344-363.{p_end}")
+    add("")
+
+
+def _author(add):
     add("{marker author}{...}")
     add("{title:Author}")
     add("")
-    add("{pstd}John Östh, OsloMet. {browse "
-        "\"https://github.com/GeoJohnSwe/EquiPop\"}{p_end}")
+    add("{pstd}John Östh{break}")
+    add("%s{break}" % AFFILIATION)
+    add("{browse \"mailto:%s\":%s}{break}" % (EMAIL, EMAIL))
+    add("{browse \"https://github.com/GeoJohnSwe/EquiPop\"}{p_end}")
+
+
+def build_run():
+    """help equipop_run. The engines and options are those of
+    stata/equipop_run.ado's syntax line, which a test holds this to."""
+    v = __version__
+    L = []
+    add = L.append
+    add("{smcl}")
+    add("{* *! version %s}{...}" % v)
+    add("{vieweralsosee \"equipop\" \"help equipop\"}{...}")
+    add("{viewerjumpto \"Syntax\" \"equipop_run##syntax\"}{...}")
+    add("{viewerjumpto \"Engines\" \"equipop_run##engines\"}{...}")
+    add("{viewerjumpto \"Examples\" \"equipop_run##examples\"}{...}")
+    add("")
+    add("{title:Title}")
+    add("")
+    add("{phang}")
+    add("{bf:equipop_run} {hline 2} EquiPop's other engines from Stata "
+        "(EquiPop %s)" % v)
+    add("")
+    add("{marker syntax}{...}")
+    add("{title:Syntax}")
+    add("")
+    add("{p 8 17 2}")
+    add("{cmd:equipop_run} {cmd:,} {opt engine(name)} {opt x(varname)} "
+        "{opt y(varname)} [{it:engine options}] [{opt unit(#)} "
+        "{opt weight(varname)} {opt selfpot(#)} {opt replace}]")
+    add("")
+    add("{pstd}{it:name} is one of {cmd:counts}, {cmd:stats}, "
+        "{cmd:friction}, {cmd:slope}, {cmd:fca} or {cmd:lisa}.{p_end}")
+    add("")
+    add("{marker description}{...}")
+    add("{title:Description}")
+    add("")
+    add("{pstd}{cmd:equipop_run} builds the same bespoke neighbourhoods "
+        "as {help equipop}, the k nearest people around every "
+        "observation, and hands them to one of EquiPop's engines. The "
+        "results come back as new variables, one value per "
+        "observation.{p_end}")
+    add("")
+    add("{pstd}It uses EVERY observation: there is no {it:if} or "
+        "{it:in}, and no {cmd:prefix()}. For counts and shares with "
+        "those, with frequency weights, distance decay or projection "
+        "from degrees, use {help equipop}. Variable names that would "
+        "contain a full stop have it replaced by an underscore. Without "
+        "{cmd:replace}, a result variable that already exists stops the "
+        "command.{p_end}")
+    add("")
+    add("{pstd}Requires Stata 17 or later and the equipop Python "
+        "package in the Python Stata uses: run {cmd:equipop doctor} to "
+        "check and {cmd:equipop setup} to install.{p_end}")
+    add("")
+    add("{marker engines}{...}")
+    add("{title:Engines and their options}")
+    add("")
+    add("{phang}{cmd:counts} {hline 2} {opt treat(varlist)} "
+        "{opt k(numlist)} {opt r(numlist)}. Neighbourhood size, reach "
+        "and the count and share of each treatment, as {help equipop}: "
+        "N_{it:k}, Dist_{it:k}, T_{it:v}_{it:k}, R_{it:v}_{it:k}."
+        "{p_end}")
+    add("")
+    add("{phang}{cmd:stats} {hline 2} {opt values(varlist)} "
+        "{opt k(numlist)} {opt r(numlist)} [{opt stats(string)}]. "
+        "Statistics of numeric variables among the k nearest; "
+        "{cmd:stats()} lists them (default {cmd:mean median gini}). "
+        "Nv_ is the number of neighbours with a value.{p_end}")
+    add("")
+    add("{phang}{cmd:friction} {hline 2} {opt treat(varname)} "
+        "{opt k(numlist)} {opt tau(numlist)} [{opt friction(path)}]. "
+        "Neighbourhoods grown through barriers that cost effort to "
+        "cross; {cmd:friction()} names a table of cells and their "
+        "cost.{p_end}")
+    add("")
+    add("{phang}{cmd:slope} {hline 2} {opt treat(varname)} "
+        "{opt k(numlist)} {opt tau(numlist)} {opt dem(path)} "
+        "[{opt model(tobler|linear)} {opt roundtrip}]. As "
+        "{cmd:friction}, with climbing cost from an elevation raster."
+        "{p_end}")
+    add("")
+    add("{phang}{cmd:fca} {hline 2} {opt demandvar(varname)} "
+        "{opt supply(path)} [{opt supplycol(name)} {opt supplyx(name)} "
+        "{opt supplyy(name)} {opt halflife(#)} "
+        "{opt reach(decay|r|k)} {opt kfca(#)} {opt rfca(#)} "
+        "{opt method(2sfca|3sfca)}]. Floating catchment "
+        "accessibility: the observations are the demand, the supply "
+        "comes from a .csv, .dta or .sav file. Returns {cmd:A} "
+        "(accessibility) and {cmd:J} (the supply side's ratio)."
+        "{p_end}")
+    add("")
+    add("{phang}{cmd:lisa} {hline 2} {opt values(varname)} "
+        "[{opt k(#)} {opt wperm(#)}]. Local Moran's I on cell means, "
+        "with the {cmd:k()} nearest cells as neighbours (default 8) and "
+        "{cmd:wperm()} permutations (default 199): "
+        "LISA_{it:v}_Ii, LISA_{it:v}_quad (1 HH, 2 LL, 3 HL, 4 LH) and "
+        "LISA_{it:v}_p.{p_end}")
+    add("")
+    add("{phang}Common to all: {opt unit(#)} is the cell size in "
+        "metres (default 100); {opt weight(varname)} the number of "
+        "people a row stands for; {opt selfpot(#)}, between 0 and 1, "
+        "how far away an observation's own cell counts (default 1); "
+        "{opt replace} replaces result variables that exist.{p_end}")
+    add("")
+    add("{marker examples}{...}")
+    add("{title:Examples}")
+    add("")
+    add("{phang}{cmd:. findfile equipop_test_data.dta}{p_end}")
+    add("{phang}{cmd:. use \"`r(fn)'\", clear}{p_end}")
+    add("{phang}{cmd:. equipop_run, engine(stats) x(X_local) y(Y_local) "
+        "values(ValFloat) k(200)}{p_end}")
+    add("{phang}{cmd:. equipop_run, engine(lisa) x(X_local) y(Y_local) "
+        "values(ValFloat) k(8)}{p_end}")
+    add("")
+    _references(add)
+    _author(add)
+    return "\n".join(L) + "\n"
+
+
+def build_knn():
+    """help equipop_knn - the former name."""
+    v = __version__
+    L = []
+    add = L.append
+    add("{smcl}")
+    add("{* *! version %s}{...}" % v)
+    add("{vieweralsosee \"equipop\" \"help equipop\"}{...}")
+    add("")
+    add("{title:Title}")
+    add("")
+    add("{phang}")
+    add("{bf:equipop_knn} {hline 2} former name of {help equipop} "
+        "(EquiPop %s)" % v)
+    add("")
+    add("{title:Description}")
+    add("")
+    add("{pstd}{cmd:equipop_knn} was the command's name up to EquiPop "
+        "1.34. It still works, so do-files written then run unchanged: "
+        "it passes everything, untouched, to {help equipop}, where the "
+        "syntax, the options and the results are described.{p_end}")
+    add("")
+    _author(add)
     return "\n".join(L) + "\n"
 
 
@@ -758,19 +943,24 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
-    text = build()
+    files = {OUT: build(), OUT_RUN: build_run(), OUT_KNN: build_knn()}
     if args.check:
-        current = (open(OUT, encoding="utf-8").read()
-                   if os.path.exists(OUT) else "")
-        if current != text:
-            print("stata/equipop.sthlp is out of date - run "
+        stale = []
+        for path, text in files.items():
+            current = (open(path, encoding="utf-8").read()
+                       if os.path.exists(path) else "")
+            if current != text:
+                stale.append(os.path.relpath(path, ROOT))
+        if stale:
+            print(", ".join(stale) + " out of date - run "
                   "python tools/make_sthlp.py")
             return 1
-        print("stata/equipop.sthlp is current")
+        print("the Stata help files are current")
         return 0
-    with open(OUT, "w", encoding="utf-8") as fh:
-        fh.write(text)
-    print(f"wrote {OUT} ({len(text.splitlines())} lines)")
+    for path, text in files.items():
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"wrote {path} ({len(text.splitlines())} lines)")
     return 0
 
 

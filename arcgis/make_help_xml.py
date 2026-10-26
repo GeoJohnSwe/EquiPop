@@ -193,7 +193,11 @@ def main(out_dir=None, plain=False):
     # with no '?' page, exactly as machines 3 and 4 had. A WRITTEN
     # LIST OF TOOLS GOES STALE. The toolbox already knows which tools
     # it registers, so ask it.
-    for cls, name in [(c, c.__name__) for c in pyt.Toolbox().tools]:
+    # v1.62.0: ALL tools - a tool hidden from the list (3 to 6 until
+    # tool 0 shows them) still needs its help page for when it is shown.
+    tb = pyt.Toolbox()
+    for cls, name in [(c, c.__name__)
+                      for c in getattr(tb, "all_tools", tb.tools)]:
         tool = cls()
         params = [(p.name, p.displayName)
                   for p in tool.getParameterInfo()]

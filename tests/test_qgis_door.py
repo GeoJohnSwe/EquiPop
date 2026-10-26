@@ -62,10 +62,13 @@ def test_the_provider_offers_both_tools():
     # v1.47.11 added folderinventory (BACKLOG 269) - a capability that
     # had shipped in 1.45.0 with no door of any kind.
     # v1.58.0 added 5a, 5b and 5c (BACKLOG 414): look, select, fetch.
+    # v1.62.0 added tool 0, showtools (BACKLOG 438). Every tool is
+    # REGISTERED whatever tool 0 chose - hiding is a flag, not absence.
     assert sorted(a.name() for a in prov.algorithms()) == [
         "continentalrasters", "countsandshares", "fetchselected",
-        "folderinventory", "osmcatalogue", "spatialdatafetch",
-        "spatialdemography", "valuestatistics", "worldpopcatalogue"]
+        "folderinventory", "osmcatalogue", "showtools",
+        "spatialdatafetch", "spatialdemography", "valuestatistics",
+        "worldpopcatalogue"]
     assert prov.id() == "equipop"
 
 
@@ -855,9 +858,14 @@ prov.loadAlgorithms()
 names = sorted(a.name() for a in prov._algs)
 assert sorted(names) == ["continentalrasters", "countsandshares",
                          "fetchselected", "folderinventory",
-                         "osmcatalogue", "spatialdatafetch",
+                         "osmcatalogue", "showtools", "spatialdatafetch",
                          "spatialdemography",
                          "valuestatistics", "worldpopcatalogue"], names
+# v1.62.0: with no package, NOTHING is hidden - a tool hidden by an
+# error could not be found at all
+from qgis.core import Qgis
+hide = Qgis.ProcessingAlgorithmFlag.HideFromToolbox
+assert not any(a.flags() & hide for a in prov._algs)
 for alg in prov._algs:
     alg.initAlgorithm()
     assert alg.parameterDefinitions(), "no boxes built"
@@ -918,12 +926,13 @@ sys.meta_path.insert(0, _Old())
 from equipop_qgis.provider import EquipopProvider
 prov = EquipopProvider()
 prov.loadAlgorithms()
-assert len(prov._algs) == 9, prov._algs     # 5a, 5b, 5c in 1.58.0
+assert len(prov._algs) == 10, prov._algs    # tool 0 in 1.62.0
 for alg in prov._algs:
     alg.initAlgorithm()
     assert alg.parameterDefinitions(), "no boxes built"
 # the rest of the package still works, so the words are still there
-assert "neighbourhood" in prov._algs[0].shortHelpString().lower()
+counts = [a for a in prov._algs if a.name() == "countsandshares"][0]
+assert "neighbourhood" in counts.shortHelpString().lower()
 print("OK")
 '''
 

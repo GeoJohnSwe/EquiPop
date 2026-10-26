@@ -94,8 +94,8 @@ def test_the_toolbox_offers_every_registered_tool():
     that had shipped in 1.45.0 reachable from nowhere at all. v1.59.0
     added machine 5 (BACKLOG 414), which Pro had never had."""
     pyt = _pyt()
-    names = [t.__name__ for t in pyt.Toolbox().tools]
-    assert names == ["CountsShares", "ValueStatistics",
+    names = [t.__name__ for t in pyt.Toolbox().all_tools]
+    assert names == ["ShowTools", "CountsShares", "ValueStatistics",
                      "ContinentalRasters", "SpatialDemography",
                      "WorldPopCatalogue", "OsmCatalogue", "FetchSelected",
                      "FolderInventory"], names
@@ -104,7 +104,7 @@ def test_the_toolbox_offers_every_registered_tool():
 def test_every_registered_tool_can_be_constructed():
     """A tool that raises in __init__ takes the whole toolbox down."""
     pyt = _pyt()
-    for cls in pyt.Toolbox().tools:
+    for cls in pyt.Toolbox().all_tools:
         t = cls()
         assert t.label and t.description
 
@@ -112,7 +112,7 @@ def test_every_registered_tool_can_be_constructed():
 def test_every_registered_tool_builds_its_dialog():
     """getParameterInfo runs when Pro opens the toolbox."""
     pyt = _pyt()
-    for cls in pyt.Toolbox().tools:
+    for cls in pyt.Toolbox().all_tools:
         ps = cls().getParameterInfo()
         assert ps and all(p.name for p in ps)
 
@@ -276,7 +276,7 @@ def test_the_two_doors_agree_on_every_tool_name():
     """BACKLOG 237 - they had drifted on three of four."""
     from equipop.doors.help import LABELS
     pyt = _pyt()
-    for cls in pyt.Toolbox().tools:
+    for cls in pyt.Toolbox().all_tools:
         label = cls().label
         assert label in LABELS.values(), (
             f"Pro calls a tool {label!r}, which is not in the shared list")

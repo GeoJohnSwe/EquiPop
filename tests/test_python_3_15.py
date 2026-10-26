@@ -269,3 +269,21 @@ def test_the_python_floor_is_3_11_and_said_the_same_everywhere():
         said = re.findall(pat, (ROOT / name).read_text(encoding="utf-8"))
         assert said, f"{name} no longer states the minimum Python"
         assert set(said) == {floor}, f"{name} says {said}, pyproject {floor}"
+
+
+def test_the_classifiers_start_at_the_floor_and_have_no_gaps():
+    """PyPI's "supported Python" labels (v1.61.4). They change nothing
+    pip does - EquiPop is one pure-Python wheel - but a reader trusts
+    them. So they start at requires-python, run without a gap, and are
+    every one a version the release record tests on.
+
+    BROKEN WITH: 3.11 dropped from the list; and the floor raised to
+    3.12 with the list left alone."""
+    py = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    floor = re.search(r'requires-python\s*=\s*">=(\d+\.\d+)"', py).group(1)
+    listed = re.findall(r'"Programming Language :: Python :: 3\.(\d+)"', py)
+    minors = sorted(int(m) for m in listed)
+    assert minors, "no Python version classifiers"
+    assert minors[0] == int(floor.split(".")[1]), (floor, minors)
+    assert minors == list(range(minors[0], minors[-1] + 1)), minors
+    assert '"Programming Language :: Python :: 3 :: Only"' in py

@@ -401,6 +401,27 @@ MATRIX = {
             "any set of observations. The ruling reopens only for a "
             "measure Stata cannot express, and this is not one.", 205),
     },
+    # BACKLOG 436, v1.62.0. theta(k): how much of an outcome's
+    # inequality lines up with neighbourhood TYPE, across scales. A
+    # test round in Python (John, 25 October 2026): the doors follow
+    # once the round has said what the dialog should hold.
+    "theta(k) - inequality of opportunity across scales": {
+        "python": door("equipop/__init__.py", "theta_profile"),
+        "qgis": not_yet(
+            "Python only for its test round: the profile is one table "
+            "over the whole population, not a layer, and what a dialog "
+            "should offer waits on what the round finds.", 436,
+            absent=("qgis/equipop_qgis/provider.py", "theta_profile")),
+        "pro": not_yet(
+            "As QGIS: Python only for the test round, and a door is "
+            "designed from what it shows.", 436,
+            absent=("arcgis/EquiPop.pyt", "theta_profile")),
+        "stata": not_yet(
+            "Register data often sits where Stata is the tool, so this "
+            "door is the likeliest after the test round - through the "
+            "ado's python: block, as machine 1.", 436,
+            absent=("stata/equipop.ado", "theta_profile")),
+    },
     "diagnostics (the doctor)": {
         "python": PYTHON,
         # BACKLOG 333: this was `pro: same_as("qgis")`, and a
@@ -487,6 +508,14 @@ INTERNAL = {
     # above: the catalogue (what is there, as a table) and the fetch
     # of selected rows. The eighth and ninth modules this check caught.
     "doors.catalogue", "doors.fetchrows",
+    # BACKLOG 436, v1.62.0. theta(k); its own MATRIX row above. The
+    # tenth new module this check has caught.
+    "opportunity",
+    # BACKLOG 438, v1.62.0. Machinery: which tools a GIS toolbox
+    # LISTS (3 to 6 hidden until tool 0 shows them). Hiding is not
+    # unreachability - QGIS keeps every tool registered and Pro lists
+    # them once shown - so no row of the matrix changes.
+    "doors.toolset",
 }
 
 #: WHAT THIS SET MEANS, because the name says less than it does.

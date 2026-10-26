@@ -204,8 +204,41 @@ def check_versions(channel):
         pass
 
 
+def algorithm_flag(name):
+    """A processing-algorithm flag by name, from whichever API this
+    QGIS has: Qgis.ProcessingAlgorithmFlag (3.36 and later - the
+    plugin needs 3.38) or the older QgsProcessingAlgorithm.Flag<name>.
+    None if neither has it, and the caller then leaves flags alone."""
+    try:
+        from qgis.core import Qgis
+        return getattr(Qgis.ProcessingAlgorithmFlag, name)
+    except Exception:
+        pass
+    try:
+        return getattr(QgsProcessingAlgorithm, f"Flag{name}")
+    except Exception:
+        return None
+
+
 class EquipopAlgorithm(QgsProcessingAlgorithm):
     """Everything both tools do the same way."""
+
+    def flags(self):
+        """v1.62.0, BACKLOG 438: tools 3 to 6 are left out of the
+        Processing Toolbox until tool 0 shows them (John's ruling:
+        hidden by default). HIDDEN, NOT REMOVED - the algorithm stays
+        registered, so a saved model, a script or processing.run()
+        still finds it. Any failure here shows the tool: hiding by
+        mistake would make it unfindable."""
+        f = super().flags()
+        try:
+            from equipop.doors.toolset import is_shown
+            if is_shown(getattr(self, "EQP_TOOL", "")):
+                return f
+            hide = algorithm_flag("HideFromToolbox")
+            return f | hide if hide is not None else f
+        except Exception:
+            return f
 
     # BACKLOG 378, v1.53.2. Which boxes this door reads a
     # neighbourhood from, and whether one of them is compulsory.
