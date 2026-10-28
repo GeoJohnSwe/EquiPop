@@ -3673,30 +3673,169 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
-- 445 | OPEN, 26 OCTOBER 2026 | FRACTIONAL CELL SIZES COULD NOW BE
-  ALLOWED. Every door refuses them (155, 1.29.8) because integer
-  centres made a 2.5 m grid's spacing 2 and 3. Exact midpoints (439)
-  removed that reason: the test written to announce it did
-  (test_review_findings). The refusal stays until John rules -
-  lifting it touches QGIS, Pro and Stata validation and their help.
-- 444 | OPEN, FOUND 26 OCTOBER 2026 | SEEDED-DRAW CELL IDENTITIES COLLIDE
-  IN PAIRS. overshoot.cell_identity is given round(midpoint / unit):
-  midpoints are k*u + u/2, so the argument is k + 0.5, and round-half-
-  to-even sends 1.5 and 2.5 both to 2 - every pair of neighbouring
-  cells shares an identity, in both radial engines alike (so the
-  parity tests agree). Affects only the seeded overshoot modes
-  (`sampled`), where two cells then share a random key. Fixing it
-  (floor instead of round) changes every seeded draw ever published:
-  John's ruling first.
-- 443 | OPEN, FOUND 26 OCTOBER 2026 | THE SEGREGATION PROFILE'S ENTROPY
-  AND ATKINSON INDICES GO NEGATIVE AT k SCALES. seg_indices_at_scale
-  weights overlapping neighbourhoods by their N_k against P from the
-  LOCAL counts; the neighbourhoods' weighted composition is not P, and
-  H and Atkinson(0.5) - bounded at 0 for a partition - come out
-  slightly negative (showcase section 8: H -0.0197, -0.0286, -0.0268).
-  D, Gini, isolation and SI are unaffected. A method question (P from
-  the units' own weighted composition, or report the bounded indices
-  only at k): John's ruling.
+- 454 | OPEN, 26 OCTOBER 2026 | A FIRST-CLASS SEGREGATION COMMAND (review
+  of 1.63.0, suggestion). The multiscalar profile is reached from Stata
+  only through a python block in the showcase. An equipop_seg command
+  and a QGIS/Pro table tool would serve the people the profile is for.
+  Proposal, not a fault; John's priority.
+- 453 | OPEN, 26 OCTOBER 2026 | THETA(K) AT REGISTER SCALE: TIME (review
+  of 1.63.0, risk). Memory no longer grows with the shuffles (440), but
+  99 shuffles per k is five times 1.62.0's 20, each a full pass over the
+  analysed people (twice with family). Before a full-register run:
+  benchmark a realistic synthetic N x k x family, add per-k progress,
+  and document a pilot setting (19) beside the inference setting (99+).
+- 452 | DONE v1.63.1, 26 OCTOBER 2026 | THE SEGREGATION PROFILE SAYS WHAT
+  IT DESCRIBES (review of 1.63.0, P2). The weighting lived only in
+  DataFrame.attrs, which a CSV drops - and the showcase writes a CSV.
+  Every row now carries weighting, global_share_P, valid_origins,
+  valid_people, excluded_people and note. Test: a CSV written and read
+  back still names its weighting.
+- 451 | DONE v1.63.1, 26 OCTOBER 2026 | CELL SIZE AND PERMUTATIONS GUARDED
+  EVERYWHERE (review of 1.63.0, P2). equipop_run checked only selfpot()
+  before Python, and its Python accepted any whole number: unit(-1)
+  through the same dispatch returned N_1 = 1, Dist_1 = 0 for every row
+  (reproduced) - plausible and meaningless - and 0, . and infinity
+  stopped as a KeyError. equipop's own guard was `unit' <= 0, which
+  Stata's . passes (it compares greater than every number). Now: both
+  ados refuse missing(unit) | unit <= 0 before Python; equipop_run
+  refuses a wperm() that is missing, below 1 or fractional (it was
+  int()-truncated); and the package checks the size itself -
+  cells.check_unit_size, called by grid_midpoints (every square grid),
+  dispatch, FrictionGrid and build_hex_cells. Tests: test_review_1_63_0.
+  Not reachable here: whether Stata's -confirm number- accepts "." -
+  the missing() test makes it not matter.
+- 450 | DONE v1.63.1, 26 OCTOBER 2026 | ORIGINS WITHOUT A NEIGHBOURHOOD
+  (review of 1.63.0, P2). With N_k = 0 or missing at some origins,
+  people-weighted Isolation left them out and SI kept their group
+  members in its denominator: 0.50 against 0.25 on two origins
+  (reproduced), breaking the Isolation = SI the release promised. Rule
+  chosen: such origins leave EVERY index at that scale, SI included,
+  and the row counts them (excluded_people) and says so in note. A
+  normal run gives every populated origin a neighbourhood, so nothing
+  moves there.
+- 449 | DONE v1.63.1, 26 OCTOBER 2026 | SEGREGATION INPUT CHECKED (review
+  of 1.63.0, P2). No group member anywhere gave warnings and NaN rows;
+  everybody in the group a ZeroDivisionError; no people warnings and
+  NaN; a group count above its total, negative and missing counts went
+  through (all reproduced). Now a SegregationError (a ValueError) names
+  the column and the scale: missing column, not numeric, infinite,
+  negative, group above total, missing local counts, nobody at all,
+  nobody or everybody in the group. A scale where every neighbourhood
+  holds none (or only) of the group gives an empty row with a note.
+  seg_indices refuses a non-positive total weight or a reference share
+  outside (0, 1). Tested with warnings as errors.
+- 448 | DONE v1.63.1, 26 OCTOBER 2026 | "CELLS" NOW COUNTS EVERY PLACE ONCE
+  (review of 1.63.0, P1). 1.63.0's weighting="cells" kept the
+  neighbourhood size N_k as the weight (the 1.62.1 formula) while every
+  text, and John's choice, said every place counts once. Under the
+  default proportional overshoot every N_k IS k - checked on the test
+  data, to 1e-14 - so the two agree and no default-mode number moves;
+  under whole or sampled overshoot N_k varies (50 to 309 at k = 50) and
+  the option answered another question: on two places with shares 0.2
+  and 0.8 and neighbourhoods of 10 and 1,000 people it gave P_ref
+  0.794, D 0.036, H 0.016 where equal places give 0.5, 0.6 and 0.278.
+  Now: weight 1 for every populated origin with a neighbourhood;
+  isolation weighs each place by its group share (what the classical
+  formula gives for equal-sized units). The N_k-weighted variant is not
+  offered; one line adds it under its own name if John wants it.
+- 447 | DONE v1.63.0, FOUND 26 OCTOBER 2026 | EFFORT RINGS SPLIT BY THE
+  LAST BIT OF A SUM. The effort engines (friction, slope) gathered a ring
+  by EXACT equality of effort; the radial engines use overshoot.RING_TOL,
+  which was named so that the effort engines "cannot quietly pick a
+  different one" - and they never used it. Dijkstra adds the same steps
+  in different orders along different paths, so cells of truly equal
+  effort could differ in the last bit (5.242640687119285 and ...286 for
+  1 + 3*sqrt(2) and (1 + sqrt(2)) + 2*sqrt(2)) and became two rings, the
+  first admitted whole: a direction chosen by rounding. Found because a
+  town in 7 m cells and the same town in 100 m cells disagreed on the
+  slope engine. Now chained within RING_TOL, as the radial engines.
+  Effect on the Stata test data with a barrier band: 3 to 49 of 10,883
+  rows change at k = 50/200/800; no mean share moves by more than
+  0.00001, the mean Dist_800 by under 1 m of 2,500. On a hilly DEM,
+  none. Test: test_friction.py, equal efforts reached by different
+  steps are one ring.
+- 446 | DONE v1.63.0, FOUND 26 OCTOBER 2026 | THE EFFORT ENGINES' GRID AT
+  ODD AND FRACTIONAL SIZES (439's remainder, found writing 444's tests).
+  FrictionGrid laid its domain out from int(lowest coordinate) and
+  int(unit_size), and found each cell by (x - x0) // u. With an odd size
+  across 0 (or wholly west or south of it) the first midpoint, -5.5,
+  became -5: the first column sat at index -1, which numpy wraps to the
+  far EAST edge, and the domain was one column short. A 1 m town across
+  0 gave other answers than the same town moved 10 km (190 of 400
+  shares at k = 5). Also: friction's output coordinates were int()
+  (the bridge then could not map .5 rows back), slope sampled its DEM
+  at midpoints rebuilt from int(unit_size), and access and fca found
+  their nodes by the same corner arithmetic. Now one rule:
+  FrictionGrid.cols_rows / node_of, column floor(x / u); the DEM is
+  matched by column and row. 100 m and 1 km studies have whole
+  midpoints and are unchanged. ONE EDGE THAT DOES CHANGE: a barrier
+  table given at cell CORNERS (the documented convention, and what
+  every door builds, is midpoints) used to land on the cell east or
+  west of each corner depending on which table held the lowest
+  coordinate - and when it was the barrier table, the slope engine's
+  DEM was sampled at corners and matched nothing, so the run was flat
+  (checked against the 1.62.1 wheel: "36 cells outside DEM coverage ->
+  altitude 0.0", every effort 1). A corner now always belongs to the
+  cell north-east of it. Tests:
+  test_odd_cells (friction and slope across 0), test_fractional_cells
+  (access and fca).
+- 445 | DONE v1.63.0, 26 OCTOBER 2026 | FRACTIONAL CELL SIZES ALLOWED.
+  John: "as determined earlier". Refused in every door since 1.29.8
+  (155) because integer centres made a 2.5 m grid's spacing 2 and 3;
+  exact midpoints (439) removed that reason. Lifting it found what
+  still rounded: 446 (the effort grid); the fast engines and the stats
+  ring rounded OUTPUT coordinates to 2 decimals (0.35000000000000003
+  came back 0.35 and the bridge found no cell for it; at 1 cm two cells
+  would come back as one) - now as stored; the ring engine (run_knn)
+  found neighbours by rebuilding midpoints as e0 + dx * step, which at
+  0.1 m is not the stored float - now by column and row. THE PROOF IS
+  SCALE (tests/test_fractional_cells.py): a town in 2.5, 0.1 and 0.3 m
+  cells gives exactly what it gives in 100 m cells, distances scaled,
+  through counts, stats, friction and slope in all three overshoot
+  modes, the ring engine, fca, LISA, access and fca's effort reach; and
+  Stata's equipop on the test data shrunk 32 times at unit(3.125)
+  gives what unit(100) gives. Doors: QGIS (both tools), Pro, Stata and
+  rungs.check_cell_size accept any finite size above 0; zero and less
+  still refused; labels no longer say "whole numbers only"; the help
+  says fractions work. equipop_run never refused one and now agrees.
+  STATA ON AN OLDER ENGINE: eqp_min_engine stays at 1.48.0 (331/385 -
+  a whole size loses nothing on an older engine), so both ados refuse
+  a FRACTIONAL unit() in words when the engine predates 1.63.0, which
+  would stop at a rounded coordinate or run the effort engines at the
+  rounded size. Tested against a stand-in 1.62.1.
+  NOTE, a limit not a bug: one ring is distances within RING_TOL
+  (1e-6 map units) of each other, so rings stay distinct out to about
+  500,000 x the cell size in cells - 50,000 cells at 0.1 m.
+- 444 | DONE v1.63.0, 26 OCTOBER 2026 | SEEDED-DRAW CELL IDENTITIES
+  COLLIDED IN PAIRS. John: "fix according to suggestion". Every engine
+  named a cell round(midpoint / unit); midpoints are k + 0.5 widths and
+  round-half-to-even sends 1.5 and 2.5 both to 2, so each 2 x 2 block
+  shared one random key. Worse than proposed: on a 3 x 3 town at
+  k = 65 (crossing ring = the mirror pair at sqrt(5)) all forty seeds
+  gave the same cell in every engine, and the engines disagreed which
+  (counts took g = 7, stats/friction/slope g = 5). The fix proposed,
+  floor(), mends squares but left 15% of hexagons (hex.py) sharing a
+  name, so overshoot.grid_identity counts HALF widths:
+  round(2 * centre / u) - squares 2k + 1, hexagons whole across and
+  sqrt(3) * row up. Every engine calls grid_identity. Measured on the
+  Stata test data: a quarter of origins' sampled results move, by what
+  a new seed moves them (0.0017 in the share at k = 200; reseed 0.0017),
+  no average by more than 0.0001. Sampled draws change AS IF RESEEDED;
+  nothing else changes. No switch back (John did not say he had
+  published sampled results). Tests: tests/test_cell_identity.py.
+- 443 | DONE v1.63.0, 26 OCTOBER 2026 | THE SEGREGATION PROFILE, WEIGHTED
+  BY PEOPLE. John: "do as suggested", and "should 1|2 be an option for
+  the user to decide, with 1 as default?" - yes. seg_profile(...,
+  weighting="people") (default): every person's neighbourhood counts
+  once (origin cells weighted by their own people, exposure weights the
+  group's own members, so isolation at k IS the 2015 paper's SI);
+  weighting="cells": every place counts once. Both measured against
+  the units' OWN weighted mean share (P_ref, reported), which is what
+  bounds H and Atkinson at 0. Showcase section 8: H was -0.020, -0.029,
+  -0.027; now +0.048, +0.038, +0.020. D, Gini and isolation move with
+  the weights; SI does not move at all (.4036, .2216, .2002, .1930).
+  The local row (a true partition) is unchanged. Tests:
+  tests/test_segregation_weighting.py.
 - 442 | DONE v1.62.1, 26 OCTOBER 2026 | THE STATA FILES FOR SSC. Help for
   equipop_run and equipop_knn (there was none); help gives an address,
   references and related commands; showcase and example no longer

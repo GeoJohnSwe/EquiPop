@@ -58,8 +58,9 @@ def test_friction_scales_with_step_length():
     fr = pd.DataFrame({"x": [U], "y": [U], "friction": [1.0]})
 
     g = FrictionGrid(pop, fr, unit_size=U)
-    u = int(U)
-    origin = int(((0 - g.x0) // u) * g.ny + ((0 - g.y0) // u))
+    # the grid's own rule for finding a node (v1.63.0, BACKLOG 446;
+    # this line used to repeat the old corner arithmetic)
+    origin = int(g.node_of(0.0, 0.0))
     r = g.rounds_from(np.array([origin]))[0]
 
     root2 = 2.0 ** 0.5
@@ -83,3 +84,46 @@ def test_friction_scales_with_step_length():
 
     # and the far corner routes AROUND the friction cell, not through
     assert np.isclose(r[idx[(2, 2)]], 2.0 + root2, rtol=1e-12)
+
+
+def test_equal_efforts_reached_by_different_steps_are_one_ring(tmp_path):
+    """v1.63.0, BACKLOG 447. One ring is every cell at the same effort,
+    within overshoot.RING_TOL - as in the radial engines.
+
+    Found while checking fractional cell sizes: a 5 x 5 town of ten
+    people a cell, one column of friction 1, the origin in that column
+    on the edge. Cell (4, 4) is reached at 1 + 3*sqrt(2) and cell
+    (1, 3) at (1 + sqrt(2)) + 2*sqrt(2): the same effort, 5.2426...,
+    which Dijkstra's additions end in ...285 and ...286. 22 cells (220
+    people) are nearer; k = 225 crosses the ring of those two.
+
+    BROKEN WITH: the ring gathered by exact equality again (whole then
+    admits (4, 4) alone, N = 230, a direction picked by the last bit
+    of a sum)."""
+    import io
+    from contextlib import redirect_stdout
+    import pandas as pd
+    from equipop import overshoot
+    from equipop.stata_bridge import dispatch
+
+    xs = [100.0 * i + 50 for i in range(5) for _ in range(5)]
+    ys = [100.0 * j + 50 for _ in range(5) for j in range(5)]
+    p = tmp_path / "band.csv"
+    pd.DataFrame({"x": xs, "y": ys,
+                  "friction": [1.0 if x == 150.0 else 0.0 for x in xs]}
+                 ).to_csv(p, index=False)
+    mark = [1.0 if (x, y) == (150.0, 350.0) else 0.0      # cell (1, 3)
+            for x, y in zip(xs, ys)]
+    origin = list(zip(xs, ys)).index((150.0, 50.0))
+    for mode, n_want, t_want in ((overshoot.WHOLE, 240.0, 10.0),
+                                 (overshoot.PROPORTIONAL, 225.0, 2.5)):
+        with redirect_stdout(io.StringIO()):
+            out = dispatch("friction", xs, ys, unit_size=100.0,
+                           weight=[10.0] * 25, k_values=[225],
+                           treat={"g": [10.0 * m for m in mark]},
+                           treat_are_counts=True, friction_file=str(p),
+                           overshoot_mode=mode)
+        assert float(out["N_225"][origin]) == n_want, mode
+        # proportional takes the same share of BOTH cells: 5 of 20
+        # people, so a quarter of (1, 3)'s ten
+        assert float(out["T_g_225"][origin]) == pytest.approx(t_want), mode

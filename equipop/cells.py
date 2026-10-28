@@ -153,12 +153,37 @@ def exact_coords(a) -> np.ndarray:
     return a
 
 
+def check_unit_size(unit_size) -> float:
+    """The cell size as a float: finite and greater than zero, or a
+    ValueError in words.
+
+    v1.63.1, BACKLOG 451 (review of 1.63.0). Every door checks the size
+    it is given, but the package itself did not: -1 through the bridge
+    ran and returned N_1 = 1, Dist_1 = 0 for every row - a plausible
+    table on a grid that does not exist - and 0, NaN and infinity
+    escaped as a KeyError from deep inside. Checked here, where every
+    square grid is built (grid_midpoints), and at the bridge's front
+    door, so a Python caller and any future door inherit it."""
+    try:
+        u = float(unit_size)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"[cells] the cell size must be a number; got {unit_size!r}"
+        ) from None
+    if not (np.isfinite(u) and u > 0):
+        raise ValueError(
+            f"[cells] the cell size must be a finite number greater "
+            f"than 0; got {unit_size!r}. It is the width of the grid "
+            "the neighbourhoods are built on.")
+    return u
+
+
 def grid_midpoints(v, unit_size) -> np.ndarray:
     """Each value's cell MIDPOINT on a square grid of `unit_size`
     (cells [k*u, (k+1)*u), midpoint k*u + u/2), exact - see
     exact_coords. The one rule every square-grid path uses: build_cells,
     snap_to_grid, the Stata bridge and theta_profile."""
-    u = float(unit_size)
+    u = check_unit_size(unit_size)
     v = np.asarray(v, dtype=float)
     return exact_coords(np.floor(v / u) * u + u / 2.0)
 

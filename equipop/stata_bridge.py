@@ -836,6 +836,9 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
              if k not in ("engine", "x", "y", "provenance")}))
         provenance.set_data(input_rows=int(len(np.asarray(x))))
 
+    # BACKLOG 451: the size before anything is built on it
+    from .cells import check_unit_size
+    unit_size = check_unit_size(unit_size)
     x = np.asarray(x, float); y = np.asarray(y, float)
     n_rows = len(x)
     valid = np.isfinite(x) & np.isfinite(y)

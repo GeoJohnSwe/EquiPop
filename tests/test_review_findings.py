@@ -100,19 +100,27 @@ def test_no_varlist_loop_runs_on_a_possibly_empty_treat():
 
 
 def test_the_cell_size_is_validated_before_it_reaches_the_engine():
-    """Reviewer P1, confirmed. BACKLOG 155.
+    """Reviewer P1, confirmed. BACKLOG 155, then 445.
 
-    QGIS and Pro have refused fractional cell sizes since 1.29.8
-    because the core builds cells on integer centres: a requested 2.5
-    produces centres 1, 3, 6 - spacings of 2 and 3, neither of them
-    2.5. Stata declared unit() as a plain real and checked nothing.
+    Stata declared unit() as a plain real and checked nothing, while
+    QGIS and Pro refused fractional sizes (1.29.8): the core built
+    cells on integer centres, so 2.5 gave centres 1, 3, 6. From 1.63.0
+    every door accepts any size above zero - the core no longer rounds
+    one (BACKLOG 445) - and zero or less is still refused here.
+
+    BROKEN WITH: the zero guard removed; or the 1.62.1 whole-number
+    guard put back (the same door then refuses what the others run); or
+    (1.63.1, BACKLOG 451) missing() dropped from the guard - Stata's .
+    compares greater than every number, so `unit' <= 0 lets unit(.)
+    through.
     """
     body = _program_body()
-    assert re.search(r"if\s+`unit'\s*<=\s*0", body), (
-        "unit() accepts zero or a negative cell size")
-    assert re.search(r"`unit'\s*!=\s*int\(`unit'\)", body), (
-        "unit() accepts a fractional cell size, which the core cannot "
-        "represent - see BACKLOG 155")
+    assert re.search(r"if\s+missing\(`unit'\)\s*\|\s*`unit'\s*<=\s*0",
+                     body), (
+        "unit() accepts zero, a negative or a missing cell size")
+    assert not re.search(r"`unit'\s*!=\s*int\(`unit'\)", body), (
+        "unit() refuses a fractional cell size again; QGIS, Pro and "
+        "equipop_run accept one since 1.63.0 (BACKLOG 445)")
 
 
 def test_a_fractional_cell_size_is_now_representable():
@@ -123,9 +131,9 @@ def test_a_fractional_cell_size_is_now_representable():
     midpoints (cells.grid_midpoints, BACKLOG 439) put a 2.5 m grid's
     centres at 1.25, 3.75, 6.25.
 
-    The REFUSAL stays in every door until John rules on lifting it
-    (BACKLOG 445): it is now a rule kept by choice, not by necessity,
-    and this test says so instead of guarding a reason that is gone.
+    John lifted the refusal in 1.63.0 (BACKLOG 445); the doors now
+    pass a fractional size through, and tests/test_fractional_cells.py
+    checks every engine at it.
     """
     import pandas as pd
 
@@ -141,7 +149,7 @@ def test_the_guards_report_through_the_door_not_the_helper():
     """A guard that fires inside Python would stop the run with a
     traceback rather than a Stata error. These belong in the .ado."""
     body = _program_body()
-    for pattern in (r"if\s+`unit'\s*<=\s*0", r"`unit'\s*!=\s*int\(`unit'\)"):
+    for pattern in (r"if\s+missing\(`unit'\)\s*\|\s*`unit'\s*<=\s*0",):
         m = re.search(pattern, body)
         tail = body[m.end():m.end() + 400]
         assert "display as error" in tail and "exit 198" in tail, (

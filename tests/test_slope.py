@@ -138,13 +138,14 @@ def test_slope_friction_scales_with_step_length():
     fr = pd.DataFrame({"x": [U], "y": [U], "friction": [1.0]})
     flat = np.zeros(9)
 
-    u = int(U)
     root2 = 2.0 ** 0.5
     idx = {(int(x / U), int(y / U)): i
            for i, (x, y) in enumerate(zip(xs, ys))}
 
     fg = FrictionGrid(pop, fr, unit_size=U)
-    origin = int(((0 - fg.x0) // u) * fg.ny + ((0 - fg.y0) // u))
+    # the grid's own rule for finding a node (v1.63.0, BACKLOG 446;
+    # this line used to repeat the old corner arithmetic)
+    origin = int(fg.node_of(0.0, 0.0))
     want = fg.rounds_from(np.array([origin]))[0]
 
     # the absolute truth, independent of the friction engine

@@ -1,6 +1,17 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.62.1, 26 October 2026.**
+**Last updated: 1.63.1, 26 October 2026.**
+*Reviewed at 1.63.1: NO TEACHING CHANGES. The segregation profile's
+"cells" option now gives every place the same weight, as its name says;
+the default (people) and SI are unchanged. A profile now names its
+weighting in every row, so a saved CSV can be read without the script.*
+*Reviewed at 1.63.0: NO TEACHING CHANGES, ONE QUESTION WORTH ASKING. The
+segregation profile now counts every PERSON's neighbourhood once at
+each k, with every PLACE once as the alternative - "whose
+neighbourhoods are we averaging?" is a good seminar question, and the
+entropy and Atkinson indices can no longer go below zero. Fractional
+cell sizes (2.5 m) are accepted; the course uses 100 m. `sampled`
+draws changed as if reseeded; no course material quotes one.*
 *Reviewed at 1.62.1: NO TEACHING CHANGES, ONE BETTER SEMINAR. The theta(k)
 seminar now has a permutation p-value to argue about, and the no-groups
 check is the limit the groups approach. Grids of an odd cell size (1 m,

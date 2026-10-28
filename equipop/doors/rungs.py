@@ -22,6 +22,7 @@ Three things answer it, and this module is the third:
 The wording lives here so the two doors cannot describe the same
 mistake in two different ways - the same reason HELP does.
 """
+import math
 
 CANNOT_GREY = ("QGIS cannot grey a box out the way Pro does, so this "
                "notice is the only warning you get.")
@@ -184,13 +185,23 @@ def overshoot_note(mode: str) -> str:
 
 
 # ===================================================================
-# BACKLOG 155 + 160. Cell size is a WHOLE NUMBER OF MAP UNITS.
+# BACKLOG 155 + 160 + 445. Cell size in MAP UNITS, any size above 0.
 #
 # 155: fractional sizes were accepted and then rounded differently by
 # each module - ask for 2.5 and the centres came out 1, 3, 6, spacings
-# of 2 and 3. build_cells casts centres to int; analysis, friction,
-# slope, access and fca each take int(unit_size) separately. Six
+# of 2 and 3. build_cells cast centres to int; analysis, friction,
+# slope, access and fca each took int(unit_size) separately. Six
 # modules would have to agree forever. John ruled: whole values.
+#
+# 445, v1.63.0: they now agree, and are tested to. Every square-grid
+# path places a point by one rule (cells.grid_midpoints, 1.62.1), the
+# effort engines' grid and the seeded draw's cell names count cells
+# the same way (446, 444), and no engine rounds a size or an output
+# coordinate any more. The proof is scale: a town measured in 2.5 m
+# cells gives exactly what the same town gives in 100 m cells, its
+# distances scaled, through every engine and overshoot mode
+# (tests/test_fractional_cells.py). John, 26 October 2026: lift the
+# refusal "as determined earlier".
 #
 # 160: but NOT whole METRES, which is what every label said. John:
 # "I hope we are not forcing the cells to a metric only specificity -
@@ -222,26 +233,23 @@ def unit_name(crs_unit: str | None) -> str:
 def cell_size_label(crs_unit: str | None = None) -> str:
     """The cell-size box label, naming the real unit."""
     return (f"Cell size in {unit_name(crs_unit)} - bigger cells mean "
-            "fewer origins and faster runs (whole numbers only)")
+            "fewer origins and faster runs")
 
 
 def check_cell_size(value, crs_unit: str | None = None) -> float:
-    """Whole map units, greater than zero. Refuses rather than
-    rounding, because six modules round differently (155)."""
+    """Map units, finite and greater than zero - fractions included
+    since 1.63.0 (445). Never rounded."""
     try:
         v = float(value)
     except (TypeError, ValueError):
         raise ValueError(f"cell size must be a number, got {value!r}")
+    if not math.isfinite(v):
+        raise ValueError(
+            f"Cell size must be a finite number of "
+            f"{unit_name(crs_unit)}; got {value!r}.")
     if not v > 0:
         raise ValueError(
             f"Cell size must be greater than 0 {unit_name(crs_unit)}; "
             f"got {v:g}. It is the grid the neighbourhoods are built "
             "on, so there is no sensible zero.")
-    if abs(v - round(v)) > 1e-9:
-        raise ValueError(
-            f"Cell size must be a WHOLE number of "
-            f"{unit_name(crs_unit)}; got {v:g}. Fractional sizes are "
-            "rounded differently by different parts of EquiPop - "
-            f"{v:g} would give cells of uneven width - so they are "
-            "refused rather than silently changed.")
-    return float(round(v))
+    return v

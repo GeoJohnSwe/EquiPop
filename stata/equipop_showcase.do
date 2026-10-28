@@ -285,6 +285,9 @@ summarize ctx_gradient, detail
 * Eight indices (D, Gini, Entropy H, Atkinson, Isolation, Interaction,
 * Correlation V, SI) computed at each k - the multiscalar profile from
 * Osth, Clark & Malmberg (2015). Printed as a table; also saved to CSV.
+* Every person's neighbourhood counts once (EquiPop 1.63.0 and later);
+* add weighting="cells" to seg_profile to count every place once. The
+* CSV records which, in its weighting column (1.63.1).
 
 python:
 from sfi import Data

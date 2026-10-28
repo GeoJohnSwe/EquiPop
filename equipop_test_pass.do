@@ -1,4 +1,4 @@
-*! EquiPop 1.62.1 - a test pass over equipop_test_data.dta
+*! EquiPop 1.63.1 - a test pass over equipop_test_data.dta
 *!
 *! WHAT CHANGED IN 1.40.5, and why it matters:
 *!   Until now this file STATED its invariants and did not ENFORCE
@@ -59,7 +59,7 @@ global EQP_DATA ""
 * anyone installing from SSC will normally end up with, because
 * PyPI moves faster than the archive. BACKLOG 330.
 
-global EQP_EXPECT "1.62.1"
+global EQP_EXPECT "1.63.1"
 
 * ------------------------------------------------------------------
 * Nothing below here needs editing.
@@ -868,11 +868,15 @@ display "   project on metric data, return code: `rc'"
 local ok = (`rc' != 0)
 eqpcheck `ok' "block 21: project on already-metric data is refused"
 
+* 1.63.0 (BACKLOG 445): a fractional cell size is ACCEPTED, as given.
+* Refused from 1.29.8 to 1.62.1, while the core rounded it.
+capture drop N_200 Dist_200
 capture equipop, x(X_local) y(Y_local) k(200) unit(2.5)
 local rc = _rc
-display "   fractional cell size, return code: `rc'"
-local ok = (`rc' != 0)
-eqpcheck `ok' "block 21: a fractional cell size is refused, not rounded"
+display "   fractional cell size, return code: `rc', r(unit) = " r(unit)
+local ok = (`rc' == 0) & (r(unit) == 2.5)
+eqpcheck `ok' "block 21: a fractional cell size runs, as given"
+capture drop N_200 Dist_200
 
 capture equipop [fweight=ValCount], x(X_local) y(Y_local) k(200) treat(Grp)
 local rc = _rc

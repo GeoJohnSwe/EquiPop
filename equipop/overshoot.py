@@ -261,12 +261,11 @@ def order_within_ring(cell_ids, seed, origin_id):
     favour the same direction at every origin - a spatial artefact
     worse than the overshoot it was meant to fix.
 
-    Reproducibility is tied to the FILE, not to the geography: cells
-    are identified by their position in the data as supplied, so
-    re-sorting the input changes the draw. John ruled this acceptable
-    and it matches ordinary practice - a bootstrap in any statistical
-    package behaves the same way - but it is stated here and in the
-    help rather than left to be discovered.
+    Reproducibility is tied to the GEOGRAPHY: cells are identified by
+    their column and row (grid_identity), so re-sorting or re-exporting
+    the same study reproduces the draw exactly. (This paragraph said
+    the FILE until 1.63.0 - true before cell_identity, and left behind
+    when that changed.)
     """
     ids = np.asarray(cell_ids, dtype=np.uint64)
     with np.errstate(over="ignore"):
@@ -370,6 +369,41 @@ def cell_identity(e_grid, n_grid):
     n = np.asarray(n_grid, dtype=np.int64).astype(np.uint64)
     with np.errstate(over="ignore"):
         return _mix64(e * _GOLDEN) ^ _mix64(n)
+
+
+def grid_identity(e_mid, n_mid, unit_size):
+    """cell_identity of the cells whose CENTRES are (e_mid, n_mid),
+    counted in HALF cell widths: round(2 * centre / unit_size).
+
+    v1.63.0, BACKLOG 444. Every engine passed round(centre / unit)
+    instead. A square cell's midpoint sits at k + 0.5 widths, and
+    Python and numpy round halves to EVEN: 1.5 and 2.5 both became 2,
+    so columns and rows came in pairs and each 2 x 2 block of cells
+    shared ONE identity. Two cells of one block in the same crossing
+    ring - mirror images across a diagonal, at sqrt(5) cells, say -
+    then had the same random key, and `sampled` broke the tie by the
+    order the engine listed them: a fixed direction, which John ruled
+    out when he made the order random. The engines did not even agree
+    which direction (tests/test_cell_identity.py).
+
+    The fix proposed was floor(centre / unit). It mends squares, but
+    hexagon centres (hex.py) sit half a width apart across and
+    sqrt(3)/2 up, and floor() still gave 15% of them a shared name.
+    In half widths every centre is distinct. A square's is 2k + 1 -
+    an odd whole number, half a unit from where rounding could go
+    either way, so no cell size and no float noise moves it. A
+    hexagon's is a whole number across and sqrt(3) * row up: rows are
+    1.7 apart, so no two round alike.
+
+    Measured on the Stata test data at k = 50, 200 and 800: the change
+    moves a quarter of the origins' sampled results, by what a new seed
+    moves them (0.0017 in the share at k = 200, a new seed 0.0017), and
+    no average by more than 0.0001. The draws change as if reseeded;
+    nothing else does."""
+    u = float(unit_size)
+    e = np.round(2.0 * np.asarray(e_mid, dtype=float) / u)
+    n = np.round(2.0 * np.asarray(n_mid, dtype=float) / u)
+    return cell_identity(e, n)
 
 
 def draw_seed():

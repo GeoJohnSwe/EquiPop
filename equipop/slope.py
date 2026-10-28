@@ -43,6 +43,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 
 from . import selfpot
+from .cells import exact_coords
 from .friction import FrictionGrid, coverage_warning, _count_from_grid
 
 
@@ -111,9 +112,13 @@ def dem_to_cell_altitude(dem_path: str, E, N, unit_size: float = 100.0,
             px = tr.c + tr.a * (np.arange(src.width) + 0.5)
             py = tr.f + tr.e * (np.arange(src.height) + 0.5)
 
-    # map every pixel centre to a cell midpoint key
-    cE = (np.floor(px / u) * u + u / 2.0)
-    cN = (np.floor(py / u) * u + u / 2.0)
+    # map every pixel centre to its cell. v1.63.0 (BACKLOG 446): keyed
+    # on the cell's COLUMN AND ROW, floor(position / u), not on a
+    # midpoint recomputed in floating point - with a fractional cell
+    # size two spellings of one midpoint (0.35 and 0.35000000000000003)
+    # are two keys, and the cell found no pixel.
+    cE = np.floor(px / u).astype(np.int64)
+    cN = np.floor(py / u).astype(np.int64)
     colE = np.tile(cE, len(py))
     rowN = np.repeat(cN, len(px))
     vals = a.ravel()
@@ -121,7 +126,8 @@ def dem_to_cell_altitude(dem_path: str, E, N, unit_size: float = 100.0,
     z = pd.DataFrame({"E": colE[ok], "N": rowN[ok], "alt": vals[ok]})
     zm = z.groupby(["E", "N"])["alt"].mean()
 
-    keys = pd.MultiIndex.from_arrays([E, N])
+    keys = pd.MultiIndex.from_arrays([np.floor(E / u).astype(np.int64),
+                                      np.floor(N / u).astype(np.int64)])
     alt = zm.reindex(keys).to_numpy(dtype=float)
 
     n_miss = int(np.isnan(alt).sum())
@@ -152,7 +158,8 @@ class SlopeGrid(FrictionGrid):
                  roundtrip: bool = False, **model_params):
         super().__init__(pop, fr, unit_size, default_friction,
                          count_all_col, count_group_col)
-        u = int(unit_size)
+        # v1.63.0 (BACKLOG 446): as given, not int() - see FrictionGrid
+        u = float(unit_size)
         penalty = slope_penalty(model, **model_params)
 
         # altitude for EVERY domain cell (paths cross unpopulated land):
@@ -160,8 +167,10 @@ class SlopeGrid(FrictionGrid):
         gx, gy = np.meshgrid(np.arange(self.nx), np.arange(self.ny),
                              indexing="ij")
         gx, gy = gx.ravel(), gy.ravel()
-        midE = self.x0 + gx * u
-        midN = self.y0 + gy * u
+        # every domain cell's midpoint, from its column and row (exact:
+        # whole numbers stay whole, so a 100 m table matches as before)
+        midE = exact_coords((self.i0 + gx + 0.5) * u)
+        midN = exact_coords((self.j0 + gy + 0.5) * u)
         if isinstance(altitude, (str, dict)):
             alt = dem_to_cell_altitude(altitude, midE, midN, unit_size)
         elif isinstance(altitude, pd.DataFrame):

@@ -278,7 +278,7 @@ class CountsAndShares(EquipopAlgorithm):
             "(truncation)", defaultValue=1e-6, optional=True,
             type=QgsProcessingParameterNumber.Double), advanced=True)
         self.add(QgsProcessingParameterNumber(
-            "unit", "Cell size in map units, whole numbers only - "
+            "unit", "Cell size in map units - "
             "bigger cells mean fewer origins and faster runs", defaultValue=100.0,
             type=QgsProcessingParameterNumber.Double), advanced=True)
         # BACKLOG 141: a three-way choice, not a free number. The
@@ -350,17 +350,17 @@ class CountsAndShares(EquipopAlgorithm):
         unit = self.parameterAsDouble(parameters, "unit", context)
         if unit is None or unit != unit:            # unset or NaN
             unit = 100.0
-        # BACKLOG 155 + 160: a WHOLE number of MAP UNITS, refused
-        # rather than rounded - six modules round differently, so 2.5
-        # gives cells of uneven width. And "map units", not "metres":
-        # nothing here knows the CRS is metric (160).
-        if unit <= 0 or abs(unit - round(unit)) > 1e-9:
+        # BACKLOG 155 + 160 + 445: MAP UNITS, not "metres" - nothing
+        # here knows the CRS is metric (160) - and any size above 0.
+        # Whole numbers only from 1.29.8 to 1.62.1, because six modules
+        # rounded a 2.5 differently (155); since 1.63.0 none rounds it,
+        # and a 2.5 m town gives what a 100 m one does, scaled (445).
+        if not unit > 0:
             raise QgsProcessingException(
-                f"Cell size must be a WHOLE number of map units "
-                f"greater than 0; got {unit:g}. Fractional sizes are "
-                "rounded differently by different parts of EquiPop, "
-                "so they are refused rather than silently changed.")
-        unit = float(round(unit))
+                f"Cell size must be greater than 0 map units; got "
+                f"{unit:g}. It is the grid the neighbourhoods are "
+                "built on, so there is no sensible zero.")
+        unit = float(unit)
         pop = (self.parameterAsStrings(parameters, "pop", context) or
                [None])[0]
         treats = self.parameterAsStrings(parameters, "treat", context)

@@ -71,6 +71,8 @@ def build_hex_cells(
     """
     binary_vars = binary_vars or []
     value_vars = value_vars or []
+    from .cells import check_unit_size       # BACKLOG 451
+    hex_size = check_unit_size(hex_size)
     size = hex_size / np.sqrt(3)          # circumradius from flat width
     d = df.copy()
     for c in [e_col, n_col] + binary_vars + value_vars:

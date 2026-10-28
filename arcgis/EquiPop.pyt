@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.62.1"
+TOOLBOX_VERSION = "1.63.1"
 
 
 def _vtuple(v):
@@ -2125,13 +2125,15 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             raise arcpy.ExecuteError(txt)
 
     _u = getattr(_read_input, "last_unit", "map units")   # 160
-    if not float(unit) > 0 or abs(float(unit) - round(float(unit))) > 1e-9:
-        raise ValueError(                          # BACKLOG 155 + 160
-            f"[equipop] cell size must be a WHOLE number of {_u} "
-            f"greater than 0; got {float(unit):g}. Fractional sizes "
-            "are rounded differently by different parts of EquiPop, "
-            "so they are refused rather than silently changed.")
-    unit = float(round(float(unit)))
+    # BACKLOG 155 + 160 + 445: any size above 0 since 1.63.0 - no part
+    # of EquiPop rounds a fractional size any more, and a 2.5 m town
+    # gives what a 100 m one does, scaled.
+    if not float(unit) > 0:
+        raise ValueError(
+            f"[equipop] cell size must be greater than 0 {_u}; got "
+            f"{float(unit):g}. It is the grid the neighbourhoods are "
+            "built on, so there is no sensible zero.")
+    unit = float(unit)
     kw = dict(unit_size=float(unit),
               self_potential=float(self_potential))
     # BACKLOG 99. None means "the dialog did not ask", which
@@ -5171,7 +5173,7 @@ class CountsShares:
                   direction="Output"),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
-               _p("unit", "Cell size in map units (whole numbers only)",
+               _p("unit", "Cell size in map units",
                   "GPDouble", required=False),
                _p("selfpot", "Self-potential - the distance to "
                   "what is LOCAL, inside your own cell",
@@ -5548,7 +5550,7 @@ class ValueStatistics:
                   direction="Output"),
                _p("outtable", "Output table (.csv) - for TABLE inputs",
                   "DEFile", required=False, direction="Output"),
-               _p("unit", "Cell size in map units (whole numbers only)",
+               _p("unit", "Cell size in map units",
                   "GPDouble", required=False),
                _p("selfpot", "Self-potential - the distance to "
                   "what is LOCAL, inside your own cell",

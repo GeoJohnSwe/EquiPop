@@ -151,3 +151,64 @@ def test_the_ring_engine_does_not_see_where_zero_is(u):
     for c in num:
         assert np.allclose(a[c].to_numpy(float), b[c].to_numpy(float),
                            rtol=1e-9, atol=1e-9, equal_nan=True), c
+
+
+@pytest.mark.parametrize("u", [1, 3])
+def test_the_friction_engine_does_not_see_where_zero_is(u, tmp_path):
+    """dispatch("friction"), row by row, with a costly band through
+    the town so the friction actually bends the search.
+
+    BROKEN WITH: friction's output coordinates back on int() (v1.63.0
+    found it: an odd cell's .5 midpoint came back cut, the bridge could
+    not find its rows, and the town at 0 lost them)."""
+    got = []
+    for shift in (0.0, 10_000.0 * u):
+        t = _town(u, shift)
+        ex = np.unique(grid_midpoints(t.x.to_numpy(), u))
+        ny = np.unique(grid_midpoints(t.y.to_numpy(), u))
+        E, N = np.meshgrid(ex, ny)
+        band = (np.abs(E - shift) < 1.5 * u).astype(float) * 2.0
+        p = tmp_path / f"fr_{int(shift)}.csv"
+        pd.DataFrame({"x": E.ravel(), "y": N.ravel(),
+                      "friction": band.ravel()}).to_csv(p, index=False)
+        r = _quiet(SB.dispatch, "friction", t.x.to_numpy(), t.y.to_numpy(),
+                   unit_size=float(u), k_values=[5, 30],
+                   treat={"g": t.g.to_numpy()}, friction_file=str(p))
+        got.append(r)
+    a, b = got
+    for c in ("N_5", "R_g_5", "N_30", "R_g_30"):
+        va, vb = np.asarray(a[c], float), np.asarray(b[c], float)
+        assert not np.isnan(va).any(), c
+        assert np.allclose(va, vb, rtol=1e-9), c
+
+
+@pytest.mark.parametrize("u", [1, 3])
+def test_the_slope_engine_does_not_see_where_zero_is(u):
+    """dispatch("slope") on a hill read from a DEM finer than the grid,
+    the hill moving with the town.
+
+    BROKEN WITH: FrictionGrid's domain back on int() of the lowest
+    coordinate (BACKLOG 446). The slope engine builds on that grid, so
+    across 0 it too was one column short and wrapped the first one to
+    the far edge."""
+    got = []
+    for shift in (0.0, 10_000.0 * u):
+        t = _town(u, shift)
+        px = u / 2.0                                    # DEM pixel
+        x_min, y_max = shift - 8 * u, shift + 8 * u
+        cols = rows = int(16 * u / px)
+        cx = x_min + px * (np.arange(cols) + 0.5) - shift
+        cy = y_max - px * (np.arange(rows) + 0.5) - shift
+        hill = 40.0 * np.exp(-(cx[None, :] ** 2 + cy[:, None] ** 2)
+                             / (4.0 * u) ** 2)
+        dem = {"array": hill, "x_min": x_min, "y_max": y_max,
+               "cell_w": px, "cell_h": px, "nodata": None}
+        r = _quiet(SB.dispatch, "slope", t.x.to_numpy(), t.y.to_numpy(),
+                   unit_size=float(u), k_values=[5, 30],
+                   treat={"g": t.g.to_numpy()}, dem=dem)
+        got.append(r)
+    a, b = got
+    for c in ("N_5", "R_g_5", "N_30", "R_g_30"):
+        va, vb = np.asarray(a[c], float), np.asarray(b[c], float)
+        assert not np.isnan(va).any(), c
+        assert np.allclose(va, vb, rtol=1e-9), c

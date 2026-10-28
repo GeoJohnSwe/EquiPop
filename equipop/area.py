@@ -62,7 +62,7 @@ def aggregate_output(
         df["_area"] = (
             "SG" + (np.floor((df[x_col] - x0) / u)).astype(int).astype(str)
             + "_" + (np.floor((df[y_col] - y0) / u)).astype(int).astype(str))
-        label = f"supergrid_{int(u)}m"
+        label = f"supergrid_{u:g}m"
     elif isinstance(by, str) and by in df.columns:         # Alt 1
         df["_area"] = df[by]
         label = by

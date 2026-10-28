@@ -328,9 +328,14 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     tally["ring_cut"] = tally.get("ring_cut", 0) + 1
                     unsat.append(oi)
                     continue
+            # v1.63.0 (BACKLOG 445): the midpoint as stored, not
+            # rounded to 2 decimals - a fractional cell size's midpoint
+            # (0.35000000000000003) came back as 0.35, and the bridge
+            # found no cell to map it to; at 1 cm cells, two cells
+            # came back as one. Whole and .5 midpoints are unchanged.
             rec = {"CellId": cd.labels[oi] if cd.labels else oi,
-                   "EastWest": round(float(cd.E[oi]), 2),
-                   "NorthSouth": round(float(cd.N[oi]), 2),
+                   "EastWest": float(cd.E[oi]),
+                   "NorthSouth": float(cd.N[oi]),
                    "N_local": float(pop[oi])}
             for v in bvars:
                 rec[f"{v}_local"] = float(grp[v][oi])
@@ -378,15 +383,13 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                                 else np.where(ring_keep, m, 0.0))
 
                     rpop = _ring(pop)
-                    ids = overshoot.cell_identity(
-                        np.round(cd.E[cells_i] / cd.unit_size),
-                        np.round(cd.N[cells_i] / cd.unit_size))
+                    ids = overshoot.grid_identity(
+                        cd.E[cells_i], cd.N[cells_i], cd.unit_size)
                     w, taken = overshoot.ring_weights(
                         osm, k, before, rpop, ids,
                         seed=os_seed,
-                        origin_id=int(overshoot.cell_identity(
-                            round(cd.E[oi] / cd.unit_size),
-                            round(cd.N[oi] / cd.unit_size))))
+                        origin_id=int(overshoot.grid_identity(
+                            cd.E[oi], cd.N[oi], cd.unit_size)))
                     n_k = before + taken
                     grp_k, den_k = {}, {}
                     for v in bvars:
@@ -620,10 +623,9 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
         oi_s = oi_range[S]
         cols = {"CellId": ([cd.labels[o] for o in oi_s] if cd.labels
                            else oi_s.copy()),
-                "EastWest": np.array([round(float(e), 2)
-                                      for e in cd.E[oi_s]]),
-                "NorthSouth": np.array([round(float(n_), 2)
-                                        for n_ in cd.N[oi_s]]),
+                # as stored (BACKLOG 445; see the per-origin path)
+                "EastWest": np.asarray(cd.E[oi_s], dtype=float),
+                "NorthSouth": np.asarray(cd.N[oi_s], dtype=float),
                 "N_local": pop[oi_s].astype(float)}
         for v in bvars:
             cols[f"{v}_local"] = grp[v][oi_s].astype(float)
@@ -694,12 +696,10 @@ def run_knn_counts(cd: CellData, k_values: list[int] | None = None,
                     # cells' identities and the origin's, exactly as
                     # overshoot.ring_weights draws it
                     oi_r = oi_s[rr]
-                    ids = overshoot.cell_identity(
-                        np.round(cd.E[cells] / cd.unit_size),
-                        np.round(cd.N[cells] / cd.unit_size))
-                    org = overshoot.cell_identity(
-                        np.round(cd.E[oi_r] / cd.unit_size),
-                        np.round(cd.N[oi_r] / cd.unit_size))
+                    ids = overshoot.grid_identity(
+                        cd.E[cells], cd.N[cells], cd.unit_size)
+                    org = overshoot.grid_identity(
+                        cd.E[oi_r], cd.N[oi_r], cd.unit_size)
                     with np.errstate(over="ignore"):
                         base = overshoot._mix64(
                             np.uint64(os_seed) ^ (org * overshoot._GOLDEN))

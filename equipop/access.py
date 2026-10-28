@@ -164,11 +164,9 @@ def effort_potential(pop: pd.DataFrame, mass: pd.DataFrame,
                      roundtrip=roundtrip, **model_params)
 
     # snap mass onto the domain's nodes
-    u = int(unit_size)
-    mi = (((np.floor(mass["x"].to_numpy(float) / u) * u + u / 2)
-           - grid.x0) // u).astype(np.int64)
-    mj = (((np.floor(mass["y"].to_numpy(float) / u) * u + u / 2)
-           - grid.y0) // u).astype(np.int64)
+    # v1.63.0 (BACKLOG 446): the grid's own rule, column floor(x / u)
+    mi, mj = grid.cols_rows(mass["x"].to_numpy(float),
+                            mass["y"].to_numpy(float))
     ok = (mi >= 0) & (mi < grid.nx) & (mj >= 0) & (mj < grid.ny)
     if (~ok).any():
         print(f"[access] {(~ok).sum()} mass cells outside the pop "

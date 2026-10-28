@@ -334,7 +334,10 @@ prof = seg_profile(res, k_values=[100, 400, 1600],
 
 Eight indices (D, Gini, entropy H, Atkinson, Isolation, Interaction,
 Correlation V, SI) at every k plus the local level — the multiscalar
-profile of Östh, Clark & Malmberg (2015). Validated against the
+profile of Östh, Clark & Malmberg (2015). Every person's neighbourhood
+counts once (since 1.63.0; `weighting="cells"` counts every place once
+instead). Each row also records which weighting it used, so a saved CSV
+still says. Validated against the
 published Stockholm Table A4 (SI(100) = 0.2822 vs 0.287 published).
 
 ## 13. Area aggregation and maps

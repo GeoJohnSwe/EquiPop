@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.62.1}{...}
+{* *! version 1.63.1}{...}
 {vieweralsosee "equipop" "help equipop"}{...}
 {viewerjumpto "Syntax" "equipop_run##syntax"}{...}
 {viewerjumpto "Engines" "equipop_run##engines"}{...}
@@ -8,7 +8,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop_run} {hline 2} EquiPop's other engines from Stata (EquiPop 1.62.1)
+{bf:equipop_run} {hline 2} EquiPop's other engines from Stata (EquiPop 1.63.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -40,9 +40,9 @@
 
 {phang}{cmd:fca} {hline 2} {opt demandvar(varname)} {opt supply(path)} [{opt supplycol(name)} {opt supplyx(name)} {opt supplyy(name)} {opt halflife(#)} {opt reach(decay|r|k)} {opt kfca(#)} {opt rfca(#)} {opt method(2sfca|3sfca)}]. Floating catchment accessibility: the observations are the demand, the supply comes from a .csv, .dta or .sav file. Returns {cmd:A} (accessibility) and {cmd:J} (the supply side's ratio).{p_end}
 
-{phang}{cmd:lisa} {hline 2} {opt values(varname)} [{opt k(#)} {opt wperm(#)}]. Local Moran's I on cell means, with the {cmd:k()} nearest cells as neighbours (default 8) and {cmd:wperm()} permutations (default 199): LISA_{it:v}_Ii, LISA_{it:v}_quad (1 HH, 2 LL, 3 HL, 4 LH) and LISA_{it:v}_p.{p_end}
+{phang}{cmd:lisa} {hline 2} {opt values(varname)} [{opt k(#)} {opt wperm(#)}]. Local Moran's I on cell means, with the {cmd:k()} nearest cells as neighbours (default 8) and {cmd:wperm()} permutations, a whole number of 1 or more (default 199): LISA_{it:v}_Ii, LISA_{it:v}_quad (1 HH, 2 LL, 3 HL, 4 LH) and LISA_{it:v}_p.{p_end}
 
-{phang}Common to all: {opt unit(#)} is the cell size in metres (default 100); {opt weight(varname)} the number of people a row stands for; {opt selfpot(#)}, between 0 and 1, how far away an observation's own cell counts (default 1); {opt replace} replaces result variables that exist.{p_end}
+{phang}Common to all: {opt unit(#)} is the cell size in metres, any number above zero (default 100); {opt weight(varname)} the number of people a row stands for; {opt selfpot(#)}, between 0 and 1, how far away an observation's own cell counts (default 1); {opt replace} replaces result variables that exist.{p_end}
 
 {marker examples}{...}
 {title:Examples}

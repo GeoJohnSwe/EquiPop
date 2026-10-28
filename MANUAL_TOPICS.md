@@ -255,6 +255,31 @@ population-weighted k-share isolation). Units at scale k are the
 bespoke neighbourhoods. Concentration/delta indices await a bespoke
 area-term decision.
 
+**Whose neighbourhoods** (`weighting=`, since 1.63.0). `"people"`, the
+default: every person's neighbourhood counts once - each origin cell's
+neighbourhood weighs as many people as live in that cell - so the
+indices describe the average person, and Isolation at k equals SI.
+`"cells"`: every place counts once - every populated origin cell's
+neighbourhood weighs the same, and isolation weighs each place by its
+group share. (In 1.63.0 the weight was the neighbourhood's size, N_k:
+the same thing under the default proportional overshoot, where every
+N_k is exactly k, and not under whole or sampled overshoot, where N_k
+varies. Fixed in 1.63.1.) Every index is measured against its units'
+own weighted mean share, reported as `P_ref`. Until 1.62.1 the weights
+were the cells' while the reference was the people's share; where a
+group lives at a different density from everybody else the two
+differ, and the entropy and Atkinson indices went below zero (on the
+Stata test data H was -0.020 to -0.029). SI was never affected.
+
+**Every row says what it describes** (since 1.63.1), in columns that
+survive a CSV: `weighting`, `global_share_P`, `valid_origins`,
+`valid_people`, `excluded_people` and `note`. An origin with no
+neighbourhood at a scale (N_k missing or zero) is left out of every
+index there, SI included, and counted in `excluded_people`. Input that
+cannot describe segregation - nobody or everybody in the group, nobody
+at all, a group count above its total, negative or missing counts - is
+refused with a `SegregationError` that says which.
+
 ## 12. Area-based output
 `aggregate_output(df, by=..., how="wmean")` summarises overlapping
 bespoke results per fixed geography - by belonging ID column, by

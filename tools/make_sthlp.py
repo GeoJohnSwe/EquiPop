@@ -881,12 +881,14 @@ def build_run():
     add("{phang}{cmd:lisa} {hline 2} {opt values(varname)} "
         "[{opt k(#)} {opt wperm(#)}]. Local Moran's I on cell means, "
         "with the {cmd:k()} nearest cells as neighbours (default 8) and "
-        "{cmd:wperm()} permutations (default 199): "
+        "{cmd:wperm()} permutations, a whole number of 1 or more "
+        "(default 199): "
         "LISA_{it:v}_Ii, LISA_{it:v}_quad (1 HH, 2 LL, 3 HL, 4 LH) and "
         "LISA_{it:v}_p.{p_end}")
     add("")
     add("{phang}Common to all: {opt unit(#)} is the cell size in "
-        "metres (default 100); {opt weight(varname)} the number of "
+        "metres, any number above zero (default 100); "
+        "{opt weight(varname)} the number of "
         "people a row stands for; {opt selfpot(#)}, between 0 and 1, "
         "how far away an observation's own cell counts (default 1); "
         "{opt replace} replaces result variables that exist.{p_end}")

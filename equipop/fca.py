@@ -85,14 +85,11 @@ def _effort_matrix(demand, supply, altitude, model, roundtrip,
     grid = SlopeGrid(dom, fr, unit_size, 0, "count_all", "count_group",
                      altitude=altitude, model=model,
                      roundtrip=roundtrip, **model_params)
-    u = int(unit_size)
-
+    # v1.63.0 (BACKLOG 446): the grid's own rule - column floor(x / u)
+    # - not int(unit_size) and a re-snapped midpoint less the corner
     def nodes_of(df):
-        i = (((np.floor(df.iloc[:, 0].to_numpy(float) / u) * u + u / 2)
-              - grid.x0) // u).astype(np.int64)
-        j = (((np.floor(df.iloc[:, 1].to_numpy(float) / u) * u + u / 2)
-              - grid.y0) // u).astype(np.int64)
-        return np.asarray(i * grid.ny + j)
+        return grid.node_of(df.iloc[:, 0].to_numpy(float),
+                            df.iloc[:, 1].to_numpy(float))
 
     dn, sn = nodes_of(demand), nodes_of(supply)
     E = np.empty((len(dn), len(sn)))

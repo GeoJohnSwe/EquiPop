@@ -554,15 +554,24 @@ def test_a_picked_decay_model_reaches_the_engine_as_its_own_name():
     (CountsAndShares, {}),
     (ValueStatistics, {"values": ["Income"], "measures": [0]}),
 ])
-def test_a_fractional_cell_size_is_refused_not_rounded(alg, extra):
-    """BACKLOG 155, RULED by John. Ask for 2.5 and the centres came out
-    at 1, 3, 6 - spacings of 2 and 3, because build_cells casts to int
-    while analysis, friction, slope, access and fca each take
-    int(unit_size) separately. Six modules would have to agree
-    forever, so a fractional size is refused rather than rounded."""
-    with pytest.raises(QgsProcessingException, match="WHOLE number"):
-        _run(alg, unit=2.5, **extra)
-    with pytest.raises(QgsProcessingException, match="WHOLE number"):
+def test_a_fractional_cell_size_runs_as_given(alg, extra):
+    """BACKLOG 155, then 445. Asked for 2.5, the centres used to come
+    out at 1, 3, 6 - build_cells cast to int while analysis, friction,
+    slope, access and fca each took int(unit_size) - so from 1.29.8 a
+    fractional size was refused. Since 1.63.0 none of them rounds it,
+    and John lifted the refusal. It must run AT 2.5: not refused, and
+    not quietly run at 2 or 3 instead. Zero is still refused.
+
+    BROKEN WITH: the 1.62.1 whole-number check back in that algorithm
+    (refused), or `unit = float(round(unit))` without it (run at 2)."""
+    def dist(u):
+        out, _ = _run(alg, unit=u, **extra)
+        col = [c for c in out.columns if c.startswith("Dist_")][0]
+        return out[col].to_numpy(float)
+    at = {u: dist(u) for u in (2.0, 2.5, 3.0)}
+    assert not np.allclose(at[2.5], at[2.0], equal_nan=True)
+    assert not np.allclose(at[2.5], at[3.0], equal_nan=True)
+    with pytest.raises(QgsProcessingException, match="greater than 0"):
         _run(alg, unit=0.0, **extra)
     _run(alg, unit=100.0, **extra)              # whole is fine
 

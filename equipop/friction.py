@@ -48,6 +48,13 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
+
+def _exact(v):
+    """A coordinate as given: an int when whole, a float otherwise."""
+    v = float(v)
+    return int(v) if v.is_integer() else v
+
+
 from . import overshoot, selfpot, selfrule
 from .labels import tau_suffix          # BACKLOG 337/339
 
@@ -132,8 +139,11 @@ class FrictionGrid:
                  count_group_col: str = "count_group",
                  clip_margin: float = 5000.0,
                  max_graph_gb: float = 8.0):
-        u = int(unit_size)
-        self.unit_size = float(unit_size)
+        # v1.63.0 (BACKLOG 446): the cell size as GIVEN. It was int(),
+        # which a fractional size (BACKLOG 445) cannot survive.
+        from .cells import check_unit_size        # BACKLOG 451
+        u = check_unit_size(unit_size)
+        self.unit_size = u
 
         # --- v1.16.6: guard, then CLIP, then build -------------------
         # Guard for the impossible (units that cannot belong to the
@@ -180,13 +190,36 @@ class FrictionGrid:
                 if not len(fr):
                     fr = None
 
+        # v1.63.0, BACKLOG 446 (found writing 444's tests). The domain
+        # was laid out from int(lowest coordinate) and every cell found
+        # by (x - x0) // u. int() cuts toward ZERO, so with an odd cell
+        # size and the study area across 0 (or wholly west or south of
+        # it) the lowest midpoint, -5.5 m say, became -5: the first
+        # column then sat at index -1, which numpy wraps to the far
+        # EAST edge, and the domain was one column short. Measured: a
+        # 1 m town across 0 gave other answers than the same town moved
+        # 10 km east (190 of 400 people's shares at k = 5). 100 m and
+        # 1 km studies have whole midpoints and never met it.
+        #
+        # A cell is now found by the rule cells.grid_midpoints places
+        # points with, and the ring engine looks cells up by: column
+        # floor(x / u), row floor(y / u). Positions inside one cell
+        # share a node, a midpoint is safely inside its own, and the
+        # answer no longer depends on which table held the lowest
+        # coordinate.
         xs = [pop["x"]] + ([fr["x"]] if fr is not None else [])
         ys = [pop["y"]] + ([fr["y"]] if fr is not None else [])
-        x0 = int(min(s.min() for s in xs)); x1 = int(max(s.max() for s in xs))
-        y0 = int(min(s.min() for s in ys)); y1 = int(max(s.max() for s in ys))
-        self.x0, self.y0 = x0, y0
-        self.nx = (x1 - x0) // u + 1
-        self.ny = (y1 - y0) // u + 1
+        i0 = int(np.floor(min(float(s.min()) for s in xs) / u))
+        i1 = int(np.floor(max(float(s.max()) for s in xs) / u))
+        j0 = int(np.floor(min(float(s.min()) for s in ys) / u))
+        j1 = int(np.floor(max(float(s.max()) for s in ys) / u))
+        self.i0, self.j0 = i0, j0
+        # the MIDPOINT of the first column and row, exact (an int when
+        # whole, as before)
+        self.x0 = _exact((i0 + 0.5) * u)
+        self.y0 = _exact((j0 + 0.5) * u)
+        self.nx = i1 - i0 + 1
+        self.ny = j1 - j0 + 1
         n = self.nx * self.ny
         need_gb = n * 8 * 8 / 1e9          # 8 edges x int64 per cell
         print(f"[friction] grid domain {self.nx} x {self.ny} = {n} "
@@ -197,12 +230,10 @@ class FrictionGrid:
                 f"GB for the movement graph (limit {max_graph_gb:g} "
                 "GB). The effort engines grid the WHOLE bounding box, "
                 "empty ground included. Fixes: a smaller study area, "
-                f"or a bigger cell size (at {2 * u} m it would need "
+                f"or a bigger cell size (at {2 * u:g} m it would need "
                 f"~{need_gb / 4:.1f} GB). Nothing was computed.")
 
-        def idx(x, y):
-            return (((np.asarray(x) - x0) // u) * self.ny
-                    + ((np.asarray(y) - y0) // u)).astype(np.int64)
+        idx = self.node_of
 
         # --- per-node arrays ---
         # FLOAT, not int (v1.27): a facilitator is a FRACTION of a
@@ -253,6 +284,21 @@ class FrictionGrid:
             (np.concatenate(data),
              (np.concatenate(rows), np.concatenate(cols))),
             shape=(n, n))
+
+    def cols_rows(self, x, y):
+        """Column and row of each position WITHIN THE DOMAIN (0 is the
+        first): floor(position / cell size), less the domain's first.
+        BACKLOG 446 - the one way a position finds its cell here."""
+        u = self.unit_size
+        i = np.floor(np.asarray(x, dtype=float) / u).astype(np.int64)
+        j = np.floor(np.asarray(y, dtype=float) / u).astype(np.int64)
+        return i - self.i0, j - self.j0
+
+    def node_of(self, x, y):
+        """The graph node of each position (positions inside the domain;
+        cols_rows says which are)."""
+        i, j = self.cols_rows(x, y)
+        return np.asarray(i * self.ny + j, dtype=np.int64)
 
     def rounds_from(self, origin_nodes: np.ndarray) -> np.ndarray:
         """Included-round of EVERY populated cell from each origin
@@ -329,14 +375,17 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
             order = np.argsort(rr, kind="stable")
             rec = {
                 "Id": pop[id_col].iloc[oi] if id_col else oi,
-                "EastWest": int(grid.pop_x[oi]),
-                "NorthSouth": int(grid.pop_y[oi]),
+                # v1.63.0 (BACKLOG 446, found with 444): exact, not
+                # int() - an odd or fractional cell size's .5 midpoint
+                # was cut toward zero here, and the bridge then found no
+                # row to map the result back to
+                "EastWest": _exact(grid.pop_x[oi]),
+                "NorthSouth": _exact(grid.pop_y[oi]),
                 "CountAllLocal": ca[oi],
                 "CountGroupLocal": cg[oi],
             }
-            _oid = int(overshoot.cell_identity(
-                round(grid.pop_x[oi] / grid.unit_size),
-                round(grid.pop_y[oi] / grid.unit_size)))
+            _oid = int(overshoot.grid_identity(
+                grid.pop_x[oi], grid.pop_y[oi], grid.unit_size))
             sum_all = sum_grp = 0.0
             dist_m = rounds_now = 0.0
             pending = list(k_values)
@@ -357,8 +406,19 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                     break
                 while pending_tau and pending_tau[0] < r0 - 1e-9:
                     rec_tau(pending_tau.pop(0))
-                ring = []
-                while j < n_pop and rr[order[j]] == r0:
+                # v1.63.0, BACKLOG 447: one ring is the efforts within
+                # overshoot.RING_TOL of each other, as in the radial
+                # engines - not exactly equal ones. Dijkstra adds the
+                # same steps in different orders along mirror-image
+                # paths, so two cells of truly equal effort could differ
+                # in the last bit and be split into two rings, the first
+                # one admitted whole: a fixed direction. RING_TOL was
+                # named for this engine's sake and it never used it.
+                ring = [order[j]]
+                last = r0
+                j += 1
+                while j < n_pop and rr[order[j]] - last < overshoot.RING_TOL:
+                    last = rr[order[j]]
                     ring.append(order[j]); j += 1
                 if drop_self:
                     # BACKLOG 341. The origin's own cell is at round 0
@@ -381,11 +441,10 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 if osm != overshoot.WHOLE and ring_all > 0:
                     r_pop = np.array([ca[ci] for ci in ring], float)
                     r_grp = np.array([cg[ci] for ci in ring], float)
-                    r_ids = overshoot.cell_identity(
-                        np.round(np.array([grid.pop_x[ci] for ci in ring])
-                                 / grid.unit_size),
-                        np.round(np.array([grid.pop_y[ci] for ci in ring])
-                                 / grid.unit_size))
+                    r_ids = overshoot.grid_identity(
+                        np.array([grid.pop_x[ci] for ci in ring], float),
+                        np.array([grid.pop_y[ci] for ci in ring], float),
+                        grid.unit_size)
                     while pending and sum_all + ring_all >= pending[0]:
                         k = pending.pop(0)
                         wt, taken = overshoot.ring_weights(

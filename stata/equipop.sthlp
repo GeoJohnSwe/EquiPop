@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.62.1}{...}
+{* *! version 1.63.1}{...}
 {vieweralsosee "equipop_run" "help equipop_run"}{...}
 {vieweralsosee "equipop_knn" "help equipop_knn"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
@@ -12,7 +12,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.62.1)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.63.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -168,7 +168,7 @@ plain python.org Python for Stata.
 {p_end}
 
 {phang}
-{opt unit(#)} The grid cell size in metres. Bigger cells mean fewer origins and much faster runs; smaller cells mean finer geography. This is the strongest speed control you have.
+{opt unit(#)} The grid cell size in metres. Bigger cells mean fewer origins and much faster runs; smaller cells mean finer geography. This is the strongest speed control you have. Any size above zero works, fractions included (2.5 is fine).
 {p_end}
 
 {phang2}

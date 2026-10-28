@@ -1,4 +1,4 @@
-*! equipop v1.62.1  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.63.1  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -320,13 +320,13 @@ program define equipop, rclass
     }
 
     * ---- cell size ---------------------------------------------
-    * Fractional cell sizes are REFUSED, because the core
-    * converts cell centres to integers - a requested 2.5 gives centres
-    * 1, 3, 6, so the spacings come out 2 and 3 and neither is 2.5.
-    * QGIS and Pro have refused this since 1.29.8. Stata did not, and
-    * a rule enforced at some doors and not others is how 172 happened.
-    * The rule itself lives in the package, so a fourth door inherits
-    * it rather than reimplementing it.
+    * Any size above zero, fractions included (BACKLOG 445, 1.63.0).
+    * From 1.29.8 to 1.62.1 a fractional size was REFUSED here and in
+    * QGIS and Pro, because the core turned cell centres into whole
+    * numbers - a requested 2.5 gave centres 1, 3, 6. Centres are now
+    * exact and no engine rounds a size, so the same town in 2.5 m
+    * cells gives what it gives in 100 m cells, scaled. The rule is
+    * the same at every door, as 172 taught.
     * BACKLOG 385. unit() used to be -Unit(real 100)-, which cannot
     * tell `unit(100)' from a user who said nothing: both arrive as
     * 100. The unit-size advisory has to know the difference, because
@@ -346,15 +346,11 @@ program define equipop, rclass
             exit 198
         }
     }
-    if `unit' <= 0 {
+    * missing() first (BACKLOG 451): Stata's . compares GREATER than
+    * every number, so a bare <= 0 lets unit(.) through.
+    if missing(`unit') | `unit' <= 0 {
         display as error "unit() is the cell size and must be " ///
             "greater than zero"
-        exit 198
-    }
-    if `unit' != int(`unit') {
-        display as error "unit() must be a whole number - the cell " ///
-            "grid is built on integer centres, so a fractional size " ///
-            "would not give evenly spaced cells"
         exit 198
     }
 
@@ -574,7 +570,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.62.1"
+    local eqp_ado_version "1.63.1"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -624,7 +620,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.62.1"
+    local eqp_ado_version "1.63.1"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -874,6 +870,41 @@ def _col(v):
     return a
 
 
+def _engine_takes_unit(unit):
+    """BACKLOG 445, v1.63.0. A FRACTIONAL unit() needs engine 1.63.0 or
+    newer: an older one rounds it somewhere (output coordinates, the
+    effort engines' grid) and either stops with a lookup error or runs
+    at the rounded size. eqp_min_engine stays where it is - a whole
+    size loses nothing on an older engine (BACKLOG 331/385) - so the
+    one case that needs the newer engine is refused here, in words.
+    tests/test_fractional_cells.py runs this against a stand-in old
+    engine. The same function is in equipop_run.ado."""
+    u = float(unit)
+    if u == int(u):
+        return True
+    try:
+        from equipop import __version__ as eng
+    except Exception:
+        eng = "unknown"
+    # leading digits of the first three parts; no regex, because a
+    # backslash in an ado's python block is one more thing to escape
+    nums = []
+    for part in str(eng).split(".")[:3]:
+        d = ""
+        for ch in part:
+            if not ch.isdigit():
+                break
+            d += ch
+        nums.append(int(d) if d else -1)
+    if len(nums) == 3 and tuple(nums) >= (1, 63, 0):
+        return True
+    SFIToolkit.errprintln(
+        f"unit({u:g}): a fractional cell size needs the EquiPop engine "
+        f"1.63.0 or newer, and this Python has {eng}. Run -equipop "
+        "setup- to update it, or give a whole number.")
+    return False
+
+
 def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                       weight="", selfpot=1.0, touse="", prefix="",
                       project="", epsg=0, treatmode="counts",
@@ -892,6 +923,9 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
             "equipop is not installed in Stata's Python. Check which "
             "Python with -python query-, then install into THAT one. "
             "See help equipop.")
+        SFIToolkit.error(198)
+        return
+    if not _engine_takes_unit(unit):
         SFIToolkit.error(198)
         return
 

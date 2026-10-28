@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.62.1 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0al first, then 0ak back to 0b
+*Amended through 1.63.1 rather than superseded: same session, run on
+past 1.54.0 into October. Read section 0an first, then 0am back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,86 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0an. 1.63.1 - THE REVIEW OF 1.63.0
+
+An external review (26 October) found five things; all reproduced
+(scratchpad review1630/verify.py), all fixed (BACKLOG 448-452), two
+logged as open (453 theta(k) time at register scale, 454 a first-class
+segregation command).
+
+- **"cells" said one thing and did another (448)** - and the note to
+  learn is mine: 1.63.0 renamed the 1.62.1 formula (weights N_k) to
+  "every place counts once" because under proportional overshoot every
+  N_k is k. That is a coincidence of the default, not a definition.
+  Equal weights now; numbers in the default mode unchanged (tested).
+  When an option's NAME is a claim, test it on a case where the claim
+  and the nearest other formula disagree (unequal N_k).
+- **seg_profile now checks its input** (449) and says what it describes
+  in its rows (452): SegregationError for undefined or impossible
+  input; weighting, global_share_P, valid/excluded counts and a note on
+  every row. Origins without a neighbourhood leave every index at that
+  scale, SI included (450).
+- **Cell size is checked in the package** (451): cells.check_unit_size
+  in grid_midpoints, dispatch, FrictionGrid, build_hex_cells. A door
+  may check too; the package no longer relies on it. equipop_run's
+  unit() and wperm() are guarded before Python; missing() first,
+  because Stata's . is greater than every number.
+- **Break-check 436/436 on the first run.** The lesson of 0am applied
+  in advance: each new test's data was chosen so it can show the fault
+  its docstring names.
+
+## 0am. 1.63.0 - JOHN'S THREE RULINGS, AND WHAT THEY FOUND
+
+John, 26 October: "443= do as suggested - question (your call -
+dismiss if not important)- should 1|2 be an option for the user to
+decide, with 1 as default? 444 = fix according to suggestion 445 = as
+determined earlier". Each one, done, found something further; all five
+are BACKLOG 443-447.
+
+- **443, segregation by people.** seg_profile(weighting="people") is the
+  default, "cells" the option (his "1|2"). Both measure against the
+  units' OWN weighted mean (P_ref), the only reference that bounds H
+  and Atkinson at zero. Isolation at k under "people" IS SI; SI itself
+  is untouched by either.
+- **444, cell names.** overshoot.grid_identity is THE way to name a
+  cell for a seeded draw: round(2 * centre / size), half widths. The
+  floor() first proposed mends squares and still left 15% of hexagons
+  sharing a name - found because the test asked for hexagons too. Do
+  not call cell_identity with anything else. The tie test is a 3 x 3
+  town at k = 65: under the old names all 40 seeds gave one answer AND
+  the engines disagreed which.
+- **445, fractional sizes.** Lifted in every door. What it took is the
+  lesson: three more places still rounded (effort grid, output
+  coordinates to 2 decimals, the ring engine's rebuilt-midpoint
+  lookup). Cells are found by COLUMN AND ROW, floor(x / size),
+  everywhere - never by a float midpoint rebuilt by arithmetic. The
+  test that cannot be fooled is SCALE: the same town at 2.5, 0.1, 0.3
+  and 100 must agree exactly, distances scaled
+  (tests/test_fractional_cells.py) - the companion of 0al's
+  translation test.
+- **446, found writing 444's tests**: FrictionGrid's domain was
+  int(lowest coordinate), so an odd size across 0 wrapped its first
+  column to the far east edge. 1.62.1 said "all six places" were fixed;
+  this was a seventh, in an engine its translation tests did not reach.
+  test_odd_cells now covers friction and slope.
+- **447, found by the scale test**: the effort engines gathered a ring
+  by exact float equality, though RING_TOL was named for them. Last-bit
+  differences split ties into a direction. Small (3-49 of 10,883 rows
+  on the test data with a barrier), but wrong in kind.
+- **Break-check 415/415** after three real gaps, all of one kind: a
+  test whose data cannot show the fault it names. The test data's
+  people-weighted share at k sits within 0.01 of P; random weights
+  unrelated to the shares hide a formula that drops the weights; the
+  bridge never takes the fast engine's per-origin path. Each got a
+  case built to show it. When a docstring says BROKEN WITH, ask
+  whether THIS data could show it.
+- **Stata on an older engine**: both ados refuse a fractional unit()
+  when the engine predates 1.63.0 (_engine_takes_unit); the floor
+  eqp_min_engine stays 1.48.0 on purpose (331/385).
+- **For John**: sampled draws change as if reseeded (444); the
+  segregation profile's k rows change (443); a few friction rows change
+  (447). Nothing else moves at 100 m or 1 km.
 
 ## 0al. 1.62.1 - THE REVIEW OF 1.62.0, AND STATA READY FOR SSC
 
