@@ -1,4 +1,4 @@
-*! equipop_run v1.63.1  -  ONE command, the whole toolbox (since EquiPop 1.6).
+*! equipop_run v1.63.2  -  ONE command, the whole toolbox (since EquiPop 1.6).
 *! Syntax:
 *!   equipop_run, engine(counts|stats|friction|slope|fca|lisa) x() y() [...]
 *! Engines and their options:
@@ -76,10 +76,31 @@ end
 
 python:
 from sfi import Data, SFIToolkit
-import numpy as np
-from equipop.stata_bridge import dispatch, to_stata_values
+import sys
+# BACKLOG 459. No numpy or equipop import at load time: Stata runs this
+# block when it loads the file, and a failed import there gives r(7102)
+# with a traceback instead of a sentence. They are imported where they
+# are used, and a failure says what to do.
+#
+# Review of 1.63.2, F4: on Python 3.10 (engine 1.61.0 at most) say so
+# once per Stata session. Own names on purpose: this block and
+# equipop.ado's run in the same Python namespace, so a function called
+# _python_note_once here would replace that file's version.
+_RUN_PY_NOTED = []
+
+
+def _run_python_note_once():
+    if sys.version_info[:2] == (3, 10) and not _RUN_PY_NOTED:
+        _RUN_PY_NOTED.append(True)
+        SFIToolkit.displayln(
+            "{txt}Note: Stata is using Python 3.10. The newest EquiPop "
+            "engine for it is 1.61.0;")
+        SFIToolkit.displayln(
+            "{txt}   later engines need Python 3.11 or newer. -equipop "
+            "doctor- says how to move.")
 
 def _col(v):
+    import numpy as np
     a = np.array(Data.get(v), dtype=float)
     a[a > 8.9e307] = np.nan
     return a
@@ -123,6 +144,22 @@ def _equipop_run(engine, xv, yv, treatv, valuesv, statss, ks, rs,
                  taus, unit, wv, dem, model, rt, fricf, demv, supf,
                  supcol, supx, supy, hl, reach, method, kfca, rfca,
                  rep, selfpot=1.0, wperm=199):
+    _run_python_note_once()
+    try:
+        import numpy                                    # BACKLOG 459
+        from equipop.stata_bridge import dispatch, to_stata_values
+    except ImportError as exc:
+        ver = ".".join(str(p) for p in sys.version_info[:3])
+        SFIToolkit.errprintln(
+            "the EquiPop engine cannot be loaded in the Python Stata is "
+            f"using (Python {ver}):")
+        SFIToolkit.errprintln("   " + (sys.executable or "(unknown)"))
+        SFIToolkit.errprintln("   " + str(exc).splitlines()[0])
+        SFIToolkit.errprintln(
+            "EquiPop needs Python 3.11 or newer with the engine "
+            "installed. Run -equipop doctor- for what to do.")
+        SFIToolkit.error(198)
+        return
     if not _engine_takes_unit(unit):
         SFIToolkit.error(198)
         return

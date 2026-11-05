@@ -3673,6 +3673,54 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 459 | DONE v1.63.2, 5 NOVEMBER 2026 | THE STATA COMMANDS WOULD NOT LOAD
+  ON A PYTHON WITHOUT NUMPY (C. F. Baum, testing the SSC submission of
+  1.63.1 on a Mac). His Stata used Apple's developer-tools Python
+  3.9.6, and `equipop doctor' died with "No module named 'numpy'",
+  "error occurred while loading equipop.ado", r(7102). Cause: `import
+  numpy as np' at the top of equipop.ado's python: block, directly
+  under the comment forbidding it. Stata runs that block when it LOADS
+  the file, so every subcommand failed, doctor and setup included -
+  the two written for that machine. equipop_run.ado imported numpy and
+  the engine at load the same way. tests/test_stata_python_block.py
+  runs the block with numpy installed, so it could not see it.
+  Fixed: numpy is imported where it is used; a standard-library
+  _python_check() runs first in doctor, setup, machine 1 and unit.
+  3.11+ is silent. 3.10 is a legacy path - pip finds engine 1.61.0,
+  the last that allowed it, and the commands run on it (floor 1.48.0)
+  - with a warning, shown whole by doctor and setup and once per
+  session in short on an ordinary run. Below 3.10 nothing installs and
+  1.63's own code does not import (`list | None' at class definition,
+  cells.py), so the command stops and gives the steps; on a Mac it
+  names Apple's Python. Setup no longer runs pip there, where the only
+  answer was a "no matching distribution" that reads as a network
+  fault. Help: the floor, and the Mac case (tools/make_sthlp.py).
+  THE FLOOR STAYS 3.11 (John asked whether to allow older with a
+  warning): 3.9 cannot be warned past, 3.10 already is, and 3.10
+  reached end of life in October 2026 with numpy and scipy dropping
+  it. The whole 1.63.1 engine was run on 3.10 (all modules import; the
+  Malta teaching key reproduces exactly) to make sure 3.10 users lose
+  nothing they had.
+  THE EXTERNAL REVIEW OF THE FIRST 1.63.2 BUNDLE found four gaps, all
+  fixed before release: (F1) the recovery steps said
+  "set python_exec, then restart" - printed by a running Python, in a
+  session where Stata no longer allows the change; the restart now
+  comes first. (F2) `equipop unit' skipped the check and still said
+  "install into THAT one". (F3) the help was edited in the .sthlp, not
+  in make_sthlp.py, so regeneration would have removed it. (F4) an
+  ordinary run on 3.10 discarded the warning. (F5) the tests stopped
+  at the classifier. tests/test_stata_block_without_numpy.py: 14
+  tests at the command level, numpy, pandas, scipy and equipop
+  hidden - Apple's 3.9 with its wording, the order of the steps,
+  setup without pip, unit, machine 1, the 3.10 note once per session
+  and not after the doctor, equipop_run's message and note, the floor
+  equal to pyproject's, and no name defined differently in both ados'
+  blocks (they share one Python namespace in a Stata session). Every
+  fix broken on purpose and caught.
+  NOT REACHABLE HERE: real Stata, and a real Mac. Before SSC: Apple's
+  Python - doctor gives the steps, no r(7102); a python.org 3.12 -
+  setup, restart, doctor, a small run.
+
 - 454 | OPEN, 26 OCTOBER 2026 | A FIRST-CLASS SEGREGATION COMMAND (review
   of 1.63.0, suggestion). The multiscalar profile is reached from Stata
   only through a python block in the showcase. An equipop_seg command

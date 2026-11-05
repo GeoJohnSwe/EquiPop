@@ -480,13 +480,30 @@ def build():
     # existed outside stata/historical/ since 1.36: a help file that
     # names a missing file is worse than one that names none, and
     # this one is on SSC now.
+    # BACKLOG 459: the floor, and the Mac case that met Kit Baum. The
+    # order of the Mac steps matters (review of 1.63.2, F1): Stata
+    # will not change python_exec once Python has started in a
+    # session, so the restart comes first.
     add(_smcl(
-        "equipop needs Python. See {help python}, the file "
+        "equipop needs Python 3.11 or newer. Python 3.10 still works, "
+        "with the last engine released for it (1.61.0); older versions "
+        "do not work at all. See {help python}, the file "
         "README_STATA.md in the EquiPop distribution for the "
         "installation, and {cmd:equipop doctor}, which reports the "
         "Python Stata is actually using and whether the libraries "
         "load in it. Note that Stata and Anaconda do not mix: use a "
         "plain python.org Python for Stata."))
+    add("")
+    add("{pstd}")
+    add(_smcl(
+        "On a Mac, Stata may pick the Python that comes with Apple's "
+        "developer tools, which is version 3.9 and too old. Install a "
+        "python.org Python beside it, then quit Stata completely and "
+        "start it again. In the new session, before equipop or any "
+        "other Python command, run {cmd:python search} and "
+        "{cmd:set python_exec} {it:path}{cmd:, permanently}. Then run "
+        "{cmd:equipop setup}, restart Stata once more, and run "
+        "{cmd:equipop doctor}."))
     add("")
     add("{marker options}{...}")
     add("{title:Options}")

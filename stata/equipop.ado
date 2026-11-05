@@ -1,11 +1,11 @@
-*! equipop v1.63.1  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.63.2  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
 *! columns named _r<r>. treat() is optional; without it you get the
 *! neighbourhood size and reach alone.
 *!
-*! Requires Stata 17+, Python configured (python query), and the
+*! Requires Stata 17+, Python 3.11+ configured (python query), and the
 *! Python package installed in THAT Python. See help equipop.
 *!
 *! Behaves like a Stata command: [if] [in], native [fweight=],
@@ -570,7 +570,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.63.1"
+    local eqp_ado_version "1.63.2"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -620,7 +620,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.63.1"
+    local eqp_ado_version "1.63.2"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -795,7 +795,120 @@ python:
 # exercise.
 from sfi import Data, Macro, SFIToolkit
 import sys
-import numpy as np
+# BACKLOG 459. NO `import numpy` HERE, whatever the comment above has
+# not stopped before. Stata runs this block when it LOADS the file, so
+# an import that fails here fails every subcommand at once - doctor and
+# setup included, the two written for the machine where it fails. Kit
+# Baum, testing the SSC submission of 1.63.1 on a Mac, got
+#     ModuleNotFoundError: No module named 'numpy'
+#     (error occurred while loading equipop.ado)  r(7102);
+# from `equipop doctor`: Stata had picked Apple's own Python 3.9.6.
+# numpy is now imported inside the two functions that compute, and
+# tests/test_stata_block_without_numpy.py loads this block with numpy,
+# pandas, scipy and equipop hidden.
+
+
+# BACKLOG 459. The engine's floor is Python 3.11 (pyproject's
+# requires-python; tests/test_stata_block_without_numpy.py keeps the
+# two equal). On 3.10 pip still finds engine 1.61.0, the last that
+# allowed it, and these commands run on it (their floor is
+# eqp_min_engine), so 3.10 is a legacy path: a warning, once per Stata
+# session on an ordinary run, and the run goes on. Below 3.10 pip finds
+# no engine at all and this release's code would not import, so the
+# only useful thing is to say what to do. Standard library only.
+_PY_ENGINE_FLOOR = (3, 11)
+_PY_FLOOR_TEXT = ".".join(str(p) for p in _PY_ENGINE_FLOOR)
+_PY_LAST_ENGINE = {(3, 10): "1.61.0"}
+# Review of 1.63.2, F4. A list rather than a flag so no `global` is
+# needed. Stata keeps one Python per session, so this lasts exactly as
+# long as the warning should be remembered.
+_PY_NOTED = []
+
+
+def _python_check():
+    """('ok' | 'warn' | 'stop', lines to print) for this Python."""
+    ver = sys.version_info[:2]
+    if ver >= _PY_ENGINE_FLOOR:
+        return "ok", []
+    have = ".".join(str(p) for p in sys.version_info[:3])
+    exe = sys.executable or "(unknown)"
+    if ver in _PY_LAST_ENGINE:
+        last = _PY_LAST_ENGINE[ver]
+        lines = [
+            f"Stata is using Python {have}. The newest EquiPop engine "
+            f"for it is {last}:",
+            "   these commands run on it, but later engines need "
+            f"Python {_PY_FLOOR_TEXT} or newer.",
+            "   Python 3.10 itself stopped receiving fixes in October "
+            "2026.",
+        ]
+        return "warn", lines + _python_steps(exe)
+    lines = [
+        f"EquiPop needs Python {_PY_FLOOR_TEXT} or newer, and Stata is "
+        f"using Python {have}:",
+        "   " + exe,
+    ]
+    if sys.platform == "darwin" and (
+            "CommandLineTools" in exe or "Xcode" in exe
+            or exe.startswith("/usr/bin/")):
+        lines += [
+            "   That is the Python that comes with Apple's developer "
+            "tools. Leave it",
+            "   alone: install a newer Python beside it and point "
+            "Stata there.",
+        ]
+    return "stop", lines + _python_steps(exe)
+
+
+def _python_steps(exe):
+    # Review of 1.63.2, F1. THE RESTART COMES BEFORE `set python_exec`.
+    # These lines are printed BY Python, so Python is already running
+    # in this session, and Stata refuses to change python_exec once it
+    # has started. The first draft said "set python_exec, then
+    # restart", which fails in exactly the session that prints it.
+    steps = [
+        "What to do:",
+        f"  1. Install Python {_PY_FLOOR_TEXT} or newer from python.org "
+        "(Mac and Windows installers).",
+        "  2. Quit Stata completely and start it again. Python is "
+        "already running in",
+        "     this session, and Stata will not change it once it has "
+        "started.",
+        "  3. In the new session, BEFORE equipop or any other Python "
+        "command, run:",
+        "        python search",
+        '        set python_exec "<path of the new python>", '
+        "permanently",
+    ]
+    if sys.platform == "darwin":
+        steps += ["     The python.org installer for 3.12 puts it at "
+                  "/usr/local/bin/python3.12"]
+    steps += [
+        "  4. Then run:",
+        "        equipop setup",
+        "     quit and restart Stata once more, and run:",
+        "        equipop doctor",
+    ]
+    return steps
+
+
+def _python_note_once():
+    """Review of 1.63.2, F4: the check for an ordinary run.
+
+    'stop' and its lines go back to the caller, which refuses the run.
+    'warn' (Python 3.10) is shown here, in short, the first time in a
+    Stata session and never again in it: the run works, and a warning
+    on every call would be noise. The doctor and setup show it whole.
+    """
+    level, lines = _python_check()
+    if level == "warn" and not _PY_NOTED:
+        _PY_NOTED.append(True)
+        SFIToolkit.displayln("{txt}Note: " + lines[0])
+        for line in lines[1:3]:
+            SFIToolkit.displayln("{txt}" + line)
+        SFIToolkit.displayln("{txt}   -equipop doctor- says how to move "
+                             "Stata to a newer Python.")
+    return level, lines
 
 
 def _wrap_for_stata(text, width=72):
@@ -865,6 +978,7 @@ def _report_calibration(dec, halflife, halflifevar):
 
 
 def _col(v):
+    import numpy as np                # BACKLOG 459: here, not at load
     a = np.array(Data.get(v), dtype=float)
     a[a > 8.9e307] = np.nan          # Stata missings arrive huge
     return a
@@ -913,15 +1027,26 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                       originrule="", calibration="", unit_was_set=""):
     # KEYWORD-ONLY on purpose: a positional call raises TypeError
     # rather than quietly meaning something else.
+    level, py_lines = _python_note_once()           # BACKLOG 459
+    if level == "stop":
+        for line in py_lines:
+            SFIToolkit.errprintln(line)
+        SFIToolkit.error(198)
+        return
     try:
+        import numpy as np                          # BACKLOG 459
         from equipop.stata_bridge import (knn_to_rows, to_stata_values,
                                           project_for_stata,
                                           degrees_warning,
                                           zone_span_warning)
-    except ImportError:
+    except ImportError as exc:
         SFIToolkit.errprintln(
-            "equipop is not installed in Stata's Python. Check which "
-            "Python with -python query-, then install into THAT one. "
+            "the EquiPop engine cannot be loaded in the Python Stata "
+            "is using:")
+        SFIToolkit.errprintln("   " + (sys.executable or "(unknown)"))
+        SFIToolkit.errprintln("   " + str(exc).splitlines()[0])
+        SFIToolkit.errprintln(
+            "Run -equipop setup-, restart Stata, then -equipop doctor-. "
             "See help equipop.")
         SFIToolkit.error(198)
         return
@@ -1182,6 +1307,21 @@ def _equipop_setup_py(repair="", ado_version="", min_engine=""):
     import subprocess
     import sys
 
+    # BACKLOG 459. Before pip, not after it: below 3.10 pip can only
+    # answer "no matching distribution", which reads as a network
+    # problem. On 3.10 it will install engine 1.61.0, and saying so
+    # first means the version the doctor reports is not a surprise.
+    level, py_lines = _python_check()
+    if level != "ok":
+        print("EquiPop setup")
+        for line in py_lines:
+            print("  " + line)
+        if level == "stop":
+            Macro.setLocal("eqp_setup_failed", "1")
+            return
+        _PY_NOTED.append(True)        # shown whole; runs need not repeat it
+        print("")
+
     # BACKLOG 319. --user IS REFUSED INSIDE A VIRTUAL ENVIRONMENT:
     # "Can not perform a '--user' install. User site-packages are not
     # visible in this virtualenv." A colleague on a Mac had pointed
@@ -1383,13 +1523,22 @@ def _equipop_unit_py():
     BACKLOG 385. Thin on purpose. Reads two columns, asks the engine,
     prints what it is handed, stores the answer on the dataset.
     """
+    # Review of 1.63.2, F2. This subcommand never passes through
+    # machine 1, so it checks the Python itself, first: on 3.9 "install
+    # into THAT one" below is advice that cannot work.
+    level, py_lines = _python_note_once()
+    if level == "stop":
+        for line in py_lines:
+            SFIToolkit.errprintln(line)
+        SFIToolkit.error(198)
+        return
     try:
         from equipop import unitsize
     except ImportError:
         SFIToolkit.errprintln(
             "equipop is not installed in Stata's Python. Check which "
-            "Python with -python query-, then install into THAT one. "
-            "See help equipop.")
+            "Python with -python query-, then install into THAT one "
+            "with -equipop setup-. See help equipop.")
         SFIToolkit.error(198)
         return
     except Exception as exc:
@@ -1511,13 +1660,28 @@ def _equipop_doctor_py(ado_version="", min_engine=""):
     # import, so this report can still be produced on a machine where
     # those three are exactly what is broken. That was not possible
     # before, and it is the case the doctor was written for.
+    #
+    # BACKLOG 459. THE PYTHON ITSELF IS CHECKED FIRST. Below 3.10 no
+    # engine can be installed at all, so "install equipop into THAT
+    # Python" was advice that could only fail; the report now says
+    # which Python to get instead.
+    level, py_lines = _python_check()
+    if level != "ok":
+        print("EQUIPOP - the Python Stata is using")
+        for line in py_lines:
+            print(line)
+        print("")
+        if level == "stop":
+            return
+        _PY_NOTED.append(True)        # shown whole; runs need not repeat it
     try:
         from equipop.doctor import run
     except Exception as exc:
         print("EquiPop doctor could not load the package:")
         print("   " + str(exc).splitlines()[0])
         print("   Python running Stata: " + sys.executable)
-        print("   Install equipop into THAT Python, then restart Stata.")
+        print("   Install it into THAT Python with -equipop setup-, "
+              "then restart Stata.")
         return
     # BACKLOG 332. min_engine is newer than the argument list of
     # every engine before 1.49.3, and those engines are installed on

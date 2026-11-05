@@ -1,6 +1,9 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.63.1, 26 October 2026.**
+**Last updated: 1.63.2, 5 November 2026.**
+*Reviewed at 1.63.2: NO CLAIM CHANGES. A Stata-side fix: the commands
+now load, and explain themselves, on a Python that cannot take the
+engine. The engine and every figure in this file are unchanged.*
 *Reviewed at 1.63.1: NO CLAIM CHANGES. SI, the figure this file uses,
 is unchanged; the place-weighted profile now weighs places equally, and
 its input is checked. A first-class segregation command is logged as a

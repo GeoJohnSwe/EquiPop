@@ -1,6 +1,13 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.63.1, 26 October 2026.**
+**Last updated: 1.63.2, 5 November 2026.**
+*Reviewed at 1.63.2: ONE THING FOR THE FIRST HOUR. A Mac whose Stata
+uses Apple's own Python (3.9) used to stop `equipop doctor` itself with
+r(7102); the doctor now names that Python and gives the steps. Teach the
+order: install a python.org Python, QUIT AND RESTART STATA, and only then
+`set python_exec ..., permanently` - Stata will not change it once Python
+has started in the session. Python 3.10 still runs (engine 1.61.0) with
+a note; the course needs 3.11 or newer, as since 1.61.3.*
 *Reviewed at 1.63.1: NO TEACHING CHANGES. The segregation profile's
 "cells" option now gives every place the same weight, as its name says;
 the default (people) and SI are unchanged. A profile now names its

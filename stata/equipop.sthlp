@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.63.1}{...}
+{* *! version 1.63.2}{...}
 {vieweralsosee "equipop_run" "help equipop_run"}{...}
 {vieweralsosee "equipop_knn" "help equipop_knn"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
@@ -12,7 +12,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.63.1)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.63.2)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -138,11 +138,21 @@ which rows RECEIVE results; every row still counts as a neighbour to
 others.
 
 {pstd}
-equipop needs Python. See {help python}, the file README_STATA.md in the
-EquiPop distribution for the installation, and {cmd:equipop doctor},
-which reports the Python Stata is actually using and whether the
-libraries load in it. Note that Stata and Anaconda do not mix: use a
-plain python.org Python for Stata.
+equipop needs Python 3.11 or newer. Python 3.10 still works, with the
+last engine released for it (1.61.0); older versions do not work at all.
+See {help python}, the file README_STATA.md in the EquiPop distribution
+for the installation, and {cmd:equipop doctor}, which reports the Python
+Stata is actually using and whether the libraries load in it. Note that
+Stata and Anaconda do not mix: use a plain python.org Python for Stata.
+
+{pstd}
+On a Mac, Stata may pick the Python that comes with Apple's developer
+tools, which is version 3.9 and too old. Install a python.org Python
+beside it, then quit Stata completely and start it again. In the new
+session, before equipop or any other Python command, run
+{cmd:python search} and {cmd:set python_exec}
+{it:path}{cmd:, permanently}. Then run {cmd:equipop setup}, restart
+Stata once more, and run {cmd:equipop doctor}.
 
 {marker options}{...}
 {title:Options}
