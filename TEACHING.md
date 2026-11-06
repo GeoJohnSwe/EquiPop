@@ -1,6 +1,7 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.63.2, 5 November 2026.**
+**Last updated: 1.63.3, 5 November 2026.**
+*Reviewed at 1.63.3: NO TEACHING CHANGES. `equipop doctor` no longer prints "Stata not allowed" and a page of its own code before the report.*
 *Reviewed at 1.63.2: ONE THING FOR THE FIRST HOUR. A Mac whose Stata
 uses Apple's own Python (3.9) used to stop `equipop doctor` itself with
 r(7102); the doctor now names that Python and gives the steps. Teach the

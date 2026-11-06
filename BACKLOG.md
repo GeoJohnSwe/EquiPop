@@ -3673,6 +3673,36 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 460 | DONE v1.63.3, 5 NOVEMBER 2026 | "STATA NOT ALLOWED" FROM A COMMENT
+  (John's first Windows run of 1.63.2). `equipop doctor' printed "Stata
+  not allowed", then the rest of the ado's python block with >>> and ...
+  prompts, then a correct report. Stata expands macros in EVERY line of a
+  python block before Python sees it, comments and strings included.
+  459's comment quoted the doctor between backticks on a line that also
+  held "Apple's", so Stata read `: Stata had picked Apple' as a macro
+  FUNCTION. No test could see it: every block test runs the Python
+  directly, and Stata never reads it. Fixed: commands are written as
+  -equipop doctor- in both blocks; two older lines that Stata had been
+  silently rewriting (a docstring with `log using` beside "John's", a
+  comment holding `r(unit)') changed the same way; the rule is written at
+  the top of both blocks. tests/test_stata_block_without_numpy.py now
+  reads every python block of every .ado as Stata does and refuses any
+  local or global macro in it - broken with the 1.63.2 line put back,
+  and caught. The engine is unchanged.
+  AND THE REVIEW OF THE 1.63.2 BUNDLE (M1): its .gitignore had lost
+  build/, *.egg-info/, .mypy_cache/, .ruff_cache/ and arcgis/*.pyt.xml,
+  which 350 had added. Not a 1.63.2 edit: the repository's .gitignore
+  has held only the first four lines since its first commit, and 1.63.2
+  was the first tree rebuilt from a clone rather than from John's
+  folder, so the rules never reached git. Restored with their reasons,
+  and tests/test_gitignore.py keeps them (5 of 10 fail on the old file).
+  Nothing ignored is tracked today (git ls-files build *.egg-info
+  arcgis/*.pyt.xml is empty).
+  ALSO IN THAT REPORT, AND NOT A FAULT: LEFTOVERS - folders such as
+  ~umpy and ~cipy in site-packages, left by interrupted pip runs. That
+  section is the doctor working: close Stata, Python, QGIS and Pro and
+  delete them.
+
 - 459 | DONE v1.63.2, 5 NOVEMBER 2026 | THE STATA COMMANDS WOULD NOT LOAD
   ON A PYTHON WITHOUT NUMPY (C. F. Baum, testing the SSC submission of
   1.63.1 on a Mac). His Stata used Apple's developer-tools Python

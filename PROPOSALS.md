@@ -1,6 +1,7 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.63.2, 5 November 2026.**
+**Last updated: 1.63.3, 5 November 2026.**
+*Reviewed at 1.63.3: NO CLAIM CHANGES. A Stata-side fix to the doctor's output; the engine is unchanged.*
 *Reviewed at 1.63.2: NO CLAIM CHANGES. A Stata-side fix: the commands
 now load, and explain themselves, on a Python that cannot take the
 engine. The engine and every figure in this file are unchanged.*

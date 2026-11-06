@@ -1,4 +1,4 @@
-*! equipop v1.63.2  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.63.3  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -570,7 +570,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.63.2"
+    local eqp_ado_version "1.63.3"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -620,7 +620,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.63.2"
+    local eqp_ado_version "1.63.3"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -793,16 +793,26 @@ python:
 # tests/test_stata_ado.py still READS the file, for the Stata half -
 # the syntax line, the macros, the option names - which no stub can
 # exercise.
+# BACKLOG 460. STATA READS EVERY LINE OF THIS BLOCK BEFORE PYTHON DOES,
+# comments and strings included, and expands Stata macros in it: a
+# backtick with an apostrophe later on the same line is a local macro,
+# backtick-colon is a macro FUNCTION, and a dollar sign before a name is
+# a global. 1.63.2 quoted the doctor between backticks in a comment that
+# also held the word Apple's; Stata tried to run ": Stata had picked
+# Apple" as a macro function, answered "Stata not allowed" and printed
+# the rest of the block (John's first Windows run, 5 November 2026).
+# Write commands as -equipop doctor-, never between backticks.
+# tests/test_stata_block_without_numpy.py reads the blocks as Stata does.
 from sfi import Data, Macro, SFIToolkit
 import sys
-# BACKLOG 459. NO `import numpy` HERE, whatever the comment above has
+# BACKLOG 459. NO import of numpy HERE, whatever the comment above has
 # not stopped before. Stata runs this block when it LOADS the file, so
 # an import that fails here fails every subcommand at once - doctor and
 # setup included, the two written for the machine where it fails. Kit
 # Baum, testing the SSC submission of 1.63.1 on a Mac, got
 #     ModuleNotFoundError: No module named 'numpy'
 #     (error occurred while loading equipop.ado)  r(7102);
-# from `equipop doctor`: Stata had picked Apple's own Python 3.9.6.
+# from -equipop doctor-: Stata had picked Apple's own Python 3.9.6.
 # numpy is now imported inside the two functions that compute, and
 # tests/test_stata_block_without_numpy.py loads this block with numpy,
 # pandas, scipy and equipop hidden.
@@ -819,7 +829,7 @@ import sys
 _PY_ENGINE_FLOOR = (3, 11)
 _PY_FLOOR_TEXT = ".".join(str(p) for p in _PY_ENGINE_FLOOR)
 _PY_LAST_ENGINE = {(3, 10): "1.61.0"}
-# Review of 1.63.2, F4. A list rather than a flag so no `global` is
+# Review of 1.63.2, F4. A list rather than a flag so no -global- is
 # needed. Stata keeps one Python per session, so this lasts exactly as
 # long as the warning should be remembered.
 _PY_NOTED = []
@@ -861,7 +871,7 @@ def _python_check():
 
 
 def _python_steps(exe):
-    # Review of 1.63.2, F1. THE RESTART COMES BEFORE `set python_exec`.
+    # Review of 1.63.2, F1. THE RESTART COMES BEFORE -set python_exec-.
     # These lines are printed BY Python, so Python is already running
     # in this session, and Stata refuses to change python_exec once it
     # has started. The first draft said "set python_exec, then
@@ -944,7 +954,7 @@ def _decay_spec(model, half_life, calibration=""):
 def _report_calibration(dec, halflife, halflifevar):
     """Say which kernel runs, and show BOTH betas (BACKLOG 317).
 
-    Printed so it lands in a `log using` file - John's ruling on Stata
+    Printed so it lands in a -log using- file - John's ruling on Stata
     provenance - and handed back as locals so the ado can return them.
     Showing both betas makes the difference between the two readings
     visible even to a user who never set calibration().
@@ -1634,7 +1644,7 @@ def _equipop_unit_py():
     Macro.setLocal("eqp_u_est", "." if row is None
                    else repr(float(row["share_people"][first])))
     Macro.setLocal("eqp_u_fp", advice["fingerprint"])
-    # Review F1. Without this, `r(unit)' is missing under exclude and
+    # Review F1. Without this, r(unit) is missing under exclude and
     # a do-file cannot tell WHY - "no size serves this k because the
     # population is too dense" and "this criterion does not apply to
     # the rule you are running" are different answers that both

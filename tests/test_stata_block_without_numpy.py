@@ -147,6 +147,55 @@ def test_the_two_blocks_do_not_redefine_each_other_s_names():
     assert shared <= {"_col", "_engine_takes_unit"}, shared
 
 
+LOCAL_MACRO = re.compile(r"`[^'\n]*'")      # `name' and `: function'
+GLOBAL_MACRO = re.compile(r"\$[A-Za-z_{]")    # $name and ${name}
+
+
+def _every_block_line(path):
+    """(line number, text) for every line of every python block."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    inside, out = False, []
+    for n, line in enumerate(lines, 1):
+        bare = line.strip()
+        if not inside and bare in ("python:", "python"):
+            inside = True
+        elif inside and bare == "end":
+            inside = False
+        elif inside:
+            out.append((n, line))
+    return out
+
+
+@pytest.mark.parametrize(
+    "path", sorted((ROOT / "stata").glob("*.ado")), ids=lambda p: p.name)
+def test_no_line_of_a_python_block_is_a_stata_macro(path):
+    """BACKLOG 460. Stata expands macros in EVERY line of a python
+    block before Python sees it - comments and strings too. 1.63.2's
+    comment quoted the doctor between backticks beside "Apple's", so
+    Stata read `: Stata had picked Apple' as a macro function, said
+    "Stata not allowed" and printed the rest of the block (John's
+    first Windows run). Running the block in Python, as every other
+    test here does, cannot see this: it never passes through Stata.
+
+    BROKEN WITH: the 1.63.2 comment line put back."""
+    bad = [f"{path.name}:{n}: {line.strip()}"
+           for n, line in _every_block_line(path)
+           if LOCAL_MACRO.search(line) or GLOBAL_MACRO.search(line)]
+    assert not bad, ("Stata would expand these as macros - write "
+                     "-command- instead of backticks:\n" + "\n".join(bad))
+
+
+def test_the_macro_check_reads_the_line_that_broke_1_63_2():
+    """The check above has to fire on the real thing, not only on
+    tidy examples."""
+    line = ("# from `equipop doctor`: Stata had picked Apple's own "
+            "Python 3.9.6.")
+    assert LOCAL_MACRO.search(line)
+    assert not LOCAL_MACRO.search("# from -equipop doctor-: Stata had "
+                                  "picked Apple's own Python 3.9.6.")
+    assert GLOBAL_MACRO.search('print("$HOME")')
+
+
 # ------------------------------------------------- doctor and setup
 def test_doctor_on_apple_python_says_what_to_do(sfi, monkeypatch, capsys):
     ns = _load(ADO)

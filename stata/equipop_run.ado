@@ -1,4 +1,4 @@
-*! equipop_run v1.63.2  -  ONE command, the whole toolbox (since EquiPop 1.6).
+*! equipop_run v1.63.3  -  ONE command, the whole toolbox (since EquiPop 1.6).
 *! Syntax:
 *!   equipop_run, engine(counts|stats|friction|slope|fca|lisa) x() y() [...]
 *! Engines and their options:
@@ -75,6 +75,16 @@ program define equipop_run
 end
 
 python:
+# BACKLOG 460. STATA READS EVERY LINE OF THIS BLOCK BEFORE PYTHON DOES,
+# comments and strings included, and expands Stata macros in it: a
+# backtick with an apostrophe later on the same line is a local macro,
+# backtick-colon is a macro FUNCTION, and a dollar sign before a name is
+# a global. 1.63.2 quoted the doctor between backticks in a comment that
+# also held the word Apple's; Stata tried to run ": Stata had picked
+# Apple" as a macro function, answered "Stata not allowed" and printed
+# the rest of the block (John's first Windows run, 5 November 2026).
+# Write commands as -equipop doctor-, never between backticks.
+# tests/test_stata_block_without_numpy.py reads the blocks as Stata does.
 from sfi import Data, SFIToolkit
 import sys
 # BACKLOG 459. No numpy or equipop import at load time: Stata runs this
