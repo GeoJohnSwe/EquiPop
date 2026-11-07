@@ -1,4 +1,4 @@
-*! equipop v1.63.3  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.63.4  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -570,7 +570,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.63.3"
+    local eqp_ado_version "1.63.4"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -620,7 +620,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.63.3"
+    local eqp_ado_version "1.63.4"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -834,17 +834,96 @@ _PY_LAST_ENGINE = {(3, 10): "1.61.0"}
 # long as the warning should be remembered.
 _PY_NOTED = []
 
+# BACKLOG 461. THE WHOLE WAY OUT, IN WORDS, AND A LOOK FOR A PYTHON THAT
+# IS ALREADY THERE. After 1.63.2 the advice to a user on Apple's 3.9 was
+# "install Python 3.11 or newer from python.org" and four lines of
+# Stata - correct, and too little for someone who has never installed
+# a Python (John, 6 November 2026: "if we lose Mac users because of
+# their unexperience with python - I think it is our loss"). Two
+# changes. FIRST, many machines already have a usable Python that
+# Stata simply did not pick, so the places installers put Python are
+# searched, each Python found is started and asked what it is, and the
+# best one is named with the exact line to type. SECOND, when there is
+# none, the steps say which page to open, which button to press, what
+# the installer will ask and the exact path to type afterwards.
+#
+# Never suggested: Apple's own (too old, and on a Mac without the
+# developer tools /usr/bin/python3 opens an installer dialog instead of
+# running, so it is not even started); Anaconda and its relatives
+# (README_STATA.md: two copies of the maths library close Stata);
+# Pythons that belong to another program (ArcGIS Pro, QGIS) and the
+# Windows Store shortcuts (starting one can open the Store). A Python
+# that pip may not install into - Homebrew's, a Linux distribution's,
+# "externally managed" - is suggested through a virtual environment of
+# EquiPop's own, made from it.
+#
+# The version to install when there is nothing: 3.13. python.org still
+# has ordinary installers for it on Mac and Windows (on Windows 3.14
+# and newer are offered through a new install manager), the scientific
+# libraries support it for years, and its install path is fixed, so
+# the line to type can be given exactly.
+_PY_GET = "3.13"
+# One search per Stata session: it starts every Python it finds.
+_PY_FOUND = []
+# Started at most, so a machine with dozens of environments does not
+# keep the doctor waiting.
+_PY_PROBE_MAX = 12
+# What a found Python is asked. Built with chr(10): a backslash in this
+# block is one more thing Stata could read before Python does.
+_PY_PROBE = chr(10).join([
+    "import os, platform, struct, sys, sysconfig",
+    "v = sys.version_info",
+    "venv = sys.prefix != getattr(sys, 'base_prefix', sys.prefix)",
+    "shared = bool(sysconfig.get_config_var('Py_ENABLE_SHARED')",
+    "              or sysconfig.get_config_var('PYTHONFRAMEWORK')",
+    "              or os.name == 'nt')",
+    "em = (not venv) and os.path.exists(os.path.join(",
+    "    sysconfig.get_path('stdlib'), 'EXTERNALLY-MANAGED'))",
+    "try:",
+    "    from importlib.metadata import version",
+    "    eng = version('equipop')",
+    "except Exception:",
+    "    eng = ''",
+    "print('EQP|%d.%d.%d|%d|%d|%d|%d|%s|%s' % (v[0], v[1], v[2],",
+    "      shared, em, venv, struct.calcsize('P') * 8,",
+    "      platform.machine(), eng))",
+])
+# (piece of the path, lower case) -> why it is not suggested. Checked
+# before anything is started.
+_PY_PASSED_OVER = [
+    ("anaconda", "Anaconda - Stata and Anaconda do not mix"),
+    ("miniconda", "Anaconda - Stata and Anaconda do not mix"),
+    ("miniforge", "Anaconda - Stata and Anaconda do not mix"),
+    ("mambaforge", "Anaconda - Stata and Anaconda do not mix"),
+    ("windowsapps", "a Windows Store shortcut"),
+    ("arcgis", "belongs to ArcGIS Pro"),
+    ("qgis", "belongs to QGIS"),
+    ("osgeo4w", "belongs to QGIS"),
+    ("/library/developer/", "Apple's own Python, too old"),
+    ("xcode.app", "Apple's own Python, too old"),
+]
 
-def _python_check():
-    """('ok' | 'warn' | 'stop', lines to print) for this Python."""
+
+def _python_level():
+    """'ok', 'warn' or 'stop' for the Python Stata is using. Cheap."""
     ver = sys.version_info[:2]
     if ver >= _PY_ENGINE_FLOOR:
+        return "ok"
+    if ver in _PY_LAST_ENGINE:
+        return "warn"
+    return "stop"
+
+
+def _python_problem():
+    """(level, the lines that say what is wrong) - no search."""
+    level = _python_level()
+    if level == "ok":
         return "ok", []
     have = ".".join(str(p) for p in sys.version_info[:3])
     exe = sys.executable or "(unknown)"
-    if ver in _PY_LAST_ENGINE:
-        last = _PY_LAST_ENGINE[ver]
-        lines = [
+    if level == "warn":
+        last = _PY_LAST_ENGINE[tuple(sys.version_info[:2])]
+        return "warn", [
             f"Stata is using Python {have}. The newest EquiPop engine "
             f"for it is {last}:",
             "   these commands run on it, but later engines need "
@@ -852,7 +931,6 @@ def _python_check():
             "   Python 3.10 itself stopped receiving fixes in October "
             "2026.",
         ]
-        return "warn", lines + _python_steps(exe)
     lines = [
         f"EquiPop needs Python {_PY_FLOOR_TEXT} or newer, and Stata is "
         f"using Python {have}:",
@@ -861,64 +939,496 @@ def _python_check():
     if sys.platform == "darwin" and (
             "CommandLineTools" in exe or "Xcode" in exe
             or exe.startswith("/usr/bin/")):
+        # BACKLOG 461: no longer "install a newer Python beside it" -
+        # the search below may well find one already there.
         lines += [
             "   That is the Python that comes with Apple's developer "
             "tools. Leave it",
-            "   alone: install a newer Python beside it and point "
-            "Stata there.",
+            "   alone; Stata only needs to be pointed at a newer one.",
         ]
-    return "stop", lines + _python_steps(exe)
+    return "stop", lines
 
 
-def _python_steps(exe):
-    # Review of 1.63.2, F1. THE RESTART COMES BEFORE -set python_exec-.
-    # These lines are printed BY Python, so Python is already running
-    # in this session, and Stata refuses to change python_exec once it
-    # has started. The first draft said "set python_exec, then
-    # restart", which fails in exactly the session that prints it.
-    steps = [
-        "What to do:",
-        f"  1. Install Python {_PY_FLOOR_TEXT} or newer from python.org "
-        "(Mac and Windows installers).",
-        "  2. Quit Stata completely and start it again. Python is "
-        "already running in",
-        "     this session, and Stata will not change it once it has "
-        "started.",
-        "  3. In the new session, BEFORE equipop or any other Python "
-        "command, run:",
-        "        python search",
-        '        set python_exec "<path of the new python>", '
-        "permanently",
+def _python_check(min_engine="", advise=True):
+    """('ok' | 'warn' | 'stop', lines to print) for this Python: what
+    is wrong and, with advise, what to do about it."""
+    level, lines = _python_problem()
+    if level == "ok" or not advise:
+        return level, lines
+    return level, lines + _python_advice(min_engine)
+
+
+# ---- BACKLOG 461: the search ------------------------------------------
+def _py_home():
+    import os
+    return os.path.expanduser("~")
+
+
+def _py_is_windows():
+    return sys.platform.startswith("win")
+
+
+def _py_own_venv():
+    """The folder EquiPop's own virtual environment is made in."""
+    import os
+    return os.path.join(_py_home(), "equipop-python")
+
+
+def _py_venv_python(venv):
+    import os
+    if _py_is_windows():
+        return os.path.join(venv, "Scripts", "python.exe")
+    return os.path.join(venv, "bin", "python")
+
+
+def _python_patterns():
+    """Where installers put Python on this platform, as glob patterns,
+    EquiPop's own environment first. Conda's places are listed only so
+    the report can say why they were passed over."""
+    import os
+    j, home = os.path.join, _py_home()
+    own = _py_venv_python(_py_own_venv())
+    conda = ["anaconda3", "miniconda3", "miniforge3", "mambaforge"]
+    if sys.platform == "darwin":
+        return ([own,
+                 "/usr/local/bin/python3.1[0-9]",              # python.org
+                 "/opt/homebrew/bin/python3.1[0-9]",           # Homebrew
+                 "/Library/Frameworks/Python.framework/Versions/"
+                 "3.*/bin/python3.1[0-9]",
+                 j(home, ".pyenv", "versions", "3.*", "bin", "python3"),
+                 j(home, ".local", "share", "uv", "python", "cpython-3.*",
+                   "bin", "python3")]
+                + [j(home, c, "bin", "python") for c in conda]
+                + [j(home, "opt", "anaconda3", "bin", "python"),
+                   "/opt/anaconda3/bin/python", "/opt/miniconda3/bin/python"])
+    if _py_is_windows():
+        env = os.environ.get
+        local = env("LOCALAPPDATA") or j(home, "AppData", "Local")
+        progs = env("ProgramFiles") or j("C:" + os.sep, "Program Files")
+        return ([own,
+                 j(local, "Programs", "Python", "Python3*", "python.exe"),
+                 j(local, "Python", "pythoncore-3.*", "python.exe"),
+                 j(progs, "Python3*", "python.exe"),
+                 j("C:" + os.sep, "Python3*", "python.exe")]
+                + [j(home, c, "python.exe") for c in conda]
+                + [j(env("ProgramData") or "", c, "python.exe")
+                   for c in conda if env("ProgramData")])
+    return ([own,
+             "/usr/bin/python3.1[0-9]",
+             "/usr/local/bin/python3.1[0-9]",
+             j(home, ".pyenv", "versions", "3.*", "bin", "python3"),
+             j(home, ".local", "share", "uv", "python", "cpython-3.*",
+               "bin", "python3")]
+            + [j(home, c, "bin", "python") for c in conda])
+
+
+def _python_registry():
+    """Windows: the Pythons python.org's installers registered (PEP
+    514). Empty anywhere else, and on any error."""
+    try:
+        import winreg
+    except ImportError:
+        return []
+    import os
+    out = []
+    root = chr(92).join(["Software", "Python", "PythonCore"])
+    view = winreg.KEY_READ | getattr(winreg, "KEY_WOW64_64KEY", 0)
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            key = winreg.OpenKey(hive, root, 0, view)
+        except OSError:
+            continue
+        i = 0
+        while i < 100:
+            try:
+                tag = winreg.EnumKey(key, i)
+            except OSError:
+                break
+            i += 1
+            try:
+                sub = winreg.OpenKey(key, tag + chr(92) + "InstallPath",
+                                     0, view)
+            except OSError:
+                continue
+            try:
+                out.append(winreg.QueryValueEx(sub, "ExecutablePath")[0])
+            except OSError:
+                try:
+                    out.append(os.path.join(
+                        winreg.QueryValueEx(sub, "")[0], "python.exe"))
+                except OSError:
+                    pass
+    return out
+
+
+def _python_candidates():
+    """Paths that may be a Python. Cheap: nothing is started here."""
+    import glob
+    import shutil
+    paths = []
+    for pattern in _python_patterns():
+        paths += sorted(glob.glob(pattern), reverse=True)
+    paths += _python_registry()
+    for name in ("python3.13", "python3.12", "python3.14", "python3.11",
+                 "python3.15", "python3"):
+        hit = shutil.which(name)
+        if hit:
+            paths.append(hit)
+    return paths
+
+
+def _python_passed_over(path):
+    """Why a path is not even started, or ''."""
+    low = path.lower().replace(chr(92), "/")
+    for piece, why in _PY_PASSED_OVER:
+        if piece in low:
+            return why
+    if sys.platform == "darwin" and low.startswith("/usr/bin/"):
+        return "Apple's own Python, too old"
+    if "/.pyenv/shims/" in low:
+        return "a pyenv shortcut"
+    return ""
+
+
+def _probe_python(path):
+    """Start one Python and ask it about itself. None if it will not
+    say. -E: Stata's own Python settings must not leak into it."""
+    import subprocess
+    try:
+        p = subprocess.run(
+            [path, "-E", "-c", _PY_PROBE], capture_output=True, text=True,
+            timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return None
+    for line in (p.stdout or "").splitlines():
+        f = line.strip().split("|")
+        if f[0] != "EQP" or len(f) != 8:
+            continue
+        try:
+            return {"version": tuple(int(x) for x in f[1].split(".")),
+                    "shared": f[2] == "1", "managed": f[3] == "1",
+                    "venv": f[4] == "1", "bits": int(f[5]),
+                    "machine": f[6], "engine": f[7]}
+        except ValueError:
+            return None
+    return None
+
+
+def _py_vtext(info):
+    return ".".join(str(p) for p in info["version"])
+
+
+def _py_numbers(text):
+    """Leading digits of the first three parts of a version string."""
+    nums = []
+    for part in str(text).split(".")[:3]:
+        d = ""
+        for ch in part:
+            if not ch.isdigit():
+                break
+            d += ch
+        nums.append(int(d) if d else -1)
+    return tuple(nums)
+
+
+def _py_has_engine(info, min_engine):
+    """The EquiPop engine installed in that Python, if it is new enough
+    for these commands; '' otherwise."""
+    eng = info.get("engine") or ""
+    if not eng:
+        return ""
+    if min_engine and _py_numbers(eng) < _py_numbers(min_engine):
+        return ""
+    return eng
+
+
+def _python_unusable(info):
+    """Why a Python that started cannot serve Stata, or ''."""
+    import platform
+    v = info["version"]
+    if v[:2] < (3, 10):
+        return "too old"
+    if v[:2] < _PY_ENGINE_FLOOR:
+        last = _PY_LAST_ENGINE.get(tuple(v[:2]), "")
+        return "too old for the current engine" + (
+            f" (only {last})" if last else "")
+    if info["bits"] != 64:
+        return "32-bit; Stata needs a 64-bit Python"
+    if not info["shared"]:
+        return "built without the shared library Stata loads"
+    if sys.platform == "darwin":
+        mine = platform.machine()
+        if info["machine"] and mine and info["machine"] != mine:
+            return (f"built for {info['machine']}, and this Stata runs "
+                    f"on {mine}")
+    return ""
+
+
+def _find_pythons():
+    """[(path, info or None, why not)] for every Python found, once per
+    Stata session. 'why not' is '' for one EquiPop can use."""
+    if _PY_FOUND:
+        return _PY_FOUND[0]
+    import os
+    here = os.path.realpath(sys.executable) if sys.executable else ""
+    seen, found, started = set(), [], 0
+    for path in _python_candidates():
+        if not path or not os.path.isfile(path):
+            continue
+        # A virtual environment's python is a link to its base, so the
+        # base's real path cannot tell the two apart: key it by place.
+        envdir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+        if os.path.isfile(os.path.join(envdir, "pyvenv.cfg")):
+            key = os.path.abspath(path)
+        else:
+            key = os.path.realpath(path)
+        if key in seen or key == here:
+            continue
+        seen.add(key)
+        why = _python_passed_over(path)
+        if why:
+            found.append((path, None, why))
+            continue
+        if started >= _PY_PROBE_MAX:
+            continue
+        started += 1
+        info = _probe_python(path)
+        if info is None:
+            found.append((path, None, "did not start"))
+        else:
+            found.append((path, info, _python_unusable(info)))
+    _PY_FOUND.append(found)
+    return found
+
+
+def _python_ranked(found, min_engine=""):
+    """The usable ones, best first: one that already has the engine,
+    then one pip may install into, then the newest."""
+    ok = [(p, i) for p, i, why in found if not why and i]
+    ok.sort(key=lambda pi: (0 if _py_has_engine(pi[1], min_engine) else 1,
+                            1 if pi[1]["managed"] else 0,
+                            tuple(-x for x in pi[1]["version"][:2])))
+    return ok
+
+
+# ---- BACKLOG 461: the steps --------------------------------------------
+def _py_step_restart(n):
+    how = " (Cmd-Q)" if sys.platform == "darwin" else ""
+    return [
+        f"  {n}. Quit Stata completely{how} and start it again.",
+        "     Python is already running in this session, and Stata will "
+        "not switch",
+        "     to another Python once it has started.",
+    ]
+
+
+def _py_step_set(n, exe, search=False):
+    lines = [f"  {n}. In the new session, BEFORE equipop or any other "
+             "Python command, type:"]
+    if search:
+        lines += ["        python search",
+                  "     The new Python should be in the list. Then type:"]
+    return lines + [f'        set python_exec "{exe}", permanently']
+
+
+def _py_step_setup(n, engine=""):
+    if engine:
+        return [
+            f"  {n}. That Python already has the EquiPop engine "
+            f"({engine}), so equipop setup",
+            "     is not needed. Type:",
+            "        equipop doctor",
+            "     It should now report no problem with the Python.",
+        ]
+    return [
+        f"  {n}. Then type:",
+        "        equipop setup",
+        "     It installs the EquiPop engine and the libraries it needs "
+        "(numpy,",
+        "     pandas, scipy and pyproj) into that Python. It needs the "
+        "internet",
+        "     and takes a minute or two.",
+        f"  {n + 1}. Quit Stata and start it again once more, and type:",
+        "        equipop doctor",
+        "     It should now report no problem with the Python.",
+    ]
+
+
+def _py_steps_venv(base, intro=True):
+    """For a Python pip may not install into: a virtual environment of
+    EquiPop's own, made from it."""
+    import os
+    venv = _py_own_venv()
+    exe = _py_venv_python(venv)
+    real = os.path.realpath(base).lower()
+    owner = ("Homebrew" if "homebrew" in real or "/cellar/" in real
+             else "the operating system")
+    term = ("Terminal (in Applications > Utilities)"
+            if sys.platform == "darwin" else "a terminal")
+    lines = []
+    if intro:
+        lines += [
+            f"It belongs to {owner}, which does not let other programs "
+            "install into it,",
+            "so EquiPop gets a Python of its own made from it (a virtual "
+            "environment).",
+        ]
+    return lines + [
+        "What to do (a few minutes, once):",
+        f"  1. Open {term} and type this line:",
+        f'        "{base}" -m venv "{venv}"',
+    ] + _py_step_restart(2) + _py_step_set(3, exe) + _py_step_setup(4)
+
+
+def _py_steps_install():
+    """Nothing usable on this computer: which Python to get, from where,
+    and the exact line to type once it is there."""
+    import os
+    import platform
+    head = [
+        f"No Python {_PY_FLOOR_TEXT} or newer that Stata can use was "
+        "found on this computer,",
+        "so one has to be installed. What to do (about ten minutes, "
+        "once):",
     ]
     if sys.platform == "darwin":
-        steps += ["     The python.org installer for 3.12 puts it at "
-                  "/usr/local/bin/python3.12"]
-    steps += [
-        "  4. Then run:",
-        "        equipop setup",
-        "     quit and restart Stata once more, and run:",
-        "        equipop doctor",
-    ]
-    return steps
+        exe = (f"/Library/Frameworks/Python.framework/Versions/{_PY_GET}"
+               f"/bin/python{_PY_GET}")
+        return head + [
+            f"  1. Download Python {_PY_GET} from python.org. Open this "
+            "page in a browser:",
+            "        https://www.python.org/downloads/macos/",
+            f'     find the newest "Python {_PY_GET}" release in the list '
+            "and click",
+            '     "Download macOS installer".',
+            "  2. Open the downloaded .pkg file and click Continue, Agree "
+            "and Install.",
+            "     It asks for your Mac password; that is normal. When it "
+            "has finished,",
+            "     close the Finder window it opens.",
+        ] + (_py_step_restart(3) + _py_step_set(4, exe, search=True)
+             + _py_step_setup(5))
+    if _py_is_windows():
+        arm = platform.machine().upper() in ("ARM64", "AARCH64")
+        folder = "Python" + _PY_GET.replace(".", "") + ("-arm64" if arm
+                                                        else "")
+        local = (os.environ.get("LOCALAPPDATA")
+                 or os.path.join(_py_home(), "AppData", "Local"))
+        exe = os.path.join(local, "Programs", "Python", folder,
+                           "python.exe")
+        button = ("Download Windows installer (ARM64)" if arm
+                  else "Download Windows installer (64-bit)")
+        return head + [
+            f"  1. Download Python {_PY_GET} from python.org. Open this "
+            "page in a browser:",
+            "        https://www.python.org/downloads/windows/",
+            f'     find the newest "Python {_PY_GET}" release in the list '
+            "and click",
+            f'     "{button}".',
+            "  2. Run the downloaded file. If you are not an administrator "
+            "on this",
+            '     computer, untick "Use admin privileges when installing '
+            'py.exe" on its',
+            '     first screen. Then click "Install Now".',
+        ] + (_py_step_restart(3) + _py_step_set(4, exe, search=True)
+             + _py_step_setup(5))
+    venv = _py_own_venv()
+    return head + [
+        f"  1. Install Python {_PY_FLOOR_TEXT} or newer and its venv "
+        "module with the",
+        "     system's package manager, for example on Ubuntu or Debian:",
+        "        sudo apt install python3 python3-venv",
+        f"     and check in a terminal that  python3 --version  says "
+        f"{_PY_FLOOR_TEXT} or newer.",
+        "  2. Make a Python of EquiPop's own for Stata, in a terminal:",
+        f'        python3 -m venv "{venv}"',
+    ] + (_py_step_restart(3) + _py_step_set(4, _py_venv_python(venv))
+         + _py_step_setup(5))
+
+
+def _python_advice(min_engine=""):
+    """What to do, after the problem has been stated: the best Python
+    already on this computer with the exact steps to move Stata to it,
+    or the steps to install one. Then, for whoever reads the report
+    later, every other Python found and why it was not chosen."""
+    found = _find_pythons()
+    ranked = _python_ranked(found, min_engine)
+    lines = [""]
+    chosen = ""
+    if ranked:
+        chosen, info = ranked[0]
+        lines += [
+            "GOOD NEWS: this computer already has a Python that EquiPop "
+            "can use:",
+            f"   Python {_py_vtext(info)}   {chosen}",
+        ]
+        if info["managed"]:
+            lines += _py_steps_venv(chosen)
+        else:
+            lines += ["What to do (a few minutes, once):"]
+            lines += (_py_step_restart(1) + _py_step_set(2, chosen)
+                      + _py_step_setup(3, _py_has_engine(info,
+                                                         min_engine)))
+    else:
+        lines += _py_steps_install()
+    others = [(p, i, w) for p, i, w in found if p != chosen]
+    if others:
+        lines += ["", "Other Pythons on this computer:"]
+        for p, i, w in others[:8]:
+            if not w:
+                w = ("would also do, through a virtual environment"
+                     if i["managed"] else "would also do")
+            lines.append("   " + p)
+            lines.append("      " + (f"Python {_py_vtext(i)}: " if i
+                                     else "") + w)
+        if len(others) > 8:
+            lines.append(f"   and {len(others) - 8} more")
+    return lines
+
+
+def _python_tell(min_engine=""):
+    """Doctor and setup: what is wrong, then the search, then what to
+    do - printed as it goes, because the search starts every Python it
+    finds and can take a few seconds. Returns the level."""
+    level, lines = _python_problem()
+    for line in lines:
+        print(line)
+    if level == "ok":
+        return level
+    print("")
+    print("Looking for other Pythons on this computer ...")
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    for line in _python_advice(min_engine)[1:]:
+        print(line)
+    return level
 
 
 def _python_note_once():
     """Review of 1.63.2, F4: the check for an ordinary run.
 
-    'stop' and its lines go back to the caller, which refuses the run.
-    'warn' (Python 3.10) is shown here, in short, the first time in a
-    Stata session and never again in it: the run works, and a warning
-    on every call would be noise. The doctor and setup show it whole.
+    'stop' and its lines - the problem and the whole way out - go back
+    to the caller, which refuses the run. 'warn' (Python 3.10) is shown
+    here, in short, the first time in a Stata session and never again
+    in it: the run works, and a warning on every call would be noise.
+    The doctor and setup show it whole. Only 'stop' searches the
+    computer (BACKLOG 461); a run that goes on is not kept waiting.
     """
-    level, lines = _python_check()
+    level = _python_level()
+    if level == "stop":
+        return _python_check()
     if level == "warn" and not _PY_NOTED:
         _PY_NOTED.append(True)
+        lines = _python_problem()[1]
         SFIToolkit.displayln("{txt}Note: " + lines[0])
         for line in lines[1:3]:
             SFIToolkit.displayln("{txt}" + line)
         SFIToolkit.displayln("{txt}   -equipop doctor- says how to move "
                              "Stata to a newer Python.")
-    return level, lines
+    return level, []
 
 
 def _wrap_for_stata(text, width=72):
@@ -1321,11 +1831,10 @@ def _equipop_setup_py(repair="", ado_version="", min_engine=""):
     # answer "no matching distribution", which reads as a network
     # problem. On 3.10 it will install engine 1.61.0, and saying so
     # first means the version the doctor reports is not a surprise.
-    level, py_lines = _python_check()
-    if level != "ok":
+    # BACKLOG 461: and then the whole way out, the search included.
+    if _python_level() != "ok":
         print("EquiPop setup")
-        for line in py_lines:
-            print("  " + line)
+        level = _python_tell(min_engine)
         if level == "stop":
             Macro.setLocal("eqp_setup_failed", "1")
             return
@@ -1422,13 +1931,19 @@ def _equipop_setup_py(repair="", ado_version="", min_engine=""):
             print("  without it - install a plain Python from "
                   "python.org instead.")
         elif "externally managed" in low:
-            print("  This is Apple's or the system's own Python and is "
-                  "not ours to change.")
-            print("  Install a plain Python from python.org, point "
-                  "Stata at it with")
-            print("     python set exec \"THE_PATH_TO_THAT_PYTHON\", "
-                  "permanently")
-            print("  restart Stata, and run -equipop setup- again.")
+            # BACKLOG 461. This said "install a plain Python from
+            # python.org, point Stata at it, restart" - the order the
+            # review of 1.63.2 (F1) ruled out, and a new Python for a
+            # user who already has a perfectly good one. A virtual
+            # environment made from it is all it takes.
+            print("  This Python belongs to Homebrew or to the operating "
+                  "system, which do")
+            print("  not let other programs install into it. EquiPop can "
+                  "still use it,")
+            print("  through a Python of its own made from it (a virtual "
+                  "environment).")
+            for line in _py_steps_venv(sys.executable, intro=False):
+                print("  " + line)
         elif "--user" in low and ("virtualenv" in low or "venv" in low):
             print("  That Python is a virtual environment, which "
                   "refuses a --user install.")
@@ -1675,11 +2190,10 @@ def _equipop_doctor_py(ado_version="", min_engine=""):
     # engine can be installed at all, so "install equipop into THAT
     # Python" was advice that could only fail; the report now says
     # which Python to get instead.
-    level, py_lines = _python_check()
-    if level != "ok":
+    # BACKLOG 461: and it looks for a better one on this computer.
+    if _python_level() != "ok":
         print("EQUIPOP - the Python Stata is using")
-        for line in py_lines:
-            print(line)
+        level = _python_tell(min_engine)
         print("")
         if level == "stop":
             return

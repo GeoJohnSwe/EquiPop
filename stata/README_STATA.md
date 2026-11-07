@@ -49,7 +49,18 @@ built for, and the state of every library it needs — present, absent,
 or installed but refusing to load. Send that output when reporting a
 problem; it answers most questions before they are asked.
 
-### Two known environment failures
+### Three known environment failures
+
+**`equipop doctor` says Stata is using a Python that is too old.**
+EquiPop needs Python 3.11 or newer. On a Mac, Stata often picks the
+Python 3.9 that comes with Apple's developer tools. Leave that one
+alone. The doctor looks for a newer Python already on the computer,
+and when it finds one it prints the exact line to type. When it finds
+none, it says which installer to download from python.org, what the
+installer asks, and the path to type afterwards. Follow its steps in
+order: the first is always to **quit Stata and start it again**,
+because Stata will not switch to another Python once one has started
+in the session.
 
 **Stata closes when you run something.** This is not a crash in
 EquiPop — the window disappears before EquiPop is reached. It happens

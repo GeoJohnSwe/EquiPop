@@ -3673,6 +3673,68 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 461 | DONE v1.63.4, 6 NOVEMBER 2026 | THE DOCTOR LOOKS FOR A PYTHON
+  THAT IS ALREADY THERE, AND SAYS THE WHOLE WAY OUT IN WORDS (John,
+  after Kit Baum's Mac: "if we lose Mac users because of their
+  unexperience with python - I think it is our loss"; then "yes please
+  make that change in equipop doctor - also write out clear
+  instructions of how to install what is needed directly in the doctor
+  message").
+  NOT THE FLOOR. Every EquiPop release has needed Python 3.10 or newer
+  (pyproject since the first commit, 25 August); 429 moved it to 3.11
+  on 23 October. Apple's 3.9.6 could never take any engine, and when
+  Kit installed 1.48.2 from SSC (330) pip gave him engine 1.49.1, so
+  his Stata used a newer Python then. A 3.9 floor would mean numpy
+  2.0, scipy 1.13 and pyproj 3.6 - all frozen - on a Python out of
+  support since October 2025, and engine code that does not parse
+  there. The barrier is the manual install, so that is what changed.
+  THE SEARCH. Doctor, setup and a refused run (machine 1, unit) look
+  where installers put Python - Mac: python.org, Homebrew, pyenv, uv,
+  ~/equipop-python; Windows: the PEP 514 registry,
+  %LOCALAPPDATA%/Programs/Python, the install manager's folder; Linux:
+  /usr/bin, /usr/local/bin, pyenv, uv - start each (-E, a standard-
+  library probe, at most 12, once per Stata session) and name the
+  best: one that already has an engine as new as the commands need
+  (then no setup), then one pip may install into, then the newest.
+  NEVER STARTED: Apple's own (/usr/bin/python3 on a Mac without the
+  developer tools opens an installer dialog), Anaconda and relatives
+  (README_STATA), ArcGIS Pro, QGIS, Windows Store shortcuts - named
+  in the report with the reason. NOT SUGGESTED: 32-bit, no shared
+  library, another processor than Stata's (Intel Homebrew on Apple
+  Silicon), 3.10 and older. An externally managed Python (Homebrew, a
+  distribution's) is offered through ~/equipop-python, a venv made
+  from it. A venv is keyed by its own path: its python links to the
+  base, so the real path alone merged the two.
+  NOTHING FOUND: per platform, the page, the button, what the
+  installer asks and the exact path to type. Python 3.13, because
+  python.org still ships plain installers for it on both platforms
+  (3.14 and newer on Windows go through the new install manager): Mac
+  /Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13;
+  Windows %LOCALAPPDATA%/Programs/Python/Python313/python.exe (on ARM64
+  Python313-arm64 and the ARM64 installer), with the advice to untick
+  the admin box for py.exe; Linux, a venv. Every route keeps the
+  restart BEFORE set python_exec (review of 1.63.2, F1). An ordinary
+  run on 3.10 never searches; it is not kept waiting.
+  ALSO: setup's "externally managed" branch said "install a plain
+  Python from python.org, point Stata at it, restart" - the order F1
+  ruled out, and a new Python for a user who has a good one. It now
+  gives the venv steps. And the .gitignore again: the 1.63.3 on GitHub
+  (cf4b0e5) carries the four-line file, so tests/test_gitignore.py
+  fails there; 1.63.4 restores it.
+  TESTS: tests/test_doctor_finds_python.py, 28 - the probe on this
+  machine's real Pythons (the one running, 3.9 and 3.10, Debian's
+  externally managed 3.12, a venv beside its base, a file that is not
+  a Python), and the words on a simulated Mac, Windows (x64, ARM64) and
+  Linux. The older block tests switch the search off unless asked, so
+  their wording checks do not depend on the machine. Twelve guards
+  broken on purpose (venv keying, the never-started list, the 3.10 run
+  searching, the ranking, the venv step order, the probe's field count,
+  the processor, the shared library, the session cache, the cap, the
+  engine floor, setup without the search): all twelve caught.
+  NOT REACHABLE HERE: real Stata on a real Mac - that Stata loads each
+  kind the search offers (python.org yes; a Homebrew venv per 319's
+  colleague; uv's untested) and how long the search takes there.
+
 - 460 | DONE v1.63.3, 5 NOVEMBER 2026 | "STATA NOT ALLOWED" FROM A COMMENT
   (John's first Windows run of 1.63.2). `equipop doctor' printed "Stata
   not allowed", then the rest of the ado's python block with >>> and ...

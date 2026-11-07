@@ -495,14 +495,18 @@ def build():
         "plain python.org Python for Stata."))
     add("")
     add("{pstd}")
+    # BACKLOG 461: the doctor now does the looking, and says the rest.
     add(_smcl(
         "On a Mac, Stata may pick the Python that comes with Apple's "
-        "developer tools, which is version 3.9 and too old. Install a "
-        "python.org Python beside it, then quit Stata completely and "
-        "start it again. In the new session, before equipop or any "
-        "other Python command, run {cmd:python search} and "
-        "{cmd:set python_exec} {it:path}{cmd:, permanently}. Then run "
-        "{cmd:equipop setup}, restart Stata once more, and run "
+        "developer tools, which is version 3.9 and too old. "
+        "{cmd:equipop doctor} then looks for a newer Python already on "
+        "the computer and, if there is one, prints the exact "
+        "{cmd:set python_exec} line to type; if there is none, it says "
+        "which installer to download from python.org and what to type "
+        "afterwards. In short: quit Stata completely and start it "
+        "again; in the new session, before equipop or any other Python "
+        "command, run {cmd:set python_exec} {it:path}{cmd:, permanently}; "
+        "then {cmd:equipop setup}, restart Stata once more, and "
         "{cmd:equipop doctor}."))
     add("")
     add("{marker options}{...}")

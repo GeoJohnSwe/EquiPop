@@ -1,6 +1,7 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.63.3, 5 November 2026.**
+**Last updated: 1.63.4, 6 November 2026.**
+*Reviewed at 1.63.4: ONE THING FOR THE FIRST HOUR, SIMPLER. On a machine whose Stata uses a Python that is too old, `equipop doctor` now looks for a newer one already installed and prints the exact `set python_exec` line; when there is none it names the installer (Python 3.13 from python.org), the button and the path. For a course, the install slide can say: run `equipop doctor` and do what it says, in order - the restart always comes first.*
 *Reviewed at 1.63.3: NO TEACHING CHANGES. `equipop doctor` no longer prints "Stata not allowed" and a page of its own code before the report.*
 *Reviewed at 1.63.2: ONE THING FOR THE FIRST HOUR. A Mac whose Stata
 uses Apple's own Python (3.9) used to stop `equipop doctor` itself with

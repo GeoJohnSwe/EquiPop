@@ -188,14 +188,21 @@ def test_a_python_without_pip_gets_the_one_line_fix(block, monkeypatch):
 
 
 def test_a_system_python_is_not_ours_to_change(block, monkeypatch):
+    """BACKLOG 461. A Homebrew or distribution Python refuses pip, and
+    the answer is a virtual environment made from it - not a second
+    Python from python.org. Until 1.63.4 this said "point Stata at it,
+    restart", the order the review of 1.63.2 (F1) ruled out.
+    BROKEN WITH: the 1.63.3 advice put back."""
     out = _run_setup(
         block, monkeypatch,
         "error: externally-managed-environment\n"
         "This environment is externally managed\n")
-    assert "python.org" in out
-    assert "python set exec" in out, (
-        "the user is told to install another Python and not how to "
+    assert "-m venv" in out and "equipop-python" in out, out
+    assert "set python_exec" in out, (
+        "the user is told to make an environment and not how to "
         "point Stata at it")
+    assert out.index("Quit Stata completely") < out.index(
+        "set python_exec") < out.index("equipop setup")
 
 
 def test_an_unrecognised_pip_message_is_quoted_and_not_guessed_at(

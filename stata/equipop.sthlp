@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.63.3}{...}
+{* *! version 1.63.4}{...}
 {vieweralsosee "equipop_run" "help equipop_run"}{...}
 {vieweralsosee "equipop_knn" "help equipop_knn"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
@@ -12,7 +12,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.63.3)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.63.4)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -147,12 +147,14 @@ Stata and Anaconda do not mix: use a plain python.org Python for Stata.
 
 {pstd}
 On a Mac, Stata may pick the Python that comes with Apple's developer
-tools, which is version 3.9 and too old. Install a python.org Python
-beside it, then quit Stata completely and start it again. In the new
-session, before equipop or any other Python command, run
-{cmd:python search} and {cmd:set python_exec}
-{it:path}{cmd:, permanently}. Then run {cmd:equipop setup}, restart
-Stata once more, and run {cmd:equipop doctor}.
+tools, which is version 3.9 and too old. {cmd:equipop doctor} then looks
+for a newer Python already on the computer and, if there is one, prints
+the exact {cmd:set python_exec} line to type; if there is none, it says
+which installer to download from python.org and what to type afterwards.
+In short: quit Stata completely and start it again; in the new session,
+before equipop or any other Python command, run {cmd:set python_exec}
+{it:path}{cmd:, permanently}; then {cmd:equipop setup}, restart Stata
+once more, and {cmd:equipop doctor}.
 
 {marker options}{...}
 {title:Options}

@@ -96,9 +96,15 @@ def sfi(monkeypatch):
     return mod
 
 
-def _load(path, ns=None):
+def _load(path, ns=None, search=False):
+    """The block, run. BACKLOG 461: the search for other Pythons is
+    switched off unless asked for - it starts real interpreters, and a
+    test of the wording must not depend on what this machine has.
+    tests/test_doctor_finds_python.py tests the search itself."""
     ns = {"__name__": "__main__"} if ns is None else ns
     exec(compile(_block(path), path.name, "exec"), ns)
+    if not search and "_python_candidates" in ns:
+        ns["_python_candidates"] = lambda: []
     return ns
 
 
@@ -200,12 +206,17 @@ def test_the_macro_check_reads_the_line_that_broke_1_63_2():
 def test_doctor_on_apple_python_says_what_to_do(sfi, monkeypatch, capsys):
     ns = _load(ADO)
     _as(monkeypatch, PY39, "darwin", APPLE_PY)
+    ns["_python_candidates"] = lambda: []       # BACKLOG 461: none found
     ns["_equipop_doctor_py"]("1.63.2", "1.48.0")
     out = capsys.readouterr().out
     assert "needs Python 3.11 or newer" in out
     assert "Python 3.9.6" in out and APPLE_PY in out
     assert "Apple's developer" in out
-    assert "/usr/local/bin/python3.12" in out
+    # BACKLOG 461: the installer, the button and the exact path
+    assert "https://www.python.org/downloads/macos/" in out
+    assert "Download macOS installer" in out
+    assert ('set python_exec "/Library/Frameworks/Python.framework/'
+            'Versions/3.13/bin/python3.13", permanently') in out
     assert "Traceback" not in out
 
 
@@ -216,6 +227,7 @@ def test_the_restart_comes_before_set_python_exec(sfi, monkeypatch,
     started. BROKEN WITH: the first draft's order (set, then restart)."""
     ns = _load(ADO)
     _as(monkeypatch, PY39, "darwin", APPLE_PY)
+    ns["_python_candidates"] = lambda: []
     ns["_equipop_doctor_py"]("1.63.2", "1.48.0")
     out = capsys.readouterr().out
     restart = out.index("Quit Stata completely")
