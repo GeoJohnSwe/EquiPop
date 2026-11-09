@@ -3673,6 +3673,49 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 462 | DONE v1.63.5, 8 NOVEMBER 2026 | PRO SAID "IGNORED" AND READ
+  THE BOX ANYWAY (John, field, 1.63.4, a Polish OSM POI layer, Tool 1).
+  He wanted every POI as the reference population and a few types as
+  the group. His first run had the types in "Types to INCLUDE in the
+  reference population" (the wrong box), so he chose "every point
+  counts as one". Pro greyed the reference type field and table out,
+  printed "These boxes hold values that the rungs you chose do NOT
+  read, so they are IGNORED: catfield, reftable ... nothing in them
+  reaches the results", and died on that table: "These values are not
+  in the category field, so the reference population would be empty",
+  140 OSM types long. He could not empty the table: Pro had hidden it.
+  WHY. 146 (v1.29.6) lifted _boxes_for_rungs out "so the run can
+  consult the same map the dialog does", and nothing in the run ever
+  consulted it. _guard_rungs announced; execute() still handed every
+  box to _run_tool. The 146 test checked the announcement only, under
+  the name test_a_box_the_rung_does_not_read_is_announced_not_obeyed.
+  So for every release since 1.29.6 a greyed-out reference table could
+  restrict "every point counts as one", and a greyed-out group table
+  could add shares to "not measuring one" - silently whenever the
+  values happened to exist, loudly only when they did not.
+  NOW. _live_boxes(): the six type boxes (reference type field, table
+  and outside rule; treatment type field, group table, rest group) are
+  passed EMPTY off their rungs, in both Pro tools - what the QGIS door
+  has always done, so the doors agree. The grouped rung therefore
+  needs its own type field, or the reference one when that rung is in
+  use; it is refused in the rung's words otherwise, not left to give
+  distances and no shares. The count field (1a) and the group count
+  fields (2a) ARE still used off their rungs, as before in both doors
+  (scripts and saved models pass them with the default rungs), and
+  the warning now says USED, not IGNORED, and how to clear them. The
+  outside rule's default is no longer named on every first-rung run.
+  Both "not in the category field" refusals now name the field they
+  looked in, and add that the field is probably the wrong column.
+  OPEN, FOR JOHN: should 1a be dropped on "every point counts as one",
+  as the rung's name says? That changes numbers for anyone who passes
+  a count field with the default rung, so it is a decision, not a fix.
+  TESTS: tests/test_pro_hidden_boxes.py, 11, on the Pro stub - John's
+  dialog, a hidden table whose values DO exist (it must not restrict),
+  hidden groups, the statistics tool, the grouped-rung refusal and its
+  visible fallback, 1a and 2a said to be used, the default outside
+  rule quiet, the field named in both refusals. Seven guards broken on
+  purpose, seven caught. NOT REACHABLE HERE: real Pro.
+
 - 461 | DONE v1.63.4, 6 NOVEMBER 2026 | THE DOCTOR LOOKS FOR A PYTHON
   THAT IS ALREADY THERE, AND SAYS THE WHOLE WAY OUT IN WORDS (John,
   after Kit Baum's Mac: "if we lose Mac users because of their

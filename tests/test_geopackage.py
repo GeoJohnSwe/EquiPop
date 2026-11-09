@@ -338,7 +338,9 @@ def test_no_value_field_means_shares_of_places():
 def test_a_value_outside_the_field_is_refused_by_name():
     state, pyt = _malta()
     import arcpy
-    with pytest.raises(arcpy.ExecuteError, match="not in the category"):
+    # BACKLOG 462: by name, and now the FIELD's name too
+    with pytest.raises(arcpy.ExecuteError,
+                       match="not in the type field 'fclass'"):
         pyt._run_tool("counts", "poi", _Msg(), k_text="10", unit=100.0,
                       cat_field="fclass", ref_rows=[["nosuchvalue"]])
 

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.63.4}{...}
+{* *! version 1.63.5}{...}
 {vieweralsosee "equipop" "help equipop"}{...}
 {viewerjumpto "Syntax" "equipop_run##syntax"}{...}
 {viewerjumpto "Engines" "equipop_run##engines"}{...}
@@ -8,7 +8,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop_run} {hline 2} EquiPop's other engines from Stata (EquiPop 1.63.4)
+{bf:equipop_run} {hline 2} EquiPop's other engines from Stata (EquiPop 1.63.5)
 
 {marker syntax}{...}
 {title:Syntax}

@@ -706,7 +706,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.63.4"
+TOOLBOX_VERSION = "1.63.5"
 
 
 def _vtuple(v):
@@ -1364,12 +1364,17 @@ def _refuse_shp_overflow(target, names, messages=None):
     return refuse_short_target(target, names)
 
 
-def _values_from_table(rows, cat_values, messages, what):
+def _values_from_table(rows, cat_values, messages, what, field=None):
     """One column: which values belong to a population (v1.22).
 
     An EMPTY table means EVERY value belongs - which is what makes
     "fast food per POI" and "fast food per eating place" one edit
     apart, with no tick to misread.
+
+    BACKLOG 462: the refusal names the FIELD it looked in. John met
+    "These values are not in the category field" twice on a Polish
+    POI layer and could not tell which field "the category field"
+    was - the second time it was a box he could not even see.
     """
     if not rows:
         return []
@@ -1381,11 +1386,14 @@ def _values_from_table(rows, cat_values, messages, what):
             continue
         (vals if v in cat_values else unknown).append(v)
     if unknown:
+        where = f"the type field '{field}'" if field else \
+            "the category field"
         raise arcpy.ExecuteError(
-            f"These values are not in the category field, so the "
+            f"These values are not in {where}, so the "
             f"{what} would be empty: {', '.join(sorted(set(unknown)))}."
             f" Pick from the dropdown - the field's own values are "
-            "offered there.")
+            "offered there. If the values look right, the type field "
+            "is probably the wrong column.")
     if vals:
         messages.addMessage(
             f"{what.capitalize()}: {len(set(vals))} value(s) - "
@@ -1394,7 +1402,7 @@ def _values_from_table(rows, cat_values, messages, what):
     return sorted(set(vals))
 
 
-def _groups_from_table(rows, cat_values, messages):
+def _groups_from_table(rows, cat_values, messages, field=None):
     """Two columns: value, group name. Rows sharing a group name
     merge, which is how one group is built from several values."""
     groups, unknown = {}, []
@@ -1410,10 +1418,14 @@ def _groups_from_table(rows, cat_values, messages):
             continue
         groups.setdefault(grp, []).append(val)
     if unknown:
+        where = f"the type field '{field}'" if field else \
+            "the category field"                     # BACKLOG 462
         raise arcpy.ExecuteError(
-            f"These values are not in the category field: "
+            f"These values are not in {where}: "
             f"{', '.join(sorted(set(unknown)))}. Pick from the "
-            "dropdown - the field's own values are offered there.")
+            "dropdown - the field's own values are offered there. If "
+            "the values look right, the type field is probably the "
+            "wrong column.")
     if groups:
         messages.addMessage(
             "Treatment groups: "
@@ -1995,8 +2007,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             # reference table means every row belongs - which is how
             # "fast food per POI" and "fast food per eating place"
             # differ, without a tick to misread.
-            pop_vals = _values_from_table(ref_rows, known, messages,
-                                          "reference population")
+            pop_vals = _values_from_table(
+                ref_rows, known, messages, "reference population",
+                field=cat_field or treat_cat_field)
             # the treatment names its OWN type column (v1.23): it is
             # usually the same one, but reading it from a box in
             # another section was the hidden dependency John hit
@@ -2005,7 +2018,9 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                     else col)
             tknown = sorted({str(v).strip() for v in tcol
                              if str(v).strip()})
-            groups = _groups_from_table(treat_rows, tknown, messages)
+            groups = _groups_from_table(
+                treat_rows, tknown, messages,
+                field=treat_cat_field or cat_field)
             # BACKLOG 144: names differing only in case cannot both
             # become columns - GIS field names ignore case. Refuse
             # here, not eight seconds later in the write, where John
@@ -3169,21 +3184,99 @@ def _guard_rungs(pm, messages, machine="counts"):
                 else TREAT_MODES[tre]
             raise arcpy.ExecuteError(_r.missing(what, ladder, rung))
 
-    ignored = []
+    # BACKLOG 462. A type field for the groups is needed by the
+    # grouped rung. It may come from the reference type field ONLY
+    # when that box is in use: a greyed-out box is no longer read
+    # (_live_boxes), so a run that leaned on one would otherwise give
+    # distances and no shares, and say nothing.
+    if (tre == 2 and not _txt(pm, "treatcatfield")
+            and not (ref == 2 and _txt(pm, "catfield"))):
+        raise arcpy.ExecuteError(_r.missing(
+            "the type field for the groups", "the treatment population",
+            TREAT_MODES[tre]))
+
+    # BACKLOG 462. Only what the run really drops is called IGNORED.
+    # Until 1.63.5 this list was printed and then every box in it was
+    # handed to _run_tool anyway: John, 8 November 2026, chose "every
+    # point counts as one", was told the reference table was IGNORED,
+    # and the run died on that very table - which Pro had hidden, so
+    # it could not even be emptied. The count field (1a) and the group
+    # count fields (2a) ARE still used off their rungs, as they always
+    # were in both doors (scripts and saved models pass them with the
+    # default rungs), so they are told truthfully instead.
+    ignored, honoured = [], []
     for name, used in _boxes_for_rungs(ref, tre).items():
         if used or name not in pm:
             continue
         if machine != "counts" and name.startswith("treat"):
             continue
-        if _txt(pm, name):
-            ignored.append(name)
+        val = _txt(pm, name)
+        if not val:
+            continue
+        if name == "keepoutside" and val == OUTSIDE_MODES[0]:
+            continue                 # its default, not something typed
+        (honoured if name in _HONOURED_OFF_RUNG else ignored).append(name)
     if ignored:
         messages.addWarningMessage(
             "These boxes hold values that the rungs you chose do NOT "
             "read, so they are IGNORED: " + ", ".join(sorted(ignored)) +
             ". They are left as you typed them in case you switch "
             "back - but nothing in them reaches the results.")
+    if "pop" in honoured:
+        messages.addWarningMessage(
+            f"Box 1a, the count field, holds '{_txt(pm, 'pop')}'. The "
+            f"reference population is on '{REF_MODES[ref]}', which "
+            "greys the box out, but the count IS used: each row counts "
+            "as its value, not as one. If that is not what you meant, "
+            f"switch to '{REF_MODES[1]}' to see the box, clear it, and "
+            "switch back.")
+    if "treat" in honoured:
+        messages.addWarningMessage(
+            f"Box 2a, the group count fields, holds "
+            f"'{_txt(pm, 'treat')}'. The treatment population is on "
+            f"'{TREAT_MODES[tre]}', which greys the box out, but those "
+            "columns ARE used and you will get results from them. If "
+            f"that is not what you meant, switch to '{TREAT_MODES[1]}' "
+            "to see the box, clear it, and switch back.")
     return ignored
+
+
+# BACKLOG 462. Greyed out but still used, in both doors, since before
+# the rungs existed - see _guard_rungs.
+_HONOURED_OFF_RUNG = ("pop", "treat")
+
+
+def _live_boxes(pm, machine="counts"):
+    """BACKLOG 462. The type boxes as the run may read them: a box the
+    chosen rungs do not read is handed over EMPTY.
+
+    _boxes_for_rungs was "lifted out so the run can consult the same
+    map the dialog does" (146) - and then nothing in the run consulted
+    it. The dialog greyed the boxes, _guard_rungs said IGNORED, and
+    execute() passed every one of them to _run_tool regardless. These
+    are the boxes the QGIS door has always dropped off their rungs, so
+    the two doors now agree.
+    """
+    ref = _mode(pm, "refmode", REF_MODES)
+    tre = _mode(pm, "treatmode", TREAT_MODES) if machine == "counts" \
+        else 0
+    use = _boxes_for_rungs(ref, tre)
+    live = {
+        "cat_field": (_txt(pm, "catfield") or None)
+        if use["catfield"] else None,
+        "ref_rows": _vt_rows(pm["reftable"]) if use["reftable"] else [],
+        "keep_outside": (_mode(pm, "keepoutside", OUTSIDE_MODES) == 0)
+        if use["keepoutside"] else True,
+    }
+    if machine == "counts":
+        live.update(
+            treat_cat_field=(_txt(pm, "treatcatfield") or None)
+            if use["treatcatfield"] else None,
+            treat_rows=(_vt_rows(pm["treattable"])
+                        if use["treattable"] else []),
+            rest_group=(_txt(pm, "restgroup") or None)
+            if use["restgroup"] else None)
+    return live
 
 def _decay_model(pm):
     """The ENGINE's model name out of the dropdown label.
@@ -5444,15 +5537,10 @@ class CountsShares:
                   half_life_from_dist=_num(pm, "hlfromdist") or None,
                   decay_bins=int(_num(pm, "hlbins", 10)),  # 116
                   seed=_num(pm, "seed"),
-                  cat_field=_txt(pm, "catfield") or None,
                   ref_mode=_mode(pm, "refmode", REF_MODES),
                   treat_mode=_mode(pm, "treatmode", TREAT_MODES),
-                  ref_rows=_vt_rows(pm["reftable"]),
-                  treat_rows=_vt_rows(pm["treattable"]),
-                  treat_cat_field=_txt(pm, "treatcatfield") or None,
-                  keep_outside=(_mode(pm, "keepoutside",
-                                      OUTSIDE_MODES) == 0),
-                  rest_group=_txt(pm, "restgroup") or None,
+                  # BACKLOG 462: the type boxes the rungs read, only
+                  **_live_boxes(pm, "counts"),
                   barrier_rows=(_vt_rows(pm["barriertable"])
                                 + [[r, None] for r in
                                    (_txt(pm, "barrierrasters")
@@ -5723,11 +5811,9 @@ class ValueStatistics:
                   x_field=_txt(pm, "xfield") or None,
                   y_field=_txt(pm, "yfield") or None,
                   weight_field=_txt(pm, "pop") or None,
-                  cat_field=_txt(pm, "catfield") or None,
                   ref_mode=_mode(pm, "refmode", REF_MODES),
-                  ref_rows=_vt_rows(pm["reftable"]),
-                  keep_outside=(_mode(pm, "keepoutside",
-                                      OUTSIDE_MODES) == 0),
+                  # BACKLOG 462: the type boxes the rungs read, only
+                  **_live_boxes(pm, "stats"),
                   value_fields=[f for f in
                                 _txt(pm, "values").split(";") if f],
                   stats_list=[m.strip("' ") for m in
