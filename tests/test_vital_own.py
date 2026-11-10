@@ -322,14 +322,15 @@ def test_the_reference_choice_is_in_the_main_dialog_of_both_doors():
     sys.path.insert(0, str(ROOT / "qgis"))
     import qgis_stub
     qgis_stub.install()
-    from qgis.core import QgsProcessingParameterDefinition as D
+    from qgis.core import Qgis                     # BACKLOG 464
+    ADV = Qgis.ProcessingParameterFlag.Advanced
     from equipop_qgis.alg_demography import SpatialDemography
     alg = SpatialDemography()
     alg.initAlgorithm()
     by = {p.name(): p for p in alg.parameterDefinitions()}
-    assert not by["rateref"].flags() & D.FlagAdvanced
+    assert not by["rateref"].flags() & ADV
     assert by["rateref"].description().startswith("1f. ")
-    main = [n for n, p in by.items() if not p.flags() & D.FlagAdvanced]
+    main = [n for n, p in by.items() if not p.flags() & ADV]
     assert main.index("rateref") == main.index("rates") + 1
     import test_arcgis_continental as AC
     _pyt, tool, _state = AC._tool("SpatialDemography")

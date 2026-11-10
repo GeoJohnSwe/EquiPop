@@ -34,6 +34,7 @@ from qgis.core import (QgsFeature, QgsField, QgsFields, QgsProcessing,
                        QgsProcessingParameterFolderDestination,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString, QgsWkbTypes)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 from qgis.PyQt.QtCore import QMetaType
 
 from .base import EquipopAlgorithm
@@ -90,7 +91,7 @@ class _Catalogue(EquipopAlgorithm):
             fields.append(QgsField(nm, _QT[kind]))
         sink, dest = self.parameterAsSink(
             parameters, "CATALOGUE", context, fields,
-            QgsWkbTypes.NoGeometry)
+            Qgis.WkbType.NoGeometry)
         if sink is None:
             raise QgsProcessingException(
                 "No output was created - choose where the catalogue "
@@ -151,7 +152,7 @@ class WorldPopCatalogue(_Catalogue):
                         "each; otherwise one per country and year)",
             defaultValue=False), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
-            "CATALOGUE", "WorldPop catalogue", type=QgsProcessing.TypeVector))
+            "CATALOGUE", "WorldPop catalogue", type=Qgis.ProcessingSourceType.Vector))
 
     def processAlgorithm(self, parameters, context, feedback):
         from .base import check_versions
@@ -212,7 +213,7 @@ class OsmCatalogue(_Catalogue):
             defaultValue=True))
         self.add(QgsProcessingParameterFeatureSink(
             "CATALOGUE", "OpenStreetMap catalogue",
-            type=QgsProcessing.TypeVector))
+            type=Qgis.ProcessingSourceType.Vector))
 
     def processAlgorithm(self, parameters, context, feedback):
         from .base import check_versions
@@ -256,11 +257,11 @@ class FetchSelected(EquipopAlgorithm):
         self.add(QgsProcessingParameterFeatureSource(
             "rows", "1. The catalogue table from 5a or 5b (or a saved "
                     "equipop_recipe.csv) - tick 'Selected features only'",
-            [QgsProcessing.TypeVector]))
+            [Qgis.ProcessingSourceType.Vector]))
         self.add(QgsProcessingParameterNumber(
             "max_mb", "2. Size limit in MB - stop if the selection, or "
                       "what arrives, is larger (0: no limit)",
-            type=QgsProcessingParameterNumber.Double, defaultValue=5000,
+            type=Qgis.ProcessingNumberParameterType.Double, defaultValue=5000,
             minValue=0))
         self.add(QgsProcessingParameterBoolean(
             "keep_pbf", "3. Keep the OpenStreetMap .pbf after its layers "

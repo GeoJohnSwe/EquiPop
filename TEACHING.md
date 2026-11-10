@@ -1,6 +1,8 @@
 # TEACHING.md — the course material, and what it still needs
 
-**Last updated: 1.63.5, 8 November 2026.**
+**Last updated: 1.63.7, 9 November 2026.**
+*Reviewed at 1.63.7: ONE THING FOR COURSES. Students on QGIS 4 can now install the plugin; before 1.63.7 QGIS 4 refused it as incompatible. Teaching material that says "QGIS 3.38 or newer" is still right; it now includes 4.x.*
+*Reviewed at 1.63.6: NOTHING TO CHANGE IN THE TEACHING. Re-running a Pro lab into the same layer now updates the earlier columns whatever their case, so 'run it again with Overwrite' is safe advice in class.*
 *Reviewed at 1.63.5: ONE THING WORTH KNOWING IN A PRO LAB. On "every point counts as one" the greyed-out reference boxes are now really ignored, so a student who tried "only selected types" first and switched back no longer gets an error from a table they cannot see. The rule to teach is unchanged: the types you MEASURE go in the treatment group table, not in the reference table.*
 *Reviewed at 1.63.4: ONE THING FOR THE FIRST HOUR, SIMPLER. On a machine whose Stata uses a Python that is too old, `equipop doctor` now looks for a newer one already installed and prints the exact `set python_exec` line; when there is none it names the installer (Python 3.13 from python.org), the button and the path. For a course, the install slide can say: run `equipop doctor` and do what it says, in order - the restart always comes first.*
 *Reviewed at 1.63.3: NO TEACHING CHANGES. `equipop doctor` no longer prints "Stata not allowed" and a page of its own code before the report.*

@@ -54,7 +54,7 @@ def run(alg, **params):
     if sink is not None:
         # A TABLE, not a layer of points: 5c reads it as one, and a
         # geometry column would put 80 rows at (0, 0) on the map.
-        assert int(sink.wkb) == int(qgis_stub.QgsWkbTypes.NoGeometry)
+        assert int(sink.wkb) == int(qgis_stub.Qgis.WkbType.NoGeometry)
     return out, (sink.to_frame() if sink else None), fb
 
 

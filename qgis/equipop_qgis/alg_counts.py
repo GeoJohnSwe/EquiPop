@@ -17,6 +17,7 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
                        QgsProcessingParameterMatrix,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 
 # What the dropdown shows when the package cannot be read. NOT a
 # guess at the engine's models - one honest option, and the person
@@ -137,16 +138,16 @@ class CountsAndShares(EquipopAlgorithm):
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterFeatureSource(
             "layer", "Input points or table",
-            [QgsProcessing.TypeVectorAnyGeometry]))
+            [Qgis.ProcessingSourceType.VectorAnyGeometry]))
         self.add(QgsProcessingParameterField(
             "xfield", "X field (easting) - only for tables without "
             "geometry", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True),
+            type=Qgis.ProcessingFieldParameterDataType.Numeric, optional=True),
             advanced=True)
         self.add(QgsProcessingParameterField(
             "yfield", "Y field (northing) - only for tables without "
             "geometry", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True),
+            type=Qgis.ProcessingFieldParameterDataType.Numeric, optional=True),
             advanced=True)
         self.add(QgsProcessingParameterEnum(
             "refmode", "1 \u25b8 REFERENCE POPULATION - how is it "
@@ -155,7 +156,7 @@ class CountsAndShares(EquipopAlgorithm):
             "pop", "1a \u25b8 ...count field - how many people (or "
             "guests, jobs) each row stands for",
             parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            type=Qgis.ProcessingFieldParameterDataType.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
             "catfield", "1b \u25b8 ...type field - the column holding "
             "the kind of each object",
@@ -182,7 +183,7 @@ class CountsAndShares(EquipopAlgorithm):
             "treat", "2a \u25b8 ...group count fields - one column "
             "per group, holding TOTALS, never averages",
             parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric,
+            type=Qgis.ProcessingFieldParameterDataType.Numeric,
             allowMultiple=True, optional=True))
         self.add(QgsProcessingParameterField(
             "treatcatfield", "2b \u25b8 ...type field for the groups "
@@ -210,7 +211,7 @@ class CountsAndShares(EquipopAlgorithm):
             "halflife", "4a \u25b8 ...half-life distance in metres "
             "(a survey median commute goes straight in)",
             defaultValue=0.0, optional=True,
-            type=QgsProcessingParameterNumber.Double))
+            type=Qgis.ProcessingNumberParameterType.Double))
         # BACKLOG 317. WHAT THAT DISTANCE MEANS. John, session 12: show
         # it when a user deliberately picks a model where it matters.
         # QGIS cannot hide a box on the fly, so it sits right beside
@@ -234,7 +235,7 @@ class CountsAndShares(EquipopAlgorithm):
         self.add(QgsProcessingParameterFeatureSource(
             "barrier", "5 \u25b8 barrier layer - a river, railway or "
             "lake that costs effort to cross (optional)",
-            [QgsProcessing.TypeVectorAnyGeometry], optional=True),
+            [Qgis.ProcessingSourceType.VectorAnyGeometry], optional=True),
             advanced=True)
         self.add(QgsProcessingParameterField(
             "barrierfield", "5a \u25b8 ...its friction field - the "
@@ -276,11 +277,11 @@ class CountsAndShares(EquipopAlgorithm):
         self.add(QgsProcessingParameterNumber(
             "decayeps", "Ignore decay weights below this "
             "(truncation)", defaultValue=1e-6, optional=True,
-            type=QgsProcessingParameterNumber.Double), advanced=True)
+            type=Qgis.ProcessingNumberParameterType.Double), advanced=True)
         self.add(QgsProcessingParameterNumber(
             "unit", "Cell size in map units - "
             "bigger cells mean fewer origins and faster runs", defaultValue=100.0,
-            type=QgsProcessingParameterNumber.Double), advanced=True)
+            type=Qgis.ProcessingNumberParameterType.Double), advanced=True)
         # BACKLOG 141: a three-way choice, not a free number. The
         # wording is duplicated from equipop/doors/rungs.py and
         # pinned by test_rungs.py - see the note above on 105/78 for
@@ -311,7 +312,7 @@ class CountsAndShares(EquipopAlgorithm):
             "seed", "Seed - only used by 'sampled' and by "
             "permutations; empty draws one and prints it",
             optional=True,
-            type=QgsProcessingParameterNumber.Integer), advanced=True)
+            type=Qgis.ProcessingNumberParameterType.Integer), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 

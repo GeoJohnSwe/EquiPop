@@ -29,6 +29,7 @@ from qgis.core import (QgsCoordinateReferenceSystem, QgsFeature, QgsField,
                        QgsProcessingParameterFolderDestination,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString, QgsWkbTypes)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 from qgis.PyQt.QtCore import QMetaType
 
 from .base import EquipopAlgorithm
@@ -82,14 +83,14 @@ class ContinentalRasters(EquipopAlgorithm):
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterFile(
             "folder", "1a. Folder of population rasters (.tif)",
-            behavior=QgsProcessingParameterFile.Folder))
+            behavior=Qgis.ProcessingFileParameterBehavior.Folder))
         self.add(QgsProcessingParameterString(
             "k", "1b. Neighbourhood sizes, in PEOPLE "
                  "(blank = just give me the points)",
             defaultValue="", optional=True))
         self.add(QgsProcessingParameterNumber(
             "unit", "1c. Analysis cell size, in metres",
-            type=QgsProcessingParameterNumber.Double,
+            type=Qgis.ProcessingNumberParameterType.Double,
             defaultValue=1000.0, minValue=0.000001))
         self.add(QgsProcessingParameterCrs(
             "crs", "2a. Projection to work in (blank = suggested)",
@@ -316,7 +317,7 @@ class ContinentalRasters(EquipopAlgorithm):
         # cannot answer - and it broke every existing point join the
         # moment the default changed. Detected, not asked.
         from qgis.core import QgsWkbTypes as _W
-        if _W.geometryType(src.wkbType()) == _W.PointGeometry:
+        if _W.geometryType(src.wkbType()) == Qgis.GeometryType.Point:
             if how != "centroid":
                 ch.info(
                     "That layer is points, so each feature falls in "
@@ -598,7 +599,7 @@ class ContinentalRasters(EquipopAlgorithm):
                         if src.upper().startswith("EPSG:") else work)
         gx, gy = to_output_crs(table, work, out_epsg)
         crs = QgsCoordinateReferenceSystem(f"EPSG:{out_epsg}")
-        # QgsWkbTypes.Point, NOT the number 2. Two numberings live in
+        # Qgis.WkbType.Point, NOT the number 2. Two numberings live in
         # QgsWkbTypes: GEOMETRY types (Point=0) and WKB types
         # (Point=1). The 2 written here meant POLYGON, and PyQGIS
         # refuses a bare int anyway - "argument 5 has unexpected type
@@ -608,7 +609,7 @@ class ContinentalRasters(EquipopAlgorithm):
         # now.
         sink, dest = self.parameterAsSink(
             parameters, "OUTPUT", context, fields,
-            QgsWkbTypes.Point, crs)
+            Qgis.WkbType.Point, crs)
         if sink is None:
             raise QgsProcessingException(
                 "Nowhere to write the results to.")
@@ -649,13 +650,13 @@ def _geometry_parts(g):
     from qgis.core import QgsWkbTypes as W
 
     t = W.geometryType(g.wkbType())
-    if t == W.LineGeometry:
+    if t == Qgis.GeometryType.Line:
         parts = (g.asMultiPolyline() if g.isMultipart()
                  else [g.asPolyline()])
         parts = [[(p.x(), p.y()) for p in part]
                  for part in parts if part and len(part) >= 2]
         return {"type": "line", "parts": parts} if parts else None
-    if t == W.PolygonGeometry:
+    if t == Qgis.GeometryType.Polygon:
         parts = (g.asMultiPolygon() if g.isMultipart()
                  else [g.asPolygon()])
         out = []

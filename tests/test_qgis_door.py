@@ -28,7 +28,7 @@ qgis_stub.install()
 
 from qgis.core import (QgsProcessingException,      # noqa: E402
                        QgsProcessingFeedback)
-from qgis.core import QgsProcessingParameterDefinition  # noqa: E402
+from qgis.core import Qgis, QgsProcessingParameterDefinition  # noqa: E402,F401
 from equipop_qgis.alg_counts import (CountsAndShares,  # noqa: E402
                                      OVERSHOOT_VALUES)
 from equipop_qgis.alg_stats import ValueStatistics   # noqa: E402
@@ -392,7 +392,7 @@ def _advanced_names(alg):
     """
     return {p.name() for p in alg.parameterDefinitions()
             if bool(p.flags()
-                    & QgsProcessingParameterDefinition.FlagAdvanced)}
+                    & Qgis.ProcessingParameterFlag.Advanced)}
 
 
 def test_the_rarely_touched_boxes_are_in_the_advanced_area():

@@ -30,6 +30,7 @@ from qgis.core import (QgsFeature, QgsField, QgsFields,
                        QgsProcessingParameterFile,
                        QgsProcessingParameterFeatureSink,
                        QgsWkbTypes)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 from qgis.PyQt.QtCore import QMetaType
 
 from .base import EquipopAlgorithm
@@ -80,7 +81,7 @@ class FolderInventory(EquipopAlgorithm):
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterFile(
             "folder", "1. The folder to look at (subfolders included)",
-            behavior=QgsProcessingParameterFile.Folder))
+            behavior=Qgis.ProcessingFileParameterBehavior.Folder))
         self.add(QgsProcessingParameterBoolean(
             "deep", "2. Also list the distinct values of class columns "
                     "(fclass, highway, landuse...) - slower on large "
@@ -116,7 +117,7 @@ class FolderInventory(EquipopAlgorithm):
             fields.append(QgsField(nm, typ))
         sink, dest = self.parameterAsSink(
             parameters, "OUTPUT", context, fields,
-            QgsWkbTypes.NoGeometry)
+            Qgis.WkbType.NoGeometry)
         if sink is None:
             raise QgsProcessingException(
                 "No output was created - choose a destination for the "

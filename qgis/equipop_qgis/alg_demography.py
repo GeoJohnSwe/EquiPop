@@ -29,6 +29,7 @@ from qgis.core import (QgsCoordinateReferenceSystem, QgsFeature, QgsField,
                        QgsProcessingParameterMatrix,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString, QgsWkbTypes)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 from qgis.PyQt.QtCore import QMetaType
 
 from .base import EquipopAlgorithm
@@ -122,14 +123,14 @@ class SpatialDemography(EquipopAlgorithm):
         self._names = names
         self.add(QgsProcessingParameterFile(
             "folder", "1a. Folder of population rasters (.tif)",
-            behavior=QgsProcessingParameterFile.Folder, optional=True))
+            behavior=Qgis.ProcessingFileParameterBehavior.Folder, optional=True))
         # v1.60.1, John: "machine 4 only takes rasters - we should make
         # it possible to use the curated raster-to-point files as
         # well". The points machine 3 made ARE the folder, read once.
         self.add(QgsProcessingParameterFeatureSource(
             "points", "1a. ...or the point layer machine 3 made from "
                       "such a folder (instead of the folder)",
-            [QgsProcessing.TypeVectorPoint, QgsProcessing.TypeVector],
+            [Qgis.ProcessingSourceType.VectorPoint, Qgis.ProcessingSourceType.Vector],
             optional=True))
         self.add(QgsProcessingParameterEnum(
             "indices", "1b. Which indices (tick several - they cost "
@@ -141,7 +142,7 @@ class SpatialDemography(EquipopAlgorithm):
             defaultValue="1000"))
         self.add(QgsProcessingParameterNumber(
             "unit", "1d. Analysis cell size, in metres",
-            type=QgsProcessingParameterNumber.Double,
+            type=Qgis.ProcessingNumberParameterType.Double,
             defaultValue=1000.0, minValue=0.000001))
         self.add(QgsProcessingParameterEnum(
             "rates", "1e. Rates and life expectancy - MODEL-BASED, read "
@@ -414,9 +415,9 @@ class SpatialDemography(EquipopAlgorithm):
                         if src.upper().startswith("EPSG:") else work)
         gx, gy = to_output_crs(table, work, out_epsg)
         crs = QgsCoordinateReferenceSystem(f"EPSG:{out_epsg}")
-        # QgsWkbTypes.Point - see the note in alg_continental.py.
+        # Qgis.WkbType.Point - see the note in alg_continental.py.
         sink, dest = self.parameterAsSink(parameters, "OUTPUT", context,
-                                          fields, QgsWkbTypes.Point, crs)
+                                          fields, Qgis.WkbType.Point, crs)
         if sink is None:
             raise QgsProcessingException("Nowhere to write the results to.")
 

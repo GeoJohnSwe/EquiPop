@@ -9,6 +9,11 @@ command prompt.
 
 That is the whole difficulty. Everything else is copying a folder.
 
+**Which QGIS:** 3.38 or newer, including QGIS 4.x (since EquiPop
+1.63.7; before it, QGIS 4 called the plugin "incompatible"). The
+Python inside QGIS must be 3.11 or newer - QGIS 3.44 and 4.x have
+3.12.
+
 ---
 
 ## Step 1 — install the package into QGIS's Python

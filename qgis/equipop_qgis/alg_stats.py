@@ -14,6 +14,7 @@ from qgis.core import (QgsProcessing, QgsProcessingException,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterString,
                        QgsProcessingParameterMatrix)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 
 import numpy as np
 
@@ -70,15 +71,15 @@ class ValueStatistics(EquipopAlgorithm):
     def initAlgorithm(self, config=None):
         self.add(QgsProcessingParameterFeatureSource(
             "layer", "Input points or table",
-            [QgsProcessing.TypeVectorAnyGeometry]))
+            [Qgis.ProcessingSourceType.VectorAnyGeometry]))
         self.add(QgsProcessingParameterField(
             "xfield", "X field (easting) - only for tables without "
             "geometry", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            type=Qgis.ProcessingFieldParameterDataType.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
             "yfield", "Y field (northing) - only for tables without "
             "geometry", parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            type=Qgis.ProcessingFieldParameterDataType.Numeric, optional=True))
         # v1.29.2: machine 1's ladder, same names, same words. The
         # REFERENCE side only - machine 2's treatment is a set of
         # numbers, so there is nothing to choose there (John's ruling).
@@ -89,7 +90,7 @@ class ValueStatistics(EquipopAlgorithm):
             "pop", "1a \u25b8 ...count field - how many each row "
             "stands for (people, jobs, dwellings)",
             parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric, optional=True))
+            type=Qgis.ProcessingFieldParameterDataType.Numeric, optional=True))
         self.add(QgsProcessingParameterField(
             "catfield", "1b \u25b8 ...type field - the column holding "
             "the kind of each object",
@@ -105,7 +106,7 @@ class ValueStatistics(EquipopAlgorithm):
             "values", "2 \u25b8 TREATMENT VALUES - the numeric fields "
             "to measure (income, rent, age)",
             parentLayerParameterName="layer",
-            type=QgsProcessingParameterField.Numeric,
+            type=Qgis.ProcessingFieldParameterDataType.Numeric,
             allowMultiple=True))
         self.add(QgsProcessingParameterEnum(
             "measures", "2a \u25b8 ...measures to calculate",
@@ -126,7 +127,7 @@ class ValueStatistics(EquipopAlgorithm):
             "mingroup", "2d \u25b8 ...smallest group, in people, for "
             "the split to be reported",
             defaultValue=30.0, minValue=0.0,
-            type=QgsProcessingParameterNumber.Double))
+            type=Qgis.ProcessingNumberParameterType.Double))
         self.add(QgsProcessingParameterString(
             "k", "3 \u25b8 k - neighbourhood sizes in people, space "
             "separated",
@@ -137,7 +138,7 @@ class ValueStatistics(EquipopAlgorithm):
         self.add(QgsProcessingParameterNumber(
             "unit", "Cell size in map units - "
             "bigger cells mean fewer origins and faster runs", defaultValue=100.0,
-            type=QgsProcessingParameterNumber.Double))
+            type=Qgis.ProcessingNumberParameterType.Double))
         # BACKLOG 141: a three-way choice, not a free number. The
         # wording is duplicated from equipop/doors/rungs.py and
         # pinned by test_rungs.py - see the note above on 105/78 for
@@ -161,7 +162,7 @@ class ValueStatistics(EquipopAlgorithm):
             "seed", "Seed - only used by 'sampled' and by "
             "permutations; empty draws one and prints it",
             optional=True,
-            type=QgsProcessingParameterNumber.Integer), advanced=True)
+            type=Qgis.ProcessingNumberParameterType.Integer), advanced=True)
         self.add(QgsProcessingParameterFeatureSink(
             self.OUT, "Results"))
 

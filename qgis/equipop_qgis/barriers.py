@@ -22,6 +22,7 @@ import numpy as np
 
 from qgis.core import (QgsCoordinateTransform, QgsProcessingException,
                        QgsProject, QgsWkbTypes)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 
 
 def _transform(layer_crs, working_crs):
@@ -84,7 +85,7 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
             f"{source.sourceCrs().authid()} to the working CRS for "
             "this run.")
 
-    if _is_kind(source, 0):                      # points
+    if _is_kind(source, Qgis.GeometryType.Point):           # points
         xs, ys, vs = [], [], []
         for f in feats:
             g = f.geometry()
@@ -153,7 +154,7 @@ def barrier_to_friction(source, friction_field, unit, agg, channel,
         # AREA (a polygon) - the two are charged differently and
         # getting it wrong is silent
         kind = ("line"
-                if QgsWkbTypes.geometryType(g.wkbType()) == 1
+                if QgsWkbTypes.geometryType(g.wkbType()) == Qgis.GeometryType.Line
                 else "polygon")
         features.append({"type": kind, "parts": parts})
         values.append(_value(f, names, friction_field, label))
@@ -224,7 +225,7 @@ def _paths_of(geom):
     parts = []
     try:
         if geom.isMultipart():
-            if QgsWkbTypes.geometryType(geom.wkbType()) == 1:
+            if QgsWkbTypes.geometryType(geom.wkbType()) == Qgis.GeometryType.Line:
                 for line in geom.asMultiPolyline():
                     if len(line) >= 2:
                         parts.append([(p.x(), p.y()) for p in line])
@@ -235,7 +236,7 @@ def _paths_of(geom):
                     if rings:
                         parts.append(rings)
         else:
-            if QgsWkbTypes.geometryType(geom.wkbType()) == 1:
+            if QgsWkbTypes.geometryType(geom.wkbType()) == Qgis.GeometryType.Line:
                 line = geom.asPolyline()
                 if len(line) >= 2:
                     parts.append([(p.x(), p.y()) for p in line])

@@ -646,7 +646,8 @@ def test_a_barrier_point_with_no_geometry_reaches_the_counting_mask():
     """
     src = open(os.path.join(ROOT, "qgis", "equipop_qgis", "barriers.py"),
                encoding="utf-8").read()
-    pts = src[src.index("if _is_kind(source, 0):"):]
+    # BACKLOG 464: the enum, not 0, since QGIS 4
+    pts = src[src.index("if _is_kind(source, Qgis.GeometryType.Point):"):]
     head = pts[:pts.index("ok = np.isfinite")]
     assert "xs.append(np.nan)" in head, (
         "a null-geometry barrier point is dropped before the isfinite "

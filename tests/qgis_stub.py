@@ -18,6 +18,7 @@ Python core. That is most of a door, and none of its behaviour.
 
 Only the parts of PyQGIS the door actually touches are simulated.
 """
+import enum
 import sys
 import types
 
@@ -414,8 +415,8 @@ class _ShapeSource:
         return self._crs
 
     def wkbType(self):
-        return (QgsWkbTypes.LineString if self._kind == "line"
-                else QgsWkbTypes.Polygon)
+        return (Qgis.WkbType.LineString if self._kind == "line"
+                else Qgis.WkbType.Polygon)
 
     def featureCount(self):
         return len(self._shapes)
@@ -486,7 +487,7 @@ class _Source:
         # here made the stub reject its own correct callers the moment
         # the sink was tightened - the simulator being wrong in the
         # opposite direction. NoGeometry is 100 in PyQGIS.
-        return QgsWkbTypes.Point if self._geometry else _WkbType(100)
+        return _WkbType(1) if self._geometry else _WkbType(100)
 
     def featureCount(self):
         return len(self._t)
@@ -577,13 +578,11 @@ class QgsFeatureSink:
 
 # ------------------------------------------------------- parameters
 class QgsProcessingParameterDefinition:
-    # 2, not 1 - the value real QGIS uses (John, 3.42.1,
-    # v1.29.1). Harmless in practice, since the flag is only
-    # ever ANDed against itself, but a stub that holds a value
-    # QGIS never produces is a stub telling a small lie, and
-    # this file's whole job is to tell the truth about QGIS.
-    FlagAdvanced = 2
-    FlagOptional = 2
+    # BACKLOG 464: no FlagAdvanced / FlagOptional here any more. The
+    # plugin reads Qgis.ProcessingParameterFlag (3.36 and later, and
+    # the only spelling QGIS 4 is sure to keep), so the simulator
+    # offers only that - see the note on QGIS 4 at class Qgis.
+    pass
 
 
 class _Param:
@@ -628,7 +627,7 @@ class QgsProcessingParameterFeatureSource(_Param):
 
 
 class QgsProcessingParameterField(_Param):
-    Any, Numeric, String = 0, 1, 2
+    pass                     # BACKLOG 464: Qgis.ProcessingFieldParameterDataType
 
 
 class QgsProcessingParameterString(_Param):
@@ -636,7 +635,7 @@ class QgsProcessingParameterString(_Param):
 
 
 class QgsProcessingParameterNumber(_Param):
-    Integer, Double = 0, 1
+    pass                     # BACKLOG 464: Qgis.ProcessingNumberParameterType
 
 
 class QgsProcessingParameterBoolean(_Param):
@@ -664,7 +663,7 @@ class QgsProcessingParameterRasterLayer(_Param):
 # every other parameter here - the simulator's job is to let the door
 # be constructed and read, not to reproduce QGIS.
 class QgsProcessingParameterFile(_Param):
-    File, Folder = 0, 1
+    pass                     # BACKLOG 464: Qgis.ProcessingFileParameterBehavior
 
 
 class QgsProcessingParameterCrs(_Param):
@@ -699,10 +698,8 @@ class QgsWkbTypes:
     parameterAsSink wants the WKB one. Passing 2 meaning "point"
     silently means POLYGON.
     """
-    PointGeometry, LineGeometry, PolygonGeometry = 0, 1, 2
-    Point = _WkbType(1)
-    LineString = _WkbType(2)
-    Polygon = _WkbType(3)
+    # BACKLOG 464: the names live on Qgis.GeometryType and Qgis.WkbType
+    # now (class Qgis, below); only geometryType() stays here.
     # v1.47.11: a table with NO GEOMETRY. Real PyQGIS has had
     # NoGeometry (WKB 100, geometry type 4) all along; the simulator
     # had never needed it because every EquiPop output until machine 6
@@ -712,11 +709,16 @@ class QgsWkbTypes:
     # and DETable - and the pattern is the same each time: the
     # simulator narrows what a door may ask for, and the narrowing
     # reads as a mistake in the door.
-    NoGeometry = _WkbType(100)
 
     @staticmethod
     def geometryType(wkb):
-        return {1: 0, 2: 1, 3: 2, 100: 4}.get(int(wkb), 0)
+        # BACKLOG 464: an ENUM, as QGIS 4 returns it - not an int. A
+        # door that compares it with 0, 1 or 2 fails here as it fails
+        # there.
+        return {1: Qgis.GeometryType.Point, 2: Qgis.GeometryType.Line,
+                3: Qgis.GeometryType.Polygon,
+                100: Qgis.GeometryType.Null}.get(
+                    int(wkb), Qgis.GeometryType.Point)
 
 
 class _Block:
@@ -780,13 +782,53 @@ class FakeRasterLayer:
 
 
 class QgsProcessing:
-    TypeVectorPoint, TypeVector, TypeVectorAnyGeometry = 0, 1, 2
+    pass                     # BACKLOG 464: Qgis.ProcessingSourceType
 
 
 # ------------------------------------------------------- algorithm
 class Qgis:
     """v1.62.0. Only what the doors use: the algorithm flags, with the
-    values real QGIS gives them (3.36 and later)."""
+    values real QGIS gives them (3.36 and later).
+
+    BACKLOG 464, v1.63.7: AS STRICT AS QGIS 4. Under QGIS 4 (Qt 6,
+    PyQt6) an enum is a real enum: it is not equal to any number, and
+    the old unscoped spellings (QgsProcessing.TypeVector,
+    QgsWkbTypes.PointGeometry, ...FlagAdvanced) are gone from this
+    simulator. So a door that compares a geometry type with 1, or
+    reaches for an old name, fails HERE - not on a user's QGIS 4. Every
+    name below exists in QGIS 3.36 and later; the plugin needs 3.38.
+    """
+
+    class GeometryType(enum.Enum):
+        Point, Line, Polygon, Unknown, Null = 0, 1, 2, 3, 4
+
+    class WkbType:
+        # _WkbType, not enum.Enum: parameterAsSink's check (above)
+        # wants a WKB type it can tell from a bare int.
+        Point = _WkbType(1)
+        LineString = _WkbType(2)
+        Polygon = _WkbType(3)
+        NoGeometry = _WkbType(100)
+
+    class ProcessingSourceType(enum.Enum):
+        MapLayer, VectorAnyGeometry, VectorPoint = -2, -1, 0
+        VectorLine, VectorPolygon, Raster, File, Vector = 1, 2, 3, 4, 5
+
+    class ProcessingNumberParameterType(enum.Enum):
+        Integer, Double = 0, 1
+
+    class ProcessingFieldParameterDataType(enum.Enum):
+        Any, Numeric, String, DateTime, Binary, Boolean = -1, 0, 1, 2, 3, 4
+
+    class ProcessingFileParameterBehavior(enum.Enum):
+        File, Folder = 0, 1
+
+    class ProcessingParameterFlag(enum.IntFlag):
+        # 2 for Advanced: the value real QGIS uses (John, 3.42.1,
+        # v1.29.1).
+        Advanced = 1 << 1
+        Hidden = 1 << 2
+        Optional = 1 << 3
 
     class ProcessingAlgorithmFlag:
         HideFromToolbox = 1 << 1
@@ -930,7 +972,7 @@ class QgsProcessingAlgorithm:
             raise TypeError(
                 "QgsProcessingAlgorithm.parameterAsSink(): argument 5 "
                 f"has unexpected type '{type(wkb).__name__}' - pass "
-                "QgsWkbTypes.Point, not a number.")
+                "Qgis.WkbType.Point, not a number.")
         sink = _Sink(fields, wkb, crs)
         parameters.setdefault("_sinks", {})[name] = sink
         # BACKLOG 293. The DESTINATION STRING is what a door writes a

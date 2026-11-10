@@ -1,6 +1,8 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.63.5, 8 November 2026.**
+**Last updated: 1.63.7, 9 November 2026.**
+*Reviewed at 1.63.7: NO CLAIM CHANGES. A QGIS compatibility release; the engine and every figure in this file are unchanged.*
+*Reviewed at 1.63.6: NO CLAIM CHANGES. A Pro writing fix; the engine and every figure in this file are unchanged.*
 *Reviewed at 1.63.5: NO CLAIM CHANGES. A Pro dialog fix; the engine and every figure in this file are unchanged.*
 *Reviewed at 1.63.4: NO CLAIM CHANGES. A Stata-side change to what the doctor says about the Python; the engine is unchanged.*
 *Reviewed at 1.63.3: NO CLAIM CHANGES. A Stata-side fix to the doctor's output; the engine is unchanged.*

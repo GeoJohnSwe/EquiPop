@@ -3673,6 +3673,89 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 464 | DONE v1.63.7, 9 NOVEMBER 2026 | ONE PLUGIN FOR QGIS 3.38 TO
+  4.x (John, a screenshot from QGIS 4: "This plugin is incompatible
+  with this version of QGIS. Plugin designed for QGIS 3.38 - 3.99";
+  "do we need to think of new plugins for more recent versions?").
+  NO NEW PLUGIN. QGIS 4 (March 2026, Qt 6 / PyQt6) takes the same
+  plugin when (a) metadata.txt names qgisMaximumVersion=4.99 - absent,
+  the Plugin Manager and the repository read 3.99 - and (b) the code
+  uses only what PyQt6 allows. supportsQt6 is no longer read by QGIS
+  and is not used.
+  THE CODE. 39 old, unscoped enum spellings in eight files, all with
+  scoped twins since QGIS 3.36 (the plugin needs 3.38):
+  QgsProcessing.Type* -> Qgis.ProcessingSourceType.*,
+  QgsProcessingParameterNumber.Double/Integer ->
+  Qgis.ProcessingNumberParameterType.*, ...ParameterField.Numeric ->
+  Qgis.ProcessingFieldParameterDataType.Numeric, ...ParameterFile.Folder
+  -> Qgis.ProcessingFileParameterBehavior.Folder, FlagAdvanced ->
+  Qgis.ProcessingParameterFlag.Advanced, QgsWkbTypes.Point/NoGeometry
+  -> Qgis.WkbType.*, QgsWkbTypes.*Geometry -> Qgis.GeometryType.*.
+  WORSE THAN A NAME: geometry types compared with NUMBERS. Under PyQt6
+  an enum equals no number, so base.py's "gt != 0" would have refused
+  EVERY POINT LAYER in tools 1 and 2 ("the layer you chose holds that
+  shape"), and barriers.py's "== 1" would have charged every barrier
+  LINE as a polygon - silently. Both compare with Qgis.GeometryType
+  members now.
+  THE SIMULATOR. tests/qgis_stub.py is now as strict as QGIS 4: its
+  Qgis enums are real enums (equal to no number) and the old spellings
+  are gone from it, so every QGIS test runs as on QGIS 4. Breaking the
+  barrier and point fixes on purpose fails the existing behaviour
+  tests; tests/test_qgis4_ready.py (31) adds the metadata, a source
+  scan for the old spellings and for numbers compared with geometry
+  types, the simulator's own strictness, and the continental door's
+  line/polygon split. Seven guards broken on purpose, seven caught.
+  NOT REACHABLE HERE: a real QGIS 4. The official checker
+  (pyqgis4-checker) runs in Docker, which this sandbox cannot start.
+  First real run: a point layer in tool 1 and a barrier line, on QGIS
+  4 and on QGIS 3.44.
+
+- 463 | DONE v1.63.6, 9 NOVEMBER 2026 | "FIELD 'T_pharma_200' EXIST":
+  AN EXISTING RESULT FIELD MISSED BY CASE OR BY PRO'S STALE VIEW (John,
+  field, 1.63.5, Gdansk.gdb/CombinedPoints, Tool 1, Output = append to
+  the input, group "pharma", k = 200). ExtendTable refused
+  T_pharma_200 because the target already had it, and the run ended
+  "Could not add the result fields ... The target refused the change."
+  WHY. The writer asked the LAYER which fields existed, BY EXACT NAME
+  (flds = ListFields(layer); clash = c in flds), and wrote through the
+  CATALOG PATH (v1.22.1). Two ways for those to disagree: a geodatabase
+  ignores case, so an earlier T_Pharma_200 is the same field; and the
+  layer keeps its own cached schema (309), which can lag the file. In
+  either case the field counted as NEW - so Overwrite did not update
+  it, "Stop with a message" did not stop, and Keep both did not move
+  aside. And "field '...' exist" was matched as a field refusal only
+  for names starting with N (135), so it was retried twice as a lock
+  and reported as "refused the change".
+  NOW. _target_fields(): the catalog path (after ClearWorkspaceCache)
+  and the layer, together, keyed lower-case. Clashes are matched
+  without regard to case; the update cursor is given each field as
+  the TARGET spells it, and goes through the catalog path only when
+  the layer cannot see a field (the layer stays the default, as it has
+  been since 1.16.5). The verification after writing ignores case too,
+  so an updated T_Pharma_200 is not reported as missing. The refusal
+  is now a field refusal for any name, and its message says two names
+  may differ only in case.
+  ALSO, AND IT MATTERED HERE: the .pyt held a SECOND _save_name_map,
+  KEEP_MODES, _letter_suffix and _keep_both_names, left over from
+  before 1.49.1 moved keep-both into equipop.doors.fields. Python
+  keeps the last definition, so the older copy - exact-case, with the
+  unbounded loop 1.49.1 had bounded - was what Pro ran, behind a
+  wrapper whose docstring said the logic lived in the package.
+  Removed. keep_both() in the package now ignores case, for both
+  doors. A scan of the .pyt finds no other name defined twice.
+  TESTS: tests/test_pro_existing_fields.py, 7, with a fake geodatabase
+  that refuses an existing name whatever its case and a layer whose
+  view lags the file: Overwrite updates T_Pharma_2 in place; a field
+  the layer cannot see is found and reached through the path; the
+  layer is still used when it sees everything; Stop stops; Keep both
+  moves aside; keep_both() ignores case; the refusal is a field
+  refusal. Eight guards broken on purpose, eight caught.
+  NOT KNOWN: which of the two it was on John's machine. Both are
+  covered. NOT REACHABLE HERE: real Pro.
+  AND AGAIN: the 1.63.5 on GitHub (238f625), like 1.63.3 and 1.63.4,
+  has the four-line .gitignore - the release tree's .gitignore is not
+  making it into the commit. 1.63.6 restores it once more.
+
 - 462 | DONE v1.63.5, 8 NOVEMBER 2026 | PRO SAID "IGNORED" AND READ
   THE BOX ANYWAY (John, field, 1.63.4, a Polish OSM POI layer, Tool 1).
   He wanted every POI as the reference population and a few types as

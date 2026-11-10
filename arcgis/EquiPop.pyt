@@ -278,6 +278,41 @@ def _fields_after_writing(layer, where):
     return set()
 
 
+def _target_fields(layer):
+    """BACKLOG 463. The fields the TARGET has now: lower-cased name ->
+    the Field as the target spells it, read from the CATALOG PATH
+    (after dropping Pro's schema cache) and from the layer, together.
+
+    The result writer used to ask the LAYER, by exact name:
+
+        flds = {f.name: f for f in arcpy.ListFields(layer)}
+        clash = [c for c in names.values() if c in flds]
+
+    and then wrote through the catalog path. Two ways for those to
+    disagree, and John's Gdansk run (9 November 2026) met one of them:
+    "field 'T_pharma_200' exist", raised by ExtendTable for a column
+    the clash check had not seen. GIS field names ignore case, so an
+    earlier T_Pharma_200 is the same field; and the layer carries its
+    own cached view of the schema (BACKLOG 309), which can lag the
+    file. Either way the field was treated as new, ExtendTable refused
+    it, and the message blamed a lock.
+    """
+    try:
+        arcpy.management.ClearWorkspaceCache()
+    except Exception:                                # pragma: no cover
+        pass
+    out = {}
+    for target in (_catalog_of(layer), layer):
+        if not target:
+            continue
+        try:
+            for f in arcpy.ListFields(target):
+                out.setdefault(f.name.lower(), f)
+        except Exception:
+            continue
+    return out
+
+
 def _utm_from_lonlat(lon, lat):
     """Fitting metric CRS straight from coordinate VALUES - the table
     path has no CRS object to ask (field-test gap: degree tables were
@@ -706,7 +741,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.63.5"
+TOOLBOX_VERSION = "1.63.7"
 
 
 def _vtuple(v):
@@ -1215,110 +1250,13 @@ def _keep_both_names(names, taken, messages=None):
     return out, renamed
 
 
-def _save_name_map(cat, rows, messages):
-    """The field-name mapping, beside the output.
-
-    A mapping that lives only in a run log is useless a year later.
-    Rows are (name_asked_for, name_written, why) - so a reader can
-    tell a shapefile truncation from a keep-both rename without
-    guessing.
-    """
-    if not rows:
-        return
-    try:
-        import csv as _csv
-        side, moved = _sidecar_path(cat, "_EquiPop_fields.csv")
-        if moved:
-            os.makedirs(os.path.dirname(side), exist_ok=True)
-        with open(side, "w", newline="", encoding="utf-8-sig") as fh:
-            w = _csv.writer(fh)
-            w.writerow(["name_asked_for", "name_written", "why"])
-            for r in rows:
-                w.writerow(list(r))
-        messages.addMessage(f"Name mapping also saved to {side}")
-    except Exception as exc:
-        messages.addWarningMessage(
-            f"Could not save the name mapping next to the output "
-            f"({exc}) - it is printed above.")
-
-
-#: BACKLOG 316. "Keep both" is a THIRD choice, not a new default:
-#: Overwrite stays first so re-running to fix a typo behaves as it
-#: always has. John ruled the choice explicit rather than inferred
-#: from the settings - "Re-running the same analysis to fix a typo is
-#: normal and should overwrite, and deciding that by inference is the
-#: kind of cleverness this project has been punished for."
-KEEP_MODES = ["Overwrite",
-              "Keep both - add a new column (b, c, d...)",
-              "Stop with a message"]
-
-
-def _letter_suffix(n):
-    """0 -> "", 1 -> "b", 2 -> "c", ... 25 -> "z", 26 -> "aa", 27 -> "ab".
-
-    BACKLOG 316, John's design. The FIRST column keeps its canonical
-    name, so a single run is unchanged and every existing result still
-    reads the same. Only a second column of the same name takes a
-    letter.
-    PAST z IT IS aa, then ab - John: "aa is a good solution". No
-    ceiling and no refusal: it costs nothing and removes a wall
-    somebody would otherwise meet at the least convenient moment.
-    """
-    if n <= 0:
-        return ""
-    # n=1 is "b", so shift past "a" - the unsuffixed name IS the "a"
-    n += 1
-    out = ""
-    while n > 0:
-        n, r = divmod(n - 1, 26)
-        out = chr(ord("a") + r) + out
-    return out
-
-
-def _keep_both_names(names, taken, messages=None):
-    """Rename any result whose field already exists, instead of
-    overwriting it or refusing.
-
-    BACKLOG 316. The box offered Overwrite or Stop, so running the
-    same k twice with two different friction fields - walk and drive,
-    which is the whole point of exercise 4 - could not be done in one
-    file: the second run destroyed the first.
-    THE SUFFIX IS APPLIED HERE, BEFORE SHORTENING, and that ordering
-    is the whole of the shapefile question John raised. The shortener
-    already resolves over-length collisions with a disambiguating
-    digit (1.46.3), so R_black_alone_333 and R_black_alone_333b
-    truncating to the same ten characters is a case it knows how to
-    handle - PROVIDED it is handed the suffixed name. Shorten first
-    and the suffix is cut away into a silent collision.
-    `taken` is the set of field names already on the target.
-    """
-    out, used, moved = {}, set(taken), {}
-    for col, want in names.items():
-        if want not in used:
-            out[col] = want
-            used.add(want)
-            continue
-        i = 1
-        while True:
-            cand = want + _letter_suffix(i)
-            if cand not in used:
-                break
-            i += 1
-        out[col] = cand
-        used.add(cand)
-        moved[want] = cand
-    if moved and messages is not None:
-        # SAY SO. A user who looks for their column, does not find it
-        # and concludes the run failed is the pattern of 309, 310 and
-        # 311 - a silent rename is the same failure wearing a
-        # different coat.
-        messages.addMessage(
-            "Keeping both: these already existed, so new columns were "
-            "written beside them - "
-            + "; ".join(f"{k} -> {v}" for k, v in
-                        list(moved.items())[:6])
-            + (f" (+{len(moved) - 6} more)" if len(moved) > 6 else ""))
-    return out, moved
+# BACKLOG 463. A SECOND _save_name_map, KEEP_MODES, _letter_suffix
+# and _keep_both_names stood here, from before 1.49.1 moved the
+# keep-both logic into equipop.doors.fields. Python keeps the LAST
+# definition, so this older copy - exact-case, and with the unbounded
+# loop 1.49.1 bounded - was the one Pro actually ran, behind a wrapper
+# whose docstring said the opposite. Removed: one implementation, in
+# the package, for both doors.
 
 
 def _shorten_names(names, cap: int = 10):
@@ -1550,7 +1488,8 @@ def _write_failure(exc, what, target):
                "results Null' rung cannot be written there. Choose "
                "'give them results, counting as zero' instead, or "
                "write to a file geodatabase, where nulls work.")
-    elif "cannot add field" in low or "already exist" in low:
+    elif ("cannot add field" in low or "already exist" in low
+          or ("field '" in low and "exist" in low)):
         # BACKLOG 144/135: a FIELD refusal, not a busy target
         why = ("ArcGIS refused one of the result fields by name. The "
                "usual causes are two names that differ only in "
@@ -1615,9 +1554,12 @@ def _is_field_refusal(exc) -> bool:
     its retries.
     """
     t = str(exc).lower()
+    # BACKLOG 463: "field 'T_pharma_200' exist" (ExtendTable, Pro 3.x)
+    # was matched only for names starting with N, so it went down the
+    # retry path and was reported as a refused change.
     return ("cannot add field" in t and "000852" not in t) or \
            "not nullable" in t or "already exist" in t or \
-           "field 'n" in t and "exist" in t
+           ("field '" in t and "exist" in t)
 
 
 def _undo_partial(target, before, messages):
@@ -2372,10 +2314,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     # for the reason in _keep_both_names.
     kept_both = {}
     if existing.startswith("Keep both"):
-        try:
-            _already = {f.name for f in arcpy.ListFields(layer)}
-        except Exception:                            # pragma: no cover
-            _already = set()
+        # BACKLOG 463: the target's own list, case and all
+        _already = {f.name for f in _target_fields(layer).values()}
         # AN EMPTY FIELD LIST IS NOT EVIDENCE THAT NOTHING EXISTS
         # (BACKLOG 311): with nothing read, nothing is renamed and the
         # run behaves as Overwrite would, which is the safe direction.
@@ -2411,8 +2351,12 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     out[str(oid)] = np.asarray(data[oid], np.int64)
     for c, v in res.items():
         out[names[c]] = v
-    flds = {f.name: f for f in arcpy.ListFields(layer)}
-    clash = [c for c in names.values() if c in flds]
+    # BACKLOG 463: what the TARGET holds, matched without regard to
+    # case - see _target_fields. `spelled` is each clashing name as
+    # the target spells it, which is what a cursor must be given.
+    have = _target_fields(layer)
+    clash = [c for c in names.values() if c.lower() in have]
+    spelled = {c: have[c.lower()].name for c in clash}
     if clash and not existing.startswith("Overwrite") \
             and not existing.startswith("Keep both"):
         raise arcpy.ExecuteError(
@@ -2420,9 +2364,19 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "Choose Overwrite, Keep both, or write to a new feature "
             "class.")
     reusable = [c for c in clash
-                if str(getattr(flds[c], "type", "")).lower()
+                if str(getattr(have[c.lower()], "type", "")).lower()
                 in ("double", "single", "float")]
     stale = [c for c in clash if c not in reusable]
+    # The layer's own view may lag the file (BACKLOG 309): a field it
+    # cannot see is reached through the catalog path instead. When it
+    # sees them all, the layer is used, as it always was.
+    try:
+        _seen = {f.name.lower() for f in arcpy.ListFields(layer)}
+    except Exception:                                # pragma: no cover
+        _seen = set()
+    _via = layer
+    if any(c.lower() not in _seen for c in clash):
+        _via = _catalog_of(layer) or layer
     if reusable:
         # v1.16.5: UPDATE the existing columns instead of deleting
         # them. DeleteField rewrites the entire table, which is both
@@ -2441,7 +2395,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             for attempt in range(3):        # locks are often transient
                 try:
                     with arcpy.da.UpdateCursor(
-                            layer, [str(oid)] + reusable) as cur:
+                            _via, [str(oid)]
+                            + [spelled[c] for c in reusable]) as cur:
                         for row in cur:
                             i = pos.get(int(row[0]))
                             if i is None:
@@ -2478,7 +2433,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             "layer is open in a map, remove and re-add it afterwards: "
             + ", ".join(stale[:6]))
         with _stage(messages, "deleting mistyped fields", stages):
-            arcpy.management.DeleteField(layer, stale)
+            arcpy.management.DeleteField(
+                _via, [spelled[c] for c in stale])
     fresh = [c for c in names.values() if c not in reusable]
     if fresh:
         keep = [str(oid)] + fresh
@@ -2487,7 +2443,8 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             _add_columns(layer, oid, sub, fresh, messages)
     where = _catalog_of(layer) or str(layer)
     after = _fields_after_writing(layer, where)
-    missing = [c for c in names.values() if c not in after]
+    _after = {a.lower() for a in after}              # BACKLOG 463
+    missing = [c for c in names.values() if c.lower() not in _after]
     if missing:
         messages.addWarningMessage(
             f"{len(missing)} result fields are NOT in the target "

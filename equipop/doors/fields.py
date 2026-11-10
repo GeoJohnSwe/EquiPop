@@ -260,11 +260,14 @@ def keep_both(names, taken):
     handed the suffixed name. Shorten first and the suffix is cut away
     into a silent collision.
     """
-    out, used, renamed = {}, set(taken), {}
+    # BACKLOG 463: GIS field names ignore case, so T_Pharma_200 on
+    # the target takes T_pharma_200 too. Compared lower-cased; the
+    # names written keep the case they were asked for.
+    out, used, renamed = {}, {t.lower() for t in taken}, {}
     for col, want in names.items():
-        if want not in used:
+        if want.lower() not in used:
             out[col] = want
-            used.add(want)
+            used.add(want.lower())
             continue
         i = 1
         # BOUNDED ON PURPOSE. This was `while True`, which is correct
@@ -276,14 +279,14 @@ def keep_both(names, taken):
         # columns John expects and the loop cannot spin.
         for i in range(1, 100000):
             cand = want + letter_suffix(i)
-            if cand not in used:
+            if cand.lower() not in used:
                 break
         else:                                        # pragma: no cover
             raise ValueError(
                 f"could not find a free name for '{want}' - "
                 "letter_suffix is not producing new names")
         out[col] = cand
-        used.add(cand)
+        used.add(cand.lower())
         renamed[want] = cand
     return out, renamed
 

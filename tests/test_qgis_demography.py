@@ -296,19 +296,19 @@ def test_the_sink_is_given_a_WKB_TYPE_not_a_number():
         src = (ROOT / "qgis" / "equipop_qgis" / door).read_text(
             encoding="utf-8")
         call = src.split("parameterAsSink")[1][:200]
-        assert "QgsWkbTypes.Point" in call, (
+        assert "Qgis.WkbType.Point" in call, (
             f"{door} passes something other than a WKB type to the sink")
 
 
 def test_the_simulator_refuses_an_int_as_pyqgis_does():
     """If this stops raising, the simulator has gone permissive again
     and the doors are no longer being checked at all."""
-    from qgis.core import QgsWkbTypes
+    from qgis.core import Qgis
     alg = _alg()
     with pytest.raises(TypeError, match="unexpected type 'int'"):
         alg.parameterAsSink({}, "OUTPUT", {}, [], 2, None)
     # and the real constant is accepted
-    alg.parameterAsSink({}, "OUTPUT", {}, [], QgsWkbTypes.Point, None)
+    alg.parameterAsSink({}, "OUTPUT", {}, [], Qgis.WkbType.Point, None)
 
 
 def test_the_layer_is_written_in_the_RASTERS_own_projection(folder):

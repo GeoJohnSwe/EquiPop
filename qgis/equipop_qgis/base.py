@@ -20,6 +20,7 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsCoordinateTransform, QgsFeature, QgsField,
                        QgsFields, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProject)
+from qgis.core import Qgis  # BACKLOG 464: scoped enums, QGIS 3.38 to 4.x
 # v1.29.3: QGIS 3.38 moved field types to QMetaType and
 # deprecated the older typed QgsField constructor. The
 # declared minimum rose to 3.38 with it (John's ruling);
@@ -344,8 +345,8 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         # same way. The simulator had invented the method, so
         # 259 tests passed over a line that cannot run in QGIS
         # (John, field, 3.42.1).
-        from qgis.core import QgsProcessingParameterDefinition as _D
-        if any(bool(p.flags() & _D.FlagAdvanced)
+        from qgis.core import Qgis as _Q          # BACKLOG 464
+        if any(bool(p.flags() & _Q.ProcessingParameterFlag.Advanced)
                for p in self.parameterDefinitions()):
             extra = (
                 "<p><b>Under Advanced parameters</b> (the arrow below "
@@ -380,10 +381,10 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
             pass
         if advanced:
             try:
-                from qgis.core import QgsProcessingParameterDefinition
+                from qgis.core import Qgis               # BACKLOG 464
                 param.setFlags(
                     param.flags()
-                    | QgsProcessingParameterDefinition.FlagAdvanced)
+                    | Qgis.ProcessingParameterFlag.Advanced)
             except Exception:
                 pass
         self.addParameter(param)
@@ -439,13 +440,18 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                 "The input layer has no features.")
 
         if feats[0].hasGeometry():
+            # BACKLOG 464: against the enum, never 0, 1, 2. Under
+            # QGIS 4 (PyQt6) a geometry type is an enum and NOT equal
+            # to any number, so "gt != 0" refused every point layer.
+            from qgis.core import Qgis, QgsWkbTypes
             try:
-                from qgis.core import QgsWkbTypes
                 gt = QgsWkbTypes.geometryType(source.wkbType())
             except Exception:
-                gt = 0
-            if gt != 0:
-                kind = {1: "lines", 2: "polygons"}.get(gt, "that shape")
+                gt = Qgis.GeometryType.Point
+            if gt != Qgis.GeometryType.Point:
+                kind = {Qgis.GeometryType.Line: "lines",
+                        Qgis.GeometryType.Polygon: "polygons"}.get(
+                            gt, "that shape")
                 raise QgsProcessingException(
                     f"This tool measures what is around POINTS, and "
                     f"the layer you chose holds {kind}. Use a point "
