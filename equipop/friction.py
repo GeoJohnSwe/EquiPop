@@ -57,6 +57,9 @@ def _exact(v):
 
 from . import overshoot, selfpot, selfrule
 from .labels import tau_suffix          # BACKLOG 337/339
+# BACKLOG 481: the radial engines' own rule for where a crossing
+# ring's interpolation starts - imported, not copied a sixth time.
+from .analysis import _interp_base
 
 
 def load_friction_table(
@@ -252,6 +255,25 @@ class FrictionGrid:
         pi = idx(pop["x"], pop["y"])
         self.count_all[pi] = pop[count_all_col].to_numpy()
         self.count_group[pi] = pop[count_group_col].to_numpy()
+        # BACKLOG 479. EACH ROW'S OWN NUMBERS, kept beside the per-node
+        # arrays above. Those two lines ASSIGN, so where several rows
+        # share a cell the node holds the LAST row's count - and the
+        # counting loop used to read every row's count back FROM THE
+        # NODE. One row per person with a 0/1 group column (the form
+        # this module's own tests feed it) therefore gave every person
+        # in a cell the last person's flag: three people flagged
+        # 1, 0, 0 produced no T_ column at all, and 0, 0, 1 produced
+        # T = 3. Rows of 2 and 3 people in one cell counted as 3 + 3.
+        self.row_all = pop[count_all_col].to_numpy(float)
+        self.row_group = pop[count_group_col].to_numpy(float)
+        # BACKLOG 480 (168 for the effort engines). The people whose
+        # GROUP VALUE IS USABLE - the denominator of a share, John's
+        # ruling: of 400 people with 60 of unknown group the share
+        # divides by 340. An optional column, `count_valid`; without
+        # it everybody is usable and nothing moves.
+        self.row_valid = (pop["count_valid"].to_numpy(float)
+                          if "count_valid" in pop.columns
+                          else self.row_all)
         self.pop_idx = np.asarray(pi)          # node index of populated cells
         self.pop_x = pop["x"].to_numpy()
         self.pop_y = pop["y"].to_numpy()
@@ -310,14 +332,20 @@ class FrictionGrid:
 def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                      tau_values=None,
                      self_potential=selfpot.DEFAULT_SELF_POTENTIAL,
-                     overshoot_mode=None, seed=None, self_rule=None):
+                     overshoot_mode=None, seed=None, self_rule=None,
+                     treatment=None):
     """Shared origin loop: count cells in included-round order from a
     prepared grid (FrictionGrid or SlopeGrid). Tie convention: equal
     rounds form one atomic ring, as everywhere in EquiPop.
 
     origins : optional array of ROW indices into pop - compute results
     only for these origins (destination mass stays complete). Serves
-    origin-subset workflows (validation subsamples, kFCA, backlog #11)."""
+    origin-subset workflows (validation subsamples, kFCA, backlog #11).
+
+    treatment : True when a treatment group was ASKED FOR, False when
+    none was; T_ and R_ columns follow the question, not the values
+    (BACKLOG 488). None - a direct call that does not say - keeps the
+    old reading: a group column holding anything but zeros."""
     # BACKLOG 110: shared by friction AND slope, so threading it
     # here answers both engines at once.
     sp = selfpot.check(self_potential)
@@ -357,13 +385,40 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
     n_pop = len(grid.pop_idx)
     origins = np.arange(n_pop) if origins is None else np.asarray(origins)
     n_org = len(origins)
-    ca, cg = grid.count_all[grid.pop_idx], grid.count_group[grid.pop_idx]
+    # BACKLOG 479: each ROW's own numbers - not the node's, which are
+    # the last row's wherever several rows share a cell (see
+    # FrictionGrid). A grid built by other code, without the per-row
+    # arrays, is read from its nodes as before.
+    ca = getattr(grid, "row_all", None)
+    if ca is None:
+        ca = grid.count_all[grid.pop_idx]
+    cg = getattr(grid, "row_group", None)
+    if cg is None:
+        cg = grid.count_group[grid.pop_idx]
+    # BACKLOG 480: the people whose group value is usable (168)
+    cv = getattr(grid, "row_valid", None)
+    if cv is None:
+        cv = ca
+    # the cell each row stands in: the origin rule is about CELLS
+    node = np.asarray(grid.pop_idx)
     # v1.26.1, John's field run: with NO treatment given, the effort
     # engine still emitted T_<k> and R_<k> - a column of nothing that
     # looks like a result. The counts engine has always returned just
     # N_ and Dist_ in that case, so the two engines disagreed about
     # what an empty question answers.
-    _has_group = bool(np.nansum(np.abs(cg)) > 0)
+    # BACKLOG 488, FOUND BY THE INDEPENDENT REVIEW OF 1.64.0. That fix
+    # decided from the VALUES whether a group was asked for, so a group
+    # that was asked for and holds nobody - a rare group, one year, one
+    # region - lost its T_ and R_ columns, where the counts engine
+    # returns them as zeros. A run looping over groups or years got a
+    # different set of columns each time, and with -replace- (473) or a
+    # GIS overwrite the previous run's T_ and R_ stayed beside the new
+    # results, looking current. The caller now SAYS; the values decide
+    # only for a direct call that does not.
+    if treatment is None:
+        _has_group = bool(np.nansum(np.abs(cg)) > 0)
+    else:
+        _has_group = bool(treatment)
     results = []
 
     for start in range(0, n_org, chunk):
@@ -386,7 +441,7 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
             }
             _oid = int(overshoot.grid_identity(
                 grid.pop_x[oi], grid.pop_y[oi], grid.unit_size))
-            sum_all = sum_grp = 0.0
+            sum_all = sum_grp = sum_val = 0.0
             dist_m = rounds_now = 0.0
             pending = list(k_values)
             pending_tau = list(tau_values)
@@ -396,7 +451,7 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 rec[f"N_{lab}"] = sum_all
                 if _has_group:
                     rec[f"T_{lab}"] = sum_grp
-                    rec[f"R_{lab}"] = (sum_grp / sum_all if sum_all
+                    rec[f"R_{lab}"] = (sum_grp / sum_val if sum_val
                                        else np.nan)
 
             j = 0
@@ -427,7 +482,11 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                     # can empty a ring, and an empty ring has no
                     # maximum extent, so it is skipped rather than
                     # measured. `j` has already advanced past it.
-                    ring = [ci for ci in ring if ci != oi]
+                    # BACKLOG 479: by CELL, which is the contract
+                    # ("not counting you or anyone sharing your
+                    # cell"). `ci != oi` dropped the origin's own row
+                    # and kept every other row standing in its cell.
+                    ring = [ci for ci in ring if node[ci] != node[oi]]
                     if not ring:
                         continue
                 ring_all = float(sum(ca[ci] for ci in ring))
@@ -441,6 +500,7 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 if osm != overshoot.WHOLE and ring_all > 0:
                     r_pop = np.array([ca[ci] for ci in ring], float)
                     r_grp = np.array([cg[ci] for ci in ring], float)
+                    r_val = np.array([cv[ci] for ci in ring], float)
                     r_ids = overshoot.grid_identity(
                         np.array([grid.pop_x[ci] for ci in ring], float),
                         np.array([grid.pop_y[ci] for ci in ring], float),
@@ -454,12 +514,24 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                         rec[f"N_{k}"] = n_k
                         if _has_group:
                             t_k = sum_grp + float((r_grp * wt).sum())
+                            v_k = sum_val + float((r_val * wt).sum())
                             rec[f"T_{k}"] = t_k
-                            rec[f"R_{k}"] = t_k / n_k if n_k else np.nan
+                            rec[f"R_{k}"] = t_k / v_k if v_k else np.nan
+                        # BACKLOG 481 (191 for the effort engines). The
+                        # interpolation STARTS at the origin cell's own
+                        # radius, not at its centre: _interp_base, the
+                        # radial engines' own helper. From 0, Dist_k
+                        # fell as k rose - 51.5 m at k = 50, inside the
+                        # cell, and 9.1 m at k = 61, one ring out.
                         d_k = float(overshoot.radius(
-                            dist_m, d_ring,
+                            _interp_base(dist_m, grid.unit_size, sp,
+                                         d_ring),
+                            d_ring,
                             taken / ring_all if ring_all else 1.0))
-                        if d_k <= 0.0 and n_k >= k:
+                        # BACKLOG 481 (304 for the effort engines): a
+                        # share of a cell arrives as 6.999999999999999,
+                        # not 7, and a bare >= then left Dist_k at 0.
+                        if d_k <= 0.0 and n_k >= k - 1e-9:
                             # the radius needs the people STANDING in
                             # the cell, not the share reported
                             # BACKLOG 158: a FrictionGrid is
@@ -473,6 +545,7 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                         rec[f"Rounds_{k}"] = float(r0)
                 for ci in ring:
                     sum_all += ca[ci]; sum_grp += cg[ci]
+                    sum_val += cv[ci]
                 # BACKLOG 115, ruled by John: the MAXIMUM straight-line
                 # extent of the accepted ring - the smallest circle
                 # containing everyone counted, which is what "the
@@ -492,7 +565,8 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                     rec[f"N_{k}"] = sum_all
                     if _has_group:
                         rec[f"T_{k}"] = sum_grp
-                        rec[f"R_{k}"] = sum_grp / sum_all
+                        rec[f"R_{k}"] = (sum_grp / sum_val if sum_val
+                                         else np.nan)
                     # BACKLOG 110: the effort engines never received
                     # self-potential in 1.29.5, so a dense origin
                     # reported Dist_k = 0 exactly as before the fix.
@@ -511,7 +585,7 @@ def _count_from_grid(grid, pop, k_values, id_col, chunk, origins=None,
                 rec[f"N_{k}"] = sum_all
                 if _has_group:
                     rec[f"T_{k}"] = sum_grp
-                    rec[f"R_{k}"] = (sum_grp / sum_all if sum_all
+                    rec[f"R_{k}"] = (sum_grp / sum_val if sum_val
                                      else np.nan)
                 rec[f"Dist_{k}"] = dist_m
                 rec[f"Rounds_{k}"] = rounds_now
@@ -559,6 +633,7 @@ def run_knn_friction(
     overshoot_mode: str | None = None,
     seed: int | None = None,
     self_rule: str | None = None,        # BACKLOG 341
+    treatment: bool | None = None,       # BACKLOG 488
 ) -> pd.DataFrame:
     """
     Friction-aware k-NN for aggregated cell data.
@@ -576,6 +651,10 @@ def run_knn_friction(
     round at which k was reached - the friction analogue of distance).
     Dist_k remains the straight-line Cartesian distance to the cell
     where k was reached, as in the original EquiPop output.
+    treatment : True when a group was asked for - T_ and R_ are then
+          returned even where count_group_col holds only zeros; False
+          for none. None (default) decides from the values, as before
+          (BACKLOG 488).
     """
     # BACKLOG 112: this block appeared TWICE, verbatim. FrictionGrid
     # is the most expensive object in the project and every effort
@@ -586,7 +665,8 @@ def run_knn_friction(
                         count_all_col, count_group_col)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
                             tau_values, self_potential,
-                            overshoot_mode, seed, self_rule)
+                            overshoot_mode, seed, self_rule,
+                            treatment=treatment)
 
 
 # ===================================================================

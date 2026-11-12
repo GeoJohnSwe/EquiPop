@@ -359,16 +359,34 @@ def test_stata_drops_result_columns_for_decimal_radii():
     """Same item: the machine-1 ado computed an underscore-safe name for
     a decimal radius (r=1.5 -> r1_5, since a dot cannot appear in a
     Stata variable name) and then kept using the unsanitised one, so
-    `replace` silently dropped nothing for any decimal radius."""
+    `replace` silently dropped nothing for any decimal radius.
+
+    Until 1.63.7 this READ the ado's drop block. Since 1.63.8 (BACKLOG
+    473) the Python half replaces, from the engine's own names, so the
+    test RUNS a decimal radius twice - the second time with replace."""
+    import contextlib
+    import io
     import os
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    src = open(os.path.join(root, "stata", "equipop.ado"),
-               encoding="utf-8").read()
-    block = src[src.index('local rl : subinstr'):]
-    block = block[:block.index("        }")]
-    assert "`rr'" not in block, (
-        "the sanitised radius name is computed and then ignored - "
-        "capture drop still uses the name with the dot in it")
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import stata_sim as SS
+
+    def run(df, **kw):
+        ns, st = SS.start(df.assign(__touse=1.0))
+        SS.run_block(SS.blocks(os.path.join(SS.STATA,
+                                            "equipop.ado"))[0], ns)
+        with contextlib.redirect_stdout(io.StringIO()):
+            ns["_equipop_machine1"](x="X_local", y="Y_local", treat="",
+                                    r="250.5", unit=100.0,
+                                    touse="__touse", unit_was_set=1, **kw)
+        return st
+
+    first = run(SS.load_test_data().iloc[:800])
+    assert first.locals["eqp_varlist"].split() == ["N_r250_5"]
+    again = run(first.df.drop(columns="__touse").assign(N_r250_5=-99.0),
+                replace="replace")
+    assert list(again.df.columns).count("N_r250_5") == 1
+    assert not (again.df["N_r250_5"] == -99.0).any()
 
 
 # --- 14 ------------------------------------------------------------

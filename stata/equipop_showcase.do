@@ -204,7 +204,10 @@ print("stats engine: 4 variables stored")
 end
 
 summarize Mean_ValFloat_200 Med_ValFloat_200 Gini_ValFloat_200
-* EXPECT (means): Nv 167.30 | Mean 1815.23 | Med 1248.10 | Gini .5806
+* EXPECT (means): Nv 167.30 | Mean 1815.23 | Med 1250.34 | Gini .5806
+* (Med was 1248.10 up to EquiPop 1.63.8. Since 1.64.0 a median counts
+* the people in the last ring by their width - a fraction of a person
+* each under the proportional rule. John's ruling, 11 November 2026.)
 * MEASURED FOR THE FIRST TIME IN 1.40.7. This section had never run
 * to completion in Stata - it died at the Data.store above - so its
 * old expectations had never been compared with anything.

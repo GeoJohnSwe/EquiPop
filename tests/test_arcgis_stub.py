@@ -134,6 +134,11 @@ def _install_fake_arcpy(table: pd.DataFrame):
             d.noDataValue = m.get("nodata")
         else:
             d.dataType = "Table"
+            # BACKLOG 466: a real table's Describe has NO
+            # spatialReference at all. The stand-in gave every table
+            # SWEREF99 TM, which hid the question "what do the
+            # barriers get converted into when the input is a table".
+            del d.spatialReference
         return d
 
     def _df_for(key):
@@ -3603,7 +3608,11 @@ def test_the_help_generator_reads_the_checkout_not_an_installed_equipop(
         "instead of the checkout')\n")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = tmp_path / "xml"
-    env = dict(os.environ, PYTHONPATH=str(tmp_path / "site"))
+    # BACKLOG 491: AHEAD of what is there, not instead of it - a
+    # replaced path hides packages the environment supplies that way
+    ahead = os.pathsep.join(filter(None, [str(tmp_path / "site"),
+                                        os.environ.get("PYTHONPATH", "")]))
+    env = dict(os.environ, PYTHONPATH=ahead)
     p = subprocess.run([sys.executable,
                         os.path.join(root, "arcgis", "make_help_xml.py"),
                         "--out", str(out)],

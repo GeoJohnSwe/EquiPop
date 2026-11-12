@@ -38,6 +38,45 @@ still being asked for, which the external review pointed at), and at
 three of its claims against the code before trusting any of them** -
 that is how the last three staleness findings were made.*
 
+### After the code review of 1.63.7 — a work order, for John to change
+*Written at 1.63.8, 11 November 2026; item B done at 1.64.0; the
+independent review of 1.64.0 answered in 1.64.1 (488-492). The review ("EquiPop code review:
+where we lag", 10 November) ranked nine places where the project lags.
+1.63.8 took the first - the defects that gave a wrong number or lost
+data (465-481). This is Claude's proposed order for the rest; the
+detail is in 483, and nothing here is decided.*
+
+A. **Run 1.63.8, 1.64.0 and 1.64.1 on the real programs** — together
+   they change numbers in five places and none of it has met Pro, QGIS
+   or Stata. The independent review of 1.64.0 makes this a release
+   CONDITION, and its matrix (with 488 and 489 added) is in the MANUAL
+   row of 1.64.1. Until then they are release candidates. Before any
+   upload: the PyPI token of 5 November revoked (492, S1).
+B. **Four rulings (483 a)** — DONE in 1.64.0, the same day: 484
+   (percentiles), 485 (the first reference rung), 486 ("no decay" in
+   Pro), 487 (equipop_run level with equipop).
+C. **A gate on the release (483 g)** — tests on every push, the bundle
+   refusing to build on a red suite, and the recorded two-minute run
+   per program. This is the item at the head of the list below, and
+   the review's finding is that every field failure of this month
+   would have been caught by it.
+D. **One ring arithmetic (483 b)** — five copies into one, with one
+   tolerance. 481 is the third fix to reach four of five.
+E. **What Part B promises (483 h)** — before the application text is
+   final: the estimator first (it is the nearest), then scale by
+   out-of-sample prediction; say plainly what stays future work.
+F. **The front ends on one base (483 c, d; 117 + 120)** — populations
+   built once in the shared package, a parity test on NUMBERS, then
+   Pro's refusals moved in front of the computing and QGIS's cancel.
+G. **Installing (483 e; 198)** — the Stata Python block in a file of
+   its own, the plugin in QGIS's repository, toolbox files on each
+   release.
+H. **Scale (483 f)** and **the records (483 g)** — as the work above
+   touches them.
+**482** (the sample data is described as a real register) is left as
+it is by John's ruling, and must be settled before any publication,
+course or SSC text leans on those files.
+
 ### Now — a release gate on real hosts
 1. **128, 80, 87, 198–199, 288** — small recorded end-to-end runs in
    live QGIS and ArcGIS Pro, matching plugin/engine version checks,
@@ -3672,6 +3711,604 @@ because machine 3 stores tiles that way and says so in its manifest.
   the suite would pass. That is the guard written after inventory.py
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
+
+- 492 | PART DONE v1.64.1, 11 NOVEMBER 2026; THE REST FOR JOHN | THE
+  INDEPENDENT REVIEW OF 1.64.0 - WHAT IS NOT CODE. The review ("EquiPop
+  1.64.0 - independent code and release review", 11 November, of
+  equipop-1.64.0-ALL.zip) found three code defects (488-490) and a test
+  fragility (491); the rest, item by item:
+  S1 THE PyPI TOKEN of 5 November (HANDOVER_15): an archive scan cannot
+  tell whether it is still live. Revoke it and make a project-scoped
+  one before the next upload. JOHN'S; nothing here can close it.
+  R1 THE REAL HOSTS as a release CONDITION, not a follow-up - agreed.
+  The review's matrix, with 488 and 489 added, is in the MANUAL row of
+  1.64.1; recorded as a signed list (program, version, OS, settings,
+  pass/fail). JOHN'S MACHINES.
+  M1 ONE RING ARITHMETIC AND A CI GATE: already 483 (b) and (g),
+  items C and D of the work order at the top.
+  C1 9,754 DEPRECATION WARNINGS around the raster reads (slope.py,
+  rasterfolder.py) under NumPy 2.5.2 and Rasterio 1.4.4. NOT
+  REPRODUCED: under NumPy 2.5.3 and Rasterio 1.5.2 the slope and
+  raster-folder tests pass with deprecations turned into errors. Most
+  likely Rasterio 1.4's own. If a run on 1.4 confirms it, raise the
+  floor (rasterio>=1.5) rather than silence warnings.
+  P1 THE PATCHES were inside the release folder and not in its
+  record. They are for John to apply, not part of the release: from
+  1.64.1 they travel BESIDE the folder, in patches/.
+  THE REVIEW'S SUITE RUN, 2,653 passed, 38 skipped, 9 failed on
+  Windows: the nine are of 491's two kinds (a path the test replaced,
+  home folders the Windows way), none a wrong number.
+
+- 491 | DONE v1.64.1, 11 NOVEMBER 2026 | TESTS THAT FAILED FOR THEIR
+  SURROUNDINGS (review of 1.64.0, F6). Two kinds, nine failures on the
+  reviewer's Windows machine, none in the code under test.
+  HOME ON WINDOWS. Three doctor tests made a home folder by setting
+  HOME; Windows finds home in USERPROFILE, so on John's platform they
+  looked in the real one and failed. They now set both. Checked here
+  by making ~ resolve the Windows way: 5 failures before, the three
+  gone after (the other two fail only under that crude stand-in, which
+  has no HOMEDRIVE).
+  PYTHONPATH REPLACED, NOT EXTENDED. Four tests (the poisoned-install
+  pair for the help generators, the fresh-interpreter check, the
+  Python 3.15 encoding run) set PYTHONPATH to their own folder,
+  dropping whatever the environment supplied that way - the
+  reviewer's dependencies, in their case. Their folder now goes AHEAD
+  of the path; the poisoned equipop is still found first, which is
+  what those tests are about. The other tests that start a Python
+  inherit the environment as it is. Run with an extra PYTHONPATH entry
+  here, the four pass.
+
+- 490 | DONE v1.64.1, 11 NOVEMBER 2026 | equipop_run REFUSES AN OPTION
+  THE ENGINE DOES NOT READ (review of 1.64.0, F4). One syntax line
+  declares every engine's options, and 1.64.0 (487) checked only what
+  each engine NEEDS. What it does not read was accepted and dropped:
+  model(linear) with engine(counts); halflife(500) with engine(counts)
+  - no decay, no word; r(500) with engine(friction), which counts by k
+  and tau only (tried: the run returned N_, Dist_, Rounds_ and nothing
+  for the radius). The fault John ruled against in Pro the same day
+  (486).
+  HOW. The Stata half records the options TYPED - before any default
+  is filled in, so model() left out is not "tobler" yet - in a local;
+  the Python half holds the table (which engine reads which option,
+  _RUN_OPTIONS) and refuses with one sentence per option, naming the
+  engines that do read it and, where there is one, what to do
+  instead ("friction and slope count by k() and tau(), not by
+  distance"; "outside fca, equipop_run has no distance decay").
+  treatmode() without treat() is refused too. Nothing is computed.
+  THE TABLE IS IN THE ADO'S PYTHON BLOCK, beside the syntax line it
+  describes, so a new ado works with an older engine (the minimum is
+  1.48.0). A test holds the table, the Stata half's list and its
+  numeric defaults (wperm 199, selfpot 1, ...) to the syntax line: an
+  option added there and not to the table fails the suite.
+  RUNS THAT NOW STOP: equipop_run with any option its engine never
+  read. Their numbers were those of the run without the option.
+
+- 489 | DONE v1.64.1, 11 NOVEMBER 2026 | QGIS: THE SHAPEFILE CHECK SEES
+  GROUPED TYPE NAMES (review of 1.64.0, F2). The ten-character check
+  ran before the run on the names it was expected to make, built from
+  the count fields in box 2a. Grouped names come from box 2c and were
+  not known then: a group called some_long_group_name passed and went
+  to a .shp as T_some_long_group_name_2, where OGR cuts names to ten
+  characters on its own terms (reproduced with the stand-in; what the
+  real writer makes of it was not needed once it is refused).
+  TWO CHECKS NOW. Once the group names are known (the table and the
+  "every other type" name), before anything is computed; and in
+  write(), on the names the file will hold - renames included - before
+  the file is made. The second is a net under every prediction: the
+  same gap cannot open again with a new source of names.
+  PRO WAS NEVER AFFECTED: it checks the names the engine returned.
+
+- 488 | DONE v1.64.1, 11 NOVEMBER 2026 | FRICTION AND SLOPE: A GROUP
+  ASKED FOR KEEPS ITS COLUMNS WHEN IT HOLDS NOBODY (review of 1.64.0,
+  F1). v1.26.1 stopped the effort engines writing T_ and R_ when no
+  treatment was given - and decided that from the VALUES: a group
+  column of zeros. So a group that WAS asked for and is empty - a rare
+  group, one year, one region - lost its columns, where the counts
+  engine returns them as zeros. Reproduced through dispatch: counts
+  gave N_2, Dist_2, T_g_2, R_g_2; friction and slope N_2, Dist_2,
+  Rounds_2.
+  WORSE THAN A MISSING COLUMN. A loop over groups or years got a
+  different set of columns each time; and with Stata's replace - which
+  replaces exactly the variables a run writes (473) - or a GIS
+  overwrite, the previous run's T_ and R_ stayed beside the new
+  results, looking current.
+  THE CALLER NOW SAYS. dispatch passes treatment=True for each group
+  it was given, False for none, to run_knn_friction and run_knn_slope;
+  None - a direct call that does not say - keeps the old reading. All
+  three doors reach the effort engines through dispatch.
+  NO NUMBER CHANGES: the columns that come back were zeros.
+
+- 487 | DONE v1.64.0, 11 NOVEMBER 2026 | equipop_run BROUGHT LEVEL
+  WITH equipop (John's ruling on 483 a: "bring it up to level with
+  equipop"). What -equipop- had and this command did not:
+  [if] [in], WITH equipop'S RULE: they choose the rows that GET
+  results; everybody still counts as a neighbour. Computed for all,
+  reported for the sample.
+  RETURNED RESULTS. The command is rclass: r(varlist) - the variables
+  it made, in order - r(engine), r(cmd), r(cmdline), r(treat),
+  r(values), r(k), r(r), r(tau), r(unit), r(selfpot), r(N_origins),
+  r(N_missing), and for the four counting engines r(overshoot) and
+  r(originrule), the rule that RAN.
+  overshoot() AND originrule(), the two settings that move every
+  k-based number, for counts, stats, friction and slope: the same
+  words, defaults and refusals as -equipop- (sampled is refused by
+  name), and the same numbers - tested against -equipop- for all four
+  combinations. On fca and lisa they are refused, not swallowed.
+  REFUSALS IN ITS OWN WORDS. None of an engine's requirements was
+  checked in Stata. The engine answered "give k_values and/or
+  r_values"; a slope run without dem() died inside the raster library;
+  fca without demandvar() was a KeyError; stats without values() ran
+  and returned counts. Each is now one sentence naming the option.
+  THE REVIEW SAID "fca always stops without halflife()". Not quite:
+  reach(r) rfca(#) and reach(k) kfca(#) have always run without one.
+  It is reach(decay), the DEFAULT, that needs it - and said so as
+  "reach='decay' needs a decay". The refusal and the help now give
+  the three reaches and the option each needs.
+  STILL NOT LEVEL, and said in the help: prefix(), [fweight] (use
+  weight()), distance decay, projection from degrees.
+  NOT REACHABLE HERE: a real Stata. The Python half is run against
+  -equipop- itself; the Stata half is read, and a test counts its
+  braces and line continuations. First run: -equipop_run if ..., ...-
+  and -return list-.
+
+- 486 | DONE v1.64.0, 11 NOVEMBER 2026 | PRO: "NO DECAY" MEANS NO
+  DECAY (John's ruling on 483 a: "it should not - let us block
+  that"). With 'Distance decay' on "no decay" - its default - a filled
+  "half-life from a field" or "self-calibrating" box made tool 1 decay
+  all the same, as negexp, the curve nobody had chosen; the only trace
+  was a log line about a variable bandwidth.
+  BLOCKED, NOT IGNORED. The run stops, and the dialog shows the same
+  sentence on the box before Run. Ignoring the box would turn a run
+  that decayed yesterday into one that does not, without a word; the
+  boxes stay visible, so the message can be acted on. The message
+  says how to get either result: choose a curve (negexp is what this
+  combination ran as), or empty the box.
+  A RUN THAT WORKED NOW STOPS: "no decay" with one of those two boxes
+  filled. Stata has always refused the same pair. QGIS has no such
+  boxes. The plain half-life box is unchanged: greyed out on "no
+  decay" and not read.
+
+- 485 | DONE v1.64.0, 11 NOVEMBER 2026 | THE FIRST REFERENCE RUNG
+  SAYS WHAT IT DOES (John's ruling on 469 and 483 a). "Every point
+  counts as one" - and both doors counted a filled count field on it
+  all the same. John: either stop counting it in both doors, "OR let
+  us state not that each point counts as one but each point counts as
+  one or as the value stated below". The second, because it moves
+  nobody's numbers: the rung is the DEFAULT, and the count box is
+  older than the ladder, so scripts, saved models and QGIS users who
+  never touch the dropdown all fill the one without naming the other.
+  THE RUNG NOW READS "every point counts as one - or as the value in
+  the count field, if filled", in both doors, from the one list in
+  equipop/doors/rungs.py.
+  PRO NO LONGER GREYS OUT BOX 1a on that rung: a box the run reads
+  has to be a box the user can see and empty. The warning of 462
+  ("greys the box out, but the count IS used") and QGIS's of 469 are
+  replaced by one plain line: "Each row counts as its value in 'Pop'".
+  NO NUMBER CHANGES. The leading words of the label are the old
+  label, so a tool saved under it still finds its rung (465).
+  "A field holds the count" stays: the same thing with the field
+  REQUIRED, for whoever wants the run to refuse without it.
+
+- 484 | DONE v1.64.0, 11 NOVEMBER 2026 | PERCENTILES AND FRACTIONS OF
+  A PERSON (John's ruling on 483 a).
+  THE FAULT. A median or percentile was "numpy's percentile of the
+  sample written out one row per person", worked out from (value,
+  weight) pairs by drawing each row as a flat block from its first
+  person to its LAST. A row of less than one person has no last
+  person; such blocks were collapsed to a point, and the top of the
+  population fell out of reach. Ten values 1..10 at weight 0.5 each
+  gave a median of 5.0 and a 100th percentile of 9, where five people
+  hold 5.5 and 9.5. Writing whole people as two half rows - the same
+  people - changed the answers. Gridded populations hold a fraction
+  of a person in most cells, and so does a ring taken as a share.
+  THE RULE NOW, in one sentence: the percentile is the average value
+  of ONE PERSON'S WIDTH of the population, sorted by value, at
+  position (n - 1) q. For whole numbers of people that IS numpy's
+  percentile of the written-out sample - the rule of 1.30.3 - and it
+  is the old number whenever every row the stretch touches weighs one
+  person or more (3,000 random cases).
+  WHAT MOVES, MEASURED THROUGH THE ENGINE on the shipped test data
+  (10,892 people, k = 200). With the last ring taken `whole`:
+  nothing. Under `proportional`, THE DEFAULT, the people in the ring
+  that crosses k each count as a fraction of a person - so rows of
+  less than one person are in almost every neighbourhood, and the
+  median changes in 14% of them, the 75th and 90th percentiles in
+  19%, by 0.07% of the variable's interquartile range on average and
+  7% at most. The showcase's pinned line moves with it: Med 1248.10
+  becomes 1250.34 (Nv, Mean and Gini unchanged).
+  I TOLD JOHN "NOTHING MOVES FOR WHOLE PEOPLE" BEFORE MEASURING IT
+  THROUGH THE ENGINE - I had measured neighbourhoods of whole weights
+  and forgotten that the default overshoot makes fractions of them.
+  The showcase test caught it. He was asked again with the figures
+  above and confirmed.
+  HOW IT WAS DECIDED - the first advice was wrong. The review put the
+  fault as "the answer depends on the scale of the weights", and
+  Claude recommended Stata's rule - the percentile by share of
+  weight, free of the total - WITHOUT READING THIS MODULE'S OWN
+  DOCSTRING. John ruled for it. It is the step rule he rejected in
+  1.31 ("interpolated, not stepped"; the test
+  test_the_median_moves_smoothly_as_a_ring_is_swallowed is that
+  ruling made checkable), and on single people it would have moved
+  the 75th percentile in 98% of neighbourhoods and the 90th in
+  99.8%. Put before him with that and with the repair as a third
+  option, he chose the repair. Two lessons: a recommendation that
+  changes a rule is made AFTER reading where the rule was laid down;
+  and "nothing moves" is a measurement, to be made through the
+  engine at its defaults, not an inference from the formula.
+  WHAT IT IS NOT: independent of what the weights add up to. They are
+  numbers of PEOPLE; weights that sum to one person or less give the
+  mean, because the stretch is then everybody. Said in the help of
+  the percentile box in both GIS doors and in help equipop_run.
+  tests/test_wstats.py: how people are split into rows does not
+  matter (the property the old code lacked, stated without a
+  formula); half people are people; nothing moves at one person or
+  more; the top person is reached; a cell filling up never makes the
+  median jump.
+
+- 483 | OPEN, FOR JOHN TO ORDER | WHAT THE REVIEW OF 1.63.7 FOUND AND
+  1.63.8 DID NOT FIX. The review is the document "EquiPop code review:
+  where we lag" (10 November 2026); 465-481 are its defects that gave
+  wrong numbers or lost data. What is left, in the order proposed at
+  the top of this file:
+  (a) RULED BY JOHN ON 11 NOVEMBER AND DONE IN 1.64.0: percentiles
+  with fractions of a person (484), the count field on the first
+  reference rung (485), "no decay" with a half-life box in Pro (486),
+  equipop_run level with -equipop- (487).
+  (b) ONE RING ARITHMETIC. The crossing-ring code exists five times
+  (fastcounts 213 and 564, analysis 109 and 663, friction 310); 481 is
+  the third fix that reached four of them. With it: one tolerance for
+  ">= k" on a summed population - the bridge's aggregator and
+  cells.build_cells differ in the last bit, and under `whole` with
+  fractional people that moved one origin's N from 405 to 905.
+  (c) WASTED WORK AND MIXED RESULTS IN PRO. Refusals that come after
+  the computing (existing fields on "Stop with a message", shapefile
+  group names, joins, null geometry); Overwrite on a SELECTION updates
+  the selected rows and leaves the others from an older run in the
+  same columns; a barrier layer's selection and definition query are
+  ignored; the dialog reads whole columns on every keystroke
+  (_distinct_values in updateParameters); tool 2 never greys the type
+  boxes; _write_failure files "column does not exist" and any message
+  holding "lock" or "schema" under the wrong heading.
+  (d) QGIS. Tools 1 and 2 cannot be cancelled; every attribute of
+  every row is read; result field names are not sanitised; and four
+  lines to try on a real QGIS 4 (base.py int(crs.mapUnits()), the flag
+  arithmetic, alg_show.py, plugin.py - which no test loads).
+  (e) STATA. A Stata without Python cannot load equipop.ado at all, so
+  the doctor and setup can never tell that user anything (the python:
+  block is in the ado; it wants to be a file of its own, loaded on
+  demand); to_stata_values loops per value (5.1 s per variable at ten
+  million rows against 0.28 s vectorised); r() results from
+  equipop_run.
+  (f) SCALE. Tool 2 at k = 1000 on ten million people is about an hour
+  per k; the continental loader peaks at 19-23 times its output;
+  bigrun rebuilds the KD-tree per tile and pins m_neighbors at 4096.
+  (g) THE RELEASE. No CI; make_bundle.sh runs no test; the three
+  stand-ins are more permissive than the hosts in places still (Pro:
+  ExtendTable, AddField; QGIS: _Param; Stata: addVarDouble); 239 tests
+  read source text instead of running it; INSTALL.md names 1.47.11
+  and the install guides contradict each other; this file's index and
+  entries 101, 119, 125 are stale and 455-458 were never written.
+  (h) THE APPLICATION. Part B promises an estimator (SAR/SDM with
+  k-nearest-people weights, GMM/2SLS), scale chosen by out-of-sample
+  prediction, Kitagawa, a time-linked system and a global 1 km run.
+  The code has none of these as such (theta(k) exists, Python only;
+  decompose.py is between/within inequality; 349 and 413 stand). A
+  spatial 2SLS from the engine's own output was shown to recover a
+  planted rho of 0.40 as 0.42, so the first is near.
+
+- 482 | OPEN, JOHN'S RULING RECORDED, 11 NOVEMBER 2026 | THE SAMPLE
+  DATA IS DESCRIBED AS A REAL REGISTER. equipop/data/people_syn.csv
+  (2,699 cells, 412 of them holding one person, with LowEdu_sum,
+  Working_sum and Population) and jobs_syn.csv are described in
+  equipop/datasets.py, MANUAL.md and docs/book/ch13 as a real Swedish
+  register under a rigid isometry; stata/equipop_test_data.dta (10,892
+  rows) carries no statement of where it came from. John: "we do not
+  use it much as of now so I think we can leave it as such for the
+  moment - it is not an ethical issue as of now, but it could become
+  if we push in publications etc." LEFT AS IT IS. To be settled BEFORE
+  any publication, course or SSC text leans on these files: either a
+  provenance statement that is true, or files that are synthetic and
+  say so.
+
+- 481 | DONE v1.63.8, 11 NOVEMBER 2026 | EFFORT ENGINES: Dist_k FELL
+  AS k ROSE, AND COULD BE ZERO (code review of 1.63.7). Two fixes made
+  to the radial engines never reached friction._count_from_grid, which
+  the friction and the slope engine share.
+  191 (v1.40.4). Stepping out of the origin cell, the interpolation of
+  a crossing ring started from the cell's CENTRE instead of from its
+  own radius. 50 people in a cell and 10 in each of the four cells
+  beside it, `proportional`: Dist_50 = 56.4 m, inside the cell, and
+  Dist_55 = 35.4 m, one ring out. The radial engine gives 63.5, and so
+  does this one now.
+  304 (v1.47.7). A share of a cell arrives as 6.999999999999999, not
+  7, and "n_k >= k" was then false: a 157-person cell at k = 7 under
+  `proportional` reported Dist_7 = 0.
+  FIXED with the radial engines' own helper (analysis._interp_base,
+  imported, not copied a sixth time) and the same 1e-9.
+  tests/test_friction_matches_the_rules.py: with no barriers, on a
+  plus-shaped layout where both engines see the same two rings, the
+  effort engine must give the radial engine's N and Dist, for three
+  self-potentials and both overshoot rules; Dist may never fall as k
+  rises; and the dense-cell test asserts FIRST that the share is still
+  the float that is not quite 7.
+  WHY IT WAS MISSED TWICE: the crossing-ring arithmetic exists in five
+  copies. See 483 (b).
+
+- 480 | DONE v1.63.8, 11 NOVEMBER 2026 | EFFORT ENGINES: A MISSING
+  GROUP VALUE STAYED IN THE SHARE'S DENOMINATOR (code review of
+  1.63.7; 168 for friction and slope). John's ruling on 168: of 400
+  people with 60 of unknown group the share divides by 340. The radial
+  engines have divided by the usable people since 1.32; the effort
+  engines divided by everybody. Ten people, two with a declared
+  missing code, four in the group: R = 0.400, where the radial engine
+  gives 0.500.
+  FIXED: dispatch hands the effort grid a third count per cell, the
+  people whose group value is usable; R is T over that, in the whole
+  ring, in the share of a crossing ring, in the tau columns and in the
+  unreached remainder. N_k and Dist_k are untouched, as 168 ruled.
+  With nothing missing nothing moves.
+
+- 479 | DONE v1.63.8, 11 NOVEMBER 2026 | EFFORT ENGINES: SEVERAL ROWS
+  IN ONE CELL WERE ALL READ AS THE LAST ROW (code review of 1.63.7).
+  FrictionGrid ASSIGNS each row's count to its cell, and the counting
+  loop read every row's count back FROM THE CELL. So one row per
+  person with a 0/1 group column - the form this module's own tests
+  feed it - gave every person in a cell the last person's flag: three
+  people flagged 1, 0, 0 produced NO T_ column, and 0, 0, 1 produced
+  T = 3. Rows of 2 and 3 people in one cell counted as 3 + 3: nine
+  people added up to ten.
+  THE DOORS NEVER SAW IT. dispatch adds the rows of a cell up first,
+  so Pro, QGIS and Stata always sent one row per cell. It is the
+  Python API - run_knn_friction and run_knn_slope called directly -
+  that was wrong.
+  FIXED: each row is counted with ITS OWN numbers. And the origin rule
+  `exclude` now leaves out the origin's whole CELL, which is its
+  contract ("not counting you or anyone sharing your cell"); with
+  several rows in a cell it used to drop the origin's own row only.
+  A FIRST VERSION OF THIS FIX REFUSED several rows per cell. It broke
+  three existing tests that feed one row per person on purpose, and
+  the two other users of the grid (access, fca), which put places and
+  facilities on it together. Counting rows correctly is the smaller
+  change and the right one.
+
+- 478 | DONE v1.63.8, 11 NOVEMBER 2026 | NOBODY TO MEASURE WAS A
+  KeyError (code review of 1.63.7). With no row holding usable
+  coordinates - an -if- that selects nothing usable, an x() that is
+  all missing - knn_to_rows ran the engine on an empty grid and died
+  on "None of ['EastWest', 'NorthSouth'] are in the columns": in Stata
+  a Python traceback, because the ado catches ValueError and this was
+  a KeyError. Now a ValueError in words, raised before the engine is
+  called, so all three doors show a sentence.
+
+- 477 | DONE v1.63.8, 11 NOVEMBER 2026 | THE HELP TAUGHT selfpot(0) AS
+  "DROP THE ORIGIN" (code review of 1.63.7). help equipop, Examples:
+  "Self-potential - whether an origin counts itself ... selfpot(0)
+  drops it". It does not, and never did. selfpot() is a DISTANCE - how
+  far away the people in your own cell are taken to be - and the
+  option that leaves the origin out is originrule(exclude). A reader
+  who followed the example got the origin counted and a Dist_k that
+  can be zero. The example now shows originrule(exclude), and a second
+  paragraph says what selfpot() is.
+  ALSO: two engine messages sent the user to "equipop stats,
+  values()", which is no command (equipop_run, engine(stats)
+  values(); tool 2 in the GIS doors), and one to -equipop setup,
+  replace-, an option setup does not take.
+
+- 476 | DONE v1.63.8, 11 NOVEMBER 2026 | equipop_run PASTED FILE NAMES
+  INTO PYTHON SOURCE (code review of 1.63.7). dem(), friction() and
+  supply() were written into the python: line between double quotes.
+  A Windows path is then Python source: C:\temp\x.csv arrives with a
+  tab in it, C:\data\new.csv with a newline, and C:\Users\... stops
+  the command with a SyntaxError. The three are no longer in the line;
+  the Python reads the macros (Macro.getLocal), as -equipop unit- has
+  always read its own. The line is built the way Stata builds it and
+  parsed as Python in the test, for four Windows paths.
+  THE CALL IS NOW BY NAME, twenty-nine arguments, as -equipop-'s has
+  been since 1.34, and the def is keyword-only.
+  ALSO: a refusal from the engine is printed as a message with
+  r(198), not as a traceback.
+
+- 475 | DONE v1.63.8, 11 NOVEMBER 2026 | equipop_run AND equipop READ
+  treat() DIFFERENTLY (code review of 1.63.7). 179 (v1.37.1, John's
+  ruling: counts are the default, flags stay available by name) was
+  applied to equipop.ado and not to equipop_run.ado, which never said
+  which rule it wanted - so the engine applied the old one, treat() as
+  a 0/1 flag MULTIPLIED by weight(). Same data, k = 100: -equipop
+  [fw=pop], treat(flag)- gave a share of 0.0154 and -equipop_run,
+  engine(counts) treat(flag) weight(pop)- gave 0.2981. The friction
+  engine returned T = 1,251 inside N = 100. The help has always said
+  "the count and share of each treatment, as equipop".
+  FIXED: equipop_run passes the rule, for counts, friction and slope,
+  and takes treatmode(counts|flags) as -equipop- does.
+  NUMBERS CHANGE for anyone who used treat() WITH weight() in
+  equipop_run; without weight() the two rules are the same sum. The
+  command says so on such a run unless treatmode() is given, and
+  treatmode(flags) reproduces what it did before.
+
+- 474 | DONE v1.63.8, 11 NOVEMBER 2026 | THE UNIT ADVICE WAS NEVER
+  STORED ON THE DATASET (code review of 1.63.7). -equipop unit- keeps
+  its advice in a dataset characteristic so that a second call need
+  not recount (16 s on ten million rows). It called
+  Characteristic.getDta and setDta; sfi has getDtaChar and setDtaChar.
+  The call was inside a try, so every run recounted and then printed
+  "not stored on the dataset". No number was wrong. Nothing stood in
+  for the class in the tests, so nothing noticed; the Stata stand-in
+  now has it, with the real names only.
+  NOT REACHABLE HERE: a real Stata. The names are from StataCorp's
+  sfi documentation.
+
+- 473 | DONE v1.63.8, 11 NOVEMBER 2026 | -replace- COULD DELETE OTHER
+  VARIABLES, AND DELETED BEFORE COMPUTING (code review of 1.63.7).
+  -equipop ..., replace- ran -capture drop NAME- for every name it was
+  about to write. With -set varabbrev on-, Stata's default, -drop
+  N_100- deletes N_1000 when there is no N_100: the name is read as an
+  abbreviation. So a k(100) run with replace on a dataset holding the
+  results of k(1000) deleted N_1000 and Dist_1000, and a treat()
+  variable could take a user's own variables with it. equipop_run did
+  the same from its Python.
+  AND THE ORDER: the old results were gone before the new ones
+  existed, so a run that stopped left neither.
+  FIXED. The Stata-side block is gone. The Python half replaces, after
+  the engine has answered and every name has been checked: exactly the
+  variables it is about to write, by POSITION in the dataset, and only
+  those that exist under that very name. This also ends the guessing
+  of the engine's names in the ado (336 and 337 were both that).
+  equipop_run now checks every name before making any variable - an
+  existing name on the third variable used to leave the first two
+  behind - and replaces the same way.
+  THE STAND-IN COULD NOT SHOW THE FAULT: tests/stata_sim.py dropped
+  exact names only. It now resolves a name as Stata does,
+  abbreviations and -novarabbrev- included; its first test is that
+  -capture drop N_100- deletes N_1000 there too.
+  NOT REACHABLE HERE: a real Stata. First run: -equipop ..., k(100)
+  replace- on data holding N_1000.
+
+- 472 | DONE v1.63.8, 11 NOVEMBER 2026 | TWO GUARDS LEFT BEHIND BY
+  1.63.7, mine. tools/stub_audit.py - the one tool that compares the
+  QGIS simulator with a REAL QGIS - still asked for FlagAdvanced,
+  TypeVectorAnyGeometry and ...Number.Double: names 1.63.7 took out of
+  the plugin and QGIS 4 no longer has. It now audits the scoped enums,
+  value for value, reads an enum's number in the way both Qt versions
+  allow, and reports qgis.core.NULL; a test keeps its list and the
+  simulator's in step. TO RUN ON QGIS 4 AND ON 3.44.
+  And test_qgis4_ready's "a point layer passes the points-only check"
+  READ base.py for a line of text. It now runs a point, a line and a
+  polygon layer through tool 1.
+
+- 471 | DONE v1.63.8, 11 NOVEMBER 2026 | QGIS: THE FIRST FEATURE
+  DECIDED WHETHER THE LAYER HAD GEOMETRY (code review of 1.63.7).
+  base.py: has_geom = feats[0].hasGeometry(). A point layer whose
+  first feature had lost its geometry was taken for a table; the run
+  then looked for X and Y columns, and where the layer carried some -
+  an export's leftover x, y, in whatever units - it used them for
+  every row, without a word. The layer's own geometry type decides
+  now; a row without geometry gets no result, as before.
+
+- 470 | DONE v1.63.8, 11 NOVEMBER 2026 | QGIS TOOL 2: AN UNTOUCHED
+  TYPES TABLE SELECTED NOBODY (code review of 1.63.7). 265 gave
+  machines 1, 4 and 5 one reader for a QGIS table, because an
+  untouched cell is NULL and str(NULL) is the four letters "NULL".
+  Machine 2 kept its own. So on "only selected types" with the table
+  never touched - which means EVERY type - it looked for one type
+  called NULL, found nobody, and every statistic came out empty; on
+  the other rungs it reported the empty box as filled and IGNORED.
+
+- 469 | DONE v1.63.8, 11 NOVEMBER 2026 | QGIS: A COUNT FIELD ON "EVERY
+  POINT COUNTS AS ONE" MEANT TWO THINGS (code review of 1.63.7). Tool
+  1 made the count field the weight and, three lines later, forgot the
+  field on that rung. So a filled box 1a was USED when no groups were
+  asked for and DROPPED when they were - same dialog, and no message
+  for either.
+  SETTLED AS "USED", on both routes, with a warning that says so:
+  that is what ArcGIS Pro does (462) and what tool 2 does, and the
+  doors must not disagree. NUMBERS CHANGE for a QGIS run that had box
+  1a filled, "every point counts as one" AND grouped types: N, T and R
+  now count people, not places. A parity test runs that dialog through
+  both doors.
+  WHETHER A COUNT FIELD SHOULD COUNT ON THAT RUNG AT ALL is John's to
+  rule, for both doors at once - see 483 (a).
+
+- 468 | DONE v1.63.8, 11 NOVEMBER 2026 | REFERENCE TYPES FROM ONE
+  FIELD, GROUPS FROM ANOTHER: EVERY GROUP ZERO, IN BOTH GIS DOORS
+  (found while fixing 467). "Cafes among the places in Sweden":
+  reference population = Country is SE, group = Type is cafe. Both
+  doors handed the reference types to the engine as pop_values FOR THE
+  GROUPS' COLUMN, so "SE" was looked for among the shop types, nothing
+  matched, the population was empty, and T_ and R_ were 0 on every
+  row. The engine's one line about it ("matched ZERO rows") is printed
+  where neither door shows it. With one type field for both - the
+  usual case, and every existing test - it is the same thing, which
+  is why it stood since the two fields were separated in 1.23.
+  FIXED: categories_to_binary takes the population as a MASK
+  (pop_mask) when it was decided from another column; both doors pass
+  it. Six places, three in Sweden, two of those cafes: N_3 = 3,
+  T = 2, R = 2/3, in both doors.
+
+- 467 | DONE v1.63.8, 11 NOVEMBER 2026 | TYPES THAT MATCH NOTHING:
+  QGIS ANSWERED WITH ZEROS, AND A TYPE CODE STORED AS A NUMBER NEVER
+  MATCHED (code review of 1.63.7).
+  QGIS, NO CHECK AT ALL. A type typed in box 1c or 2c that the field
+  does not hold - a misspelling, a capital letter - gave columns of
+  zeros and a finished run. Pro has refused since 1.22. QGIS now
+  refuses too, before computing, naming the box, the field, the types
+  not found and what the field does hold.
+  NUMBERS. The engine compared text with text, and a number column
+  read "1.0": the 1 a person types matched nothing. In QGIS that was
+  silent. In Pro it was a refusal - and, read from the code, of a
+  value PICKED FROM THE DROPDOWN, which shows an integer field as 1
+  while the run holds it as 1.0. (The stand-in arcpy cannot show the
+  dropdown; this half is read, not run.)
+  QGIS ALSO TURNED TEXT INTO NUMBERS. Its reader makes a column
+  numeric whenever any value reads as a number - right for
+  coordinates and counts that arrive as text, wrong for a type field:
+  codes "1", "2", "3a" became 1.0, 2.0 and missing, and "010" became
+  10.
+  FIXED IN ONE PLACE, equipop.categorical: labels() gives a column the
+  form its values are matched by (text as text; a number as a person
+  writes it, so 1.0 is "1"; a missing value is NO type), and what is
+  typed is put in the same form (against numbers, 1, 1.0 and 01 are
+  the number one; against text, "010" is not "10"). QGIS reads a type
+  field from the features themselves (base.type_column), not from the
+  converted column. Pro's check uses the same form.
+  ONE EDGE MOVES: a missing value in a NUMBER type field used to read
+  "nan" and fell into the "every other type" group. It is now no type
+  at all, as a missing text value always was.
+
+- 466 | DONE v1.63.8, 11 NOVEMBER 2026 | PRO: BARRIERS AND THE
+  ELEVATION RASTER PLACED IN THE WRONG COORDINATE SYSTEM (code review
+  of 1.63.7). Three faults with one cause: the coordinate system a run
+  works in was remembered on a function attribute that only one of the
+  two reading routes set.
+  (1) A TABLE RUN AFTER A FEATURE-CLASS RUN, same Pro session: the
+  table route never set it, so the table's line and polygon barriers
+  were converted into the EARLIER layer's system, and its elevation
+  raster was checked against that layer. 329 (v1.49.2) fixed exactly
+  this for the text in the manifest and left the object that does the
+  converting.
+  (2) POINT barriers were never converted; lines and polygons were.
+  (3) A barrier RASTER was never checked. 313's rulings - a raster in
+  another system is refused, an undefined system is refused - reached
+  the elevation raster only; its test called the helper with the
+  words "The barrier layer", and the barrier reader never called it.
+  FIXED: the table route records its own system (the declared one, or
+  none); the system is worked out once per run for barriers and
+  raster alike; point barriers are converted; a barrier raster in
+  another system and a barrier with no system are refused, when the
+  analysis has one to compare with. A table that declares none says
+  so in a warning when barriers or a raster are used.
+  A RUN THAT WORKED MAY NOW STOP: a barrier layer or barrier raster
+  with NO coordinate system defined, or a barrier raster in another
+  system than the points. Both were being placed by their bare
+  numbers. Systems are compared by EPSG code where both have one,
+  else by name - as for the elevation raster since 1.47.12.
+  THE STAND-IN gave every table SWEREF99 TM; a real table's Describe
+  has no spatialReference at all. Corrected.
+  NOT REACHABLE HERE: real ArcGIS Pro.
+
+- 465 | DONE v1.63.8, 11 NOVEMBER 2026 | PRO: THE MEDIAN
+  SELF-POTENTIAL RAN AS ZERO (code review of 1.63.7). The toolbox
+  turned a dropdown's text into a position with "the first label
+  whose leading words the text starts with". The self-potential
+  labels lead with "0", "0.71" and "1", and "0.71 - the median ..."
+  starts with "0". So the middle choice ran as the first, in tools 1
+  and 2, while the log printed the label the user had picked. 200
+  people in one cell, k = 100: Dist_100 = 0.0, 0.0 and 39.9 m for the
+  three choices; it is now 0.0, 28.2 and 39.9.
+  SINCE THE BOX BECAME A DROPDOWN: 1.29.6 by this file (141), and the
+  oldest version on GitHub, 1.40.7, has the same lines. The test of
+  the box (95) tried the first and the last choice.
+  FIXED: the exact label first; only a text that is none of today's
+  labels - a tool saved under older wording - is matched on leading
+  words, by the LONGEST that fits. tests/test_pro_labels.py tries
+  every label of every dropdown list, and the three choices through
+  both tools against the closed form.
+  ANYONE WHO CHOSE "0.71 - the median" IN PRO has results computed
+  with 0 instead. Measured on 600 points: N_, T_ and R_ are the same;
+  Dist_k is 0 where the origin's own cell holds k (28 m too low
+  there); and WITH DISTANCE DECAY every ND_, TD_ and RD_ value
+  differs, because the own cell's people are weighted by that
+  distance (RD by up to 0.003 in that run). QGIS and Stata were
+  always right. Runs on the first or the last choice are unaffected.
 
 - 464 | DONE v1.63.7, 9 NOVEMBER 2026 | ONE PLUGIN FOR QGIS 3.38 TO
   4.x (John, a screenshot from QGIS 4: "This plugin is incompatible

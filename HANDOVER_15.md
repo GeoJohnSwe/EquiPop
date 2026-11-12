@@ -10,8 +10,8 @@ departure - and **equipop published on the SSC archive**, which is
 the distribution the Stata Journal paper needs and the first time
 this project has had a release it cannot quietly amend.*
 
-*Amended through 1.63.1 rather than superseded: same session, run on
-past 1.54.0 into October. Read section 0an first, then 0am back to 0b
+*Amended through 1.64.1 rather than superseded: same session, run on
+past 1.54.0 into November. Read section 0ao first, then 0an back to 0b
 in order - the header used to say "0k first", and stayed saying it
 through six later sections, which is the staleness this file exists
 to prevent. **1.54.0's stretch of the session ended by being
@@ -29,6 +29,120 @@ backlog's own head was pointing at finished work - which the 1.51.0
 review then found AGAIN, still pointing at it.*
 
 ---
+
+## 0ao. 1.63.2 TO 1.64.1 - SIX FIELD FAILURES, TWO REVIEWS, FOUR RULINGS
+
+Ten releases in a week (5-11 November), none from the backlog.
+BACKLOG 459-492; the MANUAL rows are the detail. **GitHub's main is
+still 1.63.7 as this is written**: 1.63.8, 1.64.0 and 1.64.1 exist as
+three patches John applies himself, in that order (this session
+cannot push).
+
+**What the field found (1.63.2-1.63.7).** Each was something a stand-in
+forgave.
+- *Stata, C. F. Baum's Mac (459, 461).* `import numpy` at the top of
+  the ado's Python block: Stata runs the block when it LOADS the ado,
+  so on a Python without numpy every subcommand failed, the doctor
+  included. Then: the floor never caused it - Apple's 3.9 could never
+  take an engine - installing Python by hand was the wall. The doctor
+  now looks for a usable Python and prints the whole way out.
+- *Stata, John's Windows (460).* Stata expands macros in EVERY line of
+  a python: block, comments included. A backtick with an apostrophe
+  later on the line is a macro. Never write backticks or a dollar
+  sign in an ado's Python; never a backslash either.
+- *Pro (462, 463).* A greyed-out box was announced as IGNORED and read
+  all the same; an existing result field was looked for by exact name
+  on the layer and written through the dataset.
+- *QGIS 4 (464).* One plugin for 3.38 to 4.x: scoped Qgis.* enums
+  only, qgisMaximumVersion=4.99. NOT run on a real QGIS 4 by anyone
+  yet; tools/stub_audit.py is the check to run there (472).
+
+**The code review of 1.63.7 (10 November)** is the document "EquiPop
+code review: where we lag" (John has the link) and BACKLOG 483, which
+holds what is left in a proposed order. Five agents read the four
+front ends and the release process; every finding acted on was
+re-run or re-read by me first. Its main result: the project lags most
+in ways a wrong number can still leave silently, and none of the six
+field failures above would have been stopped by the tests as they
+were.
+
+**1.63.8: seventeen defects that gave a wrong number or lost data
+(465-481).** The ones to remember:
+- Pro matched a dropdown's text by leading words, so the
+  self-potential "0.71 - the median" ran as "0" (465). Exact first.
+- `categories_to_binary` compared text with text: a type code stored
+  as a number never matched; QGIS answered with zeros (467). And
+  reference types from one field with groups from another gave zero
+  for every group, in both doors (468) - found while fixing 467.
+- Stata's `replace` ran `capture drop` on names that might not exist;
+  with varabbrev, Stata's default, that deletes N_1000 for N_100
+  (473). The Python half now drops exact names by position, after the
+  engine has answered. **tests/stata_sim.py now resolves names as
+  Stata does** - it could not show the fault before.
+- friction._count_from_grid had missed three fixes made to the radial
+  engines (479-481). The crossing-ring arithmetic exists five times.
+
+**1.64.0: John's four rulings (484-487).**
+- *Percentiles (484).* The rule of 1.31 kept and repaired for rows of
+  less than one person: the average value of one person's width of
+  the sorted population at position (n-1)q. Unchanged where every
+  row weighs a person or more; under the default `proportional` ring
+  the ring's people are fractions, so medians shift slightly (14% of
+  neighbourhoods on the test data, 0.07% of an IQR on average; the
+  showcase's Med 1248.10 is now 1250.34). **Two mistakes of mine on
+  this one ruling. I first recommended Stata's share-of-weight rule
+  without reading wstats.py's own docstring; it is the step rule John
+  rejected in 1.31, and he had ruled for it on my word before I found
+  out. Then I told him the repair "moves nothing for whole people"
+  from neighbourhoods of whole weights, not from the engine at its
+  defaults; the showcase test caught it and he was asked again.**
+  Read where a rule was laid down before proposing to change it, and
+  measure "nothing moves" through the engine.
+- *The first reference rung (485)* now says a filled count field
+  counts; Pro shows box 1a on it. No number changes.
+- *Pro, "no decay" (486):* a filled half-life box stops the run.
+- *equipop_run (487):* if/in, r(), overshoot(), originrule(),
+  refusals in its own words.
+
+**1.64.1: the independent review of 1.64.0 (488-492).** Read from
+outside the same evening, from the bundle alone. Its three code
+findings held when re-run here, and none was in my handover:
+- *Friction and slope (488)* decided from the VALUES whether a group
+  was asked for, so an empty group lost T_ and R_ - and with replace
+  or a GIS overwrite the previous run's columns stayed, looking
+  current. The caller now says. **Same shape as 465 and 485: a rule
+  inferred from what the data happens to hold instead of what the
+  user asked.**
+- *QGIS (489)* checked shapefile names before grouped names were
+  known. Now again once they are, and in write() on the real names.
+- *equipop_run (490)* accepted options its engine never reads. The
+  table is in the ado's Python block, held to the syntax line by a
+  test.
+- *Tests (491)*: HOME without USERPROFILE failed on Windows; four
+  tests replaced PYTHONPATH instead of extending it.
+
+**What is NOT done, and is John's or the next session's.**
+- NOTHING in 1.63.8, 1.64.0 or 1.64.1 has run in real ArcGIS Pro, QGIS
+  or Stata. The review makes that a release CONDITION; its matrix,
+  with 488 and 489 added, is the MANUAL row of 1.64.1.
+- BACKLOG 483 (b)-(h): one ring arithmetic; Pro's late refusals and
+  selections; QGIS cancel and memory; the Stata Python block in a
+  file of its own; a gate on the release (no CI exists); what Part B
+  of the Exposphere application promises against what the code has.
+- BACKLOG 482: the sample data is described as a real register. Left
+  as it is by John's ruling; to settle before anything published
+  leans on it.
+- A PyPI token of John's appeared in a screenshot on 5 November and
+  must be treated as compromised until he has revoked it. Never write
+  a token into the repository folder or into a chat.
+
+**How this stretch worked, for whoever continues.**
+- Each fix was broken again on purpose to see that a test notices:
+  about sixty such breaks in the two releases. One exposed a gap
+  (a missing number in a numeric type column) that then got a test.
+- John applies a patch with `git am`. His own pushes have dropped the
+  restored .gitignore five times; each patch restores it.
+- The session replies in English, by John's wish of 11 November.
 
 ## 0an. 1.63.1 - THE REVIEW OF 1.63.0
 

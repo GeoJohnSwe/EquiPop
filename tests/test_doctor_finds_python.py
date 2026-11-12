@@ -137,6 +137,8 @@ def test_a_virtual_environment_is_not_mistaken_for_its_base(sfi,
 def test_equipop_s_own_environment_is_looked_at_first(sfi, monkeypatch,
                                                      tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    # BACKLOG 491: Windows finds home in USERPROFILE, not HOME
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     ns = _load(ADO, search=True)
     pats = ns["_python_patterns"]()
     assert pats[0] == str(tmp_path / "equipop-python" / "bin" / "python")
@@ -249,6 +251,8 @@ def test_the_best_python_is_the_one_with_the_least_to_do(
 def test_only_a_homebrew_python_goes_through_a_venv_of_our_own(
         sfi, monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    # BACKLOG 491: Windows finds home in USERPROFILE, not HOME
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     ns = _load(ADO, search=True)
     _as(monkeypatch, PY39, "darwin", APPLE_PY)
     (brew,) = _files(tmp_path, "opt/homebrew/bin/python3.13")
@@ -314,6 +318,8 @@ def test_windows_on_arm_gets_the_arm_installer(sfi, monkeypatch, capsys):
 def test_linux_with_nothing_gets_a_venv_of_our_own(sfi, monkeypatch,
                                                    capsys, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    # BACKLOG 491: Windows finds home in USERPROFILE, not HOME
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     ns = _load(ADO)                       # search off: nothing found
     _as(monkeypatch, PY39, "linux", "/usr/bin/python3.9")
     out = _doctor(ns, capsys)

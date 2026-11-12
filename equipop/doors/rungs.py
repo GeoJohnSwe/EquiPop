@@ -42,6 +42,35 @@ def missing(box: str, chooser: str, rung: str) -> str:
             "box is empty. Fill it, or choose a different rung.")
 
 
+def not_in_field(unknown, field: str, known, box: str) -> str:
+    """Typed types the type field does not hold. Refused, never
+    warned: a type that matches nothing gives a column of zeros, and
+    a column of zeros looks like a result (BACKLOG 467)."""
+    unknown = [str(u) for u in unknown]
+    known = [str(k) for k in known]
+    shown = ", ".join(known[:12]) + (", ..." if len(known) > 12 else "")
+    return (f"{box} names {len(unknown)} type(s) that the type field "
+            f"'{field}' does not hold: {', '.join(unknown[:12])}"
+            + (", ..." if len(unknown) > 12 else "")
+            + ". A type that matches nothing would give columns of "
+            "zeros that look like a result, so the run stops here. "
+            + (f"'{field}' holds {len(known)} different value(s): "
+               f"{shown}. " if known else f"'{field}' holds no values "
+               "at all. ")
+            + "Spelling counts, and so do capital letters. If the "
+            "values look right, the type field is probably the wrong "
+            "column.")
+
+
+def counted_by_field(field: str) -> str:
+    """The first reference rung with the count field filled (BACKLOG
+    485): an ordinary line in the log, not a warning - it is what the
+    rung says it does."""
+    return (f"Each row counts as its value in '{field}' (the count "
+            "field is filled). Empty that box for every row to count "
+            "as one.")
+
+
 def working_anyway(box: str, chooser: str, rung: str, instead: str) -> str:
     """A box is filled that the chosen rung does not claim, but the
     engine honours it regardless. Say so rather than change it: saved
@@ -68,7 +97,17 @@ def working_anyway(box: str, chooser: str, rung: str, instead: str) -> str:
 # is allowed to introduce, and with_hints() is the only way to do it.
 # ===================================================================
 
-REFERENCE = ["every point counts as one",
+# BACKLOG 485, John's ruling of 11 November 2026. The first rung read
+# "every point counts as one", and both doors counted a filled count
+# field on it all the same (462, 469) - the box older than the ladder,
+# which scripts and saved models fill without ever naming a rung. Two
+# ways out: stop counting it, or say what happens. John: say it. So
+# the rung is worded as what it does, the count field is an ordinary,
+# visible, optional box on it, and nobody's numbers move. The leading
+# words are unchanged, so a tool saved under the old wording still
+# finds its rung (Pro matches on them; 465).
+REFERENCE = ["every point counts as one - or as the value in the "
+             "count field, if filled",
              "a field holds the count",
              "only selected types, with a count field"]
 

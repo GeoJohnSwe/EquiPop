@@ -439,26 +439,35 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException(
                 "The input layer has no features.")
 
-        if feats[0].hasGeometry():
-            # BACKLOG 464: against the enum, never 0, 1, 2. Under
-            # QGIS 4 (PyQt6) a geometry type is an enum and NOT equal
-            # to any number, so "gt != 0" refused every point layer.
-            from qgis.core import Qgis, QgsWkbTypes
-            try:
-                gt = QgsWkbTypes.geometryType(source.wkbType())
-            except Exception:
-                gt = Qgis.GeometryType.Point
-            if gt != Qgis.GeometryType.Point:
-                kind = {Qgis.GeometryType.Line: "lines",
-                        Qgis.GeometryType.Polygon: "polygons"}.get(
-                            gt, "that shape")
-                raise QgsProcessingException(
-                    f"This tool measures what is around POINTS, and "
-                    f"the layer you chose holds {kind}. Use a point "
-                    "layer for the input - a roads or boundaries "
-                    "layer belongs in the BARRIER box instead, where "
-                    "it turns distance into effort.")
-        has_geom = feats[0].hasGeometry()
+        # BACKLOG 464: against the enum, never 0, 1, 2. Under QGIS 4
+        # (PyQt6) a geometry type is an enum and NOT equal to any
+        # number, so "gt != 0" refused every point layer.
+        from qgis.core import Qgis, QgsWkbTypes
+        try:
+            gt = QgsWkbTypes.geometryType(source.wkbType())
+        except Exception:
+            gt = None
+        # BACKLOG 471: THE LAYER SAYS whether it has geometry - not
+        # its first row. This read `feats[0].hasGeometry()`, so a
+        # point layer whose FIRST feature had lost its geometry was
+        # taken for a table: the run then looked for X and Y columns,
+        # and where the layer happened to carry some (an export's
+        # leftover "x", "y" in another projection) it used them for
+        # every row, without a word.
+        if gt is None or gt == Qgis.GeometryType.Unknown:
+            has_geom = any(f.hasGeometry() for f in feats)
+        else:
+            has_geom = gt != Qgis.GeometryType.Null
+        if has_geom and gt is not None and gt != Qgis.GeometryType.Point:
+            kind = {Qgis.GeometryType.Line: "lines",
+                    Qgis.GeometryType.Polygon: "polygons"}.get(
+                        gt, "that shape")
+            raise QgsProcessingException(
+                f"This tool measures what is around POINTS, and "
+                f"the layer you chose holds {kind}. Use a point "
+                "layer for the input - a roads or boundaries "
+                "layer belongs in the BARRIER box instead, where "
+                "it turns distance into effort.")
         # every attribute, once (v1.29.2 - see _columns for why)
         cols = self._columns(feats, names)
         crs = source.sourceCrs()
@@ -523,6 +532,47 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         self._features = feats
         return PointInput("point" if has_geom else "table", data,
                           id_field=None, crs_text=crs_text, note=note)
+
+    def type_column(self, name):
+        """A TYPE field, as the text its values are matched by.
+
+        BACKLOG 467. Read from the features themselves, NOT from the
+        converted columns. _convert turns a column into numbers
+        whenever any value in it reads as a number - right for
+        coordinates and counts that arrive as text, wrong for a type
+        field: codes "1", "2", "3a" came out as 1.0, 2.0 and NaN, and
+        "010" as 10.0. Then the "1" typed in the types table was
+        compared with "1.0", matched nothing, and the tool answered
+        with zeros.
+
+        Returns the field's OWN values, untouched - text as text,
+        numbers as numbers - with None for NULL (an object in QGIS 3,
+        None in QGIS 4). equipop.categorical puts them, and whatever
+        is typed against them, into one form: a number is matched as a
+        person writes it (1, 1.0 and 01 are the number one), text is
+        matched exactly, and a missing value is no type at all.
+        """
+        try:
+            from qgis.core import NULL
+        except ImportError:               # pragma: no cover
+            NULL = None
+        raw = np.empty(len(self._features), dtype=object)
+        for j, f in enumerate(self._features):
+            v = f.attribute(name)
+            if v is None or (not isinstance(v, str) and v == NULL):
+                v = None
+            raw[j] = v
+        return raw
+
+    def refuse_unknown_types(self, values, column, field, box):
+        """Stop on typed types the field does not hold (BACKLOG 467),
+        as the ArcGIS door has done since 1.22."""
+        from equipop import categorical
+        from equipop.doors import rungs
+        missing = categorical.unknown(values, column)
+        if missing:
+            raise QgsProcessingException(rungs.not_in_field(
+                missing, field, categorical.known(column), box))
 
     @staticmethod
     def _metric_target(feats, crs):
@@ -602,17 +652,24 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
                                       "google drive", "sharepoint",
                                       "icloud", "box sync"))
 
+    def refuse_long_names(self, parameters, names):
+        """The shapefile half of check_target, on its own: called
+        before the run with the names it WILL make, and again by
+        write() with the names it DID make (BACKLOG 489)."""
+        from equipop.doors.fields import refuse_short_target
+        text = refuse_short_target(str(parameters.get(self.OUT) or ""),
+                                   names,
+                                   container="a GeoPackage (.gpkg)")
+        if text:
+            raise QgsProcessingException(text)
+
     def check_target(self, parameters, names, feedback):
         """The ten-character trap, in QGIS clothing: a shapefile
         output caps field names at ten characters, and here a
         GeoPackage plays the roomy role a file geodatabase plays in
         Pro. Same shared rule, different neighbour."""
-        from equipop.doors.fields import refuse_short_target
+        self.refuse_long_names(parameters, names)
         target = str(parameters.get(self.OUT) or "")
-        text = refuse_short_target(target, names,
-                                   container="a GeoPackage (.gpkg)")
-        if text:
-            raise QgsProcessingException(text)
         if self.in_sync_folder(target):
             self.channel(feedback).warning(
                 "This output is inside a cloud-synced folder "
@@ -825,6 +882,15 @@ class EquipopAlgorithm(QgsProcessingAlgorithm):
         # result[name], so renaming `order` itself would have looked
         # up a key that does not exist - caught before it shipped, and
         # exactly the shape of a rename that half-lands.
+        # BACKLOG 489, FOUND BY THE INDEPENDENT REVIEW OF 1.64.0. The
+        # ten-character check ran before the run, on the names it was
+        # EXPECTED to make - and grouped type names are not known
+        # then, so T_some_long_group_name_2 went to a shapefile, where
+        # OGR cuts names to ten characters on its own terms. Checked
+        # again here on the names the file will hold, renames
+        # included, before the file exists.
+        self.refuse_long_names(parameters,
+                               [mapped.get(n, n) for n in order])
         for name in order:
             fld = QgsField(mapped.get(name, name), QMetaType.Type.Double)
             text = (descriptions or {}).get(name)

@@ -119,9 +119,14 @@ def test_sections_6_to_8_give_what_the_showcase_says(data, tmp_path,
     d = st.df
     assert round(float(d.Nv_ValFloat_200.mean()), 2) == 167.30
     assert round(float(d.Mean_ValFloat_200.mean()), 2) == 1815.23
-    assert round(float(d.Med_ValFloat_200.mean()), 2) == 1248.10
+    # Med was 1248.10 up to 1.63.8. BACKLOG 484, John's ruling of 11
+    # November 2026: a percentile now counts the people of the last
+    # ring by their width - under `proportional` a fraction of a
+    # person each - and he confirmed it with this very change of the
+    # pinned line before him. Nv, Mean and Gini did not move.
+    assert round(float(d.Med_ValFloat_200.mean()), 2) == 1250.34
     assert round(float(d.Gini_ValFloat_200.mean()), 4) == .5806
-    _expect("Nv 167.30 | Mean 1815.23 | Med 1248.10 | Gini .5806")
+    _expect("Nv 167.30 | Mean 1815.23 | Med 1250.34 | Gini .5806")
     assert round(float(d.RD_HighEdu_200.mean()), 4) == .1860
     assert round(float(d.ND_200.mean()), 2) == 126.01
     _expect("RD_HighEdu_200 .1860")
@@ -147,7 +152,7 @@ def _run(df, engine, **kw):
              selfpot=1.0, wperm=199)
     a.update(kw)
     with contextlib.redirect_stdout(io.StringIO()):
-        ns["_equipop_run"](*a.values())
+        ns["_equipop_run"](**a)       # by name, as the ado calls it
     return st.df
 
 
@@ -208,7 +213,9 @@ def test_every_help_file_is_current_versioned_and_says_who_to_ask():
 def test_equipop_run_help_documents_every_option():
     """BROKEN WITH: wperm() left out of the lisa paragraph."""
     ado = _text("equipop_run.ado")
-    syn = re.search(r"syntax\s*,(.*?)\n\n", ado, re.S).group(1)
+    # [if] [in] since 1.64.0 (BACKLOG 487)
+    syn = re.search(r"syntax\s*(?:\[if\]\s*\[in\])?\s*,(.*?)\n\n",
+                    ado, re.S).group(1)
     opts = {re.sub(r"[^A-Za-z]", "", o).lower()
             for o in re.findall(r"([A-Za-z]+)\s*(?:\(|\s|\]|$)", syn)}
     opts -= {"varname", "varlist", "numeric", "numlist", "integer",

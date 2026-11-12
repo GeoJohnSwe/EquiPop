@@ -100,15 +100,40 @@ def test_the_simulator_is_as_strict_as_qgis_4():
 
 
 def test_a_point_layer_passes_the_points_only_check():
-    """The check that would have refused every point layer on QGIS 4:
-    run on a point source, it must say nothing."""
+    """The check that would have refused every point layer on QGIS 4,
+    RUN: a point layer goes through, a line or polygon layer is
+    refused in words. (Until 1.63.7 this test read base.py for the
+    text "gt != Qgis.GeometryType.Point" and ran nothing.)
+
+    BROKEN WITH: "gt != 0" in base.py - on the strict simulator, as on
+    QGIS 4, no geometry type equals 0 and the point layer is refused.
+    """
     import sys
+    import pandas as pd
     sys.path.insert(0, str(ROOT / "tests"))
     sys.path.insert(0, str(ROOT / "qgis"))
     import qgis_stub
     qgis_stub.install()
-    src = (PLUGIN / "base.py").read_text(encoding="utf-8")
-    assert "gt != Qgis.GeometryType.Point" in src
+    from qgis.core import (Qgis, QgsProcessingException,
+                           QgsProcessingFeedback)
+    from equipop_qgis.alg_counts import CountsAndShares
+    t = pd.DataFrame({"x": [0.0, 300.0, 600.0], "y": [0.0] * 3})
+
+    def run(src):
+        alg = CountsAndShares()
+        alg.initAlgorithm()
+        p = {"layer": src, "unit": 100.0, "outfc": "memory:out",
+             "k": "2"}
+        alg.processAlgorithm(p, None, QgsProcessingFeedback())
+        return p["_sinks"]["outfc"].to_frame()
+
+    assert "Dist_2" in run(qgis_stub.source_from(t))
+    for wkb, word in ((Qgis.WkbType.LineString, "lines"),
+                      (Qgis.WkbType.Polygon, "polygons")):
+        src = qgis_stub.source_from(t)
+        src.wkbType = lambda _w=wkb: _w
+        with pytest.raises(QgsProcessingException, match=word):
+            run(src)
 
 
 @pytest.mark.parametrize("wkb,kind", [(2, "line"), (3, "polygon")])
@@ -130,3 +155,59 @@ def test_the_continental_door_tells_lines_from_polygons(wkb, kind):
     g._wkb = wkb
     got = _geometry_parts(g)
     assert got and got["type"] == kind
+
+
+def _audit_surface():
+    """tools/stub_audit.py's SURFACE list, read without running the
+    tool (it stops outside a real QGIS)."""
+    import ast
+    tree = ast.parse((ROOT / "tools" / "stub_audit.py").read_text(
+        encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and \
+                getattr(node.targets[0], "id", "") == "SURFACE":
+            return ast.literal_eval(node.value)
+    raise AssertionError("no SURFACE list in tools/stub_audit.py")
+
+
+def test_the_audit_asks_qgis_for_the_names_the_plugin_uses():
+    """BACKLOG 472. 1.63.7 moved the plugin to the scoped enums and
+    left the audit - the one tool that compares this simulator with a
+    REAL QGIS - asking for FlagAdvanced, TypeVectorAnyGeometry and
+    ...Number.Double: names the plugin no longer uses and QGIS 4 no
+    longer has. Nothing tied the two lists together.
+
+    BROKEN WITH: the 1.63.7 tools/stub_audit.py."""
+    import enum
+    import sys
+    sys.path.insert(0, str(ROOT / "tests"))
+    import qgis_stub
+    surface = _audit_surface()
+    listed = {real: consts for _, real, _, consts in surface}
+    # every scoped enum of the simulator is audited, value for value
+    for name, cls in vars(qgis_stub.Qgis).items():
+        if name.startswith("_") or not isinstance(cls, type):
+            continue
+        members = {k: v for k, v in vars(cls).items()
+                   if not k.startswith("_")}
+        if name == "ProcessingAlgorithmFlag":     # not used by a door
+            continue
+        key = f"Qgis.{name}"
+        assert key in listed, f"{key} is not audited"
+        for member, value in members.items():
+            number = value.value if isinstance(value, enum.Enum) \
+                else int(value)
+            assert listed[key].get(member) == number, (key, member)
+    # and no old spelling is left for QGIS 4 to stumble on
+    old = [(real, c) for _, real, _, consts in surface for c in consts
+           if c in ("FlagAdvanced", "TypeVectorAnyGeometry")
+           or real in ("QgsProcessingParameterNumber",
+                       "QgsProcessingParameterField") and consts]
+    assert not old, old
+    # the methods it names on a stand-in exist on that stand-in
+    for stub_name, real, methods, _ in surface:
+        obj = qgis_stub
+        for part in stub_name.split("."):
+            obj = getattr(obj, part)
+        for m in methods:
+            assert hasattr(obj, m), f"{stub_name}.{m} is not in the stub"

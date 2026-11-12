@@ -312,9 +312,9 @@ def test_a_current_python_is_not_mentioned(sfi, monkeypatch):
 
 # ------------------------------------------------------ equipop_run
 def _run(ns):
-    ns["_equipop_run"]("counts", "x", "y", "t", "", "", "100", "", "",
-                       100.0, "", "", "tobler", 0, "", "", "", "supply",
-                       "x", "y", 0.0, "decay", "2sfca", 0.0, 0.0, 0)
+    # by name, as the ado has called it since 1.63.8 (BACKLOG 476)
+    ns["_equipop_run"](engine="counts", xv="x", yv="y", treatv="t",
+                       ks="100", unit=100.0)
 
 
 def test_equipop_run_without_the_engine_says_what_to_do(sfi,

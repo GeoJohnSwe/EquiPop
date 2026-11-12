@@ -1,4 +1,4 @@
-*! equipop v1.63.7  -  k-nearest neighbour context variables via EquiPop
+*! equipop v1.64.1  -  k-nearest neighbour context variables via EquiPop
 *! Machine 1 (Counts and Shares). Adds, per requested k:
 *!   N_<k>, Dist_<k>, and per treatment variable v: T_<v>_<k>, R_<v>_<k>
 *! row-aligned to the dataset in memory. Radii r() give the same
@@ -391,63 +391,27 @@ program define equipop, rclass
         }
     }
 
-    * ---- drop what we are about to write ----------------------
-    if "`replace'" != "" {
-        if "`k'" != "" {
-            foreach kk of numlist `k' {
-                capture drop `prefix'N_`kk'
-                capture drop `prefix'Dist_`kk'
-                * BACKLOG 336, MARINA'S PULL REQUEST. The decay
-                * outputs were never dropped, so a second decay() run
-                * with -replace- failed and told the user to "use
-                * option replace" - which they had.
-                if "`decay'" != "" {
-                    capture drop `prefix'ND_`kk'
-                }
-                * treat() became optional in 1.36, and an empty
-                * -varlist- loop is a syntax error, not an empty loop.
-                * So -equipop, x() y() k(25) replace- failed on exactly
-                * the combination that ruling created.
-                if "`treat'" != "" {
-                    foreach v of varlist `treat' {
-                        capture drop `prefix'T_`v'_`kk'
-                        capture drop `prefix'R_`v'_`kk'
-                        if "`decay'" != "" {        /* 336 */
-                            capture drop `prefix'TD_`v'_`kk'
-                            capture drop `prefix'RD_`v'_`kk'
-                        }
-                    }
-                }
-            }
-        }
-        if "`r'" != "" {
-            foreach rr of numlist `r' {
-                * `rl' is the underscore-safe name -
-                * r=1.5 becomes r1_5, because a dot cannot appear in
-                * a Stata variable name.
-                * BACKLOG 337: this subinstr was RIGHT and the engine
-                * was wrong - it produced N_r1.5 while this looked for
-                * N_r1_5, so the two halves of one file disagreed.
-                * equipop/labels.py now names the column this way at
-                * the source, so the engine and this list agree.
-                local rl : subinstr local rr "." "_", all
-                capture drop `prefix'N_r`rl'
-                if "`decay'" != "" {                /* 336 */
-                    capture drop `prefix'ND_r`rl'
-                }
-                if "`treat'" != "" {
-                    foreach v of varlist `treat' {
-                        capture drop `prefix'T_`v'_r`rl'
-                        capture drop `prefix'R_`v'_r`rl'
-                        if "`decay'" != "" {        /* 336 */
-                            capture drop `prefix'TD_`v'_r`rl'
-                            capture drop `prefix'RD_`v'_r`rl'
-                        }
-                    }
-                }
-            }
-        }
-    }
+    * ---- replace: NOTHING IS DROPPED HERE (BACKLOG 473) ---------
+    * Until 1.63.7 this block ran -capture drop- on every name the run
+    * was about to write, before computing anything. Two faults:
+    *
+    * ABBREVIATION. With -set varabbrev on-, Stata's default, -drop
+    * N_100- deletes N_1000 when no N_100 exists - it reads the name
+    * as an abbreviation. So -equipop ..., k(100) replace- on a dataset
+    * holding the results of k(1000) deleted N_1000 and Dist_1000, and
+    * a treat() variable could take a user's own variables with it
+    * (T_Age_25 is an abbreviation of T_Age_250).
+    *
+    * ORDER. The old results were gone before the new ones existed, so
+    * a run that stopped - a refused option, a full disk, Break - left
+    * the dataset with neither.
+    *
+    * The Python half now replaces: after the engine has answered, it
+    * drops EXACTLY the variables it is about to write, by position in
+    * the dataset, and only those that exist under that very name.
+    * (The blocks about decay and r() that stood here - BACKLOG 336,
+    * 337 - guessed the engine's names; the engine's own list cannot
+    * be guessed wrong.)
 
     * ---- WARN ABOUT LONG NAMES BEFORE COMPUTING ANYTHING -------
     * John's run finished 646,766 cells, three widened passes and two
@@ -500,7 +464,8 @@ program define equipop, rclass
         missing="`missing'", decay="`decay'", halflife=`halflife',   ///
         halflifevar="`halflifevar'", bins=`bins',                    ///
         overshoot="`overshoot'", originrule="`originrule'",           ///
-        calibration="`calibration'", unit_was_set=`unit_was_set')
+        calibration="`calibration'", unit_was_set=`unit_was_set',    ///
+        replace="`replace'")
 
     * ---- returned results -------------------------------------
     * r(varlist) is the one that changes how the
@@ -570,7 +535,7 @@ program define _equipop_setup
     * doctor. Maintained by tools/bump_version.py, which replaces
     * every line matching this pattern - so this string and the
     * doctor's below always agree.
-    local eqp_ado_version "1.63.7"
+    local eqp_ado_version "1.64.1"
 
     * BACKLOG 332. THE ENGINE FLOOR IS NOT THE ADO'S VERSION, and
     * tying the two together was the whole fault. Setup used to ask
@@ -620,7 +585,7 @@ program define _equipop_doctor
     * most frequent field failure this project has. This is a SEVENTH
     * place a version string lives; tests/test_stata_ado.py asserts it
     * against line 1 of this file and against pyproject.toml.
-    local eqp_ado_version "1.63.7"
+    local eqp_ado_version "1.64.1"
     * BACKLOG 332. The floor is what the doctor should JUDGE against;
     * the two version numbers are only there to be shown. Keep this
     * string identical to the one in _equipop_setup above - a test
@@ -1539,12 +1504,40 @@ def _engine_takes_unit(unit):
     return False
 
 
+def _drop_exactly(names):
+    """Drop these variables and no others (BACKLOG 473).
+
+    By POSITION in the dataset, highest first, and only a variable
+    whose name IS the name asked for. Stata's own -drop- reads a name
+    that does not exist as an abbreviation of one that does, which is
+    how -replace- came to delete N_1000 when asked about N_100. A
+    position cannot be abbreviated. Should this Stata's sfi have no
+    dropVar, the fallback is Stata's -drop- under -novarabbrev-, on a
+    name already known to exist in full.
+    """
+    have = [Data.getVarName(i) for i in range(Data.getVarCount())]
+    where = sorted({have.index(n) for n in names if n in have},
+                   reverse=True)
+    for i in where:
+        try:
+            Data.dropVar(i)
+        except Exception:
+            # have[i] exists under exactly this name, and Stata takes
+            # an exact name before any abbreviation - so even a plain
+            # -drop- cannot reach another variable here
+            try:
+                SFIToolkit.stata("novarabbrev drop " + have[i])
+            except Exception:
+                SFIToolkit.stata("drop " + have[i])
+
+
 def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                       weight="", selfpot=1.0, touse="", prefix="",
                       project="", epsg=0, treatmode="counts",
                       missing="", decay="", halflife=0.0,
                       halflifevar="", bins=10, overshoot="",
-                      originrule="", calibration="", unit_was_set=""):
+                      originrule="", calibration="", unit_was_set="",
+                      replace=""):
     # KEYWORD-ONLY on purpose: a positional call raises TypeError
     # rather than quietly meaning something else.
     level, py_lines = _python_note_once()           # BACKLOG 459
@@ -1751,6 +1744,7 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
     wanted = final
 
     problems = []
+    dropping = []                                 # BACKLOG 473
     for name in wanted:
         if len(name) > 32:
             problems.append(
@@ -1759,8 +1753,11 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
                 f"{len(name) - len(name.rpartition('_')[0]) + len(prefix)}"
                 " of the 32. Use a shorter prefix().")
         elif name in existing:
-            problems.append(
-                f"{name} already exists - use option replace")
+            if replace:
+                dropping.append(name)             # BACKLOG 473
+            else:
+                problems.append(
+                    f"{name} already exists - use option replace")
     seen = set()
     for name in wanted:
         if name in seen:
@@ -1775,6 +1772,10 @@ def _equipop_machine1(*, x, y, treat, k="", r="", unit=100.0,
             SFIToolkit.errprintln(f"  ... and {len(problems) - 10} more")
         SFIToolkit.error(110)
         return
+
+    # BACKLOG 473: replace, here and only now - the engine has
+    # answered and every name has passed the checks above.
+    _drop_exactly(dropping)
 
     made = []
     for key, arr in res.items():
@@ -2027,7 +2028,14 @@ def _unit_cache_get():
     """
     try:
         from sfi import Characteristic
-        return Characteristic.getDta(_UNIT_CHAR) or "", ""
+        # BACKLOG 474: getDtaChar. This called getDta, which sfi does
+        # not have, so every -equipop unit- recounted and then said
+        # the advice could not be stored. The old name is tried last,
+        # in case some sfi does carry it.
+        get = getattr(Characteristic, "getDtaChar", None)
+        if get is None:
+            get = getattr(Characteristic, "getDta")
+        return get(_UNIT_CHAR) or "", ""
     except Exception as exc:
         return "", str(exc).splitlines()[0] if str(exc) else type(exc).__name__
 
@@ -2036,7 +2044,10 @@ def _unit_cache_put(text):
     """Store it, and say why if we could not. Never raises."""
     try:
         from sfi import Characteristic
-        Characteristic.setDta(_UNIT_CHAR, text)
+        put = getattr(Characteristic, "setDtaChar", None)
+        if put is None:                              # BACKLOG 474
+            put = getattr(Characteristic, "setDta")
+        put(_UNIT_CHAR, text)
         return ""
     except Exception as exc:
         return str(exc).splitlines()[0] if str(exc) else type(exc).__name__
@@ -2072,7 +2083,7 @@ def _equipop_unit_py():
         # name the user has never heard of.
         SFIToolkit.errprintln(
             "this engine has no unit-size advisory - it arrived in "
-            "EquiPop 1.54.0. Run -equipop setup, replace- to update "
+            "EquiPop 1.54.0. Run -equipop setup- to update "
             f"it. ({exc})")
         SFIToolkit.error(198)
         return

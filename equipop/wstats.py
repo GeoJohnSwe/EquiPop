@@ -31,7 +31,9 @@ John has already published moves. Fractional weights are then the one
 genuinely new behaviour, and they only arise where the old code
 refused to answer at all.
 
-WHAT A QUANTILE MEANS HERE - John's ruling, 1.31
+WHAT A QUANTILE MEANS HERE - John's ruling, 1.31, confirmed and
+repaired for fractions on 11 November 2026 (BACKLOG 484; the rule
+itself is written out at _quantile_prepared)
 ------------------------------------------------
 Interpolated, not stepped. His reason is the good one: it is what
 EquiPop ALREADY does for an even number of observations, where the
@@ -87,33 +89,62 @@ def prepare(values, weights):
 
 
 def weighted_quantile(values, weights, q: float) -> float:
-    """The q-th quantile (q in [0, 1]) of a weighted sample.
-
-    Reproduces numpy's default `method="linear"` on the expanded
-    array whenever the weights are whole numbers.
-
-    HOW, and why it is written this way. Think of the expansion laid
-    out in sorted order and indexed 0 .. N-1. A value v_j with weight
-    w_j occupies the indices [C_{j-1}, C_j - 1], where C is the
-    running total. numpy asks for the position h = (N-1) * q and
-    interpolates linearly between neighbouring indices. So the whole
-    job is a piecewise-linear map from index to value: flat across
-    each value's own block, sloping across the single index of gap
-    between one block's last row and the next block's first.
-
-    FRACTIONAL WEIGHTS need one guard. A weight below 1 makes a
-    block's last index fall BEFORE its first, which would hand
-    np.interp a non-monotone x and produce silent nonsense. The knots
-    are therefore forced non-decreasing. Weights below 1 arise only
-    for a nearly-empty cell or a very small ring share; the common
-    case under `proportional` is a fraction of a populated cell,
-    which is still well above 1.
+    """The q-th quantile (q in [0, 1]) of a weighted sample: the
+    average value of one person's width of the sorted population at
+    position (N - 1) q. For whole-number weights it is numpy's
+    default percentile of the written-out sample. See
+    _quantile_prepared for the rule and its history (BACKLOG 484).
     """
     v, w, cum = prepare(values, weights)
     return _quantile_prepared(v, w, cum, q)
 
 
 def _quantile_prepared(v, w, cum, q: float) -> float:
+    """The percentile as THE AVERAGE VALUE OF ONE PERSON'S WIDTH of
+    the sorted population, at the percentile's position.
+
+    BACKLOG 484, John's ruling of 11 November 2026 - the rule of 1.31
+    kept, and repaired for fractions of a person.
+
+    Line the people up by value, each row as wide as its weight. With
+    n people in all, the q-th percentile sits at position (n - 1) q,
+    and is the average value of the stretch from there to one person
+    further on.
+
+    FOR WHOLE NUMBERS OF PEOPLE THIS IS numpy'S DEFAULT PERCENTILE of
+    the written-out sample, as it has been since 1.30.3: the stretch
+    lies inside one person, or covers the end of one and the start of
+    the next, which is the linear interpolation between two
+    neighbours. It is in fact the same number as before whenever
+    every row the stretch touches weighs one person or more.
+
+    WHERE NUMBERS DO MOVE, and John ruled for it knowing: under the
+    `proportional` overshoot - the default - the people in the ring
+    that crosses k each count as a FRACTION of a person, so a
+    neighbourhood of single people has rows of less than one person
+    in it after all. On the shipped test data (10,892 people, k = 200)
+    the median changes in 14% of neighbourhoods and the 75th and 90th
+    percentiles in 19%, by 0.07% of the variable's interquartile
+    range on average and 7% at most. With the ring taken `whole`,
+    nothing changes.
+
+    WHAT WAS WRONG. The old code drew the same picture with each row
+    as a flat block from its first person to its LAST - and a row of
+    less than one person has no last person. Such blocks were
+    collapsed to a point, so the stretch at the top fell short of the
+    largest values: ten values 1..10 with weight 0.5 each gave a
+    median of 5.0 and a top percentile of 9, where five people hold
+    them at 5.5 and 9.5. Gridded populations carry a fraction of a
+    person in most cells.
+
+    WHAT IT IS NOT: independent of what the weights add up to. They
+    are numbers of PEOPLE, and five people have a different 25th
+    percentile from ten (as an unweighted sample of five has). Weights
+    that sum to one person or less give the mean, because the stretch
+    is then everybody. John chose this over the share-of-weight rule
+    (Stata's), which is free of the total but moves in steps - the
+    alternative he rejected in 1.31, and for the same reason.
+    """
     if v.size == 0:
         return float("nan")
     if v.size == 1:
@@ -122,20 +153,26 @@ def _quantile_prepared(v, w, cum, q: float) -> float:
     if n <= 0:
         return float("nan")
     if n <= 1:
-        # less than one person between them: no spread to speak of,
-        # and (N-1) would go negative. Report the weighted mean, which
-        # is what a single observation's quantile is anyway.
+        # one person or less between them all: the stretch is everybody
         return float(np.dot(v, w) / n)
 
-    h = (n - 1.0) * float(q)
-    lo = cum - w                     # first index of each block
-    hi = cum - 1.0                   # last index of each block
-    hi = np.maximum(hi, lo)          # see FRACTIONAL WEIGHTS above
-    knots = np.empty(2 * v.size, dtype=float)
-    knots[0::2], knots[1::2] = lo, hi
-    np.maximum.accumulate(knots, out=knots)
-    vals = np.repeat(v, 2)
-    return float(np.interp(h, knots, vals))
+    lo = (n - 1.0) * float(q)
+    hi = lo + 1.0
+    # the rows the stretch touches: from the first that ends after lo
+    # to the first that ends at or after hi
+    last = v.size - 1
+    i0 = min(int(np.searchsorted(cum, lo, side="right")), last)
+    i1 = min(int(np.searchsorted(cum, hi, side="left")), last)
+    if i1 <= i0:
+        return float(v[i0])                    # inside one row
+    ends = cum[i0:i1 + 1]
+    starts = ends - w[i0:i1 + 1]
+    part = np.minimum(ends, hi) - np.maximum(starts, lo)
+    np.maximum(part, 0.0, out=part)
+    total = float(part.sum())
+    if not total > 0:
+        return float(v[i1])
+    return float(np.dot(v[i0:i1 + 1], part) / total)
 
 
 def _weighted_gini(v, w, cum) -> float:

@@ -279,8 +279,16 @@ def test_every_syntax_option_is_used(ado):
             f"{ado}: [if]/[in] are declared but marksample is never "
             f"called - they would be accepted and ignored")
 
+    # BACKLOG 476: an option may also be read BY THE PYTHON HALF, with
+    # Macro.getLocal("name") - the way a file name has to travel,
+    # because pasted into a python: line a Windows path is Python
+    # source. That counts as read; it is checked in the file's own
+    # python block, not anywhere else.
+    py_reads = set(re.findall(r'Macro\.getLocal\("(\w+)"\)',
+                              text.split("\nend", 1)[-1]))
     for opt in sorted(opts):
-        assert re.search(r"`" + re.escape(opt) + r"'", body), (
+        assert re.search(r"`" + re.escape(opt) + r"'", body) \
+            or opt in py_reads, (
             f"{ado}: option {opt}() is declared on the syntax line "
             f"and never read - it does nothing")
 
@@ -855,40 +863,59 @@ def test_replace_drops_every_column_the_run_will_create():
     decay() run with replace failed, telling the user to "use option
     replace" when they already had.
 
-    The prefixes are read from the ENGINE rather than listed here, so
-    a new output family added to the engine fails this test instead of
-    quietly escaping the drop list, which is how these three did.
+    Until 1.63.7 this test READ the ado's drop block for one -drop-
+    line per family the engine names. Since 1.63.8 (BACKLOG 473) there
+    is no such block: the Python half drops exactly the variables the
+    engine has just handed it, after it has answered - so there is no
+    list in the ado to fall behind the engine. The test now RUNS it:
+    a decay run with k() and r() and a treatment, three times.
+
+    BROKEN WITH: `dropping.append(name)` left out for any name - the
+    second run stops on "already exists - use option replace".
     """
-    import re
+    import contextlib
+    import io
+    import stata_sim as SS
     from equipop.analysis import NAMES
-    src = _ado_text()
-    block = src[src.index("drop what we are about to write"):
-                src.index("WARN ABOUT LONG NAMES")]
-    # the SHORT naming scheme is the one the Stata door uses
+
+    def run(df, **kw):
+        ns, st = SS.start(df.assign(__touse=1.0))
+        SS.run_block(SS.blocks(os.path.join(SS.STATA,
+                                            "equipop.ado"))[0], ns)
+        args = dict(x="X_local", y="Y_local", treat="HighEdu", k="50",
+                    r="500.5", unit=100.0, touse="__touse",
+                    decay="negexp", halflife=400.0, unit_was_set=1)
+        args.update(kw)
+        with contextlib.redirect_stdout(io.StringIO()):
+            ns["_equipop_machine1"](**args)
+        return st
+
+    data = SS.load_test_data().iloc[:1500]
+    first = run(data)
+    made = first.locals["eqp_varlist"].split()
+    # every family the engine names came out, for k AND for r. Dist_
+    # is the one exception for r, and a RULING: a radius run reports
+    # no distance, because the radius IS the distance (BACKLOG 203).
     families = {tpl.split("{")[0].rstrip("_")
                 for tpl in NAMES["short"].values()}
-    # BOTH HALVES, SEPARATELY. The first version of this test searched
-    # the whole block, so deleting the decay drop from the k half
-    # still passed - the radius half's `drop `prefix'ND_r`rl'` matched
-    # the same pattern. Caught by breaking it; a family has to be
-    # dropped for k AND for r, because a run can ask for either.
-    k_half = block[block.index('if "`k' + chr(39) + '" != ""'):
-                   block.index('if "`r' + chr(39) + '" != ""')]
-    r_half = block[block.index('if "`r' + chr(39) + '" != ""'):]
-    #: Dist_ is the one exception, and a RULING not an oversight: a
-    #: radius run reports no distance, because the radius IS the
-    #: distance (BACKLOG 203, John's ruling). So the engine never
-    #: makes Dist_r500 and nothing should drop it.
-    for half, name, skip in ((k_half, "k()", set()),
-                             (r_half, "r()", {"Dist"})):
-        missing = sorted(f for f in families - skip
-                         if not re.search(rf"drop `prefix'{f}_", half))
-        assert not missing, (
-            f"-replace- never drops {missing} in the {name} branch, "
-            "which the engine produces there, so a second run with "
-            "replace stops on 'already defined' and tells the user to "
-            "use the option they used. The families come from "
-            f"equipop.analysis.NAMES: {sorted(families)}")
+    for fam in families:
+        assert any(v.startswith(fam + "_") and v.endswith("_50")
+                   for v in made), (fam, made)
+        if fam != "Dist":
+            # a decimal radius is written with an underscore (337)
+            assert any(v.startswith(fam + "_") and v.endswith("r500_5")
+                       for v in made), (fam, made)
+    before = first.df.drop(columns="__touse")
+    marked = before.assign(**{v: -99.0 for v in made})
+    second = run(marked, replace="replace")
+    assert second.locals["eqp_varlist"].split() == made
+    assert list(second.df.columns).count("N_50") == 1
+    for v in made:                       # every one of them is NEW
+        assert not (second.df[v] == -99.0).any(), v
+    with pytest.raises(SS.StataError):   # and without the option: no
+        run(marked)
+    assert any("already exists - use option replace" in e
+               for e in SS._State.err)
 
 
 def test_a_literal_brace_is_escaped_once_and_only_once():
@@ -1095,7 +1122,10 @@ def test_the_stata_help_generator_reads_the_checkout(tmp_path):
     (poison / "__init__.py").write_text(
         "raise SystemExit('POISONED: installed equipop imported')\n")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env = dict(os.environ, PYTHONPATH=str(tmp_path / "site"))
+    # BACKLOG 491: ahead of the path, not instead of it
+    ahead = os.pathsep.join(filter(None, [str(tmp_path / "site"),
+                                        os.environ.get("PYTHONPATH", "")]))
+    env = dict(os.environ, PYTHONPATH=ahead)
     r = subprocess.run([sys.executable,
                         os.path.join(root, "tools", "make_sthlp.py"),
                         "--check"], cwd=str(tmp_path), env=env,

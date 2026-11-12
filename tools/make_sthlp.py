@@ -158,8 +158,10 @@ STATA_ONLY = {
         "runs can live side by side in one dataset. prefix(a_) turns "
         "N_25 into a_N_25.",
     "replace":
-        "Drops the result variables this run is about to create "
-        "before creating them. Without it the command stops rather "
+        "Replaces result variables that already exist: exactly the "
+        "variables this run writes, by their full names, and only "
+        "once the new results are ready, so a run that stops leaves "
+        "the old ones in place. Without it the command stops rather "
         "than overwriting silently.",
 }
 
@@ -743,10 +745,27 @@ def build():
     add("{phang}{cmd:. equipop [fweight=households], x(X) y(Y) "
         "treat(renting) k(200)}{p_end}")
     add("")
-    add("{pstd}Self-potential - whether an origin counts itself. The "
-        "default keeps it, which is right when a row is a place; "
-        "{cmd:selfpot(0)} drops it, which is right when a row is a "
-        "person and you are asking about their surroundings:{p_end}")
+    # BACKLOG 477. This paragraph said selfpot(0) "drops" the origin.
+    # It does not, and never did: selfpot() is a DISTANCE, and the
+    # option that leaves the origin out is originrule(exclude). A
+    # reader who followed the example got the origin counted and a
+    # Dist_k that can be zero - the opposite of what was promised.
+    add("{pstd}Whether an origin counts ITSELF is "
+        "{cmd:originrule()}. The default, {cmd:originrule(include)}, "
+        "keeps it, which is right when a row is a place; "
+        "{cmd:originrule(exclude)} leaves the origin's own cell out, "
+        "which is right when a row is a person and you are asking "
+        "about their surroundings:{p_end}")
+    add("{phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) "
+        "originrule(exclude)}{p_end}")
+    add("")
+    add("{pstd}{cmd:selfpot()} is something else: how FAR AWAY the "
+        "people in an origin's own cell are taken to be. It changes "
+        "Dist_{it:k} and, under {cmd:decay()}, how much those people "
+        "weigh - never who is counted. {cmd:selfpot(0)} puts "
+        "them at no distance at all, so Dist_{it:k} can be zero; the "
+        "default, 1, is the radius at which {it:k} of them are "
+        "reached:{p_end}")
     add("{phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) "
         "selfpot(0)}{p_end}")
     add("")
@@ -823,6 +842,7 @@ def build_run():
     add("{viewerjumpto \"Syntax\" \"equipop_run##syntax\"}{...}")
     add("{viewerjumpto \"Engines\" \"equipop_run##engines\"}{...}")
     add("{viewerjumpto \"Examples\" \"equipop_run##examples\"}{...}")
+    add("{viewerjumpto \"Stored results\" \"equipop_run##results\"}{...}")
     add("")
     add("{title:Title}")
     add("")
@@ -834,9 +854,13 @@ def build_run():
     add("{title:Syntax}")
     add("")
     add("{p 8 17 2}")
-    add("{cmd:equipop_run} {cmd:,} {opt engine(name)} {opt x(varname)} "
+    add("{cmd:equipop_run} {ifin} {cmd:,} {opt engine(name)} "
+        "{opt x(varname)} "
         "{opt y(varname)} [{it:engine options}] [{opt unit(#)} "
-        "{opt weight(varname)} {opt selfpot(#)} {opt replace}]")
+        "{opt weight(varname)} {opt treatmode(counts|flags)} "
+        "{opt over:shoot(whole|proportional)} "
+        "{opt origin:rule(include|exclude)} "
+        "{opt selfpot(#)} {opt replace}]")
     add("")
     add("{pstd}{it:name} is one of {cmd:counts}, {cmd:stats}, "
         "{cmd:friction}, {cmd:slope}, {cmd:fca} or {cmd:lisa}.{p_end}")
@@ -850,13 +874,20 @@ def build_run():
         "results come back as new variables, one value per "
         "observation.{p_end}")
     add("")
-    add("{pstd}It uses EVERY observation: there is no {it:if} or "
-        "{it:in}, and no {cmd:prefix()}. For counts and shares with "
-        "those, with frequency weights, distance decay or projection "
-        "from degrees, use {help equipop}. Variable names that would "
+    # BACKLOG 487 (John's ruling, 11 November 2026: level with equipop)
+    add("{pstd}{it:if} and {it:in} choose the observations that GET "
+        "results, exactly as in {help equipop}: everybody still counts "
+        "as a neighbour, so {cmd:equipop_run if urban==1, ...} computes "
+        "for urban rows among neighbours of every kind. To leave "
+        "people out of the neighbourhoods themselves, drop them first."
+        "{p_end}")
+    add("")
+    add("{pstd}What it still lacks beside {help equipop}: "
+        "{cmd:prefix()}, {cmd:[fweight]} (use {cmd:weight()}), distance "
+        "decay and projection from degrees. Variable names that would "
         "contain a full stop have it replaced by an underscore. Without "
         "{cmd:replace}, a result variable that already exists stops the "
-        "command.{p_end}")
+        "command before any variable is made.{p_end}")
     add("")
     add("{pstd}Requires Stata 17 or later and the equipop Python "
         "package in the Python Stata uses: run {cmd:equipop doctor} to "
@@ -875,7 +906,13 @@ def build_run():
         "{opt k(numlist)} {opt r(numlist)} [{opt stats(string)}]. "
         "Statistics of numeric variables among the k nearest; "
         "{cmd:stats()} lists them (default {cmd:mean median gini}). "
-        "Nv_ is the number of neighbours with a value.{p_end}")
+        "Nv_ is the number of neighbours with a value. A median or "
+        "percentile ({cmd:p10}, {cmd:p90}, ...) is the average value "
+        "of one person's width of the sorted neighbourhood at that "
+        "position: for whole numbers of people the usual interpolated "
+        "percentile, and well defined when {cmd:weight()} holds "
+        "fractions of a person. {cmd:weight()} must hold numbers of "
+        "people, not shares that sum to one.{p_end}")
     add("")
     add("{phang}{cmd:friction} {hline 2} {opt treat(varname)} "
         "{opt k(numlist)} {opt tau(numlist)} [{opt friction(path)}]. "
@@ -896,7 +933,13 @@ def build_run():
         "{opt method(2sfca|3sfca)}]. Floating catchment "
         "accessibility: the observations are the demand, the supply "
         "comes from a .csv, .dta or .sav file. Returns {cmd:A} "
-        "(accessibility) and {cmd:J} (the supply side's ratio)."
+        "(accessibility) and {cmd:J} (the supply side's ratio). "
+        "The catchment is ONE of three, each with its own option: "
+        "{cmd:reach(decay)}, the default, needs {cmd:halflife(#)}, the "
+        "distance in metres at which a facility counts half; "
+        "{cmd:reach(r)} needs {cmd:rfca(#)}, a radius in metres; "
+        "{cmd:reach(k)} needs {cmd:kfca(#)}, how much supply the "
+        "catchment grows to hold. Only the first uses a half-life."
         "{p_end}")
     add("")
     add("{phang}{cmd:lisa} {hline 2} {opt values(varname)} "
@@ -909,10 +952,48 @@ def build_run():
     add("")
     add("{phang}Common to all: {opt unit(#)} is the cell size in "
         "metres, any number above zero (default 100); "
-        "{opt weight(varname)} the number of "
+        "{opt replace} replaces result variables that exist - exactly "
+        "the ones this run writes, once the new results are ready. "
+        "Without it the command stops before creating any variable if "
+        "one of them exists.{p_end}")
+    add("")
+    add("{phang}For {cmd:counts}, {cmd:stats}, {cmd:friction} and "
+        "{cmd:slope}: {opt weight(varname)} is the number of "
         "people a row stands for; {opt selfpot(#)}, between 0 and 1, "
-        "how far away an observation's own cell counts (default 1); "
-        "{opt replace} replaces result variables that exist.{p_end}")
+        "how far away an observation's own cell counts (default 1)."
+        "{p_end}")
+    add("")
+    # BACKLOG 490, the independent review of 1.64.0
+    add("{phang}{bf:An option the engine does not read is refused}, "
+        "naming the engines that do read it - for example "
+        "{cmd:model()} with {cmd:engine(counts)}, {cmd:halflife()} "
+        "outside {cmd:fca} (only {cmd:fca} has a distance decay here; "
+        "{help equipop} has one for counts), or {cmd:r()} with "
+        "{cmd:friction}, which counts by {cmd:k()} and {cmd:tau()}. "
+        "Until 1.64.0 such an option was accepted and did nothing."
+        "{p_end}")
+    add("")
+    # BACKLOG 487
+    add("{phang}{opt over:shoot(whole|proportional)} and "
+        "{opt origin:rule(include|exclude)} are {help equipop}'s, with "
+        "the same meaning and the same defaults (proportional; "
+        "include), for {cmd:counts}, {cmd:stats}, {cmd:friction} and "
+        "{cmd:slope}. {cmd:overshoot()} says how much of the ring that "
+        "crosses {it:k} is taken; {cmd:originrule(exclude)} leaves the "
+        "observation's own cell out of its neighbourhood. On "
+        "{cmd:fca} and {cmd:lisa} they are refused.{p_end}")
+    add("")
+    # BACKLOG 475
+    add("{phang}{opt treatmode(counts|flags)} says what {cmd:treat()} "
+        "holds, for {cmd:counts}, {cmd:friction} and {cmd:slope}. "
+        "{cmd:counts}, the default, is the NUMBER OF PEOPLE of the "
+        "group at the row, as in {help equipop}. {cmd:flags} is 0 or "
+        "1, a share of the row's {cmd:weight()}. Without "
+        "{cmd:weight()} the two are the same. Until 1.63.7 this "
+        "command applied the flags rule whatever was meant, so "
+        "{cmd:treat()} with {cmd:weight()} gave other shares than "
+        "{help equipop} did; results made that way are reproduced "
+        "with {cmd:treatmode(flags)}.{p_end}")
     add("")
     add("{marker examples}{...}")
     add("{title:Examples}")
@@ -923,6 +1004,47 @@ def build_run():
         "values(ValFloat) k(200)}{p_end}")
     add("{phang}{cmd:. equipop_run, engine(lisa) x(X_local) y(Y_local) "
         "values(ValFloat) k(8)}{p_end}")
+    add("")
+    # BACKLOG 487
+    add("{pstd}Results for some rows only, with the origin left out of "
+        "its own neighbourhood, and the new variables by name:{p_end}")
+    add("{phang}{cmd:. equipop_run if HighEdu == 1, engine(stats) "
+        "x(X_local) y(Y_local) values(ValFloat) k(200) "
+        "originrule(exclude) replace}{p_end}")
+    add("{phang}{cmd:. summarize `r(varlist)'}{p_end}")
+    add("")
+    add("{marker results}{...}")
+    add("{title:Stored results}")
+    add("")
+    add("{pstd}{cmd:equipop_run} stores the following in {cmd:r()}:"
+        "{p_end}")
+    add("")
+    add("{synoptset 20 tabbed}{...}")
+    add("{p2col 5 20 24 2: Scalars}{p_end}")
+    for nm, desc in (
+            ("r(N_origins)", "observations in the sample"),
+            ("r(N_missing)", "of those, without a result in the first "
+                             "new variable"),
+            ("r(unit)", "cell size in metres"),
+            ("r(selfpot)", "self-potential used")):
+        add("{synopt:{cmd:%s}}%s{p_end}" % (nm, desc))
+    add("{p2col 5 20 24 2: Macros}{p_end}")
+    for nm, desc in (
+            ("r(cmd)", "{cmd:equipop_run}"),
+            ("r(cmdline)", "the command as typed"),
+            ("r(engine)", "the engine that ran"),
+            ("r(varlist)", "the variables created, in order"),
+            ("r(treat)", "treat() as given"),
+            ("r(values)", "values() as given"),
+            ("r(k)", "k() as given"),
+            ("r(r)", "r() as given"),
+            ("r(tau)", "tau() as given"),
+            ("r(overshoot)", "the overshoot rule that ran (counts, "
+                             "stats, friction, slope)"),
+            ("r(originrule)", "the origin rule that ran (the same "
+                              "four engines)")):
+        add("{synopt:{cmd:%s}}%s{p_end}" % (nm, desc))
+    add("{p2colreset}{...}")
     add("")
     _references(add)
     _author(add)

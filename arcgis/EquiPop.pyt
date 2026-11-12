@@ -571,6 +571,13 @@ def _read_input(layer, coord_source, xf, yf, extra_fields, messages,
         # none at all
         getattr(desc, "spatialReference", None) if kind != "table"
         else None)
+    # BACKLOG 466. The same fault as 329, one attribute over. last_sr
+    # is what the barriers are converted INTO and what the elevation
+    # raster is checked against, and this branch never set it - so a
+    # table run after a feature-class run in the same Pro session
+    # converted its barriers into the EARLIER layer's coordinate
+    # system. Set here on every read: the declared system, or None.
+    _read_input.last_sr = _declared
     if _declared is not None:
         _nm = getattr(_declared, "name", None) or str(_declared)
         _cd = getattr(_declared, "factoryCode", 0) or 0
@@ -741,7 +748,7 @@ def _ref(value):
 #: The manifest has always recorded the PACKAGE version and never the
 #: TOOLBOX version, and this whole episode is the gap between those
 #: two. Now every run says both, and says so loudly when they differ.
-TOOLBOX_VERSION = "1.63.7"
+TOOLBOX_VERSION = "1.64.1"
 
 
 def _vtuple(v):
@@ -886,6 +893,31 @@ def _require_crs(desc, what):
     return sr
 
 
+def _barrier_crs_ok(desc, main_sr, what, raster=False):
+    """A barrier's coordinate system against the analysis's.
+
+    Nothing to compare with (the input is a table that declares no
+    coordinate system): nothing is checked here - _run_tool says so
+    once, for every ingredient. Otherwise an undefined system is
+    refused (BACKLOG 313), and a RASTER in a different one is refused
+    too, because converting it means resampling. A vector in a
+    different one is fine: the reader converts it, exactly.
+    """
+    if main_sr is None:
+        return
+    sr = _require_crs(desc, what)
+    if raster and not _same_crs(sr, main_sr):
+        raise arcpy.ExecuteError(
+            f"{what} is in {getattr(sr, 'name', '?')} but the "
+            f"analysis is running in {getattr(main_sr, 'name', '?')}. "
+            "EquiPop will not reproject a raster for you: that means "
+            "resampling it, which moves and blends its cells. Project "
+            "the raster yourself (Project Raster, choosing the "
+            "resampling you want), or run the analysis in the "
+            "raster's coordinate system. Vector barriers need no such "
+            "step; they are converted on read, which is exact.")
+
+
 def _raster_payload(value, messages, main_sr=None):
     """Read a raster HERE (arcpy) and hand the package plain numbers.
     The package must never open GIS files itself - installing
@@ -969,6 +1001,12 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
     aggk = _agg_key(agg)
 
     if kind == "raster":
+        # BACKLOG 466. John's ruling of 313 was written for the
+        # elevation raster and never reached this one: a raster is not
+        # reprojected (that is resampling), so one in another
+        # coordinate system - or in none - is refused, not placed
+        # wherever its numbers happen to land.
+        _barrier_crs_ok(desc, main_sr, "The barrier raster", raster=True)
         low = arcpy.RasterToNumPyArray(_ref(value))
         ext = desc.extent
         fr = raster_to_friction(
@@ -1005,6 +1043,7 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
         return fr
 
     _check_metric(desc, "The barrier layer")
+    _barrier_crs_ok(desc, main_sr, "The barrier layer")
     if not friction_field:
         raise arcpy.ExecuteError(
             "Barrier layer: pick the numeric friction value field "
@@ -1018,8 +1057,12 @@ def _barrier_frame(value, friction_field, agg, unit, main_sr,
         # in. The first fix of this release went into _read_input only,
         # which is how a sibling path goes unfixed in this codebase; a
         # subagent audit of the property found this one, not me.
+        # BACKLOG 466: sr=main_sr. Lines and polygons were converted
+        # into the analysis coordinate system on read (the cursor
+        # below) and POINTS were not - a point barrier layer in
+        # another projection was placed by its own numbers.
         arr = _read_columns(value, ["SHAPE@X", "SHAPE@Y", friction_field],
-                            messages, context="barrier layer")
+                            messages, sr=main_sr, context="barrier layer")
         xs = np.asarray(arr["SHAPE@X"], float)
         ys = np.asarray(arr["SHAPE@Y"], float)
         vs = _numeric(arr[friction_field], friction_field,
@@ -1302,7 +1345,8 @@ def _refuse_shp_overflow(target, names, messages=None):
     return refuse_short_target(target, names)
 
 
-def _values_from_table(rows, cat_values, messages, what, field=None):
+def _values_from_table(rows, cat_values, messages, what, field=None,
+                       norm=None):
     """One column: which values belong to a population (v1.22).
 
     An EMPTY table means EVERY value belongs - which is what makes
@@ -1322,7 +1366,13 @@ def _values_from_table(rows, cat_values, messages, what, field=None):
                 or "").strip()
         if not v:
             continue
-        (vals if v in cat_values else unknown).append(v)
+        # BACKLOG 467: compared in the column's own form (norm), so
+        # 1 and 1.0 both name the number one
+        key = norm(v) if norm else v
+        if key in cat_values:
+            vals.append(key)
+        else:
+            unknown.append(v)
     if unknown:
         where = f"the type field '{field}'" if field else \
             "the category field"
@@ -1340,7 +1390,8 @@ def _values_from_table(rows, cat_values, messages, what, field=None):
     return sorted(set(vals))
 
 
-def _groups_from_table(rows, cat_values, messages, field=None):
+def _groups_from_table(rows, cat_values, messages, field=None,
+                       norm=None):
     """Two columns: value, group name. Rows sharing a group name
     merge, which is how one group is built from several values."""
     groups, unknown = {}, []
@@ -1351,10 +1402,11 @@ def _groups_from_table(rows, cat_values, messages, field=None):
         grp = str(row[1] or "").strip()
         if not val or not grp:
             continue
-        if val not in cat_values:
+        key = norm(val) if norm else val             # BACKLOG 467
+        if key not in cat_values:
             unknown.append(val)
             continue
-        groups.setdefault(grp, []).append(val)
+        groups.setdefault(grp, []).append(key)
     if unknown:
         where = f"the type field '{field}'" if field else \
             "the category field"                     # BACKLOG 462
@@ -1941,9 +1993,17 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     # start.
     if cat_field or treat_cat_field:
         from equipop.categorical import categories_to_binary
+        from equipop import categorical as _cat
         col = np.asarray(data[cat_field if cat_field
                               else treat_cat_field])
-        known = sorted({str(v).strip() for v in col if str(v).strip()})
+        # BACKLOG 467: the column's values in the form they are
+        # matched by - a number is "1", not "1.0" - and what is typed
+        # against them put in the same form (norm). The dropdown shows
+        # an integer field as 1 and the reader holds it as 1.0, so a
+        # value PICKED FROM THE DROPDOWN was refused as "not in the
+        # type field".
+        known = _cat.known(col)
+        norm = _cat.matcher(col)
         if ref_rows is not None or treat_rows is not None:
             # v1.22: two tables, one per population. An EMPTY
             # reference table means every row belongs - which is how
@@ -1951,18 +2011,18 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             # differ, without a tick to misread.
             pop_vals = _values_from_table(
                 ref_rows, known, messages, "reference population",
-                field=cat_field or treat_cat_field)
+                field=cat_field or treat_cat_field, norm=norm)
             # the treatment names its OWN type column (v1.23): it is
             # usually the same one, but reading it from a box in
             # another section was the hidden dependency John hit
             tcol = (np.asarray(data[treat_cat_field])
                     if treat_cat_field and treat_cat_field != cat_field
                     else col)
-            tknown = sorted({str(v).strip() for v in tcol
-                             if str(v).strip()})
+            tknown = _cat.known(tcol)
             groups = _groups_from_table(
                 treat_rows, tknown, messages,
-                field=treat_cat_field or cat_field)
+                field=treat_cat_field or cat_field,
+                norm=_cat.matcher(tcol))
             # BACKLOG 144: names differing only in case cannot both
             # become columns - GIS field names ignore case. Refuse
             # here, not eight seconds later in the write, where John
@@ -1978,8 +2038,15 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
             pop_mask, _ = categories_to_binary(
                 col, {},
                 pop_values=(pop_vals or None) if cat_field else None)
+            # BACKLOG 468: pop_mask, not pop_values. The reference
+            # types are values of the REFERENCE type field; handed in
+            # as pop_values they were looked for in the TREATMENT's
+            # type field. With one field for both that is the same
+            # thing. With two - shops by type, among the places in
+            # one country - nothing matched, the population was
+            # empty, and every T_ and R_ column was zero.
             _, cat_treats = categories_to_binary(
-                tcol, groups, pop_values=pop_vals or None,
+                tcol, groups, pop_mask=pop_mask,
                 rest_group=rest_group, rest_in_population=None)
         elif cat_rows:
             pop_vals, groups = _categories_from_table(
@@ -2137,21 +2204,32 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
     if engine == "counts":
         kw["treat_are_counts"] = True
         fr_df = None
+        # the CRS the POINTS were read in - not the layer's stored
+        # one. Under auto-projection those differ, and handing the
+        # barrier reader the stored (degree) CRS produced a grid
+        # domain spanning metres-to-degrees: 290 million cells and
+        # a 17 GiB allocation error (field test v1.16.5).
+        # BACKLOG 466: worked out ONCE, for the barriers and for the
+        # elevation raster alike, from what THIS run's read recorded.
+        main_sr = getattr(_read_input, "last_sr", None) or \
+            getattr(arcpy.Describe(layer), "spatialReference", None)
+        if main_sr is None and (barrier_rows or barrier is not None
+                                or extra_dem):
+            messages.addWarningMessage(
+                "The input declares NO COORDINATE SYSTEM (a table, "
+                "with the box 'Coordinate system of the X/Y columns' "
+                "left empty). Barriers and the elevation raster can "
+                "therefore not be converted into it or checked "
+                "against it: their coordinates are used as they are. "
+                "If they are in another coordinate system than the "
+                "table's X/Y columns, the result is wrong and nothing "
+                "will say so - fill that box to have it handled.")
         if barrier_rows:
-            main_sr = getattr(_read_input, "last_sr", None) or \
-                getattr(arcpy.Describe(layer), "spatialReference", None)
             with _stage(messages, "building barriers", stages), \
                     _speaking(messages):
                 fr_df = _collect_barriers(barrier_rows, barrier_agg,
                                           unit, main_sr, messages)
         elif barrier is not None:
-            # the CRS the POINTS were read in - not the layer's stored
-            # one. Under auto-projection those differ, and handing the
-            # barrier reader the stored (degree) CRS produced a grid
-            # domain spanning metres-to-degrees: 290 million cells and
-            # a 17 GiB allocation error (field test v1.16.5).
-            main_sr = getattr(_read_input, "last_sr", None) or \
-                getattr(arcpy.Describe(layer), "spatialReference", None)
             with _stage(messages, "building barriers", stages), \
                     _speaking(messages):
                 fr_df = _barrier_frame(barrier, barrier_field,
@@ -2171,8 +2249,7 @@ def _run_tool(engine, layer, messages, treat_fields=(), value_fields=(),
                 with _stage(messages, "reading elevation raster",
                             stages):
                     kw["dem"] = _raster_payload(
-                        extra_dem, messages,
-                        getattr(_read_input, "last_sr", None))
+                        extra_dem, messages, main_sr)
             kw["roundtrip"] = bool(roundtrip)
             kw.pop("r_values", None)      # r on effort: not defined
             if half_life and half_life > 0:
@@ -2888,7 +2965,8 @@ def _distinct_values(layer, field, cap: int = 200, messages=None):
 # BACKLOG 105: duplicated, pinned by test_rungs.py. Pro carries NO
 # "(fill 2a)" hints, because it greys out the boxes a rung does not
 # use and those letters name QGIS boxes that do not exist here.
-REF_MODES = ["every point counts as one",
+REF_MODES = ["every point counts as one - or as the value in the "
+             "count field, if filled",
              "a field holds the count",
              "only selected types, with a count field"]
 TREAT_MODES = ["not measuring one - distances and counts only",
@@ -2945,20 +3023,46 @@ JOIN_COMBINE = [
 JOIN_AGG = ["sum", "max", "min", "mean"]
 
 
+def _mode_key(label):
+    """The leading words a label is recognised by when its exact
+    wording is not found."""
+    return label.split(" -")[0][:18].strip().lower()
+
+
+def _mode_index(text, modes, default=0):
+    """Which entry of `modes` the text names.
+
+    The EXACT label first. Only a text that is none of today's labels
+    - a tool saved under an older wording - is matched on its leading
+    words, and then by the LONGEST key that fits, never the first.
+
+    BACKLOG 465. Until 1.63.7 this was "the first label whose leading
+    words the text starts with". The self-potential labels lead with
+    "0", "0.71" and "1", and "0.71 - the median ..." starts with "0":
+    the median choice ran as 0 in tools 1 and 2, with no message - the
+    log even printed the label the user had picked. The test of the
+    box tried the first and the last choice and not the middle one.
+    """
+    txt = (text or modes[default]).strip().lower()
+    for i, m in enumerate(modes):
+        if txt == m.strip().lower():
+            return i
+    best, width = default, 0
+    for i, m in enumerate(modes):
+        key = _mode_key(m)
+        if key and txt.startswith(key) and len(key) > width:
+            best, width = i, len(key)
+    return best
+
+
 def _mode(pm, name, modes, default=0):
-    """Which rung of the ladder the user is on. Matching is on the
-    leading words so the wording can be improved later without
-    breaking a saved tool.
+    """Which rung of the ladder the user is on.
 
     `default` exists because machine 3's join defaults to rung 1 -
     "each class once", John's ruling - and an unset box must not
     silently fall to rung 0 and take the centroid instead.
     """
-    txt = (_txt(pm, name) or modes[default]).strip().lower()
-    for i, m in enumerate(modes):
-        if txt.startswith(m.split(" -")[0][:18].lower()):
-            return i
-    return default
+    return _mode_index(_txt(pm, name), modes, default)
 
 
 def _check_output_target(parameters, i_layer, desc):
@@ -3049,7 +3153,9 @@ def _grey_the_unused_group_route(pm):
     ladder invisible - every box was on screen whether it meant
     anything or not.
 
-        REFERENCE      1 every point counts as one   (nothing else)
+        REFERENCE      1 every point counts as one   (or as the count
+                                                      field, if filled
+                                                      - BACKLOG 485)
                        2 a field holds the count     (count field)
                        3 only selected types         (+ type field,
                                                       types, and what
@@ -3084,7 +3190,11 @@ def _boxes_for_rungs(ref, tre):
     Lifted out so the run can consult the same map the dialog does.
     """
     return {
-        "pop": ref in (1, 2),
+        # BACKLOG 485: the count field is read on EVERY reference rung
+        # - optional on the first, required on the second - so it is
+        # never greyed out. It was greyed on the first rung and read
+        # all the same (462): a box that could not be seen or emptied.
+        "pop": True,
         "catfield": ref == 2,
         "reftable": ref == 2,
         "keepoutside": ref == 2,
@@ -3179,14 +3289,11 @@ def _guard_rungs(pm, messages, machine="counts"):
             "read, so they are IGNORED: " + ", ".join(sorted(ignored)) +
             ". They are left as you typed them in case you switch "
             "back - but nothing in them reaches the results.")
-    if "pop" in honoured:
-        messages.addWarningMessage(
-            f"Box 1a, the count field, holds '{_txt(pm, 'pop')}'. The "
-            f"reference population is on '{REF_MODES[ref]}', which "
-            "greys the box out, but the count IS used: each row counts "
-            "as its value, not as one. If that is not what you meant, "
-            f"switch to '{REF_MODES[1]}' to see the box, clear it, and "
-            "switch back.")
+    # BACKLOG 485: on the first rung a filled count field is what the
+    # rung says it reads. One plain line, where 462 had a warning
+    # about a box that was greyed out and used.
+    if ref == 0 and "pop" in pm and _txt(pm, "pop"):
+        messages.addMessage(_r.counted_by_field(_txt(pm, "pop")))
     if "treat" in honoured:
         messages.addWarningMessage(
             f"Box 2a, the group count fields, holds "
@@ -3200,7 +3307,7 @@ def _guard_rungs(pm, messages, machine="counts"):
 
 # BACKLOG 462. Greyed out but still used, in both doors, since before
 # the rungs existed - see _guard_rungs.
-_HONOURED_OFF_RUNG = ("pop", "treat")
+_HONOURED_OFF_RUNG = ("treat",)        # "pop" until 1.63.8: see 485
 
 
 def _live_boxes(pm, machine="counts"):
@@ -3256,6 +3363,47 @@ def _decay_model(pm):
         return None if not first or first.lower().startswith("no decay") \
             else first
     return model_from_choice(_txt(pm, "model", ""))
+
+
+# BACKLOG 486. The two boxes that carry a half-life of their own. The
+# plain half-life box is not among them: it is greyed out on "no
+# decay" and has never been read there.
+_HALF_LIFE_BOXES = (
+    ("hlfield", "the box 'half-life from a field'"),
+    ("hlfromdist", "the box 'self-calibrating' half-life (a k)"),
+)
+
+
+def _decay_blocked(pm):
+    """'no decay' with a half-life box filled: the refusal for each
+    such box, {box name: text}. Empty when there is nothing to refuse.
+
+    John's ruling, 11 November 2026: "it should not [decay] - let us
+    block that". Until 1.63.8 the run read these two boxes whatever
+    'Distance decay' said, so "no decay" with a half-life field filled
+    DECAYED - as negexp, the model nobody had chosen - and the only
+    trace was a line in the log about a variable bandwidth. Stata has
+    always refused the same pair (halflife() without decay()).
+
+    REFUSED, not ignored: ignoring would turn a run that decayed
+    yesterday into one that does not, without a word. The boxes stay
+    visible, so the message can be acted on.
+    """
+    if _decay_model(pm) is not None:
+        return {}
+    out = {}
+    for name, what in _HALF_LIFE_BOXES:
+        val = _txt(pm, name) if name in pm else ""
+        if val:
+            out[name] = (
+                f"'Distance decay' is set to 'no decay', but {what} "
+                f"holds '{val}'. A half-life means nothing without a "
+                "decay curve, so the run stops here rather than "
+                "guess which you meant. TO DECAY: choose a curve in "
+                "'Distance decay' (until 1.63.8 this combination ran "
+                "as 'negexp' without saying so). FOR NO DECAY: empty "
+                "that box. Nothing was computed.")
+    return out
 
 
 def _byname(parameters):
@@ -5450,6 +5598,9 @@ class CountsShares:
         # the whitespace handling now come from one place, because
         # this door had them and the other three did not.
         _k_or_r_message(pm)
+        # BACKLOG 486: in the dialog, on the box itself, before Run
+        for name, text in _decay_blocked(pm).items():
+            pm[name].setErrorMessage(text)
         target = (_txt(pm, "outfc")
                   if _txt(pm, "outmode").startswith("New")
                   and _txt(pm, "outfc")
@@ -5477,6 +5628,11 @@ class CountsShares:
         _guard_rungs(pm, messages, "counts")     # BACKLOG 138 / 146
         model = _decay_model(pm)            # BACKLOG 151
         decaying = model is not None
+        blocked = _decay_blocked(pm)             # BACKLOG 486
+        if blocked:
+            raise arcpy.ExecuteError(" ".join(blocked.values())
+                                     if len(blocked) == 1 else
+                                     "\n".join(blocked.values()))
         _run_tool("counts", pm["layer"].value, messages,
                   coord_source=_txt(pm, "coordsrc") or None,
                   x_field=_txt(pm, "xfield") or None,

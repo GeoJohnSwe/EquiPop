@@ -219,3 +219,154 @@ def test_one_person_has_no_spread_and_still_has_a_median():
 def test_mismatched_pairs_are_refused_by_name():
     with pytest.raises(ValueError, match="row-aligned pairs"):
         weighted_stat("mean", [1.0, 2.0], [1.0])
+
+
+# ====================================== BACKLOG 484: fractions of a person
+def _rule_until_1_63_8(values, weights, q):
+    """The percentile as it was computed from 1.30.3 to 1.63.8, kept
+    here to be compared against: each row a flat block from its first
+    person to its LAST, numpy's interpolation across the gaps - and a
+    row of less than one person, which has no last person, collapsed
+    to a point."""
+    v, w, cum = prepare(values, weights)
+    if v.size == 0:
+        return float("nan")
+    if v.size == 1:
+        return float(v[0])
+    n = float(cum[-1])
+    if n <= 1:
+        return float(np.dot(v, w) / n)
+    h = (n - 1.0) * float(q)
+    lo = cum - w
+    hi = np.maximum(cum - 1.0, lo)
+    knots = np.empty(2 * v.size)
+    knots[0::2], knots[1::2] = lo, hi
+    np.maximum.accumulate(knots, out=knots)
+    return float(np.interp(h, knots, np.repeat(v, 2)))
+
+
+QS = (0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0)
+
+
+def test_half_people_are_people():
+    """John's ruling, 11 November 2026: the rule of 1.31 stays, and is
+    repaired for fractions. Ten values 1..10, each row half a person:
+    five people, holding 1.5, 3.5, 5.5, 7.5 and 9.5 between them.
+
+    BROKEN WITH: the rule until 1.63.8 - median 5.0, and a top
+    percentile of 9 although the largest value is 10."""
+    v = np.arange(1.0, 11.0)
+    w = np.full(10, 0.5)
+    assert _rule_until_1_63_8(v, w, 0.5) == 5.0       # what it was
+    assert _rule_until_1_63_8(v, w, 1.0) == 9.0
+    got = [weighted_quantile(v, w, q) for q in (0.0, 0.25, 0.5, 0.75, 1.0)]
+    assert got == pytest.approx([1.5, 3.5, 5.5, 7.5, 9.5])
+    # the same five people written as five rows
+    five = [weighted_quantile([1.5, 3.5, 5.5, 7.5, 9.5], np.ones(5), q)
+            for q in (0.0, 0.25, 0.5, 0.75, 1.0)]
+    assert got == pytest.approx(five)
+
+
+def test_how_people_are_split_into_rows_does_not_matter():
+    """A row of w people is the same people as two rows of w/2 with
+    the same value, or ten rows of w/10. Every percentile must agree.
+
+    This is the property the old code lacked, stated without reference
+    to any formula. BROKEN WITH: the rule until 1.63.8 - splitting
+    whole people into halves changed the answers."""
+    rng = np.random.default_rng(484)
+    worst_old = 0.0
+    for _ in range(300):
+        m = int(rng.integers(2, 12))
+        v = np.round(rng.uniform(1, 5000, m), 2)
+        w = rng.integers(1, 9, m).astype(float)
+        parts = int(rng.choice([2, 3, 10]))
+        v_split = np.repeat(v, parts)
+        w_split = np.repeat(w / parts, parts)
+        for q in QS:
+            whole = weighted_quantile(v, w, q)
+            split = weighted_quantile(v_split, w_split, q)
+            assert split == pytest.approx(whole, rel=1e-11, abs=1e-9), (
+                q, parts)
+            worst_old = max(worst_old, abs(
+                _rule_until_1_63_8(v_split, w_split, q)
+                - _rule_until_1_63_8(v, w, q)))
+    assert worst_old > 1.0, (
+        "the comparison is broken: the old rule should disagree with "
+        "itself here, and did not")
+
+
+def test_nothing_moves_where_every_row_is_a_person_or_more():
+    """The repair touches rows of less than one person and nothing
+    else: with every weight at 1 or above - whole or not - the answer
+    is the one EquiPop has given since 1.30.3.
+    BROKEN WITH: any other rule (the share-of-weight rule moves the
+    75th percentile in 98% of neighbourhoods of single people)."""
+    rng = np.random.default_rng(485)
+    for _ in range(3000):
+        m = int(rng.integers(1, 14))
+        v = np.round(rng.uniform(1, 200_000, m), 2)
+        w = rng.uniform(1.0, 60.0, m)
+        if rng.random() < 0.4:
+            w = np.round(w)
+        q = float(rng.choice(QS + (rng.uniform(),)))
+        a = _rule_until_1_63_8(v, w, q)
+        b = weighted_quantile(v, w, q)
+        assert b == pytest.approx(a, rel=1e-12, abs=1e-9), (v, w, q)
+
+
+def test_the_top_of_a_fractional_population_is_reached():
+    """The 100th percentile is the average of the TOP person, and
+    with fractional rows that person is several rows. The old rule
+    stopped one row short."""
+    v = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
+    w = np.array([0.6, 0.9, 0.5, 0.7, 0.4, 0.6])       # 3.7 people
+    top = weighted_quantile(v, w, 1.0)
+    # the top person: all of 60 (0.6) and 0.4 of 50
+    assert top == pytest.approx((0.6 * 60 + 0.4 * 50) / 1.0)
+    bottom = weighted_quantile(v, w, 0.0)
+    assert bottom == pytest.approx(0.6 * 10 + 0.4 * 20)
+    assert _rule_until_1_63_8(v, w, 1.0) < top
+
+
+def test_one_person_or_less_in_all_is_their_average():
+    """Unchanged, and now for a stated reason: the one-person stretch
+    is then everybody."""
+    v = np.array([10.0, 20.0, 60.0])
+    w = np.array([0.2, 0.3, 0.5])
+    for q in QS:
+        assert weighted_quantile(v, w, q) == pytest.approx(38.0)
+
+
+def test_a_cell_filling_up_never_makes_the_median_jump():
+    """The 1.31 promise, on the case the old code had wrong: a cell
+    growing from nothing to two people, among cells of less than a
+    person. No step larger than the scan can explain."""
+    v = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 90.0])
+    base = np.array([0.4, 0.7, 0.3, 0.8, 0.6, 0.0])
+    got = []
+    for f in np.linspace(0.001, 2.0, 4000):
+        w = base.copy()
+        w[-1] = f
+        got.append(weighted_quantile(v, w, 0.5))
+    jumps = np.abs(np.diff(got))
+    assert jumps.max() < 0.2, jumps.max()
+    assert got[-1] > got[0]
+
+
+def test_the_engine_reports_the_repaired_percentiles():
+    """Through weighted_stats, the function the engine calls for
+    every neighbourhood: five rows of half a person, values 10..50.
+    Two and a half people hold a median of 30; the bottom person
+    averages 15 and the top person 45.
+    BROKEN WITH: the rule until 1.63.8 - a median of 25."""
+    from equipop.wstats import weighted_stats
+    v = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    w = np.full(5, 0.5)
+    got = weighted_stats(["median", "p0", "p100", "mean", "count"], v, w)
+    assert got["count"] == pytest.approx(2.5)
+    assert got["mean"] == pytest.approx(30.0)
+    assert got["median"] == pytest.approx(30.0)
+    assert got["p0"] == pytest.approx(15.0)          # the bottom person
+    assert got["p100"] == pytest.approx(45.0)        # the top person
+    assert _rule_until_1_63_8(v, w, 0.5) == pytest.approx(25.0)

@@ -21,6 +21,7 @@ would pass for the wrong reason.
 """
 
 import json
+import os
 import subprocess
 import sys
 
@@ -351,7 +352,10 @@ def test_a_fresh_interpreter_imports_the_checkout_not_an_install(
     poison.mkdir(parents=True)
     (poison / "__init__.py").write_text(
         "raise SystemExit('POISONED: installed equipop imported')\n")
-    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "site"))
+    # BACKLOG 491: ahead of the path, not instead of it
+    ahead = os.pathsep.join(filter(None, [str(tmp_path / "site"),
+                                        os.environ.get("PYTHONPATH", "")]))
+    monkeypatch.setenv("PYTHONPATH", ahead)
     where = _in_fresh_python(
         "import json, equipop; print(json.dumps(equipop.__file__))")
     assert Path(where).resolve().is_relative_to(ROOT)

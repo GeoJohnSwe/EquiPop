@@ -38,6 +38,28 @@ class _State:
     locals: dict = {}
     out: list = []
     err: list = []
+    chars: dict = {}
+    varabbrev: bool = True      # Stata's default: -set varabbrev on-
+
+
+def _resolve(name, columns, abbrev):
+    """Which variable a NAME means to Stata.
+
+    BACKLOG 473. The exact name if there is one. Otherwise, with
+    -set varabbrev on- (the default), the ONE variable the name is the
+    beginning of. That second rule is how -drop N_100- deletes N_1000.
+    This stand-in used to drop exact names only, so it could not show
+    the fault the real thing has.
+    """
+    cols = list(columns)
+    if name in cols:
+        return name
+    if not abbrev:
+        raise StataError(111)                 # variable not found
+    hits = [c for c in cols if c.startswith(name)]
+    if len(hits) == 1:
+        return hits[0]
+    raise StataError(111)                     # not found / ambiguous
 
 
 def _sfi():
@@ -65,6 +87,20 @@ def _sfi():
             if name in st.df.columns:
                 raise ValueError(f"variable {name} already defined")
             st.df[name] = np.nan
+
+        @staticmethod
+        def dropVar(var):
+            """By position or by exact name; anything else is refused,
+            as sfi refuses a variable it cannot find."""
+            if isinstance(var, (int, np.integer)):
+                if not 0 <= int(var) < st.df.shape[1]:
+                    raise ValueError(f"variable {var} out of range")
+                name = st.df.columns[int(var)]
+            elif var in st.df.columns:
+                name = var
+            else:
+                raise ValueError(f"variable {var} not found")
+            st.df.drop(columns=[name], inplace=True)
 
         @staticmethod
         def store(var, obs, val):
@@ -105,15 +141,51 @@ def _sfi():
 
         @staticmethod
         def stata(cmd):
+            """-drop-, as Stata runs it: -capture- swallows the error,
+            -novarabbrev- switches abbreviation off for the command,
+            and without it a name is resolved by Stata's own rule."""
             words = cmd.split()
-            if words[:2] == ["capture", "drop"]:
-                st.df.drop(columns=[w for w in words[2:]
-                                    if w in st.df.columns], inplace=True)
-                return
-            raise NotImplementedError(cmd)
+            capture = words[:1] == ["capture"]
+            if capture:
+                words = words[1:]
+            abbrev = st.varabbrev
+            if words[:1] == ["novarabbrev"]:
+                abbrev, words = False, words[1:]
+            if words[:1] != ["drop"]:
+                raise NotImplementedError(cmd)
+            try:
+                gone = [_resolve(w, st.df.columns, abbrev)
+                        for w in words[1:]]
+            except StataError:
+                if capture:
+                    return
+                raise
+            st.df.drop(columns=sorted(set(gone)), inplace=True)
+
+    class Characteristic:
+        """The four names sfi has - and no others. The shipped code
+        called getDta and setDta, which do not exist (BACKLOG 474);
+        nothing stood in for the class, so nothing noticed."""
+
+        @staticmethod
+        def getDtaChar(name):
+            return st.chars.get(("_dta", name), "")
+
+        @staticmethod
+        def setDtaChar(name, value):
+            st.chars[("_dta", name)] = str(value)
+
+        @staticmethod
+        def getVariableChar(var, name):
+            return st.chars.get((var, name), "")
+
+        @staticmethod
+        def setVariableChar(var, name, value):
+            st.chars[(var, name)] = str(value)
 
     mod = types.ModuleType("sfi")
     mod.Data, mod.Macro, mod.SFIToolkit = Data, Macro, SFIToolkit
+    mod.Characteristic = Characteristic
     return mod
 
 
@@ -143,6 +215,7 @@ def start(df):
     """A fresh session over `df`; returns (namespace, state)."""
     _State.df = df.copy()
     _State.locals, _State.out, _State.err = {}, [], []
+    _State.chars, _State.varabbrev = {}, True
     sys.modules["sfi"] = _sfi()
     return {"__name__": "__stata__"}, _State
 

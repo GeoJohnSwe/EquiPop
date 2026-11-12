@@ -341,10 +341,9 @@ def test_an_older_engine_refuses_a_fractional_unit_in_words(ado,
                        halflifevar="", bins=10, overshoot="",
                        originrule="", calibration="", unit_was_set=1)
             else:
-                _quiet(ns["_equipop_run"], "counts", "X_local", "Y_local",
-                       "HighEdu", "", "", "50", "", "", unit, "", "",
-                       "tobler", 0, "", "", "", "supply", "x", "y", 0.0,
-                       "decay", "2sfca", 0.0, 0.0, 0, 1.0, 199)
+                # by name, as the ado calls it since 1.63.8 (476)
+                _quiet(ns["_equipop_run"], engine="counts", xv="X_local",
+                       yv="Y_local", treatv="HighEdu", ks="50", unit=unit)
         except SS.StataError as e:
             return st, e.args[0]
         return st, None

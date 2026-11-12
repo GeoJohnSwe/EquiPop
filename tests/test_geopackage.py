@@ -422,7 +422,11 @@ def test_the_dialog_offers_the_ladder_of_ways_to_build_each():
 def test_each_rung_shows_only_the_boxes_it_needs():
     tool, ps, pm = _dialog()
     tool.updateParameters(ps)
-    assert not pm["pop"].enabled          # rung 1 needs nothing else
+    # BACKLOG 485 (John's ruling, 11 November 2026): the count field
+    # is read on the first rung when filled, and the rung now says so
+    # - so the box is shown there. Until 1.63.8 it was greyed out and
+    # read all the same.
+    assert pm["pop"].enabled
     assert not pm["reftable"].enabled
     assert not pm["treat"].enabled
 

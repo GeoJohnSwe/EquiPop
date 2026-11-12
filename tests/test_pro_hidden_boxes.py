@@ -140,15 +140,73 @@ def test_the_grouped_rung_may_borrow_a_visible_reference_type_field():
     assert "R_sel_2" in got
 
 
-def test_a_count_field_off_its_rung_is_said_to_be_used():
-    """Box 1a is greyed out on 'every point counts as one' but used,
-    as in both doors before - so the warning says USED, not IGNORED.
-    BROKEN WITH: 'pop' put back among the ignored names."""
+class _Told:
+    """Messages and warnings kept apart."""
+
+    def __init__(self):
+        self.log, self.warnings = [], []
+
+    def addMessage(self, m):
+        self.log.append(m)
+
+    def addWarningMessage(self, m):
+        self.log.append(m)
+        self.warnings.append(m)
+
+
+def test_a_count_field_on_the_first_rung_is_said_plainly():
+    """BACKLOG 485, John's ruling of 11 November 2026. The first rung
+    now SAYS that a filled count field counts ("... or as the value in
+    the count field, if filled"), so the run reports it in one plain
+    line. Until 1.63.8 the box was greyed out there, used all the
+    same, and a warning explained how to reach it (462).
+
+    The numbers are the ones 1.63.8 gave: nothing moves.
+    BROKEN WITH: the addWarningMessage of 462 put back, or 'pop'
+    dropped from what the first rung reads."""
     plain, _ = _run(k="2", refmode=EVERY)
-    got, said = _run(k="2", refmode=EVERY, pop="Pop")
-    assert "the count IS used" in said
-    assert "IGNORED" not in said
-    assert not got["Dist_2"].equals(plain["Dist_2"])
+    state, tool_obj, ps = _dialog(k="2", refmode=EVERY, pop="Pop")
+    told = _Told()
+    tool_obj.execute(ps, told)
+    got = state["table"]
+    assert any("Each row counts as its value in 'Pop'" in m
+               for m in told.log)
+    assert not any("count field" in m for m in told.warnings)
+    assert not any("IGNORED" in m for m in told.log)
+    assert not got["Dist_2"].equals(plain["Dist_2"])     # it IS counted
+    # and with the box empty nothing is said about it
+    _, said = _run(k="2", refmode=EVERY)
+    assert "Each row counts as its value" not in said
+
+
+def test_the_count_field_is_never_greyed_out():
+    """BACKLOG 485. A box the run reads has to be a box the user can
+    see and empty: 1a is enabled on every reference rung. The type
+    boxes are still greyed off their rung, and still not read (462).
+    BROKEN WITH: "pop": ref in (1, 2) in _boxes_for_rungs."""
+    state, tool_obj, ps = _dialog(k="2")
+    pm = {p.name: p for p in ps}
+    labels = list(pm["refmode"].filter.list)        # the dialog's own
+    assert len(labels) == 3
+    for label in labels:
+        pm["refmode"].value = label
+        tool_obj.updateParameters(ps)
+        assert pm["pop"].enabled, label
+    pm["refmode"].value = labels[0]
+    tool_obj.updateParameters(ps)
+    assert not pm["catfield"].enabled and not pm["reftable"].enabled
+
+
+def test_a_tool_saved_under_the_old_wording_finds_its_rung():
+    """The label changed and its leading words did not: a script or a
+    saved model holding the 1.63.8 text still runs on the first rung.
+    (EVERY, used all through this file, is that old text.)"""
+    _install_fake_arcpy(pd.DataFrame({"OBJECTID": [1]}))
+    pyt = _load_pyt()
+    assert EVERY != pyt.REF_MODES[0]
+    assert pyt.REF_MODES[0].startswith(EVERY)
+    assert pyt._mode_index(EVERY, pyt.REF_MODES) == 0
+    assert pyt._mode_index(pyt.REF_MODES[0], pyt.REF_MODES) == 0
 
 
 def test_group_count_fields_off_their_rung_are_said_to_be_used():

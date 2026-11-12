@@ -1,6 +1,9 @@
 # PROPOSALS.md — funding applications, and what the code owes them
 
-**Last updated: 1.63.7, 9 November 2026.**
+**Last updated: 1.64.1, 11 November 2026.**
+*Reviewed at 1.64.1: NO CAPABILITY CLAIM CHANGES and no figure moves. A friction or slope run asked for a group that holds nobody now returns its T_ and R_ columns (zeros) instead of none; equipop_run refuses options its engine does not read.*
+*Reviewed at 1.64.0: NO CAPABILITY CLAIM CHANGES. One existing capability is now sound where it was not: medians and percentiles over rows that stand for a fraction of a person, as in a gridded population. A MEDIAN OR PERCENTILE QUOTED FROM A RUN ON THE DEFAULT (PROPORTIONAL) RING can differ slightly from 1.63.8 - on the test data in 14% of neighbourhoods, by 0.07% of an interquartile range on average - and should be recomputed before it is cited; with the ring taken whole no figure moves. equipop_run gained if/in, r() results, overshoot() and originrule(); none of that is a new method.*
+*Reviewed at 1.63.8: NO CAPABILITY CLAIM CHANGES - a correctness release, and the radial counts engine is untouched. A FIGURE TO RECOMPUTE BEFORE IT IS CITED is any that was made in ArcGIS Pro on the median self-potential, in QGIS with a count field left in box 1a on "every point counts as one" together with grouped types, with equipop_run and weight(), or with the friction or slope engines (BACKLOG 465, 469, 475, 479-481). The code review of 1.63.7 also found that this file does not describe what the Exposphere application asks of the code; that is BACKLOG 483 (h), not done here.*
 *Reviewed at 1.63.7: NO CLAIM CHANGES. A QGIS compatibility release; the engine and every figure in this file are unchanged.*
 *Reviewed at 1.63.6: NO CLAIM CHANGES. A Pro writing fix; the engine and every figure in this file are unchanged.*
 *Reviewed at 1.63.5: NO CLAIM CHANGES. A Pro dialog fix; the engine and every figure in this file are unchanged.*

@@ -184,8 +184,11 @@ HELP = {
     "refmode":
         "How the reference population is built, from the simplest "
         "way upward. 'Every point counts as one' needs nothing else - "
-        "one row, one thing. 'A field holds the count' is for rows "
-        "that stand for several people (or guests, or dwellings). "
+        "one row, one thing; if the count field is filled all the "
+        "same, each row counts as its value there, and the run says "
+        "so. 'A field holds the count' is for rows "
+        "that stand for several people (or guests, or dwellings), "
+        "and refuses to run without the field. "
         "'Only selected types' is for a layer holding many kinds of "
         "object where only some belong: eating places among all POIs, "
         "say. Boxes that the chosen way does not need are greyed out.",
@@ -764,7 +767,13 @@ HELP = {
                 "neither adds anything to the share itself.",
     "pcts": "Percentiles as plain numbers, e.g. 10 25 75 90. Used "
             "only when 'percentiles' is ticked; results arrive as "
-            "P10_<field>_k and so on.",
+            "P10_<field>_k and so on. A percentile (the median "
+            "included) is the average value of one person's width of "
+            "the neighbourhood, sorted by value, at that position: "
+            "for whole numbers of people the usual interpolated "
+            "percentile, and well defined where a row stands for a "
+            "fraction of a person. The count field must therefore "
+            "hold numbers of people, not shares that sum to one.",
     # v1.55.0, BACKLOG 405
     "decompose": "Optional. A field holding each row's GROUP - born "
                  "abroad or not, parental education: a circumstance "

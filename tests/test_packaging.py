@@ -824,7 +824,9 @@ def test_the_published_test_dataset_says_what_it_is():
 
     THE VALUES ARE NOT CHECKED HERE and must not change without a
     ruling - they are the answer key behind the showcase's pinned
-    `Nv 167.30 | Mean 1815.23 | Med 1248.10 | Gini .5806`. What is
+    `Nv 167.30 | Mean 1815.23 | Med 1250.34 | Gini .5806` (Med was
+    1248.10 until the percentile ruling of 1.64.0, BACKLOG 484 - the
+    DATA did not change, the rule did). What is
     checked is that the file still DESCRIBES ITSELF.
     """
     import pandas as pd

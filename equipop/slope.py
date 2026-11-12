@@ -252,6 +252,7 @@ def run_knn_slope(
     overshoot_mode: str | None = None,
     seed: int | None = None,
     self_rule: str | None = None,        # BACKLOG 341
+    treatment: bool | None = None,       # BACKLOG 488
     **model_params,
 ) -> pd.DataFrame:
     """
@@ -267,6 +268,9 @@ def run_knn_slope(
                reported per leg (sum/2); flat terrain reproduces
                one-way values exactly. Both models make varied
                terrain cost MORE round-trip (convexity).
+    treatment: as in run_knn_friction - True when a group was asked
+               for, so T_ and R_ are returned even if it holds nobody
+               (BACKLOG 488).
     """
     if fr is not None:
         coverage_warning(pop, fr)
@@ -276,4 +280,5 @@ def run_knn_slope(
                      roundtrip=roundtrip, **model_params)
     return _count_from_grid(grid, pop, k_values, id_col, chunk, origins,
                             tau_values, self_potential,
-                            overshoot_mode, seed, self_rule)
+                            overshoot_mode, seed, self_rule,
+                            treatment=treatment)

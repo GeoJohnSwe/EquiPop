@@ -128,7 +128,11 @@ def test_nothing_equipop_opens_uses_the_system_encoding(tmp_path):
 
     BROKEN WITH: bigrun's manifest written without an encoding."""
     pytest.importorskip("pyarrow")
-    env = dict(os.environ, PYTHONPATH=str(ROOT), PYTHONIOENCODING="utf-8",
+    # BACKLOG 491: ahead of the path, not instead of it
+    ahead = os.pathsep.join(filter(None, [str(ROOT),
+                                        os.environ.get("PYTHONPATH", "")]))
+    env = dict(os.environ, PYTHONPATH=ahead,
+               PYTHONIOENCODING="utf-8",
                PYTHONDONTWRITEBYTECODE="1")
     r = subprocess.run([sys.executable, "-X", "warn_default_encoding",
                         "-c", SCENARIO, str(tmp_path)],

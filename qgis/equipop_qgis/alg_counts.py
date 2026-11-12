@@ -75,7 +75,8 @@ def _decay_choices():
 # both copies and fails on any drift. Change rungs.py, not this.
 # BACKLOG 104: each rung NAMES the box it reads, because QGIS cannot
 # grey the others out. Those hints are this door's ONE addition.
-REF_MODES = ["every point counts as one",
+REF_MODES = ["every point counts as one - or as the value in the "
+             "count field, if filled",
              "a field holds the count (fill 1a)",
              "only selected types, with a count field "
              "(fill 1a, 1b and 1c)"]
@@ -435,8 +436,15 @@ class CountsAndShares(EquipopAlgorithm):
 
         refmode = (self.parameterAsEnums(parameters, "refmode",
                                          context) or [0])[0]
-        if refmode == 0:
-            pop = None            # every point counts as one
+        # BACKLOG 469. Here stood `if refmode == 0: pop = None`, three
+        # lines AFTER the count field had already been made the weight
+        # above. So on "every point counts as one" a filled box 1a was
+        # used when no groups were asked for and dropped when they
+        # were - one dialog, two meanings, no message for either. It
+        # is now used on both routes, as the ArcGIS door does and as
+        # machine 2 does, and the run says so (below). Whether a count
+        # field should count at all on this rung is a ruling for BOTH
+        # doors at once; until then they agree.
         catfield = (self.parameterAsStrings(parameters, "catfield",
                                            context) or [None])[0]
         # v1.29.3, BACKLOG 85. The two ladders are INDEPENDENT - that
@@ -473,6 +481,10 @@ class CountsAndShares(EquipopAlgorithm):
             raise QgsProcessingException(rungs.missing(
                 "box 1a, the count field", "the reference population",
                 REF_MODES[1]))
+        if pop and refmode == 0:
+            # BACKLOG 485: what the rung says it does - a line in the
+            # log, no longer a warning (469)
+            ch.info(rungs.counted_by_field(pop))
         if refmode == 2 and not catfield:
             raise QgsProcessingException(rungs.missing(
                 "box 1b, the type field", "the reference population",
@@ -500,6 +512,17 @@ class CountsAndShares(EquipopAlgorithm):
             refuse_case_clashes(treats, "Two group count fields")
         except ValueError as e:
             raise QgsProcessingException(str(e))
+
+        # BACKLOG 489: the group names are known now, before anything
+        # is computed - the first check above could not see them.
+        if treatmode == 2:
+            gnames = list(self._groups_from_matrix(matrix_cells(
+                self, parameters, "treattable", context)))
+            if rest_txt:
+                gnames.append(rest_txt)
+            self.refuse_long_names(parameters, predict_result_fields(
+                "counts", k_text, r_text, "", list(treats) + gnames,
+                [], [], decaying=decaying, efforting=False))
 
         if treatmode == 1 and not treats:
             raise QgsProcessingException(rungs.missing(
@@ -540,10 +563,21 @@ class CountsAndShares(EquipopAlgorithm):
                      or [None])[0] or catfield
             rest = self.parameterAsString(parameters, "restgroup",
                                           context).strip()
-            pop_mask = (categories_to_binary(
-                pts.data[catfield], {},
-                pop_values=pop_vals or None)[0] if restricting
-                else np.ones(pts.n, bool))
+            # BACKLOG 467: the type fields as TEXT (type_column), and
+            # every typed type checked against them before anything is
+            # computed. Until 1.63.7 a type that matched nothing gave
+            # zeros, and the engine's one line about it ("matched ZERO
+            # rows") was printed where QGIS shows nothing.
+            if restricting:
+                ref_col = self.type_column(catfield)
+                self.refuse_unknown_types(
+                    pop_vals, ref_col, catfield,
+                    "Box 1c, the list of reference types,")
+                with speaking(ch):
+                    pop_mask = categories_to_binary(
+                        ref_col, {}, pop_values=pop_vals or None)[0]
+            else:
+                pop_mask = np.ones(pts.n, bool)
             cat_treats = {}
             if grouping:
                 if not tcatf:
@@ -551,10 +585,20 @@ class CountsAndShares(EquipopAlgorithm):
                         "The treatment ladder is on 'types from a "
                         "type field, grouped', but no type field was "
                         "given (box 2a).")
-                _, cat_treats = categories_to_binary(
-                    pts.data[tcatf], groups,
-                    pop_values=pop_vals or None,
-                    rest_group=rest or None, rest_in_population=None)
+                tcol = self.type_column(tcatf)
+                self.refuse_unknown_types(
+                    [v for vals in groups.values() for v in vals],
+                    tcol, tcatf, "Box 2c, the group table,")
+                # BACKLOG 468: pop_mask, not pop_values. The reference
+                # types are values of box 1b's field; as pop_values
+                # they were looked for in box 2b's. With two different
+                # type fields nothing matched and every group was 0.
+                with speaking(ch):
+                    _, cat_treats = categories_to_binary(
+                        tcol, groups,
+                        pop_mask=pop_mask if restricting else None,
+                        rest_group=rest or None,
+                        rest_in_population=None)
                 if not cat_treats:
                     raise QgsProcessingException(
                         "The treatment ladder is on 'types from a "

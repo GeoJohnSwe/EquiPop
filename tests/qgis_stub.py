@@ -1013,6 +1013,7 @@ class QgsProcessingProvider:
 
 # ------------------------------------------------------- installer
 _NAMES = [
+    "NULL",        # BACKLOG 467: qgis.core exports it, and base.py reads it
     "QgsPointXY", "QgsGeometry", "QgsField", "QgsFields", "QgsFeature",
     "QgsCoordinateReferenceSystem", "QgsCoordinateTransform",
     "QgsProject", "QgsProcessingFeedback", "QgsProcessingException",

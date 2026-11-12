@@ -240,9 +240,10 @@ def validate_treatment(treat, weight, treat_are_counts, say=print):
                 f"properly.\n"
                 f"  A CHANGE, or net migration - a quantity that is "
                 f"legitimately negative. That is not a group count: "
-                f"pass it as a VALUE variable (equipop stats, "
-                f"values()) and you get its population-weighted mean, "
-                f"median and SD over each neighbourhood.")
+                f"pass it as a VALUE variable (Stata: equipop_run, "
+                f"engine(stats) values(); GIS: tool 2, value "
+                f"statistics) and you get its population-weighted "
+                f"mean, median and SD over each neighbourhood.")
         both = np.isfinite(a) & np.isfinite(w)
         over = int(np.count_nonzero(a[both] > w[both]))
         if over:
@@ -363,10 +364,11 @@ def validate_weight(weight, say=print):
             f"still getting their own results.\n"
             f"  A CHANGE, or net migration - a quantity that is "
             f"legitimately negative. That is not a population: pass it "
-            f"as a VALUE variable (equipop stats, values()) and you "
-            f"get its population-weighted mean, median and SD over "
-            f"each neighbourhood, with pop() holding the actual "
-            f"headcount.")
+            f"as a VALUE variable (Stata: equipop_run, engine(stats) "
+            f"values(); GIS: tool 2, value statistics) and you get "
+            f"its population-weighted mean, median and SD over each "
+            f"neighbourhood, with the population field holding the "
+            f"actual headcount.")
 
 
 def check_results_are_possible(result, say=print):
@@ -572,6 +574,19 @@ def knn_to_rows(x, y, k_values=None, treat: dict | None = None,
                       .to_numpy(float)),
         index=df.index)
     dv = df[valid]
+    # BACKLOG 478. NOBODY TO MEASURE: said in words. With no usable
+    # row the engine was called on an empty grid and came back without
+    # its key columns, and the caller saw a KeyError about 'EastWest'
+    # - in Stata, a Python traceback, for what is usually an -if- that
+    # selected nothing or a coordinate variable that is all missing.
+    if not valid.any():
+        raise ValueError(
+            f"none of the {len(df)} observation(s) has usable "
+            "coordinates - x and y are missing (or not numbers) on "
+            "every row, so there is nobody to measure. Check the two "
+            "coordinate variables"
+            + (", and the if/in condition if you used one."
+               if len(df) else " - there are no observations at all."))
 
     # individuals -> cells (weights become cell population)
     cells = dv.copy()
@@ -1154,8 +1169,17 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
             cg = np.where(tr > 8.9e307, 0, tr)
             if not counts_mode:
                 cg = cg * w
+            # BACKLOG 480 (168 for the effort engines). A row whose
+            # group value is MISSING - a declared code, a Stata
+            # missing - is not in the group and not in the share's
+            # denominator either. Until 1.63.7 it stayed in the
+            # denominator here, which assumes it was NOT in the group:
+            # of 10 people with 2 unknown and 4 in the group this gave
+            # 0.400 where the radial engine gives 0.500.
+            usable = np.isfinite(cg)
             df = pd.DataFrame({"x": x, "y": y, "count_all": w,
-                               "count_group": cg})
+                               "count_group": np.where(usable, cg, 0.0),
+                               "count_valid": np.where(usable, w, 0.0)})
             dv = df[valid]
             if E is None:
                 E, N = _snap(dv["x"], dv["y"], unit_size)
@@ -1183,7 +1207,9 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                                     tau_values=tau_values,
                                     overshoot_mode=overshoot_mode,
                                     seed=seed, self_rule=self_rule,
-                                    roundtrip=roundtrip, **extra)
+                                    roundtrip=roundtrip,
+                                    treatment=gname is not None,
+                                    **extra)
             else:
                 from .friction import run_knn_friction
                 res = run_knn_friction(pop, k_values or [], fr=fr,
@@ -1191,7 +1217,8 @@ def dispatch(engine: str, x, y, unit_size: float = 100.0,
                                        unit_size=unit_size,
                                        tau_values=tau_values,
                                        overshoot_mode=overshoot_mode,
-                                       seed=seed, self_rule=self_rule)
+                                       seed=seed, self_rule=self_rule,
+                                       treatment=gname is not None)
             if gname is not None:
                 res = res.rename(columns={
                     c: (f"T_{gname}_{c[2:]}" if c.startswith("T_")

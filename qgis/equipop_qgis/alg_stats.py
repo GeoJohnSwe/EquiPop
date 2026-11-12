@@ -299,14 +299,21 @@ class ValueStatistics(EquipopAlgorithm):
         # NOTHING AT ALL when the type field was missing - the exact
         # silence that cost John a field run in the other door.
         from equipop.doors import rungs
-        ref_rows = [str(v).strip() for v in
-                    (self.parameterAsMatrix(parameters, "reftable",
-                                            context) or [])
-                    if str(v).strip()]
+        # BACKLOG 470: matrix_cells, as machine 1 has used since 265.
+        # An untouched table is [NULL], and str(NULL) is the four
+        # letters "NULL" - so this door took an EMPTY types table for
+        # one type called NULL. On "only selected types" that selected
+        # nobody (every statistic empty, no message); on the other
+        # rungs it reported an empty box as filled and IGNORED.
+        from .base import matrix_cells
+        ref_rows = [c for c in matrix_cells(self, parameters,
+                                            "reftable", context) if c]
         if refmode == 1 and not pop:
             raise QgsProcessingException(rungs.missing(
                 "box 1a, the count field", "the reference population",
                 REF_MODES[1]))
+        if pop and refmode == 0:
+            ch.info(rungs.counted_by_field(pop))       # BACKLOG 485
         if refmode == 2 and not catfield:
             raise QgsProcessingException(rungs.missing(
                 "box 1b, the type field", "the reference population",
@@ -326,12 +333,15 @@ class ValueStatistics(EquipopAlgorithm):
             # BACKLOG 405 (found in passing): this was called `wanted`
             # - the name of the MEASURES list above - so under this
             # rung the "Measures:" line printed the reference types.
-            ref_types = [str(v).strip() for v in
-                         (self.parameterAsMatrix(parameters, "reftable",
-                                                 context) or [])
-                         if str(v).strip()]
+            ref_types = ref_rows                     # BACKLOG 470
+            # BACKLOG 467: the type field as text, and every typed
+            # type checked against it first - see machine 1.
+            ref_col = self.type_column(catfield)
+            self.refuse_unknown_types(
+                ref_types, ref_col, catfield,
+                "Box 1c, the list of reference types,")
             mask, _ = categories_to_binary(
-                pts.data[catfield], {}, pop_values=ref_types or None)
+                ref_col, {}, pop_values=ref_types or None)
             base = (np.nan_to_num(np.asarray(pts.data[pop], float))
                     if pop else np.ones(len(mask)))
             outside = int((~mask).sum())

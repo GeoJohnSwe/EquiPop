@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.63.7}{...}
+{* *! version 1.64.1}{...}
 {vieweralsosee "equipop_run" "help equipop_run"}{...}
 {vieweralsosee "equipop_knn" "help equipop_knn"}{...}
 {viewerjumpto "Syntax" "equipop##syntax"}{...}
@@ -12,7 +12,7 @@
 {title:Title}
 
 {phang}
-{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.63.7)
+{bf:equipop} {hline 2} k-nearest neighbour context variables (EquiPop 1.64.1)
 
 {marker syntax}{...}
 {title:Syntax}
@@ -106,7 +106,7 @@ on the dataset.
 {synopt:{opt epsg(#)}}Chooses the projection -project- uses, instead of...{p_end}
 {syntab:Output}
 {synopt:{opt prefix(string)}}Prepends a string to every new variable name, so several...{p_end}
-{synopt:{opt replace}}Drops the result variables this run is about to create...{p_end}
+{synopt:{opt replace}}Replaces result variables that already exist: exactly...{p_end}
 {synoptline}
 {p2colreset}{...}
 {p 4 6 2}
@@ -256,7 +256,7 @@ NOT AVAILABLE IN STATA: overshoot(sampled) returns an error pointing you to over
 {p_end}
 
 {phang}
-{opt replace} Drops the result variables this run is about to create before creating them. Without it the command stops rather than overwriting silently.
+{opt replace} Replaces result variables that already exist: exactly the variables this run writes, by their full names, and only once the new results are ready, so a run that stops leaves the old ones in place. Without it the command stops rather than overwriting silently.
 {p_end}
 
 {marker results}{...}
@@ -401,7 +401,10 @@ a count {cmd:ValCount}.
 {pstd}{cmd:pop()} takes FRACTIONAL counts, which is what gridded population needs. {cmd:[fweight=]} means the same thing and lets Stata validate it, but demands whole numbers - give one or the other, never both:{p_end}
 {phang}{cmd:. equipop [fweight=households], x(X) y(Y) treat(renting) k(200)}{p_end}
 
-{pstd}Self-potential - whether an origin counts itself. The default keeps it, which is right when a row is a place; {cmd:selfpot(0)} drops it, which is right when a row is a person and you are asking about their surroundings:{p_end}
+{pstd}Whether an origin counts ITSELF is {cmd:originrule()}. The default, {cmd:originrule(include)}, keeps it, which is right when a row is a place; {cmd:originrule(exclude)} leaves the origin's own cell out, which is right when a row is a person and you are asking about their surroundings:{p_end}
+{phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) originrule(exclude)}{p_end}
+
+{pstd}{cmd:selfpot()} is something else: how FAR AWAY the people in an origin's own cell are taken to be. It changes Dist_{it:k} and, under {cmd:decay()}, how much those people weigh - never who is counted. {cmd:selfpot(0)} puts them at no distance at all, so Dist_{it:k} can be zero; the default, 1, is the radius at which {it:k} of them are reached:{p_end}
 {phang}{cmd:. equipop, x(X) y(Y) treat(unemployed) k(100) selfpot(0)}{p_end}
 
 {pstd}Distance decay - near neighbours weigh more than far ones. {cmd:half(m)} is the distance at which a neighbour counts half:{p_end}
