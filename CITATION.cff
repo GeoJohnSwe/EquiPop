@@ -14,7 +14,7 @@ authors:
     affiliation: "OsloMet - Oslo Metropolitan University, Oslo, Norway; Lund University, Lund, Sweden; Uppsala University, Uppsala, Sweden"
     email: "johnosth@oslomet.no"
 license: MIT
-repository-code: "https://github.com/GeoJohnSwe/EquiPop"
+repository-code: "https://github.com/GeoCalista/EquiPop"
 # BACKLOG 43. This sat at 1.0.0 for forty releases because nothing
 # checked it. It is an EIGHTH place a version string lives, and
 # tests/test_doctor.py now asserts it against the package. The

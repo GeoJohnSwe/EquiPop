@@ -26,7 +26,7 @@ ssc install equipop, replace
 
 or, for the development version ahead of SSC:
 ```stata
-net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace
+net install equipop, from("https://raw.githubusercontent.com/GeoCalista/EquiPop/main/stata") replace
 ```
 
 **[Stata]** — the engine, into the Python that Stata is actually using

@@ -30,7 +30,7 @@ Everything below is aimed at those two problems.
 ## What we will send next time
 
 - **The history, from the public repository**
-  (<https://github.com/GeoJohnSwe/EquiPop>). The review archive we
+  (<https://github.com/GeoCalista/EquiPop>). The review archive we
   send is an export of one release and carries no `.git` - each
   review is of a frozen, checksummed release, not a moving branch.
   To date a defect, clone the repository beside it and use

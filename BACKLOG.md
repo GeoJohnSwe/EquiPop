@@ -3718,6 +3718,32 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 500 | BUILT 12 NOVEMBER 2026; LIVE WHEN PyPI IS TOLD | THE ORGANISATION,
+  AND PUBLISHING WITHOUT A TOKEN. Step 2 (498), the same evening:
+  GeoCalista created on GitHub; Marina Toger (lizardie) invited as a
+  second owner; the repository moved to github.com/GeoCalista/EquiPop
+  (the old address forwards; raw.githubusercontent.com answers on both,
+  so `net install ... from(...)` with the old address still works).
+  THE NEW ADDRESS in everything that names one: pyproject.toml, the
+  QGIS plugin's metadata, CITATION.cff, README.md, the Stata package
+  files and help, REVIEWER_BRIEF.md and its test, CONTRIBUTING.md.
+  History (BACKLOG, MANUAL rows, handovers) keeps the address it had.
+  TRUSTED PUBLISHING: .github/workflows/release.yml. A GitHub release
+  tagged v<version> starts it; it refuses a tag that is not the
+  version in pyproject.toml, builds, runs twine check --strict, runs
+  the wheel in a clean Python, and hands the files to a second job
+  that alone may ask GitHub for an identity (id-token: write), in the
+  "pypi" environment, where a maintainer approves the upload. PyPI
+  accepts it because it is told to trust exactly this: owner
+  GeoCalista, repository EquiPop, workflow release.yml, environment
+  pypi. No token is stored anywhere, and none can leak.
+  STILL TO DO, IN ORDER: the "pypi" environment with John and Marina as
+  required reviewers (repository Settings -> Environments); the
+  trusted publisher on PyPI (equipop -> Manage -> Publishing); Marina
+  as a second owner of the PyPI project (she needs a PyPI account; PyPI
+  invites by account name); then main protected (498, step 4). The
+  first release through it is the test of all of it.
+
 - 499 | DONE (repository, no release), 12 NOVEMBER 2026 | ONE MAC JOB,
   NOT TWO. Runs #7 and its re-run: every job that ran passed, but
   "suite - macos-latest - Python 3.14" was "not acquired by Runner of

@@ -6,5 +6,5 @@ d than in rows, so they cut across administrative boundaries instead
 d of being bound by them.
 d
 d John Östh, OsloMet
-d https://github.com/GeoJohnSwe/EquiPop
+d https://github.com/GeoCalista/EquiPop
 p equipop

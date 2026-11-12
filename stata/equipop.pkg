@@ -12,7 +12,7 @@ d NOTE: Stata and Anaconda do not mix - Anaconda's numpy closes
 d Stata on import. Use a plain python.org Python for Stata.
 d
 d Author: John Östh, OsloMet, johnosth@oslomet.no
-d Support: https://github.com/GeoJohnSwe/EquiPop
+d Support: https://github.com/GeoCalista/EquiPop
 d
 d Distribution-Date: 20261111
 f equipop.ado

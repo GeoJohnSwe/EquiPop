@@ -26,7 +26,7 @@ EquiPop is **one engine with four doors**. A number is computed once, in the eng
 ## 2. Set up and run the tests
 
 ```
-git clone https://github.com/GeoJohnSwe/equipop
+git clone https://github.com/GeoCalista/EquiPop
 cd equipop
 python -m venv .venv
 .venv\Scripts\activate          (Windows)   or   source .venv/bin/activate
@@ -91,7 +91,7 @@ Today John makes the releases. The steps, in order:
 3. The full suite green, and the CI run green.
 4. `bash tools/make_bundle.sh X.Y.Z <folder outside the repository>`, or take CI's bundle download.
 5. The hand checks in the MANUAL row: ArcGIS Pro and Stata on Windows, Stata on macOS.
-6. Upload: PyPI (from a protected workflow, once that is set up), the QGIS plugin repository, and SSC by email.
+6. **PyPI, with no token:** on GitHub, *Releases → Draft a new release*, a new tag `vX.Y.Z` (exactly the version in `pyproject.toml`), *Publish release*. The `release` workflow checks the tag, builds, tests the wheel, and waits for a maintainer to approve the upload (*Actions → the release run → Review deployments*). Then the QGIS plugin repository, and SSC by email.
 
 **Version numbers.** A correction is a patch release (1.63.8), even when it moves a number. A ruling or a new capability starts a minor release (1.64.0), and HANDOVER_15.md must then say so; a test checks.
 

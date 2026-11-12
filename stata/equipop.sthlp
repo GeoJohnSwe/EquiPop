@@ -435,4 +435,4 @@ a count {cmd:ValCount}.
 {pstd}John Östh{break}
 OsloMet - Oslo Metropolitan University, Norway; Lund University and Uppsala University, Sweden{break}
 {browse "mailto:johnosth@oslomet.no":johnosth@oslomet.no}{break}
-{browse "https://github.com/GeoJohnSwe/EquiPop"}{p_end}
+{browse "https://github.com/GeoCalista/EquiPop"}{p_end}

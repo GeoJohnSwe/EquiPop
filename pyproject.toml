@@ -33,7 +33,7 @@ viz = ["matplotlib", "jenkspy"]
 test = ["pytest", "openpyxl", "pyarrow", "rasterio", "pyyaml"]
 
 [project.urls]
-Homepage = "https://github.com/GeoJohnSwe/EquiPop"
+Homepage = "https://github.com/GeoCalista/EquiPop"
 
 [tool.setuptools.packages.find]
 include = ["equipop*"]

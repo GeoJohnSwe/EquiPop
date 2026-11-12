@@ -57,7 +57,7 @@ def test_the_brief_sends_reviewers_to_the_public_history():
     BROKEN WITH: the old promise restored."""
     brief = (ROOT / "REVIEWER_BRIEF.md").read_text(encoding="utf-8")
     assert "A git clone, not an export" not in brief
-    assert "https://github.com/GeoJohnSwe/EquiPop" in brief
+    assert "https://github.com/GeoCalista/EquiPop" in brief
     assert "carries no `.git`" in brief
 
 

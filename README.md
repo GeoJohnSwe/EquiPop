@@ -44,7 +44,7 @@ For aggregated counts at national scale use the vectorised
 for segregation profiles `seg_profile`; for policy-area reporting
 `aggregate_output`; for quick maps `map_output`. See MANUAL_TOPICS.md.
 
-Repository: https://github.com/GeoJohnSwe/EquiPop
+Repository: https://github.com/GeoCalista/EquiPop
 
 ## Citing
 Please cite the software and the methods you use - see CITATION.cff.

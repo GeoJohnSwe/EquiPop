@@ -53,7 +53,7 @@ program define equipop, rclass
             display as text "  install. Reinstall both:"
             display as text "     ssc install equipop, replace"
             display as text "  or, for the development version:"
-            display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace"'
+            display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoCalista/EquiPop/main/stata") replace"'
             exit 601
         }
         exit
@@ -116,7 +116,7 @@ program define equipop, rclass
         * still propagating.
         display as text "     ssc install equipop, replace"
         display as text "  or, for the development version:"
-        display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoJohnSwe/EquiPop/main/stata") replace"'
+        display as text `"     net install equipop, from("https://raw.githubusercontent.com/GeoCalista/EquiPop/main/stata") replace"'
         display as text "  and then restart Stata."
         display as text ""
         display as text "  To analyse data, the variables go in " ///
@@ -1986,7 +1986,7 @@ def _equipop_setup_py(repair="", ado_version="", min_engine=""):
             print("  command stops with ImportError, that is the gap, "
                   "and it is worth")
             print("  reporting at "
-                  "https://github.com/GeoJohnSwe/EquiPop/issues")
+                  "https://github.com/GeoCalista/EquiPop/issues")
         elif "no matching distribution" in low or "could not find" in low:
             print("  pip could not reach PyPI, or could not find a "
                   "build for this Python.")

@@ -827,7 +827,7 @@ def _author(add):
     add("{pstd}John Östh{break}")
     add("%s{break}" % AFFILIATION)
     add("{browse \"mailto:%s\":%s}{break}" % (EMAIL, EMAIL))
-    add("{browse \"https://github.com/GeoJohnSwe/EquiPop\"}{p_end}")
+    add("{browse \"https://github.com/GeoCalista/EquiPop\"}{p_end}")
 
 
 def build_run():
