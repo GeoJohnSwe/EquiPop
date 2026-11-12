@@ -82,3 +82,27 @@ def pytest_report_header(config):
 @pytest.fixture(scope="session")
 def provider():
     return PROVIDER
+
+
+_STATUS = {"exit": 0}
+
+
+def pytest_sessionfinish(session, exitstatus):
+    _STATUS["exit"] = int(exitstatus)
+
+
+def pytest_unconfigure(config):
+    """Leave without Python's own teardown. QGIS 4 crashes (signal 11,
+    exit code 139) while Python dismantles its Qt objects AFTER every
+    test has passed and pytest has printed its summary - seen here and
+    on CI's Ubuntu runner (BACKLOG 497). exitQgis() first, so QGIS
+    closes its own resources; then out, with pytest's own exit code,
+    which is the only thing the crash could have changed."""
+    try:
+        QgsApplication.processingRegistry().removeProvider(PROVIDER)
+        _APP.exitQgis()
+    except Exception:
+        pass
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_STATUS["exit"])

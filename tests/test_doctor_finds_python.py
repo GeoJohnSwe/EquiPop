@@ -141,7 +141,14 @@ def test_equipop_s_own_environment_is_looked_at_first(sfi, monkeypatch,
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     ns = _load(ADO, search=True)
     pats = ns["_python_patterns"]()
-    assert pats[0] == str(tmp_path / "equipop-python" / "bin" / "python")
+    own = tmp_path / "equipop-python"
+    # BACKLOG 497: a virtual environment keeps its Python in Scripts\
+    # on Windows and in bin/ elsewhere - the code was right, the test
+    # knew only one layout (GitHub's Windows runner, 12 November 2026)
+    if sys.platform.startswith("win"):
+        assert pats[0] == str(own / "Scripts" / "python.exe")
+    else:
+        assert pats[0] == str(own / "bin" / "python")
 
 
 def test_the_search_happens_once_per_stata_session(sfi, monkeypatch,
@@ -248,6 +255,16 @@ def test_the_best_python_is_the_one_with_the_least_to_do(
     assert "Other Pythons on this computer:" in out and brew in out
 
 
+# BACKLOG 497: these two pretend to be a Mac or a Linux computer by
+# changing sys.platform - but on a Windows host os.path stays Windows'
+# own, so the paths come out with backslashes no Mac or Linux user ever
+# sees. They run, for real, on CI's macOS and Linux runners.
+_POSIX_ONLY = pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="pretends to be macOS or Linux; Windows paths cannot")
+
+
+@_POSIX_ONLY
 def test_only_a_homebrew_python_goes_through_a_venv_of_our_own(
         sfi, monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -315,6 +332,7 @@ def test_windows_on_arm_gets_the_arm_installer(sfi, monkeypatch, capsys):
     assert os.path.join("Python313-arm64", "python.exe") in out
 
 
+@_POSIX_ONLY
 def test_linux_with_nothing_gets_a_venv_of_our_own(sfi, monkeypatch,
                                                    capsys, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))

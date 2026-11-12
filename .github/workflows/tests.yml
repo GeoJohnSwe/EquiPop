@@ -48,8 +48,8 @@ jobs:
             python: "3.15"
             experimental: true
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
@@ -79,7 +79,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: qgis
@@ -106,15 +106,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
       - name: Install the build tools
+        # pytest: the help generator loads the toolbox with the arcpy
+        # stand-in in tests/, which imports it (BACKLOG 497)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build twine
+          python -m pip install build twine pytest
           python -m pip install -e .
       - name: Build every file of a release
         run: |
@@ -127,7 +129,7 @@ jobs:
           "$RUNNER_TEMP/clean/bin/pip" install "$RUNNER_TEMP/equipop-$V/equipop-$V-py3-none-any.whl"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/clean/bin/python" -I -c "import equipop, numpy as np; from equipop import stata_bridge as sb; print('equipop', equipop.__version__); r = sb.dispatch('counts', np.arange(5.0) * 100, np.zeros(5), k_values=[2]); assert list(r['N_2']) == [2.0] * 5, r"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: equipop-${{ env.V }}-${{ github.sha }}
           path: ${{ runner.temp }}/equipop-${{ env.V }}

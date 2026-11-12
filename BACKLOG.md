@@ -3714,6 +3714,33 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 497 | PART DONE (repository, no release), 12 NOVEMBER 2026 | THE FIRST
+  AUTOMATIC RUN, AND WHAT IT FOUND. GitHub's "tests #1" on c5078c6:
+  9 of 14 jobs green at the first attempt - the suite on Linux (3.11,
+  3.14, 3.15) and macOS (3.11, 3.14), real QGIS 3.38 and 3.44 on
+  Linux, real QGIS 4 on Windows. Four failures:
+  (a) THE SUITE ON WINDOWS, 3 failed of 2,903, all in
+  test_doctor_finds_python.py, none in EquiPop. One test knew only
+  bin/python; a virtual environment on Windows keeps its Python in
+  Scripts\python.exe, as the code says. The other two pretend to be a
+  Mac or a Linux computer by changing sys.platform - on a Windows host
+  os.path stays Windows', so the paths come out with backslashes no
+  Mac or Linux user sees; they now run on the macOS and Linux runners
+  only. 491's USERPROFILE was needed and was not enough.
+  (b) REAL QGIS 4 ON LINUX, exit code 139: all nine tests pass, then
+  QGIS 4 crashes while Python takes its Qt objects apart. Reproduced
+  here - 493's check piped the output and hid the exit code, my
+  mistake. The tests now close QGIS and leave with pytest's own exit
+  code; a test broken on purpose still fails the job.
+  (c) THE RELEASE BUNDLE: make_help_xml.py loads the toolbox with the
+  arcpy stand-in in tests/, which imports pytest, and the job had not
+  installed it. Rehearsed on a fresh shallow clone of GitHub's main,
+  as the runner has it: 24 files, the wheel installs and runs.
+  (d) REAL QGIS 3.44 ON WINDOWS, exit code 4 - pytest could not load
+  the test folder. OPEN until its log is read.
+  ALSO: the workflow's actions moved to v7, which Dependabot proposed
+  in pull requests #2-#4 the same hour; those close themselves.
+
 - 496 | DONE (tests only), 12 NOVEMBER 2026, FOUND BUILDING 493 | THE
   STATA STAND-IN USED A DEPRECATED PANDAS KEYWORD. Run on Python 3.11
   with pandas 3.1.1 (what pip gives a new install today), the suite
