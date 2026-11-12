@@ -16,7 +16,7 @@ TEXT = open(os.path.join(ROOT, "RULINGS.md"), encoding="utf-8").read()
 BACKLOG = open(os.path.join(ROOT, "BACKLOG.md"), encoding="utf-8").read()
 
 STATUSES = ("In force, not yet built", "In force", "Ruled out",
-            "Superseded by R-", "To confirm")
+            "Superseded by R-", "On ice", "To confirm")
 FIELDS = ("Rule", "Why", "Source", "Pinned by", "Status")
 
 

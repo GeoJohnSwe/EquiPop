@@ -20,13 +20,14 @@ A ruling is decided by the method lead (today John Östh) and changes only throu
    - A replaced ruling gets the status *Superseded by R-nn*.
    - A declined proposal stays as *Ruled out*, so the next person to have the idea finds the answer here instead of raising it again.
 
-`tests/test_rulings_register.py` keeps this file honest. Every ID is unique and in the index below, every status is one of the five listed, every BACKLOG number cited exists, and every test named under *Pinned by* exists.
+`tests/test_rulings_register.py` keeps this file honest. Every ID is unique and in the index below, every status is one of the six listed, every BACKLOG number cited exists, and every test named under *Pinned by* exists.
 
 **Each entry:** *Rule*, what the code does. *Why*, the reason, in the decider's words where we have them. *Source*, where it was decided. *Pinned by*, the test that fails if the rule is broken (*none yet* is a to-do). *Status*, one of:
 - **In force**
 - **In force, not yet built**
 - **Ruled out** (a proposal declined)
 - **Superseded by R-nn**
+- **On ice** (the method lead has looked, and decides later)
 - **To confirm** (the record is unclear and the method lead should look)
 
 ## Index
@@ -62,7 +63,7 @@ A ruling is decided by the method lead (today John Östh) and changes only throu
 | R-27 | Vectors are converted; rasters and missing systems are refused | In force |
 | R-28 | Projection from degrees is for the beginner, and says what it did | In force |
 | R-29 | Wide data in one zone gets a note and carries on | In force |
-| R-30 | The working frame is chosen by extent | To confirm |
+| R-30 | The working frame is chosen by extent | Ruled out |
 | R-31 | One engine, many doors: a rule lives once | In force |
 | R-32 | Existing result fields: overwrite, stop or keep both | In force |
 | R-33 | Every run leaves a record where the user can find it | In force |
@@ -80,7 +81,7 @@ A ruling is decided by the method lead (today John Östh) and changes only throu
 | R-45 | No disclosure-control profile | Ruled out |
 | R-46 | Anything that touches the network produces files and stops | In force |
 | R-47 | Provider knowledge lives apart from the tool | In force |
-| R-48 | Demography as a separate package | To confirm |
+| R-48 | Demography as a separate package | On ice |
 | R-49 | A correctness fix ships at once | In force |
 | R-50 | Dead code is deleted, not commented out | In force |
 | R-51 | The sample data stays as it is until a publication leans on it | In force |
@@ -317,7 +318,7 @@ A ruling is decided by the method lead (today John Östh) and changes only throu
 **Why.** A great-circle distance gives true metres from degrees, so k, radii and Dist_k keep their meaning.
 **Source.** BACKLOG 93 (v1.29.3).
 **Pinned by.** none yet
-**Status.** To confirm. It was ruled in 1.29.3 and not built as written. R-29 later settled the single-zone case for Stata. Does R-30 still stand for the GIS doors?
+**Status.** Ruled out, for now. John, 12 November 2026: "no I don't think - but there might be exceptions - selections work so the area of use can be selected - for very large areas (i.e. several countries and such) a working frame might be practical, but I don't think we need to stress it - keep it as is for now." The user chooses the area by selecting it; a frame for areas of several countries may come back as a proposal.
 
 ## F. What the doors do
 
@@ -461,7 +462,7 @@ A ruling is decided by the method lead (today John Östh) and changes only throu
 **Why.** "Alternative A", 1.29.2 session.
 **Source.** BACKLOG 82 (v1.29.2).
 **Pinned by.** none yet
-**Status.** To confirm. The tools now ship in the one plugin, hidden until shown (R-35). Is this superseded?
+**Status.** On ice. John, 12 November 2026: "not sure yet - it might be good in the future - keep on ice". Until then the tools ship in the one plugin, hidden until shown (R-35).
 
 ## I. How the project works
 

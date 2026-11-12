@@ -54,6 +54,10 @@ A. **Run 1.63.8, 1.64.0 and 1.64.1 on the real programs** — together
    row of 1.64.1. Until then they are release candidates. (The PyPI
    token item, 492 S1, was closed by John on 12 November.) The QGIS
    part now also runs on every push (493).
+A2. **Step 2 when the organisation exists** (498) — Marina and Umut
+   have said yes. The checklist is in 498: the organisation, the
+   repository moved into it, main protected so every change lands
+   through a green pull request.
 B. **Four rulings (483 a)** — DONE in 1.64.0, the same day: 484
    (percentiles), 485 (the first reference rung), 486 ("no decay" in
    Pro), 487 (equipop_run level with equipop).
@@ -3714,6 +3718,49 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 498 | RULED 12 NOVEMBER 2026; STEP 2 WAITS FOR THE ORGANISATION | TWO
+  RULINGS, AND THE CHECKLIST FOR STEP 2.
+  R-30 (the working frame by extent, 93): RULED OUT, FOR NOW. John: "no
+  I don't think - but there might be exceptions - selections work so
+  the area of use can be selected - for very large areas (i.e. several
+  countries and such) a working frame might be practical, but I don't
+  think we need to stress it - keep it as is for now."
+  R-48 (demography as a separate package, 82): ON ICE. John: "not sure
+  yet - it might be good in the future - keep on ice". A sixth status,
+  "On ice", in RULINGS.md and its test: looked at, decided later.
+  STEP 2 - JOHN: "it should be checked before changes land - let us
+  switch on when the new organisation is set (Umut and Marina has
+  responded yes) - please remind me". The checklist, in order:
+  1. Create the organisation (github.com, your picture -> Your
+     organizations -> New organization, the free plan). Two owners:
+     John and one backup.
+  2. Move the repository into it: EquiPop -> Settings -> General ->
+     Danger Zone -> Transfer ownership. The old address keeps working
+     (GitHub redirects it), so clones and links do not break.
+  3. Invite Marina Toger and Umut Türk with Write access; Ola Hall and
+     Martin Önnerfors when they are ready. Require two-factor sign-in
+     (organisation Settings -> Authentication security).
+  4. Protect main: repository Settings -> Rules -> Rulesets -> New
+     branch ruleset, target the default branch, and tick: Restrict
+     deletions; Block force pushes; Require a pull request before
+     merging (1 approval, conversations resolved); Require status
+     checks to pass - the suite on ubuntu, windows and macOS (3.11 and
+     3.14), real QGIS 3.38, 3.44 and 4 on ubuntu and 4 on windows, and
+     "release bundle builds". Not the Python 3.15 job: it may fail
+     while its packages lag.
+  5. PyPI: add a second owner to the equipop project; later, Trusted
+     Publishing from a release workflow, so no token is kept anywhere.
+  6. Agree owners and backups per area, then write .github/CODEOWNERS
+     with the names.
+  AFTER STEP 4 NOBODY PUSHES TO main, John included. A patch from a
+  session goes on a branch instead:
+     git switch -c fix/<what>
+     git am <patch>
+     git push -u origin fix/<what>
+  then open the pull request GitHub offers, and merge when it is green.
+  THE FIRST GREEN RUN: tests #6 on a126b10, all thirteen jobs, the
+  same afternoon (497).
+
 - 497 | DONE (repository, no release), 12 NOVEMBER 2026 | THE FIRST
   AUTOMATIC RUN, AND WHAT IT FOUND. GitHub's "tests #1" on c5078c6:
   9 of 14 jobs green at the first attempt - the suite on Linux (3.11,
@@ -3766,7 +3813,7 @@ because machine 3 stores tiles that way and says so in its manifest.
   in force, not yet built; ruled out; superseded; to confirm). Ruled
   out is kept on purpose: 203, 205, 296 and 122 were each raised more
   than once before the ruling was found.
-  FOR JOHN TO LOOK AT: R-30 (the working frame of 93 - still meant for
+  FOR JOHN TO LOOK AT (answered 12 November, 498): R-30 (the working frame of 93 - still meant for
   the GIS doors, or replaced by 178?) and R-48 (82's separate
   demography package - superseded by 438's one plugin?). Twenty-two
   rulings name no pinning test yet; each says "none yet", a list of

@@ -148,6 +148,11 @@ open, and micromamba from it installs QGIS in minutes. **Before
 proposing a change to a rule, read RULINGS.md** - it is the list this
 session's 484 mistake would have needed.
 
+**Remind John: step 2** (BACKLOG 498). When the GitHub organisation
+exists, main is to be protected so changes land only through a green
+pull request. He asked to be reminded. After that, patches go on a
+branch, never straight onto main.
+
 **How this stretch worked, for whoever continues.**
 - Each fix was broken again on purpose to see that a test notices:
   about sixty such breaks in the two releases. One exposed a gap
