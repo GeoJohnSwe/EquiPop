@@ -3718,6 +3718,16 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 499 | DONE (repository, no release), 12 NOVEMBER 2026 | ONE MAC JOB,
+  NOT TWO. Runs #7 and its re-run: every job that ran passed, but
+  "suite - macos-latest - Python 3.14" was "not acquired by Runner of
+  type hosted even after multiple attempts" - GitHub had no Mac to give
+  it ("Due to capacity constraints, jobs targeting macOS arm64 runners
+  may experience longer queue times"); the 3.11 Mac job got one. Not
+  our code. macOS now runs the suite on Python 3.14 only; Linux and
+  Windows keep 3.11 and 3.14. If it happens again: Re-run failed jobs.
+  The Mac job is left out of the required checks of step 2 (498).
+
 - 498 | RULED 12 NOVEMBER 2026; STEP 2 WAITS FOR THE ORGANISATION | TWO
   RULINGS, AND THE CHECKLIST FOR STEP 2.
   R-30 (the working frame by extent, 93): RULED OUT, FOR NOW. John: "no
@@ -3744,10 +3754,12 @@ because machine 3 stores tiles that way and says so in its manifest.
      branch ruleset, target the default branch, and tick: Restrict
      deletions; Block force pushes; Require a pull request before
      merging (1 approval, conversations resolved); Require status
-     checks to pass - the suite on ubuntu, windows and macOS (3.11 and
-     3.14), real QGIS 3.38, 3.44 and 4 on ubuntu and 4 on windows, and
+     checks to pass - the suite on ubuntu and windows (3.11 and 3.14),
+     real QGIS 3.38, 3.44 and 4 on ubuntu and 4 on windows, and
      "release bundle builds". Not the Python 3.15 job: it may fail
-     while its packages lag.
+     while its packages lag. Not the macOS job either: GitHub's Mac
+     machines can be unavailable for hours (499), and a required check
+     that cannot start blocks every merge.
   5. PyPI: add a second owner to the equipop project; later, Trusted
      Publishing from a release workflow, so no token is kept anywhere.
   6. Agree owners and backups per area, then write .github/CODEOWNERS

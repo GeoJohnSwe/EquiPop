@@ -2,8 +2,9 @@
 # request, and by hand (Actions tab -> tests -> Run workflow).
 #
 # Three jobs, each answering one question:
-#   suite  - does the full test suite pass on Windows, macOS and Linux,
-#            on the oldest and newest Python we support?
+#   suite  - does the full test suite pass on Windows and Linux, on the
+#            oldest and newest Python we support, and on macOS on
+#            the newest?
 #   qgis   - does the QGIS plugin run in a REAL QGIS (3.38 minimum,
 #            3.44 LTR, 4.x latest on Linux; 4.x on Windows), with
 #            the same numbers as the engine? Everything in tests/
@@ -42,6 +43,13 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.11", "3.14"]
         experimental: [false]
+        exclude:
+          # one Mac job, not two: GitHub's Mac machines are short, and
+          # twice on 12 November the second Mac job was never given one
+          # ("not acquired by Runner ... after multiple attempts") -
+          # BACKLOG 499. Linux and Windows test both Pythons.
+          - os: macos-latest
+            python: "3.11"
         include:
           # the newest Python the classifiers name; its wheels may lag,
           # so a failure here is reported and does not block
