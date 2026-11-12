@@ -132,9 +132,21 @@ findings held when re-run here, and none was in my handover:
 - BACKLOG 482: the sample data is described as a real register. Left
   as it is by John's ruling; to settle before anything published
   leans on it.
-- A PyPI token of John's appeared in a screenshot on 5 November and
-  must be treated as compromised until he has revoked it. Never write
-  a token into the repository folder or into a chat.
+- The PyPI token of 5 November: CLOSED by John on 12 November ("my
+  problem and not a password being lost"). The rule stays: never a
+  token in the repository folder, a chat or a screenshot.
+
+**12 November, after 1.64.1: the project opens to co-developers
+(493-496).** John's friends Marina Toger, Umut Türk, Ola Hall and
+Martin Önnerfors will develop with him. Step 1 of the plan: automatic
+tests (.github/workflows/tests.yml), CONTRIBUTING.md, RULINGS.md (51
+rulings, kept honest by tests/test_rulings_register.py). **The plugin
+ran in a real QGIS 4 for the first time** - 4.2.3 and 3.44.14 from
+conda-forge, headless, in this session: tests_real_qgis/, 9 of 9 on
+each. Docker Hub is closed to this session; conda.anaconda.org is
+open, and micromamba from it installs QGIS in minutes. **Before
+proposing a change to a rule, read RULINGS.md** - it is the list this
+session's 484 mistake would have needed.
 
 **How this stretch worked, for whoever continues.**
 - Each fix was broken again on purpose to see that a test notices:

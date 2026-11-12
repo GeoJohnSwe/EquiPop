@@ -1,0 +1,9 @@
+# Keeps the versions of the GitHub Actions in .github/workflows current:
+# a pull request once a month when one has a new release, tested by
+# the workflow itself like any other change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

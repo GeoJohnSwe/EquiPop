@@ -40,7 +40,8 @@ that is how the last three staleness findings were made.*
 
 ### After the code review of 1.63.7 — a work order, for John to change
 *Written at 1.63.8, 11 November 2026; item B done at 1.64.0; the
-independent review of 1.64.0 answered in 1.64.1 (488-492). The review ("EquiPop code review:
+independent review of 1.64.0 answered in 1.64.1 (488-492); item D's
+CI built on 12 November (493-495). The review ("EquiPop code review:
 where we lag", 10 November) ranked nine places where the project lags.
 1.63.8 took the first - the defects that gave a wrong number or lost
 data (465-481). This is Claude's proposed order for the rest; the
@@ -50,8 +51,9 @@ A. **Run 1.63.8, 1.64.0 and 1.64.1 on the real programs** — together
    they change numbers in five places and none of it has met Pro, QGIS
    or Stata. The independent review of 1.64.0 makes this a release
    CONDITION, and its matrix (with 488 and 489 added) is in the MANUAL
-   row of 1.64.1. Until then they are release candidates. Before any
-   upload: the PyPI token of 5 November revoked (492, S1).
+   row of 1.64.1. Until then they are release candidates. (The PyPI
+   token item, 492 S1, was closed by John on 12 November.) The QGIS
+   part now also runs on every push (493).
 B. **Four rulings (483 a)** — DONE in 1.64.0, the same day: 484
    (percentiles), 485 (the first reference rung), 486 ("no decay" in
    Pro), 487 (equipop_run level with equipop).
@@ -3712,14 +3714,94 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
+- 496 | DONE (tests only), 12 NOVEMBER 2026, FOUND BUILDING 493 | THE
+  STATA STAND-IN USED A DEPRECATED PANDAS KEYWORD. Run on Python 3.11
+  with pandas 3.1.1 (what pip gives a new install today), the suite
+  passed and warned "The inplace keyword in DataFrame.drop is
+  deprecated and will be removed" - from tests/stata_sim.py, in the
+  Data.dropVar and drop code added in 1.63.8 (473). The package itself
+  already avoided it (427, and test_python_3_15 checks the package).
+  Now `st.df = st.df.drop(...)`. A warning in pandas 3.1, an error in
+  pandas 4.
+
+- 495 | DONE (repository, no release), 12 NOVEMBER 2026 | RULINGS.md:
+  THE METHOD DECISIONS IN ONE PLACE (John: "standardizing the process
+  means we can keep it clean and actionable for all"). 51 rulings,
+  gathered from this file and HANDOVER_6 to _15, each with the rule,
+  the reason (John's words where the record has them), where it was
+  decided, the test that pins it, and one of five statuses (in force;
+  in force, not yet built; ruled out; superseded; to confirm). Ruled
+  out is kept on purpose: 203, 205, 296 and 122 were each raised more
+  than once before the ruling was found.
+  FOR JOHN TO LOOK AT: R-30 (the working frame of 93 - still meant for
+  the GIS doors, or replaced by 178?) and R-48 (82's separate
+  demography package - superseded by 438's one plugin?). Twenty-two
+  rulings name no pinning test yet; each says "none yet", a list of
+  tests to write.
+  HOW IT IS KEPT: tests/test_rulings_register.py - IDs unique and in
+  order, the index matching the entries, statuses from the list, every
+  BACKLOG number cited present here, every pinning test present by
+  name. A pinning test renamed is a ruling nothing guards, so the
+  rename fails the suite. Five breaks made on purpose, five caught.
+  THE PROCESS: a method-decision issue (.github/ISSUE_TEMPLATE), the
+  method lead decides, the ruling is written in the pull request that
+  builds it. Never renumbered, never deleted.
+
+- 494 | DONE (repository, no release), 12 NOVEMBER 2026 | A GUIDE FOR
+  NEW DEVELOPERS: CONTRIBUTING.md, for John's co-developers (Marina
+  Toger, Umut Türk, Ola Hall, Martin Önnerfors). Two pages: the one
+  engine and four doors, set-up and tests (including a real QGIS), what
+  the automatic tests do, how a change gets in (issue, branch, pull
+  request, review), eleven house rules each tied to the fault that
+  taught it, the release steps, where things are written down, and
+  AI-assisted work under the same rules. With it: a pull-request
+  template (numbers that change, runs that now stop, doors, tested
+  where), a method-decision issue template, a Dependabot file that
+  keeps the workflow's actions current, and a line in README.md.
+  PROPOSALS IN IT FOR JOHN TO CONFIRM: one approving review for an
+  ordinary change, the method lead for a rule, two for releases and
+  credentials; "Squash and merge"; which checks block a merge.
+
+- 493 | DONE (repository, no release), 12 NOVEMBER 2026 | AUTOMATIC
+  TESTS, AND THE PLUGIN'S FIRST RUN IN A REAL QGIS 4. The release
+  gate both reviews asked for (483 g; independent review M1).
+  .github/workflows/tests.yml, three jobs:
+    suite  - the full suite on Windows, macOS and Linux, Python 3.11
+             and 3.14 (3.15 reported, not blocking);
+    qgis   - tests_real_qgis/ in a REAL QGIS from conda-forge: 3.38
+             (the promised minimum), 3.44 LTR and 4.x on Linux, 3.44
+             and 4.x on Windows;
+    bundle - make_bundle.sh end to end, the wheel installed into a
+             clean Python and run; the bundle kept 14 days as a
+             download for the hand checks in Pro and Stata.
+  tests_real_qgis/ IS NEW: the plugin registered in real Processing,
+  tools 1 and 2 run as the toolbox runs them and their numbers held to
+  dispatch(); the real GeoPackage and shapefile writers; 488 and 489
+  in a real QGIS; tools/stub_audit.py run automatically (it was a
+  paste into the QGIS console, 80); and the plugin's own deprecated
+  QGIS calls made errors (84: "a deprecated method exists perfectly
+  well").
+  RUN HERE BEFORE IT WAS WRITTEN DOWN: QGIS 4.2.3 and 3.44.14, both
+  from conda-forge, headless - 9 of 9 each. THE FIRST TIME THE PLUGIN
+  HAS RUN IN ANY QGIS 4 (464 said "NOT run on a real QGIS 4 by anyone
+  yet"). Five breaks made on purpose under real QGIS, five caught. The
+  suite on Python 3.11 with pandas 3.1: 2,907 passed (496 found
+  there). actionlint passes the workflow.
+  NOT RUN HERE: Windows and macOS runners, QGIS 3.38 itself, GitHub's
+  runners at all. Expect the first run on GitHub to need a round of
+  fixes; until each job has run green, only the Linux jobs should
+  block a merge. ArcGIS Pro and Stata cannot run on CI (licences).
+
 - 492 | PART DONE v1.64.1, 11 NOVEMBER 2026; THE REST FOR JOHN | THE
   INDEPENDENT REVIEW OF 1.64.0 - WHAT IS NOT CODE. The review ("EquiPop
   1.64.0 - independent code and release review", 11 November, of
   equipop-1.64.0-ALL.zip) found three code defects (488-490) and a test
   fragility (491); the rest, item by item:
   S1 THE PyPI TOKEN of 5 November (HANDOVER_15): an archive scan cannot
-  tell whether it is still live. Revoke it and make a project-scoped
-  one before the next upload. JOHN'S; nothing here can close it.
+  tell whether it is still live. CLOSED 12 NOVEMBER BY JOHN: "the
+  November 5 thing was my problem and not a password being lost - so
+  we can drop that". The standing rule stays: no credential in the
+  repository, a chat or a screenshot (CONTRIBUTING.md, house rule 11).
   R1 THE REAL HOSTS as a release CONDITION, not a follow-up - agreed.
   The review's matrix, with 488 and 489 added, is in the MANUAL row of
   1.64.1; recorded as a signed list (program, version, OS, settings,

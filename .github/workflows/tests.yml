@@ -1,0 +1,134 @@
+# EquiPop's automatic tests. Runs on every push to main, on every pull
+# request, and by hand (Actions tab -> tests -> Run workflow).
+#
+# Three jobs, each answering one question:
+#   suite  - does the full test suite pass on Windows, macOS and Linux,
+#            on the oldest and newest Python we support?
+#   qgis   - does the QGIS plugin run in a REAL QGIS (3.38 minimum,
+#            3.44 LTR, 4.x latest), with the same numbers as the
+#            engine? Everything in tests/ runs against a stand-in.
+#   bundle - can a complete release bundle be built from this commit?
+#            The files are kept for 14 days as a download: what you
+#            install for the hand checks in ArcGIS Pro and Stata, which
+#            no CI can run (both need a licence).
+#
+# Which of these BLOCK a merge is set in the repository settings
+# (Settings -> Rules), not here. See CONTRIBUTING.md, "Automatic tests".
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: suite · ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.14"]
+        experimental: [false]
+        include:
+          # the newest Python the classifiers name; its wheels may lag,
+          # so a failure here is reported and does not block
+          - os: ubuntu-latest
+            python: "3.15"
+            experimental: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+          cache: pip
+      - name: Install EquiPop and everything the tests use
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,geo,io]" matplotlib libpysal esda
+      - name: Run the suite
+        run: python -m pytest -q -p no:cacheprovider tests
+
+  qgis:
+    name: real QGIS ${{ matrix.qgis }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        qgis: ["3.38", "3.44", "4"]
+        include:
+          - os: windows-latest
+            qgis: "4"
+          - os: windows-latest
+            qgis: "3.44"
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-name: qgis
+          create-args: >-
+            qgis=${{ matrix.qgis }}
+            pytest
+            pandas
+            scipy
+            pyproj
+          condarc: |
+            channels:
+              - conda-forge
+          cache-environment: true
+          init-shell: bash
+      - name: Which QGIS
+        run: python -c "import sys; print(sys.version)"
+      - name: Run the plugin in real QGIS
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -v -p no:cacheprovider tests_real_qgis
+
+  bundle:
+    name: release bundle builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install the build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+          python -m pip install -e .
+      - name: Build every file of a release
+        run: |
+          V=$(python -c "import equipop; print(equipop.__version__)")
+          bash tools/make_bundle.sh "$V" "$RUNNER_TEMP/equipop-$V"
+          echo "V=$V" >> "$GITHUB_ENV"
+      - name: Install the wheel into a clean Python and run it
+        run: |
+          python -m venv "$RUNNER_TEMP/clean"
+          "$RUNNER_TEMP/clean/bin/pip" install "$RUNNER_TEMP/equipop-$V/equipop-$V-py3-none-any.whl"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/clean/bin/python" -I -c "import equipop, numpy as np; from equipop import stata_bridge as sb; print('equipop', equipop.__version__); r = sb.dispatch('counts', np.arange(5.0) * 100, np.zeros(5), k_values=[2]); assert list(r['N_2']) == [2.0] * 5, r"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: equipop-${{ env.V }}-${{ github.sha }}
+          path: ${{ runner.temp }}/equipop-${{ env.V }}
+          retention-days: 14

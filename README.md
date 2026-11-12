@@ -55,5 +55,10 @@ Uppsala University. Segregation measures: Östh, Clark & Malmberg
 *Handbook of Urban Segregation*. Decay profiles in application:
 Türk, Östh, Kourtit & Nijkamp (2026), *Journal of Urban Mobility* 9.
 
+## Contributing
+See CONTRIBUTING.md for how the code is laid out, how to run the
+tests and how a change gets in, and RULINGS.md for the method
+decisions the code must keep.
+
 ## License
 MIT. Attribution through citation is warmly requested (see above).

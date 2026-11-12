@@ -21,6 +21,10 @@ include MANUAL.md
 include MANUAL_BEGINNER.md
 include MANUAL_TOPICS.md
 include BACKLOG.md
+# 12 November 2026: the method decisions and the guide for developers.
+# tests/test_rulings_register.py reads both, and the tests ship.
+include RULINGS.md
+include CONTRIBUTING.md
 
 # The doors that pip cannot deliver: a user installs the package,
 # then copies these onto the machine by hand.

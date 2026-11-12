@@ -100,7 +100,8 @@ def _sfi():
                 name = var
             else:
                 raise ValueError(f"variable {var} not found")
-            st.df.drop(columns=[name], inplace=True)
+            # not inplace=: pandas 3.1 deprecates it (BACKLOG 427, 496)
+            st.df = st.df.drop(columns=[name])
 
         @staticmethod
         def store(var, obs, val):
@@ -160,7 +161,7 @@ def _sfi():
                 if capture:
                     return
                 raise
-            st.df.drop(columns=sorted(set(gone)), inplace=True)
+            st.df = st.df.drop(columns=sorted(set(gone)))
 
     class Characteristic:
         """The four names sfi has - and no others. The shipped code
