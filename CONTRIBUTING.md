@@ -53,7 +53,7 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests_real_qgis     (Windows: set QT_
 | Job | Question it answers |
 |---|---|
 | **suite** | Does the full suite pass on Windows, macOS and Linux, on Python 3.11 and 3.14? (Python 3.15 runs too, but does not block: its packages lag.) |
-| **qgis** | Does the plugin run in a real QGIS: 3.38 (the oldest we promise), 3.44 (LTR) and 4.x, on Linux and Windows? |
+| **qgis** | Does the plugin run in a real QGIS: 3.38 (the oldest we promise), 3.44 (LTR) and 4.x on Linux, and 4.x on Windows? |
 | **bundle** | Can a complete release be built from this commit? Its files are a **download** on the run's page for 14 days. Use that download for the hand checks in Pro and Stata. |
 
 A red check is a stop: fix it, or say in the pull request why it is not yours. Which checks **block** a merge is set under *Settings → Rules*: start with the Linux suite and Linux QGIS, and add the others once they have run green.

@@ -5,8 +5,9 @@
 #   suite  - does the full test suite pass on Windows, macOS and Linux,
 #            on the oldest and newest Python we support?
 #   qgis   - does the QGIS plugin run in a REAL QGIS (3.38 minimum,
-#            3.44 LTR, 4.x latest), with the same numbers as the
-#            engine? Everything in tests/ runs against a stand-in.
+#            3.44 LTR, 4.x latest on Linux; 4.x on Windows), with
+#            the same numbers as the engine? Everything in tests/
+#            runs against a stand-in.
 #   bundle - can a complete release bundle be built from this commit?
 #            The files are kept for 14 days as a download: what you
 #            install for the hand checks in ArcGIS Pro and Stata, which
@@ -71,10 +72,11 @@ jobs:
         os: [ubuntu-latest]
         qgis: ["3.38", "3.44", "4"]
         include:
+          # Windows: QGIS 4 only. conda-forge's QGIS 3.44 for Windows
+          # cannot load its own core library ("DLL load failed while
+          # importing _core") before any EquiPop code runs - BACKLOG 497
           - os: windows-latest
             qgis: "4"
-          - os: windows-latest
-            qgis: "3.44"
     defaults:
       run:
         shell: bash -el {0}

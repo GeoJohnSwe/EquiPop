@@ -3714,7 +3714,7 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
-- 497 | PART DONE (repository, no release), 12 NOVEMBER 2026 | THE FIRST
+- 497 | DONE (repository, no release), 12 NOVEMBER 2026 | THE FIRST
   AUTOMATIC RUN, AND WHAT IT FOUND. GitHub's "tests #1" on c5078c6:
   9 of 14 jobs green at the first attempt - the suite on Linux (3.11,
   3.14, 3.15) and macOS (3.11, 3.14), real QGIS 3.38 and 3.44 on
@@ -3736,8 +3736,14 @@ because machine 3 stores tiles that way and says so in its manifest.
   arcpy stand-in in tests/, which imports pytest, and the job had not
   installed it. Rehearsed on a fresh shallow clone of GitHub's main,
   as the runner has it: 24 files, the wheel installs and runs.
-  (d) REAL QGIS 3.44 ON WINDOWS, exit code 4 - pytest could not load
-  the test folder. OPEN until its log is read.
+  (d) REAL QGIS 3.44 ON WINDOWS, exit code 4: "ImportError: DLL load
+  failed while importing _core: The specified procedure could not be
+  found" - at `import qgis.core`, before any line of EquiPop runs.
+  conda-forge's QGIS 3.44 for Windows cannot load its own library on
+  the runner; its QGIS 4 for Windows can, and passes. Not the plugin:
+  the job is dropped. Windows keeps QGIS 4; Linux keeps 3.38, 3.44
+  and 4. Windows users install QGIS from qgis.org (OSGeo4W), which no
+  CI runs - that stays a hand check.
   ALSO: the workflow's actions moved to v7, which Dependabot proposed
   in pull requests #2-#4 the same hour; those close themselves.
 
