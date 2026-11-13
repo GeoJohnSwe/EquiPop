@@ -56,14 +56,16 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests_real_qgis     (Windows: set QT_
 | **qgis** | Does the plugin run in a real QGIS: 3.38 (the oldest we promise), 3.44 (LTR) and 4.x on Linux, and 4.x on Windows? |
 | **bundle** | Can a complete release be built from this commit? Its files are a **download** on the run's page for 14 days. Use that download for the hand checks in Pro and Stata. |
 
-A red check is a stop: fix it, or say in the pull request why it is not yours. Which checks **block** a merge is set under *Settings → Rules*: start with the Linux suite and Linux QGIS, and add the others once they have run green.
+A red check is a stop: fix it, or say in the pull request why it is not yours. Nine checks **block** a merge (*Settings → Rules → Rulesets → protect main*): the suite on Linux and Windows on Python 3.11 and 3.14, the four real-QGIS jobs, and the bundle. The macOS and Python 3.15 jobs run but do not block.
+
+**A job's name is its check's name.** Renaming a job in `tests.yml`, or changing its matrix, renames the check. An owner must then change the required checks to match, or every pull request waits for a check that never comes ("Expected — Waiting for status to be reported").
 
 ## 4. How a change gets in
 
 1. **Start from an issue**, or open one. Anything that can move a number starts as a **method decision** issue (template provided): the rule today, the rule proposed, an example, and which numbers change.
-2. **Work on a branch** from `main`: `fix/empty-group-columns`, `docs/teaching-week-3`. Nobody pushes to `main` directly, the maintainers included.
+2. **Work on a branch** from `main`: `fix/empty-group-columns`, `docs/teaching-week-3`. Nobody pushes to `main` directly, the maintainers included: GitHub refuses it. A patch file goes on a branch too: `git switch -c fix/what`, `git am the.patch`, `git push -u origin fix/what`.
 3. **Open a pull request early**, as a draft if unfinished. The template asks what problem it solves, what numbers change, which doors are affected, and what was tested where.
-4. **Review.** Checks green and one approving review. A change to a method rule also needs the method lead (John). Releases, packaging and credentials need two approvals.
+4. **Review.** Checks green and one approving review. A change to a method rule also needs the method lead (John). Releases, packaging and credentials need two approvals. *(Until a second developer reviews, the ruleset asks for 0 approvals: GitHub never lets authors approve their own pull request, so 1 would block John's. It goes to 1 then. BACKLOG 501.)*
 5. **Merge** with *Squash and merge*, and delete the branch.
 
 ## 5. House rules

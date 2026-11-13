@@ -148,10 +148,16 @@ open, and micromamba from it installs QGIS in minutes. **Before
 proposing a change to a rule, read RULINGS.md** - it is the list this
 session's 484 mistake would have needed.
 
-**Remind John: step 2** (BACKLOG 498). When the GitHub organisation
-exists, main is to be protected so changes land only through a green
-pull request. He asked to be reminded. After that, patches go on a
-branch, never straight onto main.
+**Step 2 is on** (BACKLOG 498, 500, 501; 13 November). The repository
+is github.com/GeoCalista/EquiPop, PyPI uploads go through release.yml
+with no token, and main is protected: nine required checks, 0
+approvals until a second developer reviews. Nobody pushes to main,
+John included. A patch goes on a branch (`git switch -c fix/what`,
+`git am`, `git push -u origin fix/what`) and in through a pull request,
+Squash and merge. Left: Marina as a second PyPI owner (her PyPI
+account name is awaited) and as a reviewer of the "pypi" environment;
+the old PyPI token deleted after the first release through
+release.yml.
 
 **How this stretch worked, for whoever continues.**
 - Each fix was broken again on purpose to see that a test notices:
