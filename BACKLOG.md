@@ -54,10 +54,10 @@ A. **Run 1.63.8, 1.64.0 and 1.64.1 on the real programs** — together
    row of 1.64.1. Until then they are release candidates. (The PyPI
    token item, 492 S1, was closed by John on 12 November.) The QGIS
    part now also runs on every push (493).
-A2. **Step 2 when the organisation exists** (498) — Marina and Umut
-   have said yes. The checklist is in 498: the organisation, the
-   repository moved into it, main protected so every change lands
-   through a green pull request.
+A2. **Step 2** (498) — ON SINCE 13 NOVEMBER (500, 501): GeoCalista,
+   publishing without a token, main protected. Left: Marina as a
+   second PyPI owner, and the first release through release.yml.
+   From now on every change lands through a green pull request.
 B. **Four rulings (483 a)** — DONE in 1.64.0, the same day: 484
    (percentiles), 485 (the first reference rung), 486 ("no decay" in
    Pro), 487 (equipop_run level with equipop).
@@ -3718,7 +3718,44 @@ because machine 3 stores tiles that way and says so in its manifest.
   and vectorjoin.py shipped with no way to reach them, working on its
   own author.
 
-- 500 | BUILT 12 NOVEMBER 2026; LIVE WHEN PyPI IS TOLD | THE ORGANISATION,
+- 501 | DONE (repository settings, no release), 13 NOVEMBER 2026 | MAIN
+  IS PROTECTED: STEP 2 OF 498 IS ON. Repository Settings -> Rules ->
+  Rulesets -> "protect main": Active, on the default branch, nobody on
+  the bypass list (John included). Deletions restricted, force pushes
+  blocked, a pull request before merging with conversations resolved,
+  and NINE REQUIRED CHECKS: "suite · ubuntu-latest · Python 3.11" and
+  3.14, "suite · windows-latest · Python 3.11" and 3.14, "real QGIS
+  3.38 · ubuntu-latest", 3.44 and 4 on ubuntu, "real QGIS 4 ·
+  windows-latest", and "release bundle builds". Not macOS (499), not
+  Python 3.15. "Require branches to be up to date" is off.
+  REQUIRED APPROVALS: 0, NOT THE 1 OF 498. GitHub never lets the author
+  of a pull request approve it, and today John writes or applies every
+  change: with 1 he could merge nothing. The nine checks still gate
+  every change. Raise it to 1 when Marina or Umut start reviewing;
+  CONTRIBUTING's "one approving review" is then true as written.
+  A CHECK THAT NEVER RUNS BLOCKS EVERYTHING. When the ruleset was made,
+  GitHub offered "real QGIS 3.44 · windows-latest" as a check to
+  require: it ran once, before 497 dropped it. Required, it would have
+  left every pull request "Expected - waiting for status to be
+  reported" for good. It was left out. A renamed job in tests.yml does
+  the same, so CONTRIBUTING (section 3) and the workflow's header now
+  say: change the required checks to match.
+  OF 500: the environment "pypi" is made (required reviewer John;
+  "Prevent self-review" off, since he both starts and approves a
+  release; turn it on when there is a second reviewer), and PyPI trusts
+  GeoCalista / EquiPop / release.yml / pypi. STILL TO DO: Marina as a
+  second owner of the PyPI project (her PyPI account name is awaited);
+  Marina as a reviewer of "pypi" once she has accepted the
+  organisation's invitation; after the first release through
+  release.yml, delete the old PyPI API token (pypi.org -> Account
+  settings -> API tokens) and the copy in .pypirc. Then 498 step 6:
+  areas, owners and backups, CODEOWNERS.
+  THIS ENTRY WENT IN AS THE FIRST PULL REQUEST, which is the test of
+  the ruleset itself: the nine checks must report under exactly these
+  names, or the merge button never turns green.
+
+- 500 | BUILT 12 NOVEMBER 2026; PyPI TOLD BY 13 NOVEMBER (501); LIVE AT
+  THE FIRST RELEASE | THE ORGANISATION,
   AND PUBLISHING WITHOUT A TOKEN. Step 2 (498), the same evening:
   GeoCalista created on GitHub; Marina Toger (lizardie) invited as a
   second owner; the repository moved to github.com/GeoCalista/EquiPop
@@ -3742,7 +3779,8 @@ because machine 3 stores tiles that way and says so in its manifest.
   trusted publisher on PyPI (equipop -> Manage -> Publishing); Marina
   as a second owner of the PyPI project (she needs a PyPI account; PyPI
   invites by account name); then main protected (498, step 4). The
-  first release through it is the test of all of it.
+  first release through it is the test of all of it. (By 13 November
+  all but Marina on PyPI is done: 501.)
 
 - 499 | DONE (repository, no release), 12 NOVEMBER 2026 | ONE MAC JOB,
   NOT TWO. Runs #7 and its re-run: every job that ran passed, but
@@ -3754,7 +3792,7 @@ because machine 3 stores tiles that way and says so in its manifest.
   Windows keep 3.11 and 3.14. If it happens again: Re-run failed jobs.
   The Mac job is left out of the required checks of step 2 (498).
 
-- 498 | RULED 12 NOVEMBER 2026; STEP 2 WAITS FOR THE ORGANISATION | TWO
+- 498 | RULED 12 NOVEMBER 2026; STEP 2 ON 13 NOVEMBER (501) | TWO
   RULINGS, AND THE CHECKLIST FOR STEP 2.
   R-30 (the working frame by extent, 93): RULED OUT, FOR NOW. John: "no
   I don't think - but there might be exceptions - selections work so
@@ -3779,7 +3817,8 @@ because machine 3 stores tiles that way and says so in its manifest.
   4. Protect main: repository Settings -> Rules -> Rulesets -> New
      branch ruleset, target the default branch, and tick: Restrict
      deletions; Block force pushes; Require a pull request before
-     merging (1 approval, conversations resolved); Require status
+     merging (1 approval - 0 for now, see 501 - conversations
+     resolved); Require status
      checks to pass - the suite on ubuntu and windows (3.11 and 3.14),
      real QGIS 3.38, 3.44 and 4 on ubuntu and 4 on windows, and
      "release bundle builds". Not the Python 3.15 job: it may fail

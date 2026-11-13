@@ -15,7 +15,11 @@
 #            no CI can run (both need a licence).
 #
 # Which of these BLOCK a merge is set in the repository settings
-# (Settings -> Rules), not here. See CONTRIBUTING.md, "Automatic tests".
+# (Settings -> Rules -> protect main), not here. See CONTRIBUTING.md,
+# "Automatic tests". A job's name is its check's name: rename a job or
+# change its matrix, and an owner must change the required checks to
+# match, or every pull request waits for a check that never comes
+# (BACKLOG 501).
 name: tests
 
 on:
